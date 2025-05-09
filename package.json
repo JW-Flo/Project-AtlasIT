@@ -1,0 +1,24 @@
+{
+  "name": "project-ignite",
+  "version": "1.0.0",
+  "description": "Automating IT Operations for Flosports - Contractor Lifecycle, Security Automation, License Management",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JW-Flo/Project-Ignite.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JW-Flo/Project-Ignite/issues"
+  },
+  "homepage": "https://github.com/JW-Flo/Project-Ignite#readme",
+  "devDependencies": {
+    "eslint": "^9.26.0",
+    "prettier": "^3.5.3"
+  }
+}
