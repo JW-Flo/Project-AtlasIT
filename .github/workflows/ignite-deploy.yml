@@ -16,6 +16,26 @@ jobs:
           terraform -chdir=terraform apply -auto-approve
       - name: Validate Terraform
         run: terraform -chdir=terraform plan
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   urgent:
     needs: prereq
@@ -52,6 +72,26 @@ jobs:
         run: scripts/ingest-alerts.sh
       - name: Init BigQuery/Firestore schema
         run: scripts/init-schema.sh
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   dev:
     needs: urgent
@@ -60,6 +100,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Stub createGroup Function
         run: scripts/stub-create-group.sh
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   ci-scans:
     needs: dev
@@ -77,6 +137,26 @@ jobs:
           tflint terraform
       - name: Run Lint
         run: eslint src/
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   smoke:
     needs: ci-scans
@@ -85,6 +165,26 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run smoke_test.sh
         run: chmod +x scripts/smoke_test.sh && ./scripts/smoke_test.sh
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   manual-approval:
     needs: smoke
@@ -94,6 +194,26 @@ jobs:
         run: |
           echo "Manual approval required. Please approve this job in the GitHub Actions UI to proceed with production deployment."
           echo "If you are an authorized approver, click 'Approve and run' above."
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
 
   prod-deploy:
     needs: manual-approval
@@ -102,3 +222,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Blue/Green Deploy
         run: scripts/prod-deploy.sh
+      - name: Save job log
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          echo "Job: ${{ github.job }} | Run ID: ${{ github.run_id }}" > ci-logs/${{ github.job }}-${{ github.run_id }}.log
+          # Optionally append more detailed logs here
+      - name: Install gsutil
+        if: failure()
+        run: |
+          sudo apt-get update && sudo apt-get install -y google-cloud-sdk
+      - name: Authenticate to GCP
+        if: failure()
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
+          gcloud config set project ignite-459301
+      - name: Upload error log to GCS on failure
+        if: failure()
+        run: |
+          gsutil cp ci-logs/${{ github.job }}-${{ github.run_id }}.log gs://ignite-459301-ci-errors/
