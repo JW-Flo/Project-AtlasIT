@@ -1,10 +1,5 @@
 name: ignite-deploy
 on:
-  workflow_dispatch:
-  # Trigger on push to main branch
-  schedule:
-    - cron: '0 0 * * *' # Every day at midnight UTC
-  # You can also trigger on specific branches or tags
   push:
     branches: [ main ]
 
@@ -13,12 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Mistral via Copilot stub
-        run: |
-          chmod +x scripts/install-mistral.sh
-          ./scripts/install-mistral.sh
-      - name: Verify Mistral
-        run: mistral --version
       - name: Terraform Init & Apply Scaffold
         run: |
           terraform -chdir=terraform init
@@ -34,12 +23,78 @@ jobs:
       - name: Ingest Jira → Okta
         run: scripts/ingest-jira.sh
       - name: Deploy Web UI
+        env:
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+          OKTA_API_TOKEN_SA: ${{ secrets.OKTA_API_TOKEN_SA }}
+          ROCKETCYBER_API_TOKEN: ${{ secrets.ROCKETCYBER_API_TOKEN }}
+          DATTO_EDR_TOKEN: ${{ secrets.DATTO_EDR_TOKEN }}
+          ZIP_API_KEY: ${{ secrets.ZIP_API_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          AWS_ACCESS_KEY_ID_SANDBOX: ${{ secrets.AWS_ACCESS_KEY_ID_SANDBOX }}
+          AWS_SECRET_ACCESS_KEY_SANDBOX: ${{ secrets.AWS_SECRET_ACCESS_KEY_SANDBOX }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: scripts/deploy-webui.sh
       - name: Lock down Okta roles
         run: scripts/lockdown-okta.sh
       - name: Connect to Datto & RocketCyber
+        env:
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+          OKTA_API_TOKEN_SA: ${{ secrets.OKTA_API_TOKEN_SA }}
+          ROCKETCYBER_API_TOKEN: ${{ secrets.ROCKETCYBER_API_TOKEN }}
+          DATTO_EDR_TOKEN: ${{ secrets.DATTO_EDR_TOKEN }}
+          ZIP_API_KEY: ${{ secrets.ZIP_API_KEY }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          AWS_ACCESS_KEY_ID_SANDBOX: ${{ secrets.AWS_ACCESS_KEY_ID_SANDBOX }}
+          AWS_SECRET_ACCESS_KEY_SANDBOX: ${{ secrets.AWS_SECRET_ACCESS_KEY_SANDBOX }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: scripts/ingest-alerts.sh
       - name: Init BigQuery/Firestore schema
         run: scripts/init-schema.sh
 
-  # … rest of jobs (dev, ci-scans, smoke, manual-approval, prod-deploy)
+  dev:
+    needs: urgent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stub createGroup Function
+        run: scripts/stub-create-group.sh
+
+  ci-scans:
+    needs: dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Scanners
+        run: |
+          pip install checkov==2.0.763 tfsec==1.28.1
+          npm install -g eslint@8.50.0 tflint@0.34.1
+      - name: Run IaC Scans
+        run: |
+          checkov --directory terraform
+          tfsec terraform
+          tflint terraform
+      - name: Run Lint
+        run: eslint src/
+
+  smoke:
+    needs: ci-scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke_test.sh
+        run: chmod +x scripts/smoke_test.sh && ./scripts/smoke_test.sh
+
+  manual-approval:
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Await manual sign-off
+        uses: chrnorm/dependabot-approval@v1
+
+  prod-deploy:
+    needs: manual-approval
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Blue/Green Deploy
+        run: scripts/prod-deploy.sh

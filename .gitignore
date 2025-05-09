@@ -3,6 +3,27 @@ node_modules/
 
 # Local creds and build artifacts
 env/
+.env*
+.env.backup
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.mistral-venv/
+venv/
+ENV/
+
+# VSCode
+.vscode/
 
 # macOS metadata
 .DS_Store
+
+# Logs
+*.log
+
+# Misc
+*.rtf

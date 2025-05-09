@@ -10,9 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY cloud-functions/ ./cloud-functions/
 COPY scripts/ ./scripts/
 COPY config/ ./config/
+COPY dashboard/ ./dashboard/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
 # Command to run when starting the container
-CMD ["python", "-m", "cloud-functions.ingest_alerts"]
+CMD ["python", "dashboard/app.py"]
