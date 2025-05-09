@@ -4,7 +4,8 @@
   "description": "Automating IT Operations for Flosports - Contractor Lifecycle, Security Automation, License Management",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "pytest cloud-functions/test_*.py",
+    "lint": "eslint . && pylint cloud-functions/ scripts/"
   },
   "repository": {
     "type": "git",
