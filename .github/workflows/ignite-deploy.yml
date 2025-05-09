@@ -1,0 +1,40 @@
+name: ignite-deploy
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  prereq:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Mistral via Copilot stub
+        run: |
+          chmod +x scripts/install-mistral.sh
+          ./scripts/install-mistral.sh
+      - name: Verify Mistral
+        run: mistral --version
+      - name: Terraform Init & Apply Scaffold
+        run: |
+          terraform -chdir=terraform init
+          terraform -chdir=terraform apply -auto-approve
+      - name: Validate Terraform
+        run: terraform -chdir=terraform plan
+
+  urgent:
+    needs: prereq
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ingest Jira → Okta
+        run: scripts/ingest-jira.sh
+      - name: Deploy Web UI
+        run: scripts/deploy-webui.sh
+      - name: Lock down Okta roles
+        run: scripts/lockdown-okta.sh
+      - name: Connect to Datto & RocketCyber
+        run: scripts/ingest-alerts.sh
+      - name: Init BigQuery/Firestore schema
+        run: scripts/init-schema.sh
+
+  # … rest of jobs (dev, ci-scans, smoke, manual-approval, prod-deploy)
