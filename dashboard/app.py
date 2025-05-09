@@ -1,11 +1,13 @@
 import os
+import sys
 import json
 from flask import Flask, render_template, jsonify, request, redirect, url_for
-import sys
 import datetime
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Ensure cloud-functions is in the Python path for import
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cloud-functions'))
 try:
-    from cloud_functions.ingest_alerts import main as ingest_alerts
+    from ingest_alerts import main as ingest_alerts
 except ImportError:
     ingest_alerts = None
 
