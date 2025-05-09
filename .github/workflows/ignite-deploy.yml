@@ -1,5 +1,10 @@
 name: ignite-deploy
 on:
+  workflow_dispatch:
+  # Trigger on push to main branch
+  schedule:
+    - cron: '0 0 * * *' # Every day at midnight UTC
+  # You can also trigger on specific branches or tags
   push:
     branches: [ main ]
 
