@@ -88,3 +88,4 @@ terraform.rc
 # Testing directories
 .coverage
 htmlcov/
+.terraform/
