@@ -1,0 +1,101 @@
+name: Sandbox Ignite Pipeline
+
+on:
+  push:
+    branches:
+      - 'sandbox-o3'
+      - 'sandbox-4o'
+
+jobs:
+  sandbox-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: sandbox-${{ github.ref_name }}
+      cancel-in-progress: true
+    env:
+      SANDBOX_MODE: 'true'
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID_SANDBOX }}
+      GCP_OIDC_PROVIDER: ${{ secrets.GCP_OIDC_PROVIDER_SANDBOX }}
+      GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL_SANDBOX }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_SANDBOX }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_SANDBOX }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN_SANDBOX }}
+      JIRA_TOKEN: ${{ secrets.JIRA_TOKEN_SANDBOX }}
+      DATTO_EDR_TOKEN: ${{ secrets.DATTO_EDR_TOKEN_SANDBOX }}
+      ROCKETCYBER_API_TOKEN: ${{ secrets.ROCKETCYBER_API_TOKEN_SANDBOX }}
+      NETSUITE_TOKEN: ${{ secrets.NETSUITE_TOKEN_SANDBOX }}
+      ZIP_API_KEY: ${{ secrets.ZIP_API_KEY_SANDBOX }}
+      DRIVE_FOLDER_URL: ${{ secrets.GOOGLE_DRIVE_FOLDER_URL_SANDBOX }}
+
+    steps:
+      - name: Announce Sandbox Run
+        run: echo "🚧 SANDBOX MODE (${GITHUB_REF_NAME}): non-destructive end-to-end test"
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Terraform init & plan
+        run: |
+          terraform -chdir=infra init -input=false
+          terraform -chdir=infra plan -out=plan.tfplan -input=false
+
+      - name: Terraform validate
+        run: terraform -chdir=infra validate -input=false
+
+      - name: Static IaC/security scans
+        uses: bridgecrewio/checkov-action@v2.0.0
+
+      - name: tfsec scan
+        uses: aquasecurity/tfsec-action@v1.0.0
+
+      - name: tflint scan
+        uses: terraform-linters/tflint-action@v3
+
+      - name: Check Jira connectivity
+        run: ./scripts/check-jira-connection.sh
+
+      - name: Check Okta stub workflow
+        run: ./scripts/stub-create-contractor.sh
+
+      - name: Validate Datto EDR stub
+        run: ./scripts/check-datto-rmm.sh
+
+      - name: Validate RocketCyber stub
+        run: ./scripts/check-rocketcyber.sh
+
+      - name: Test AWS WorkSpaces stub
+        run: ./scripts/test-aws-workspaces.sh
+
+      - name: Validate BigQuery/Firestore schema
+        run: ./scripts/init-schema.sh
+
+      - name: Generate Confluence doc stub
+        run: ./scripts/stub-auto-doc.sh
+
+      - name: Smoke test stubs
+        run: ./scripts/smoke_test.sh
+
+      - id: ai
+        name: AI QA/Remediation
+        run: |
+          REF=${{ github.ref_name#sandbox- }}
+          MODEL=$([[ "$REF" == "o3" ]] && echo "gpt-3.5-turbo" || echo "gpt-4o")
+          openai api chat.completions.create \
+            -m "$MODEL" \
+            -p "You are a QA engineer. Analyze the Terraform plan (plan.tfplan) plus all stub outputs for branch ${{ github.ref_name }}, identify issues, suggest fixes, and produce a markdown report." \
+            --input plan.tfplan \
+          > ai_report.md
+          echo "::set-output name=report-generated::true"
+
+      - name: Commit AI Report
+        if: steps.ai.outputs.report-generated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          mkdir -p reports
+          mv ai_report.md reports/
+          git add reports/ai_report.md
+          git commit -m "chore: AI report for ${{ github.sha }}"
+          git push origin ${{ github.ref_name }}
