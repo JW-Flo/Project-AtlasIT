@@ -210,9 +210,38 @@ def store_training_data(data, file_name):
     except Exception as e:
         logger.error(f"Failed to store training data: {e}")
 
+# GAM setup
+GAM_PATH = os.getenv("GAM_PATH", "gam")  # Path to the GAM executable
+
+def execute_gam_command(command):
+    """Execute a GAM command."""
+    try:
+        full_command = f"{GAM_PATH} {command}"
+        logger.info(f"Executing GAM command: {full_command}")
+        result = subprocess.run(full_command, shell=True, check=True, capture_output=True, text=True)
+        logger.info(f"GAM command output: {result.stdout}")
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        logger.error(f"GAM command failed: {e.stderr}")
+        raise
+
+# Example GAM usage
+def manage_google_workspace():
+    """Example function to manage Google Workspace resources using GAM."""
+    try:
+        # Example: List all users
+        users = execute_gam_command("print users")
+        logger.info(f"Google Workspace Users:\n{users}")
+
+        # Example: Add a new user
+        # execute_gam_command("create user newuser@domain.com password TempPass123")
+    except Exception as e:
+        logger.error(f"Failed to manage Google Workspace: {e}")
+
 if __name__ == "__main__":
     try:
         autonomous_evaluate_and_fix()
+        manage_google_workspace()
     except Exception as e:
         logger.error(f"Critical failure: {e}")
         slack_notify(f"Critical failure: {e}")
