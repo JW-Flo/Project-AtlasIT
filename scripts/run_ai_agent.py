@@ -20,7 +20,7 @@ def install_dependencies():
 # Install dependencies first
 install_dependencies()
 
-import openai
+from openai import OpenAI
 import requests
 from github import Github
 from dotenv import load_dotenv
@@ -34,7 +34,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
 model = os.getenv("AI_MODEL", "gpt-4o")
 repo_name = os.getenv("GITHUB_REPO")
 slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
@@ -65,6 +64,9 @@ def get_repo_files(path=""):
             files.append((file_content.path, file_content.decoded_content.decode()))
     return files
 
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 # Autonomous evaluation and fix
 def autonomous_evaluate_and_fix():
     files = get_repo_files()
@@ -88,7 +90,7 @@ def autonomous_evaluate_and_fix():
     Your response must comprehensively address all necessary corrections, resource creations, improvements, optimizations, and contingencies to guarantee total success.
     """
 
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": "You are a world-class, unstoppable autonomous DevOps AI agent, explicitly tasked with autonomously managing and optimizing infrastructure and CI/CD pipelines from foundational first principles, with unmatched expertise and absolute clarity."},

@@ -1,12 +1,13 @@
 import os
-import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import subprocess
 from dotenv import load_dotenv
 from github import Github
 
 load_dotenv()
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
 model = os.getenv("AI_MODEL")
 repo_name = os.getenv("GITHUB_REPO")
 gh = Github(os.getenv("GITHUB_TOKEN"))
@@ -37,11 +38,9 @@ def autonomous_evaluate_and_fix():
     Provide clear, actionable commands only.
     """
 
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=[{"role": "system", "content": "You autonomously evaluate and correct infrastructure code."},
-                  {"role": "user", "content": prompt}]
-    )
+    response = client.chat.completions.create(model=model,
+    messages=[{"role": "system", "content": "You autonomously evaluate and correct infrastructure code."},
+              {"role": "user", "content": prompt}])
     actions = response.choices[0].message.content
     print("\nAutonomous Actions to Perform:\n", actions)
 
