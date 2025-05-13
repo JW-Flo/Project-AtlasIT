@@ -48,7 +48,7 @@ firestore_client = firestore.Client()
 bigquery_client = bigquery.Client()
 
 # GitHub Initialization
-github_token = os.getenv("GITHUB_TOKEN")
+github_token = os.getenv("GH_PAT")
 gh = Github(github_token)
 repo = gh.get_repo(repo_name)
 
