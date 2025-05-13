@@ -39,9 +39,6 @@ model = os.getenv("AI_MODEL", "gpt-4o")
 repo_name = os.getenv("GITHUB_REPO")
 slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
 
-# Setup Google Cloud authentication
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-
 # Initialize Google Cloud clients
 storage_client = storage.Client()
 firestore_client = firestore.Client()
@@ -74,27 +71,27 @@ def autonomous_evaluate_and_fix():
     context = "\n\n".join(f"### {path}\n```\n{content}\n```" for path, content in files)
 
     prompt = f"""
-    You are an elite, world-class autonomous DevOps AI agent operating from first principles, tasked with meticulously reviewing, debugging, optimizing, and autonomously managing infrastructure and CI/CD pipeline configurations.
+    You are an elite, world-class, unstoppable autonomous DevOps AI agent operating strictly from first principles, tasked with meticulously reviewing, debugging, optimizing, and autonomously managing infrastructure and CI/CD pipeline configurations.
 
     Your primary objectives are:
-    1. Conduct a thorough, comprehensive audit of all repository configurations provided, ensuring meticulous detection of errors, security vulnerabilities, inefficiencies, or misconfigurations.
-    2. Generate exhaustive, accurate, explicit instructions and code corrections, leaving no ambiguity and requiring no additional manual intervention.
-    3. Autonomously leverage and query external resources, documentation, or additional AI models if clarification or deeper insight is needed.
-    4. Proactively and autonomously create any missing resources, scripts, workflows, Cloud Functions, Terraform adjustments, GitHub Actions configurations, or GCP components required.
-    5. Implement robust, automated error handling, retry logic, and rollback strategies to maintain constant operational stability and high availability.
+    1. Conduct a thorough, comprehensive, deep audit of all repository configurations provided, meticulously detecting and explicitly documenting errors, security vulnerabilities, inefficiencies, or misconfigurations.
+    2. Generate exhaustive, precise, explicit, actionable instructions and code corrections with absolute clarity, leaving no ambiguity, requiring zero additional manual intervention.
+    3. Proactively leverage external resources, official documentation, or additional AI models whenever deeper insights or further clarity is needed.
+    4. Autonomously and proactively create and manage any missing resources, scripts, workflows, Cloud Functions, Terraform adjustments, GitHub Actions configurations, or GCP components required for complete success.
+    5. Implement robust, automated error handling, retries, and rollback strategies to ensure constant operational stability, resilience, and high availability.
 
-    The files you must meticulously evaluate and optimize are as follows:
+    The files you must rigorously evaluate and optimize are:
     {context}
 
-    Clearly delineate every step, command, file creation, resource generation, YAML modification, Terraform adjustment, and Cloud Functions correction. Provide concise, executable commands explicitly formatted for immediate use in GitHub Actions. Operate with absolute certainty and authority, ensuring a flawless execution without pausing or stopping until fully successful.
+    Explicitly delineate every step, command, file creation, resource generation, YAML modification, Terraform adjustment, and Cloud Functions correction. Provide concise, executable commands explicitly formatted for immediate use in GitHub Actions workflows. Operate with absolute certainty, precision, and authority, ensuring flawless execution and uninterrupted progress until fully successful.
 
-    Your response must comprehensively address all necessary corrections, resource creations, improvements, and optimizations.
+    Your response must comprehensively address all necessary corrections, resource creations, improvements, optimizations, and contingencies to guarantee total success.
     """
 
     response = openai.ChatCompletion.create(
         model=model,
         messages=[
-            {"role": "system", "content": "You are a world-class, unstoppable autonomous DevOps AI, tasked with autonomously managing and optimizing infrastructure and CI/CD pipelines from first principles."},
+            {"role": "system", "content": "You are a world-class, unstoppable autonomous DevOps AI agent, explicitly tasked with autonomously managing and optimizing infrastructure and CI/CD pipelines from foundational first principles, with unmatched expertise and absolute clarity."},
             {"role": "user", "content": prompt}
         ]
     )
@@ -126,3 +123,4 @@ def autonomous_evaluate_and_fix():
 
 if __name__ == "__main__":
     autonomous_evaluate_and_fix()
+

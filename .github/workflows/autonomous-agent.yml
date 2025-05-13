@@ -16,9 +16,10 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AI_MODEL: "gpt-4o"
-      GITHUB_REPO: "JW-Flo/Prject-Ignite"
+      GITHUB_REPO: "JW-Flo/Project-Ignite"
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       GH_PAT: ${{ secrets.GH_PAT }} # GitHub Personal Access Token  
+
     steps:
       - uses: actions/checkout@v4
         with:
