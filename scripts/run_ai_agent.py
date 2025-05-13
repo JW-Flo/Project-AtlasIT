@@ -466,3 +466,45 @@ if __name__ == "__main__":
     if result:
         logger.info(f"Claude's response: {result}")
 
+import os
+import logging
+from github import Github
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AI_Agent")
+
+# Initialize GitHub client
+github_token = os.getenv("GH_PAT")
+gh = Github(github_token)
+repo_name = os.getenv("GITHUB_REPO")
+repo = gh.get_repo(repo_name)
+
+def create_github_issue(title, body):
+    """Create a GitHub issue in the repository."""
+    try:
+        issue = repo.create_issue(title=title, body=body)
+        logger.info(f"Issue created: {issue.html_url}")
+        return issue.html_url
+    except Exception as e:
+        logger.error(f"Failed to create issue: {e}")
+        raise
+
+def handle_error_and_create_issue(error_message):
+    """Handle errors by logging and creating a GitHub issue."""
+    logger.error(error_message)
+    issue_title = "Error encountered by AI Agent"
+    issue_body = f"The following error was encountered:\n\n{error_message}"
+    create_github_issue(issue_title, issue_body)
+
+if __name__ == "__main__":
+    try:
+        # Simulate AI agent logic
+        raise Exception("Simulated issue for testing error handling and issue creation.")
+    except Exception as e:
+        handle_error_and_create_issue(str(e))
+

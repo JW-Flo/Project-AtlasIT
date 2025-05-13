@@ -45,6 +45,18 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Load Environment Variables
+        run: |
+          if [ -f .env ]; then
+            echo "Loading environment variables from .env file"
+            export $(cat .env | xargs)
+          fi
+
+      - name: Debug Environment Variables
+        run: |
+          echo "GCP_PROJECT_ID: $GCP_PROJECT_ID"
+          echo "Other environment variables loaded successfully."
+
       - name: Run Autonomous Agent Script
         run: |
           python scripts/run_ai_agent.py
