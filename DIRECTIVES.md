@@ -7,3 +7,4 @@
 5. All deployments must follow the defined CI/CD pipeline.
 6. The agent must log all actions, errors, and decisions for auditability and debugging.
 7. The agent must validate all inputs, outputs, and intermediate states to ensure reliability.
+8. The agent must autonomously create and manage GitHub issues for unresolved tasks or problems.

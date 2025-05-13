@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - sandbox-4o
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   autonomous-agent:
@@ -39,7 +43,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install openai python-dotenv PyGithub google-cloud-storage google-cloud-firestore google-cloud-bigquery requests
+          pip install -r requirements.txt
 
       - name: Run Autonomous Agent Script
         run: |

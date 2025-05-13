@@ -1,16 +1,23 @@
 {
     "agent_name": "Project Ignite AI Agent",
     "retry_policy": {
-        "max_retries": 3,
-        "retry_delay_seconds": 5
+        "max_retries": 5,
+        "retry_delay_seconds": 10
     },
     "fallback_model": "gpt-4o",
     "dynamic_agent_creation": true,
-    "notification": {
-        "slack_webhook_url": "${SLACK_WEBHOOK_URL}"
-    },
     "logging": {
         "level": "DEBUG",
         "file": "logs/ai_agent.log"
+    },
+    "github_integration": {
+        "enabled": true,
+        "repo_name": "JW-Flo/Project-Ignite"
+    },
+    "external_resources": {
+        "openai": {
+            "enabled": true,
+            "model": "gpt-4o"
+        }
     }
 }

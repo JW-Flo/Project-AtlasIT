@@ -268,6 +268,201 @@ def run_agent():
     logger.info("Resolution provided by new agent: %s", resolution)
     notify_slack("AI Agent execution completed with assistance from a new agent.")
 
+# Enhanced retry logic with exponential backoff and detailed logging
+def execute_command_with_retry(command, max_retries=5, backoff_factor=2):
+    retries = 0
+    while retries < max_retries:
+        try:
+            logging.info(f"Executing command: {command}")
+            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+            logging.info(f"Command output: {result.stdout}")
+            return result.stdout
+        except subprocess.CalledProcessError as e:
+            retries += 1
+            wait_time = backoff_factor ** retries
+            logging.warning(f"Error: {e}. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
+            time.sleep(wait_time)
+    logging.error(f"Command failed after {max_retries} retries: {command}")
+    raise Exception(f"Command failed: {command}")
+
 if __name__ == "__main__":
     run_agent()
+
+import os
+from github import Github
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AI_Agent")
+
+# Initialize GitHub client
+github_token = os.getenv("GH_PAT")
+gh = Github(github_token)
+repo_name = os.getenv("GITHUB_REPO")
+repo = gh.get_repo(repo_name)
+
+def create_github_issue(title, body):
+    """Create a GitHub issue in the repository."""
+    try:
+        issue = repo.create_issue(title=title, body=body)
+        logger.info(f"Issue created: {issue.html_url}")
+        return issue.html_url
+    except Exception as e:
+        logger.error(f"Failed to create issue: {e}")
+        raise
+
+if __name__ == "__main__":
+    # Example usage
+    issue_title = "Test Issue from AI Agent"
+    issue_body = "This is a test issue created by the AI agent to validate issue creation functionality."
+    create_github_issue(issue_title, issue_body)
+
+import os
+import logging
+from github import Github
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AI_Agent")
+
+# Initialize GitHub client
+github_token = os.getenv("GH_PAT")
+gh = Github(github_token)
+repo_name = os.getenv("GITHUB_REPO")
+repo = gh.get_repo(repo_name)
+
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Function to create GitHub issues
+def create_github_issue(title, body):
+    try:
+        issue = repo.create_issue(title=title, body=body)
+        logger.info(f"Issue created: {issue.html_url}")
+        return issue.html_url
+    except Exception as e:
+        logger.error(f"Failed to create issue: {e}")
+        raise
+
+# Function to spin up a new agent
+def spin_up_new_agent(issue_description):
+    logger.info("Spinning up a new agent to resolve the issue.")
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a new AI agent tasked with resolving the following issue autonomously."},
+                {"role": "user", "content": issue_description}
+            ]
+        )
+        logger.info("New agent response: %s", response.choices[0].message.content)
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error("Failed to spin up a new agent: %s", e)
+        raise
+
+if __name__ == "__main__":
+    # Example usage
+    issue_title = "Test Issue from AI Agent"
+    issue_body = "This is a test issue created by the AI agent to validate issue creation functionality."
+    create_github_issue(issue_title, issue_body)
+
+    issue_description = "Deployment failed for ignite-dashboard."
+    spin_up_new_agent(issue_description)
+
+import os
+import logging
+from openai import OpenAI
+from github import Github
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AI_Agent")
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Initialize GitHub client
+github_token = os.getenv("GH_PAT")
+gh = Github(github_token)
+repo_name = os.getenv("GITHUB_REPO")
+repo = gh.get_repo(repo_name)
+
+# Function to call external OpenAI agent
+def call_openai_agent(prompt):
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an AI agent tasked with assisting another agent."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        logger.info("OpenAI agent response: %s", response.choices[0].message.content)
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error("Failed to call OpenAI agent: %s", e)
+        raise
+
+if __name__ == "__main__":
+    # Example usage
+    prompt = "Provide assistance for debugging a deployment issue."
+    call_openai_agent(prompt)
+
+import os
+import logging
+import requests
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("Claude_Integration")
+
+# Claude API Configuration
+CLAUDE_API_TOKEN = os.getenv("CLAUDE_API_TOKEN")
+CLAUDE_API_URL = "https://api.claude.ai/v1/queries"
+BUDGET = 50.0  # Budget in dollars
+COST_PER_QUERY = 0.10  # Example cost per query in dollars
+
+# Function to interact with Claude's API
+def call_claude_api(prompt):
+    global BUDGET
+    if BUDGET < COST_PER_QUERY:
+        logger.error("Insufficient budget to make a query to Claude's API.")
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {CLAUDE_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "prompt": prompt,
+        "max_tokens": 100
+    }
+
+    try:
+        response = requests.post(CLAUDE_API_URL, json=payload, headers=headers)
+        response.raise_for_status()
+        BUDGET -= COST_PER_QUERY
+        logger.info(f"Query successful. Remaining budget: ${BUDGET:.2f}")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to query Claude's API: {e}")
+        return None
+
+if __name__ == "__main__":
+    # Example usage
+    example_prompt = "What is the best way to optimize a CI/CD pipeline?"
+    result = call_claude_api(example_prompt)
+    if result:
+        logger.info(f"Claude's response: {result}")
 
