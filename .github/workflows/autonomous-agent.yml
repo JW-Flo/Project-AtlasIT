@@ -8,35 +8,41 @@ on:
 jobs:
   autonomous-agent:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AI_MODEL: "gpt-4o"
       GITHUB_REPO: ${{ github.repository }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      # Removed explicit GITHUB_TOKEN assignment, it's built-in and automatically provided.
 
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # built-in secret provided by GitHub Actions
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to GCP with Workload Identity Federation
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/801724050818/locations/global/workloadIdentityPools/github-pool/providers/github-actions'
+          service_account: 'ProjectAdmin@ignite-459301.iam.gserviceaccount.com'
 
       - name: Set up Python Environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Decode and Configure GCP Credentials
-        run: |
-          echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" | base64 --decode > $HOME/gcp-creds.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/gcp-creds.json" >> $GITHUB_ENV
-
       - name: Install Dependencies
         run: |
-          pip install openai python-dotenv PyGithub google-cloud-storage google-cloud-firestore google-cloud-bigquery
+          pip install openai python-dotenv PyGithub google-cloud-storage google-cloud-firestore google-cloud-bigquery requests
 
       - name: Run Autonomous Agent Script
         run: |
-          python agent_create.py
+          python scripts/run_ai_agent.py
 
       - name: Notify Slack on Completion
         if: always()
