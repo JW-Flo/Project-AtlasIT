@@ -1,0 +1,47 @@
+name: Autonomous Agent CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - sandbox-agent-poc
+
+jobs:
+  autonomous-agent:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AI_MODEL: "gpt-4o"
+      GITHUB_REPO: ${{ github.repository }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      # Removed explicit GITHUB_TOKEN assignment, it's built-in and automatically provided.
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # built-in secret provided by GitHub Actions
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Decode and Configure GCP Credentials
+        run: |
+          echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" | base64 --decode > $HOME/gcp-creds.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/gcp-creds.json" >> $GITHUB_ENV
+
+      - name: Install Dependencies
+        run: |
+          pip install openai python-dotenv PyGithub google-cloud-storage google-cloud-firestore google-cloud-bigquery
+
+      - name: Run Autonomous Agent Script
+        run: |
+          python agent_create.py
+
+      - name: Notify Slack on Completion
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          curl -X POST -H 'Content-type: application/json' --data \
+          "{\"text\":\"Autonomous Agent Pipeline completed with status: ${STATUS}\"}" \
+          $SLACK_WEBHOOK_URL

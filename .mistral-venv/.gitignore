@@ -1,4 +1,0 @@
-.mistral-venv/
-.vscode/
-# if you don’t want to check in your Functions code yet:
-functions/
