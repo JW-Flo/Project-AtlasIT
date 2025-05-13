@@ -61,3 +61,28 @@ jobs:
       - name: Run AI Agent
         run: |
           python scripts/run_ai_agent.py
+
+      - name: Continuous QA Checks
+        run: |
+          checkov --directory terraform
+          tfsec terraform
+          tflint terraform
+          pytest
+
+      - name: Retry on Failure
+        if: failure()
+        run: |
+          echo "Retrying failed steps..."
+          # Add retry logic here
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "CI/CD pipeline failed. Notifying team..."
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"CI/CD pipeline failed."}' $SLACK_WEBHOOK_URL
+
+      - name: Notify on Success
+        if: success()
+        run: |
+          echo "CI/CD pipeline completed successfully."
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"CI/CD pipeline completed successfully."}' $SLACK_WEBHOOK_URL

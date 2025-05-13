@@ -15,7 +15,8 @@ def install_dependencies():
         "PyGithub",
         "google-cloud-storage",
         "google-cloud-firestore",
-        "google-cloud-bigquery"
+        "google-cloud-bigquery",
+        "google-api-python-client"
     ]
 
     subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", *required_packages])
@@ -26,6 +27,8 @@ install_dependencies()
 from openai import OpenAI
 from github import Github
 from google.cloud import storage, firestore, bigquery
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +41,7 @@ logger = logging.getLogger(__name__)
 model = os.getenv("AI_MODEL", "gpt-4o")
 repo_name = os.getenv("GITHUB_REPO")
 slack_webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")  # Folder ID for storing training data
 
 # Initialize Google Cloud clients
 storage_client = storage.Client()
@@ -167,10 +171,44 @@ def autonomous_evaluate_and_fix():
 # Execute shell commands with retry and fallback
 @retry_with_backoff(fallback=fallback_to_ai_agent)
 def execute_command(cmd):
-    logger.info(f"Executing command: {cmd}")
-    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-    logger.info(f"Result: {result.stdout}")
-    slack_notify(f"Command '{cmd}' executed successfully.\n{result.stdout}")
+    try:
+        logger.info(f"Executing command: {cmd}")
+        result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+        logger.info(f"Result: {result.stdout}")
+        slack_notify(f"Command '{cmd}' executed successfully.\n{result.stdout}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed with error: {e.stderr}")
+        raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr)
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise RuntimeError(f"Unexpected error occurred: {e}")
+
+# Google Drive API setup
+def upload_to_google_drive(file_path, file_name):
+    """Upload a file to Google Drive in the specified folder."""
+    try:
+        service = build('drive', 'v3')
+        file_metadata = {
+            'name': file_name,
+            'parents': [GDRIVE_FOLDER_ID]
+        }
+        media = MediaFileUpload(file_path, resumable=True)
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        logger.info(f"File {file_name} uploaded to Google Drive with ID: {file.get('id')}")
+    except Exception as e:
+        logger.error(f"Failed to upload {file_name} to Google Drive: {e}")
+
+# Function to store training data
+def store_training_data(data, file_name):
+    """Store training data in Google Drive in an orderly fashion."""
+    try:
+        local_file_path = os.path.join("training_data", file_name)
+        os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+        with open(local_file_path, "w") as file:
+            file.write(data)
+        upload_to_google_drive(local_file_path, file_name)
+    except Exception as e:
+        logger.error(f"Failed to store training data: {e}")
 
 if __name__ == "__main__":
     try:
@@ -255,9 +293,9 @@ def run_agent():
             logger.info("Running AI agent...")
             notify_slack("AI Agent execution started.")
             # Simulate AI agent logic
-            raise Exception("Simulated issue for testing fallback.")
-        except Exception as e:
-            logger.error("Error: %s", e)
+            raise RuntimeError("Simulated issue for testing fallback.")
+        except RuntimeError as e:
+            logger.error("Runtime error: %s", e)
             retries += 1
             notify_slack(f"AI Agent execution failed. Retrying {retries}/{MAX_RETRIES}...")
             time.sleep(RETRY_DELAY)
@@ -283,7 +321,7 @@ def execute_command_with_retry(command, max_retries=5, backoff_factor=2):
             logging.warning(f"Error: {e}. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
             time.sleep(wait_time)
     logging.error(f"Command failed after {max_retries} retries: {command}")
-    raise Exception(f"Command failed: {command}")
+    raise subprocess.CalledProcessError(e.returncode, e.cmd, e.output, e.stderr)
 
 if __name__ == "__main__":
     run_agent()
@@ -504,7 +542,26 @@ def handle_error_and_create_issue(error_message):
 if __name__ == "__main__":
     try:
         # Simulate AI agent logic
-        raise Exception("Simulated issue for testing error handling and issue creation.")
-    except Exception as e:
+        raise RuntimeError("Simulated issue for testing error handling and issue creation.")
+    except RuntimeError as e:
         handle_error_and_create_issue(str(e))
+
+# Define missing variables
+DIRECTIVES_FILE = "DIRECTIVES.md"
+MEMORY_CONTEXT_FILE = "MEMORY_CONTEXT.md"
+
+# Integrate logging with monitoring solutions (e.g., Stackdriver)
+def setup_monitoring():
+    try:
+        from google.cloud import logging as gcp_logging
+        gcp_client = gcp_logging.Client()
+        gcp_client.setup_logging()
+        logger.info("Integrated with Stackdriver for monitoring.")
+    except ImportError:
+        logger.warning("Google Cloud Logging library not installed. Skipping monitoring integration.")
+    except Exception as e:
+        logger.error(f"Failed to integrate with monitoring solution: {e}")
+
+# Call setup_monitoring during initialization
+setup_monitoring()
 
