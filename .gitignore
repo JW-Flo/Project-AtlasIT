@@ -61,7 +61,6 @@ logs/
 
 # Local .terraform directories
 **/.terraform/*
-terraform/.terraform/
 
 # .tfstate files
 *.tfstate
@@ -88,4 +87,32 @@ terraform.rc
 # Testing directories
 .coverage
 htmlcov/
-.terraform/
+
+.fake
+
+# Enhanced .gitignore
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore Python virtual environment
+venv/
+
+# Ignore Python cache files
+__pycache__/
+
+# Ignore log files
+*.log
+logs/
+
+# Ignore Terraform state files
+*.tfstate
+*.tfvars
+
+# Ignore additional temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+.DS_Store

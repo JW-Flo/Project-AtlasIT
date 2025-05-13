@@ -1,0 +1,190 @@
+name: ignite-deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+  OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN_SA }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  prereq:
+    runs-on: ubuntu-latest
+    outputs:
+      terraform_validated: ${{ steps.validate.outputs.validated }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.5.7'
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_OIDC_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+          
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Terraform Init & Apply Scaffold
+        run: |
+          terraform -chdir=terraform init
+          terraform -chdir=terraform apply -auto-approve -target=module.scaffold
+          
+      - name: Validate Terraform
+        id: validate
+        run: |
+          terraform -chdir=terraform validate
+          terraform -chdir=terraform plan
+          echo "validated=true" >> $GITHUB_OUTPUT
+
+      - name: Install Mistral environment
+        run: |
+          chmod +x scripts/install-mistral.sh && ./scripts/install-mistral.sh
+
+  urgent:
+    needs: prereq
+    if: ${{ needs.prereq.outputs.terraform_validated == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Ingest Jira → Okta
+        run: chmod +x scripts/ingest-jira.sh && ./scripts/ingest-jira.sh
+        env:
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      
+      - name: Deploy Web UI
+        run: chmod +x scripts/deploy-webui.sh && ./scripts/deploy-webui.sh
+      
+      - name: Lock down Okta roles
+        run: chmod +x scripts/lockdown-okta.sh && ./scripts/lockdown-okta.sh
+        env:
+          OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN_SA }}
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+      
+      - name: Connect to Datto & RocketCyber
+        run: chmod +x scripts/ingest-alerts.sh && ./scripts/ingest-alerts.sh
+        env:
+          ROCKETCYBER_API_TOKEN: ${{ secrets.ROCKETCYBER_API_TOKEN }}
+          DATTO_EDR_TOKEN: ${{ secrets.DATTO_EDR_TOKEN }}
+      
+      - name: Init BigQuery/Firestore schema
+        run: chmod +x scripts/init-schema.sh && ./scripts/init-schema.sh
+        env:
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+
+  dev:
+    needs: urgent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create Okta groups for AWS WorkSpaces
+        run: chmod +x scripts/simple-okta-groups.sh && ./scripts/simple-okta-groups.sh
+        env:
+          OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN_SA }}
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+      
+      - name: Stub createGroup Function
+        run: chmod +x scripts/stub-create-group.sh && ./scripts/stub-create-group.sh
+
+  ci-scans:
+    needs: dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Scanners
+        run: |
+          pip install checkov==2.0.763 tfsec==1.28.1
+          npm install -g eslint@8.50.0 tflint@0.34.1
+      
+      - name: Run IaC Scans
+        run: |
+          checkov --directory terraform
+          tfsec terraform
+          tflint terraform
+      
+      - name: Run Lint
+        run: eslint dashboard/ cloud-functions/ functions/
+
+  aws-workspace:
+    needs: ci-scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Ensure Terraform installed
+        run: chmod +x scripts/ensure-terraform.sh && ./scripts/ensure-terraform.sh
+      
+      - name: Create AWS WorkSpaces infrastructure
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+        run: |
+          terraform -chdir=terraform apply -auto-approve -target=module.workspaces
+
+  smoke:
+    needs: aws-workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run smoke tests
+        run: chmod +x scripts/smoke_test.sh && ./scripts/smoke_test.sh
+
+  manual-approval:
+    needs: smoke
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Manual approval step
+        run: echo "Approved for production deployment"
+
+  prod-deploy:
+    needs: manual-approval
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Blue/Green Deploy
+        run: chmod +x scripts/prod-deploy.sh && ./scripts/prod-deploy.sh

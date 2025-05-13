@@ -52,3 +52,13 @@ jobs:
           curl -X POST -H 'Content-type: application/json' --data \
           "{\"text\":\"Autonomous Agent Pipeline completed with status: ${STATUS}\"}" \
           $SLACK_WEBHOOK_URL
+
+      - name: Notify Slack on Success
+        if: success()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Autonomous Agent run completed successfully."}' $SLACK_WEBHOOK_URL
+
+      - name: Notify Slack on Failure
+        if: failure()
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Autonomous Agent run failed."}' $SLACK_WEBHOOK_URL

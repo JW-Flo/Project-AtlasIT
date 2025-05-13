@@ -2,11 +2,164 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Ignite Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Ignite - Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
-    <h1>Ignite Dashboard</h1>
-    <p>Welcome to the Project Ignite dashboard. This is a minimal placeholder page.</p>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Project Ignite</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('dashboard') }}">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('contractors') }}">Contractor Management</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-success">
+                    Welcome to Project Ignite - The FloSports IT Workflow Automation Platform
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">Contractor Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h2 id="active-contractors">--</h2>
+                                <p>Active Contractors</p>
+                            </div>
+                            <div>
+                                <h2 id="pending-requests">--</h2>
+                                <p>Pending Requests</p>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('contractors') }}" class="btn btn-outline-primary w-100">Manage Contractors</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="card-title mb-0">Security Monitoring</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h2 id="rocket-cyber-status" class="text-success">✓</h2>
+                                <p>RocketCyber</p>
+                            </div>
+                            <div>
+                                <h2 id="datto-status" class="text-success">✓</h2>
+                                <p>Datto EDR</p>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-info w-100" id="refresh-security">Refresh Status</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="card-title mb-0">Cost & License</h5>
+                    </div>
+                    <div class="card-body">
+                        <h2 id="monthly-cost">$327.54</h2>
+                        <div class="progress mb-3">
+                            <div class="progress-bar bg-success" role="progressbar" style="width: 82%;" 
+                                aria-valuenow="82" aria-valuemin="0" aria-valuemax="100">82% of budget</div>
+                        </div>
+                        <button class="btn btn-outline-warning w-100" id="view-cost-details">View Details</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="card-title mb-0">Recent Activity</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    <strong>Michael Brown</strong> - Contractor access expiring in 30 days
+                                    <span class="badge bg-warning">Expiring</span>
+                                </span>
+                                <span class="text-muted small">Today</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    <strong>David Wilson</strong> - SRE AWS WorkSpace created
+                                    <span class="badge bg-success">Provisioned</span>
+                                </span>
+                                <span class="text-muted small">Yesterday</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    <strong>Jane Smith</strong> - New contractor request submitted
+                                    <span class="badge bg-info">Pending</span>
+                                </span>
+                                <span class="text-muted small">2 days ago</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>
+                                    <strong>Sarah Lee</strong> - Contractor access extended by 90 days
+                                    <span class="badge bg-primary">Extended</span>
+                                </span>
+                                <span class="text-muted small">3 days ago</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="card-title mb-0">AWS WorkSpaces</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <h2 id="active-workspaces">2</h2>
+                                <p>Active WorkSpaces</p>
+                            </div>
+                            <div>
+                                <h2 id="monthly-workspace-cost">$190.60</h2>
+                                <p>Monthly Cost</p>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-dark w-100" id="manage-workspaces">Manage WorkSpaces</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

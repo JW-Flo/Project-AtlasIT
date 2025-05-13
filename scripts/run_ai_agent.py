@@ -2,6 +2,9 @@ import os
 import subprocess
 import sys
 import logging
+import time
+import requests
+from dotenv import load_dotenv
 
 # Ensure required packages are installed
 def install_dependencies():
@@ -21,9 +24,7 @@ def install_dependencies():
 install_dependencies()
 
 from openai import OpenAI
-import requests
 from github import Github
-from dotenv import load_dotenv
 from google.cloud import storage, firestore, bigquery
 
 # Load environment variables
@@ -48,11 +49,58 @@ github_token = os.getenv("GH_PAT")
 gh = Github(github_token)
 repo = gh.get_repo(repo_name)
 
-# Slack notification function
-def slack_notify(message: str):
-    requests.post(slack_webhook_url, json={"text": message})
+# Retry decorator for self-resolving operations
+def retry_with_backoff(max_retries=5, backoff_factor=2, fallback=None):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    wait_time = backoff_factor ** retries
+                    logger.warning(f"Error: {e}. Retrying in {wait_time} seconds... (Attempt {retries}/{max_retries})")
+                    time.sleep(wait_time)
+            logger.error(f"Max retries reached for {func.__name__}. Triggering fallback mechanism.")
+            if fallback:
+                fallback(func.__name__, *args, **kwargs)
+            else:
+                raise Exception(f"Failed to complete {func.__name__} after {max_retries} retries.")
+        return wrapper
+    return decorator
 
-# Get repository files
+# Fallback mechanism to delegate failures back to the AI agent
+def fallback_to_ai_agent(function_name, *args, **kwargs):
+    logger.error(f"Delegating failure of {function_name} back to the AI agent.")
+    failure_report = {
+        "function": function_name,
+        "args": args,
+        "kwargs": kwargs,
+        "message": f"{function_name} failed after maximum retries."
+    }
+    # Re-trigger the AI agent with the failure report
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You are a world-class autonomous DevOps AI agent."},
+                {"role": "user", "content": f"Failure report: {failure_report}"}
+            ]
+        )
+        logger.info("Fallback AI agent response:\n%s", response.choices[0].message.content)
+    except Exception as e:
+        logger.critical(f"Failed to delegate to AI agent: {e}")
+
+# Slack notification function with retry and fallback
+@retry_with_backoff(fallback=fallback_to_ai_agent)
+def slack_notify(message: str):
+    response = requests.post(slack_webhook_url, json={"text": message})
+    if response.status_code != 200:
+        raise Exception(f"Slack notification failed with status code {response.status_code}")
+
+# Get repository files with retry and fallback
+@retry_with_backoff(fallback=fallback_to_ai_agent)
 def get_repo_files(path=""):
     contents = repo.get_contents(path)
     files = []
@@ -61,15 +109,25 @@ def get_repo_files(path=""):
         if file_content.type == "dir":
             contents.extend(repo.get_contents(file_content.path))
         else:
-            files.append((file_content.path, file_content.decoded_content.decode()))
+            # Check if the file already exists locally to avoid overwriting
+            local_file_path = os.path.join("local_repo", file_content.path)
+            if os.path.exists(local_file_path):
+                logger.warning(f"File already exists locally: {local_file_path}. Skipping download.")
+            else:
+                files.append((file_content.path, file_content.decoded_content.decode()))
     return files
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # Use a secure vault or GitHub Secrets for this key
 
-# Autonomous evaluation and fix
+# Autonomous evaluation and fix with retry and fallback
+@retry_with_backoff(fallback=fallback_to_ai_agent)
 def autonomous_evaluate_and_fix():
     files = get_repo_files()
+    if not files:
+        logger.warning("No new files to process. Exiting.")
+        return
+
     context = "\n\n".join(f"### {path}\n```\n{content}\n```" for path, content in files)
 
     prompt = f"""
@@ -102,27 +160,114 @@ def autonomous_evaluate_and_fix():
     logger.info("Autonomous Actions:\n%s", actions)
 
     # Attempt to auto-execute shell commands
-    try:
-        commands = [cmd.strip() for cmd in actions.split('\n') if cmd.strip().startswith(('terraform', 'gcloud', 'git'))]
-        for cmd in commands:
-            logger.info("Executing command: %s", cmd)
-            result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
-            logger.info("Result: %s", result.stdout)
-            slack_notify(f"Command '{cmd}' executed successfully.\n{result.stdout}")
+    commands = [cmd.strip() for cmd in actions.split('\n') if cmd.strip().startswith(('terraform', 'gcloud', 'git'))]
+    for cmd in commands:
+        execute_command(cmd)
 
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Error executing command '{cmd}':\n{e.stderr}"
-        logger.error(error_msg)
-        slack_notify(error_msg)
-
-    except Exception as e:
-        general_error = f"General error during autonomous operation: {str(e)}"
-        logger.exception(general_error)
-        slack_notify(general_error)
-
-    finally:
-        slack_notify("Autonomous evaluation and optimization process completed.")
+# Execute shell commands with retry and fallback
+@retry_with_backoff(fallback=fallback_to_ai_agent)
+def execute_command(cmd):
+    logger.info(f"Executing command: {cmd}")
+    result = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True)
+    logger.info(f"Result: {result.stdout}")
+    slack_notify(f"Command '{cmd}' executed successfully.\n{result.stdout}")
 
 if __name__ == "__main__":
-    autonomous_evaluate_and_fix()
+    try:
+        autonomous_evaluate_and_fix()
+    except Exception as e:
+        logger.error(f"Critical failure: {e}")
+        slack_notify(f"Critical failure: {e}")
+
+import os
+import time
+import requests
+import logging
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("AI_Agent")
+
+# Environment variables
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+FALLBACK_MODEL = "gpt-4o"
+
+# Initialize OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Retry logic
+MAX_RETRIES = 3
+RETRY_DELAY = 5
+
+def notify_slack(message):
+    if SLACK_WEBHOOK_URL:
+        requests.post(SLACK_WEBHOOK_URL, json={"text": message})
+
+def spin_up_new_agent(issue_description):
+    logger.info("Spinning up a new agent to resolve the issue.")
+    try:
+        response = client.chat.completions.create(
+            model=FALLBACK_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a new AI agent tasked with resolving the following issue autonomously."},
+                {"role": "user", "content": issue_description}
+            ]
+        )
+        logger.info("New agent response: %s", response.choices[0].message.content)
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error("Failed to spin up a new agent: %s", e)
+        notify_slack(f"Critical failure: Unable to resolve issue. {e}")
+        raise
+
+def load_directives():
+    """Load directives from the DIRECTIVES.md file."""
+    try:
+        with open(DIRECTIVES_FILE, "r") as file:
+            directives = file.read()
+            logger.info("Directives loaded successfully.")
+            return directives
+    except FileNotFoundError:
+        logger.error("Directives file not found.")
+        return ""
+
+def load_memory_context():
+    """Load memory context from the MEMORY_CONTEXT.md file."""
+    try:
+        with open(MEMORY_CONTEXT_FILE, "r") as file:
+            memory_context = file.read()
+            logger.info("Memory context loaded successfully.")
+            return memory_context
+    except FileNotFoundError:
+        logger.error("Memory context file not found.")
+        return ""
+
+def run_agent():
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            logger.info("Running AI agent...")
+            notify_slack("AI Agent execution started.")
+            # Simulate AI agent logic
+            raise Exception("Simulated issue for testing fallback.")
+        except Exception as e:
+            logger.error("Error: %s", e)
+            retries += 1
+            notify_slack(f"AI Agent execution failed. Retrying {retries}/{MAX_RETRIES}...")
+            time.sleep(RETRY_DELAY)
+
+    # If all retries fail, spin up a new agent
+    issue_description = "AI Agent failed after maximum retries. Please resolve the issue and continue the task."
+    resolution = spin_up_new_agent(issue_description)
+    logger.info("Resolution provided by new agent: %s", resolution)
+    notify_slack("AI Agent execution completed with assistance from a new agent.")
+
+if __name__ == "__main__":
+    run_agent()
 

@@ -4,19 +4,41 @@ set -euo pipefail
 # Check for DRY_RUN mode
 DRY_RUN=${DRY_RUN:-false}
 
-# Function to load .env file if it exists and we're not in GitHub Actions
-load_env() {
-  # Check if we are running in GitHub Actions
-  if [ -z "${GITHUB_ACTIONS:-}" ] && [ -f .env ]; then
+# Function to load environment variables from multiple possible sources
+load_env_vars() {
+  # First try GitHub Actions environment
+  if [ -n "${GITHUB_ACTIONS:-}" ]; then
+    echo "[INFO] Running in GitHub Actions, using provided secrets"
+    return
+  fi
+  
+  # Try .env file in project root
+  if [ -f .env ]; then
     echo "[INFO] Loading environment variables from .env file"
     set -a
     source .env
     set +a
   fi
+  
+  # Try secrets.env file if it exists
+  if [ -f secrets.env ]; then
+    echo "[INFO] Loading secrets from secrets.env file"
+    set -a
+    source secrets.env
+    set +a
+  fi
+  
+  # Try ~/.ignite/secrets.env for user-specific secrets
+  if [ -f ~/.ignite/secrets.env ]; then
+    echo "[INFO] Loading user secrets from ~/.ignite/secrets.env"
+    set -a
+    source ~/.ignite/secrets.env
+    set +a
+  fi
 }
 
-# Load environment variables
-load_env
+# Load environment variables from all possible sources
+load_env_vars
 
 # Check for required environment variables
 if [ -z "${OKTA_DOMAIN:-}" ]; then

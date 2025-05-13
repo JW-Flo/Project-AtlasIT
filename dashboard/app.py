@@ -1,213 +1,231 @@
+#!/usr/bin/env python3
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from datetime import datetime, timedelta
 import os
-import sys
 import json
-from flask import Flask, render_template, jsonify, request, redirect, url_for
-import datetime
-
-# Ensure cloud-functions is in the Python path for import
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'cloud-functions'))
-try:
-    from ingest_alerts import main as ingest_alerts
-except ImportError:
-    ingest_alerts = None
+import requests
+from functools import wraps
+import logging
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'ignite-development-key')
 
-# --- Sensitive Config: All secrets are loaded from environment variables ---
-OKTA_DOMAIN = os.environ.get("OKTA_DOMAIN")
-OKTA_API_TOKEN = os.environ.get("OKTA_API_TOKEN_SA")
-ROCKETCYBER_API_TOKEN = os.environ.get("ROCKETCYBER_API_TOKEN")
-DATTO_EDR_TOKEN = os.environ.get("DATTO_EDR_TOKEN")
-ZIP_API_KEY = os.environ.get("ZIP_API_KEY")
-GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID_SANDBOX")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY_SANDBOX")
-AWS_REGION = os.environ.get("AWS_REGION")
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Sample data for demo purposes
-SAMPLE_ALERTS = [
-    {
-        "id": "alert-001",
-        "timestamp": "2025-05-09T08:30:00Z",
-        "severity": "high",
-        "source": "Datto EDR",
-        "title": "Suspicious PowerShell Activity",
-        "description": "PowerShell command with base64 encoded payload detected",
-        "affected_device": "DESKTOP-8A7B2C3",
-        "status": "open"
-    },
-    {
-        "id": "alert-002",
-        "timestamp": "2025-05-09T07:45:00Z",
-        "severity": "medium",
-        "source": "RocketCyber",
-        "title": "Multiple Failed Login Attempts",
-        "description": "10+ failed login attempts detected from IP 192.168.1.155",
-        "affected_device": "LAPTOP-9X8Y7Z6",
-        "status": "open"
-    },
-    {
-        "id": "alert-003",
-        "timestamp": "2025-05-08T23:15:00Z",
-        "severity": "critical",
-        "source": "Datto EDR",
-        "title": "Potential Ransomware Activity",
-        "description": "Multiple file encryption operations detected on network share",
-        "affected_device": "SERVER-DC01",
-        "status": "investigating"
-    }
-]
+# Configuration
+OKTA_DOMAIN = os.environ.get('OKTA_DOMAIN', 'flosports.okta.com')
+OKTA_API_TOKEN = os.environ.get('OKTA_API_TOKEN', '')
+JIRA_DOMAIN = os.environ.get('JIRA_DOMAIN', 'flosports.atlassian.net')
+JIRA_API_TOKEN = os.environ.get('JIRA_API_TOKEN', '')
+JIRA_EMAIL = os.environ.get('JIRA_EMAIL', 'ignite_admin@flosports.tv')
+CONTRACTOR_PROJECT = os.environ.get('CONTRACTOR_PROJECT', 'CONTR')
 
-# Sample contractor data for demo purposes
-SAMPLE_CONTRACTORS = [
-    {
-        "id": "C001",
-        "name": "Jane Smith",
-        "email": "jane.smith@contractor.com",
-        "department": "IT Development",
-        "project": "Cloud Migration",
-        "start_date": "2024-12-15",
-        "end_date": "2025-06-15",
-        "access_level": "Standard",
-        "status": "Active",
-        "days_remaining": 37
-    },
-    {
-        "id": "C002",
-        "name": "Michael Johnson",
-        "email": "michael.j@techpartners.com",
-        "department": "Security",
-        "project": "SOC Implementation",
-        "start_date": "2025-01-10",
-        "end_date": "2025-05-15",
-        "access_level": "Elevated",
-        "status": "Active",
-        "days_remaining": 6
-    },
-    {
-        "id": "C003",
-        "name": "David Williams",
-        "email": "d.williams@consultants.io",
-        "department": "Data Science",
-        "project": "ML Model Training",
-        "start_date": "2025-03-01",
-        "end_date": "2025-05-10",
-        "access_level": "Standard",
-        "status": "Expiring Soon",
-        "days_remaining": 1
-    },
-    {
-        "id": "C004",
-        "name": "Sarah Johnson",
-        "email": "s.johnson@contractor.com",
-        "department": "IT Development",
-        "project": "API Integration",
-        "start_date": "2025-02-15",
-        "end_date": "2025-05-08",
-        "access_level": "Standard",
-        "status": "Expired",
-        "days_remaining": -1
-    }
-]
+# Simplified mock data storage for demo purposes
+# In production, this would be a database
+MOCK_DATA_FILE = 'mock_data.json'
 
-CONTRACTOR_NOT_FOUND = "Contractor not found"
+def load_mock_data():
+    try:
+        if os.path.exists(MOCK_DATA_FILE):
+            with open(MOCK_DATA_FILE, 'r') as f:
+                return json.load(f)
+        else:
+            # Create default mock data
+            data = {
+                'pending_requests': [
+                    {
+                        'first_name': 'Jane',
+                        'last_name': 'Smith',
+                        'email': 'jane.smith@unifycx.team',
+                        'type': 'SRE',
+                        'requested_date': (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'),
+                        'ticket': 'CONTR-101'
+                    },
+                    {
+                        'first_name': 'Alex',
+                        'last_name': 'Johnson',
+                        'email': 'alex.johnson@unifycx.com',
+                        'type': 'DevOps',
+                        'requested_date': datetime.now().strftime('%Y-%m-%d'),
+                        'ticket': 'CONTR-102'
+                    }
+                ],
+                'active_contractors': [
+                    {
+                        'id': '1',
+                        'first_name': 'Michael',
+                        'last_name': 'Brown',
+                        'email': 'michael.brown@unifycx.team',
+                        'type': 'SRE',
+                        'start_date': (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d'),
+                        'end_date': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+                        'days_left': 30,
+                        'workspace_id': 'ws-abcdef123'
+                    },
+                    {
+                        'id': '2',
+                        'first_name': 'Sarah',
+                        'last_name': 'Lee',
+                        'email': 'sarah.lee@unifycx.com',
+                        'type': 'Developer',
+                        'start_date': (datetime.now() - timedelta(days=80)).strftime('%Y-%m-%d'),
+                        'end_date': (datetime.now() + timedelta(days=10)).strftime('%Y-%m-%d'),
+                        'days_left': 10,
+                        'workspace_id': None
+                    },
+                    {
+                        'id': '3',
+                        'first_name': 'David',
+                        'last_name': 'Wilson',
+                        'email': 'david.wilson@unifycx.team',
+                        'type': 'SRE',
+                        'start_date': (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'),
+                        'end_date': (datetime.now() + timedelta(days=85)).strftime('%Y-%m-%d'),
+                        'days_left': 85,
+                        'workspace_id': 'ws-xyz789'
+                    }
+                ]
+            }
+            save_mock_data(data)
+            return data
+    except Exception as e:
+        logger.error(f"Error loading mock data: {e}")
+        return {'pending_requests': [], 'active_contractors': []}
+
+def save_mock_data(data):
+    try:
+        with open(MOCK_DATA_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving mock data: {e}")
+
+# Simple auth middleware for demo purposes
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # In a real application, check session or token
+        # For demo, we're allowing all access
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.route('/')
+@login_required
 def index():
+    return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
     return render_template('dashboard.html')
 
 @app.route('/contractors')
+@login_required
 def contractors():
-    return render_template('contractors.html')
+    data = load_mock_data()
+    return render_template('contractors.html', 
+                          pending_requests=data['pending_requests'], 
+                          active_contractors=data['active_contractors'])
 
-@app.route('/contractor/<contractor_id>')
-def contractor_detail(contractor_id):
-    contractor = next((c for c in SAMPLE_CONTRACTORS if c["id"] == contractor_id), None)
-    if contractor:
-        return render_template('contractor_detail.html', contractor=contractor)
-    return CONTRACTOR_NOT_FOUND, 404
-
-@app.route('/api/alerts')
-def get_alerts():
-    # In a production environment, this would call the actual ingest_alerts function
-    # and return real data, but for demo purposes, we'll return sample data
-    try:
-        # You would uncomment this to use real data in production
-        # real_data = ingest_alerts(None)
-        # return jsonify(real_data)
-        return jsonify(SAMPLE_ALERTS)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/stats')
-def get_stats():
-    # Calculate some basic stats for the dashboard
-    stats = {
-        "total_alerts": len(SAMPLE_ALERTS),
-        "critical_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "critical"),
-        "high_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "high"),
-        "medium_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "medium"),
-        "low_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "low"),
-        "open_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "open"),
-        "investigating_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "investigating"),
-        "closed_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "closed")
-    }
-    return jsonify(stats)
-
-@app.route('/api/contractors')
-def get_contractors():
-    # Return the sample contractor data
-    return jsonify(SAMPLE_CONTRACTORS)
-
-@app.route('/api/contractor-stats')
-def get_contractor_stats():
-    stats = {
-        "total_contractors": len(SAMPLE_CONTRACTORS),
-        "active": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Active"),
-        "expiring_soon": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Expiring Soon"),
-        "expired": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Expired"),
-        "by_department": {}
-    }
+@app.route('/approve_contractor', methods=['POST'])
+@login_required
+def approve_contractor():
+    ticket_id = request.form.get('ticket_id')
     
-    # Count contractors by department
-    for contractor in SAMPLE_CONTRACTORS:
-        dept = contractor["department"]
-        if dept not in stats["by_department"]:
-            stats["by_department"][dept] = 0
-        stats["by_department"][dept] += 1
+    # In production, this would call the actual Okta and Jira APIs
+    # For demo, we'll just move from pending to active
+    data = load_mock_data()
     
-    return jsonify(stats)
+    for idx, req in enumerate(data['pending_requests']):
+        if req['ticket'] == ticket_id:
+            # Create new active contractor
+            new_contractor = {
+                'id': str(len(data['active_contractors']) + 1),
+                'first_name': req['first_name'],
+                'last_name': req['last_name'],
+                'email': req['email'],
+                'type': req['type'],
+                'start_date': datetime.now().strftime('%Y-%m-%d'),
+                'end_date': (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d'),
+                'days_left': 90,
+                'workspace_id': 'ws-' + req['email'].split('@')[0] if req['type'] == 'SRE' else None
+            }
+            
+            data['active_contractors'].append(new_contractor)
+            data['pending_requests'].pop(idx)
+            save_mock_data(data)
+            
+            flash(f"Contractor {new_contractor['first_name']} {new_contractor['last_name']} approved successfully!", "success")
+            
+            # In production, trigger the AWS WorkSpace creation for SRE contractors
+            if req['type'] == 'SRE':
+                logger.info(f"Would create AWS WorkSpace for {req['email']}")
+                # This would call a Cloud Function to create the workspace
+            
+            break
+    
+    return redirect(url_for('contractors'))
 
-@app.route('/api/extend-contract', methods=['POST'])
-def extend_contract():
-    # In a real app, this would update a database
-    contractor_id = request.json.get('id')
-    days = request.json.get('days', 30)
+@app.route('/extend_contractor', methods=['POST'])
+@login_required
+def extend_contractor():
+    contractor_id = request.form.get('contractor_id')
+    extension_days = int(request.form.get('extension_days', 90))
+    reason = request.form.get('reason')
     
-    for contractor in SAMPLE_CONTRACTORS:
-        if contractor["id"] == contractor_id:
-            # Parse the end date and add days
-            end_date = datetime.datetime.strptime(contractor["end_date"], '%Y-%m-%d')
-            new_end_date = end_date + datetime.timedelta(days=days)
-            contractor["end_date"] = new_end_date.strftime('%Y-%m-%d')
-            contractor["days_remaining"] += days
-            contractor["status"] = "Active"
-            return jsonify({"success": True, "contractor": contractor})
+    data = load_mock_data()
     
-    return jsonify({"success": False, "message": CONTRACTOR_NOT_FOUND}), 404
+    for contractor in data['active_contractors']:
+        if contractor['id'] == contractor_id:
+            # Update end date
+            current_end = datetime.strptime(contractor['end_date'], '%Y-%m-%d')
+            new_end = current_end + timedelta(days=extension_days)
+            contractor['end_date'] = new_end.strftime('%Y-%m-%d')
+            contractor['days_left'] = (new_end - datetime.now()).days
+            save_mock_data(data)
+            
+            logger.info(f"Extended contractor {contractor['email']} by {extension_days} days. Reason: {reason}")
+            flash(f"Extended access for {contractor['first_name']} {contractor['last_name']} by {extension_days} days.", "success")
+            break
+    
+    return redirect(url_for('contractors'))
 
-@app.route('/api/offboard-contractor', methods=['POST'])
-def offboard_contractor():
-    # In a real app, this would update a database and trigger offboarding procedures
-    contractor_id = request.json.get('id')
+@app.route('/terminate_contractor', methods=['POST'])
+@login_required
+def terminate_contractor():
+    contractor_id = request.form.get('contractor_id')
+    reason = request.form.get('reason')
     
-    for i, contractor in enumerate(SAMPLE_CONTRACTORS):
-        if contractor["id"] == contractor_id:
-            contractor["status"] = "Offboarded"
-            return jsonify({"success": True})
+    data = load_mock_data()
     
-    return jsonify({"success": False, "message": CONTRACTOR_NOT_FOUND}), 404
+    for idx, contractor in enumerate(data['active_contractors']):
+        if contractor['id'] == contractor_id:
+            # In production, this would:
+            # 1. Call Okta API to remove user from groups and deactivate
+            # 2. Call AWS API to terminate WorkSpace if exists
+            # 3. Update records in database
+            
+            logger.info(f"Terminating contractor {contractor['email']}. Reason: {reason}")
+            
+            # For demo, just remove from the list
+            terminated = data['active_contractors'].pop(idx)
+            save_mock_data(data)
+            
+            flash(f"Terminated access for {terminated['first_name']} {terminated['last_name']}.", "warning")
+            break
+    
+    return redirect(url_for('contractors'))
+
+@app.route('/api/contractors', methods=['GET'])
+@login_required
+def api_contractors():
+    data = load_mock_data()
+    return jsonify(data)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=True)
