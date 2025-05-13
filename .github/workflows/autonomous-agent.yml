@@ -3,7 +3,7 @@ name: Autonomous Agent CI/CD Pipeline
 on:
   push:
     branches:
-      - sandbox-agent-poc
+      - sandbox-4o
 
 jobs:
   autonomous-agent:
