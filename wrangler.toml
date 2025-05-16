@@ -1,0 +1,40 @@
+# Wrangler configuration for Project Ignite
+name = "project-ignite"
+type = "javascript"
+main = "index.js"
+compatibility_date = "2025-05-16"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+
+# Environment variables (set secrets with `wrangler secret put` for production)
+[vars]
+RAMP_API_KEY = "${RAMP_API_KEY}"
+# OKTA_API_TOKEN = "${OKTA_API_TOKEN}"
+# SLACK_WEBHOOK_URL = "${SLACK_WEBHOOK_URL}"
+
+# Example KV binding (uncomment and set if needed)
+# [[kv_namespaces]]
+# binding = "IGNITE_KV"
+# id = "<kv-namespace-id>"
+
+# Example Durable Object binding (uncomment and set if needed)
+# [[durable_objects.bindings]]
+# name = "IGNITE_DO"
+# class_name = "IgniteDurableObject"
+
+[[dispatch_namespaces]]
+binding = "DISPATCHER"
+namespace = "dispatcher"
+
+[triggers]
+crons = [
+  "0 2 * * *",    # ETL functions at 2:00 CDT
+  "15 * * * *"    # monitorBudget every 15 minutes
+]
+
+# Production environment overrides
+[env.production]
+route = "project-ignite.example.com/*" # Set your production route
+usage_model = "bundled"
+
+# For local development, use a .env file or export env vars in your shell
+# See .env.example for required variables

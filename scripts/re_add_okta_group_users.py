@@ -22,10 +22,30 @@ def get_removed_users(cfg):
         f"and published gt \"{cfg['START_TIME']}\" "
         f"and published lt \"{cfg['END_TIME']}\""
     )}
-    resp = requests.get(url, headers=headers, params=params)
-    resp.raise_for_status()
-    data = resp.json()
-    return [evt["target"][0]["id"] for evt in data if "target" in evt]
+    removed = []
+    next_url = url
+    while next_url:
+        resp = requests.get(next_url, headers=headers, params=params if next_url == url else None)
+        resp.raise_for_status()
+        data = resp.json()
+        for evt in data:
+            user = None
+            for t in evt.get("target", []):
+                if t.get("type") == "User":
+                    user = {"id": t.get("id"), "email": t.get("alternateId")}
+            if user:
+                removed.append(user)
+        # Okta pagination: look for 'next' link
+        next_url = None
+        if 'link' in resp.headers:
+            for link in resp.headers['link'].split(','):
+                if 'rel="next"' in link:
+                    import re
+                    match = re.search(r'<([^>]+)>; rel="next"', link)
+                    if match:
+                        next_url = match.group(1)
+                    break
+    return removed
 
 def re_add_user(cfg, user_id):
     url = f"https://{cfg['OKTA_DOMAIN']}/api/v1/groups/{cfg['GROUP_ID']}/users/{user_id}"
@@ -39,12 +59,13 @@ def main():
     if not removed:
         print("No users removed in the specified timeframe.")
         return
-    for uid in removed:
-        res = re_add_user(cfg, uid)
+    print(f"Found {len(removed)} users removed from the group.")
+    for user in removed:
+        res = re_add_user(cfg, user["id"])
         if res.status_code == 204:
-            print(f"Re-added user {uid}")
+            print(f"Re-added user {user['email']} (id: {user['id']})")
         else:
-            print(f"Failed to re-add {uid}: {res.status_code} {res.text}")
+            print(f"Failed to re-add {user['email']} (id: {user['id']}): {res.status_code} {res.text}")
 
 if __name__ == "__main__":
     main()
