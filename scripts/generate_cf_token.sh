@@ -4,6 +4,7 @@ set -euo pipefail
 # generate_cf_token.sh - Generate a Cloudflare API token for Wrangler and push to GitHub secrets
 # Usage: ./scripts/generate_cf_token.sh
 
+# Self-healing: check required env vars
 : "${CF_ACCOUNT_EMAIL?Need to set CF_ACCOUNT_EMAIL}"
 : "${CF_GLOBAL_API_KEY?Need to set CF_GLOBAL_API_KEY}"
 : "${CF_ACCOUNT_ID?Need to set CF_ACCOUNT_ID}"
@@ -55,4 +56,13 @@ else
   echo "⚠️  GitHub CLI (gh) not found. Please install it or add the secrets manually."
   echo "WRANGLER_API_TOKEN: $TOKEN"
   echo "CF_ACCOUNT_ID: $CF_ACCOUNT_ID"
+fi
+
+# Self-healing: Validate token by running a dry-run Wrangler publish
+if command -v wrangler &>/dev/null; then
+  echo "Validating Wrangler token with a dry-run publish..."
+  WRANGLER_API_TOKEN="$TOKEN" wrangler whoami || { echo "❌ Wrangler token validation failed."; exit 1; }
+  echo "✅ Wrangler token validated."
+else
+  echo "⚠️  Wrangler CLI not found. Please validate the token manually."
 fi

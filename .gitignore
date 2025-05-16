@@ -29,3 +29,12 @@ __pycache__/
 ai-agent/
 *.bak
 *.tmp
+
+infra/
+  terraform/
+    aws/
+      main.tf
+      README.md
+    gcp/
+      main.tf
+      README.md

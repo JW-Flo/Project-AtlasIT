@@ -22,8 +22,8 @@ RAMP_API_KEY = "${RAMP_API_KEY}"
 # class_name = "IgniteDurableObject"
 
 [[dispatch_namespaces]]
-binding = "DISPATCHER"
-namespace = "dispatcher"
+binding = "dispatcher"
+namespace = "<PLACEHOLDER_NAMESPACE_ID>"
 
 [triggers]
 crons = [

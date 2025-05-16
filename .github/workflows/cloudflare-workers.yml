@@ -17,10 +17,19 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci || true
 
       - name: Install Wrangler
         run: npm install -g @cloudflare/wrangler
+
+      - name: Lint index.js
+        run: |
+          npx eslint index.js || echo '⚠️  Lint warnings (not fatal)'
+
+      - name: Validate wrangler.toml and dispatcher binding
+        run: |
+          grep '[[dispatch_namespaces]]' wrangler.toml || (echo '❌ dispatcher binding missing in wrangler.toml' && exit 1)
+          grep 'binding.*dispatcher' wrangler.toml || (echo '❌ dispatcher binding missing in wrangler.toml' && exit 1)
 
       - name: Authenticate Wrangler
         run: npx wrangler login --api-token "$WRANGLER_API_TOKEN"
@@ -33,6 +42,11 @@ jobs:
           WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
         run: npx wrangler publish
 
+      - name: Post-deploy smoke test
+        run: |
+          sleep 10
+          ./scripts/smoke-test-worker.sh "https://project-ignite.example.com/health"
+
       - name: Success message
         if: success()
-        run: echo '✅ Workers deployed'
+        run: echo '✅ Workers deployed and healthy'

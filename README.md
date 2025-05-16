@@ -79,3 +79,33 @@ scripts/smoke-test-worker.sh   # Post-deploy smoke test
 ## 8. References
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Wrangler CLI Docs](https://developers.cloudflare.com/workers/wrangler/)
+
+---
+
+# Infrastructure as Code (IaC)
+
+## AWS (production):
+- Use SST and Terraform in `infra/terraform/aws/` for real AWS infrastructure.
+- See `infra/terraform/aws/README.md` for details.
+
+## GCP (mock/prototype only):
+- Use Terraform in `infra/terraform/gcp/` for GCP resource mockups.
+- See `infra/terraform/gcp/README.md` for details.
+
+## Cloudflare Workers:
+- Use Wrangler + GitHub Actions (no Docker needed).
+- All config/secrets handled via Wrangler and GitHub Actions.
+
+---
+
+# Docker
+- Docker is NOT used for Cloudflare Worker build/deploy.
+- Remove Dockerfile and Docker build steps from Worker pipeline.
+- If Docker is needed for other services, keep it in `docker/` and document its purpose.
+
+---
+
+# Directory Structure
+- `infra/terraform/aws/` — AWS real infra
+- `infra/terraform/gcp/` — GCP mock infra
+- `docker/` — (optional, for non-Worker services only)
