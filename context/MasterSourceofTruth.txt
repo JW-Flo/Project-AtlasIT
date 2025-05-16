@@ -1,0 +1,287 @@
+Project Ignite – Master Single Source of Truth
+1. Vision & Goals
+Vision: Deliver an end-to-end orchestration platform for contractor lifecycle, security remediation, license & cost analytics, Okta workflows, AWS SRE sandbox WorkSpaces, GCP CI/CD, AI model training pipelines, and documentation automation—zero manual steps post-deployment within a $400/month budget.
+Objectives:
+	•	Contractor Lifecycle: Automated 90‑day lifecycle alerts in Okta; seamless offboarding flows.
+	•	Okta Workflows: Group-based license removal, access certification integration, ISPM prototype.
+	•	Web UI Stub: Minimal React/Tailwind interface for manual trigger and status view.
+	•	AWS Sandbox: Terraform modules for encrypted WorkSpaces with idle-teardown automation.
+	•	Data & Analytics: BigQuery & Firestore schemas to consolidate contractor, Okta, and Ramp license data; real-time dashboards.
+	•	Cloud Functions: Automated Confluence documentation, system health endpoints, ETL pipelines, Slack alerts.
+	•	AI Model Training: Pipeline orchestration for training and versioning models in GCP.
+	•	Guardrails: OIDC-only auth, no hard-coded secrets, least‑privilege IAM, static scans (Checkov/tfsec/ESLint/tflint), budget alerts.
+2. Architecture Overview
+flowchart LR
+  subgraph GitHub Actions
+    A[Checkout] --> B[Prereq: Terraform Init/Plan]
+    B --> C[Urgent: Connection Checks & UI Build]
+    C --> D[Dev: Function Stubs]
+    D --> E[CI-Scans]
+    E --> F[Smoke Tests]
+    F --> G[Manual Approval]
+    G --> H[Prod Deploy]
+  end
+  H --> I[GCP Cloud Functions]
+  H --> J[AWS Sandbox Provisioning]
+  I --> K[BigQuery & Firestore]
+  I --> L[Confluence]
+  I --> M[Slack Alerts]
+  J --> N[Step Functions: Idle/Teardown]
+3. Repository Structure
+/Project-Ignite
+├── services/
+│   ├── functions/        # Cloud Functions (autoDoc, health, ETL, alerts)
+│   └── web-ui/           # React/Tailwind stub
+├── terraform/
+│   ├── modules/
+│   │   ├── vpc/
+│   │   ├── workspaces/
+│   │   ├── okta/
+│   │   ├── budget/
+│   │   └── iam/
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
+├── ci/                   # GitHub Actions workflows
+├── scripts/              # utility & smoke test scripts
+└── docs/                 # context files, diagrams, charter
+4. CI/CD Pipeline
+Job
+Needs
+Actions
+prereq
+—
+terraform init/apply → terraform plan
+urgent
+prereq
+check_jira.sh, check_okta.sh, check_api.sh, UI build, init_schema.sh
+dev
+urgent
+Stub functions (Okta, AI pipelines)
+ci-scans
+dev
+Checkov, tfsec, ESLint, tflint (pinned versions)
+smoke
+ci-scans
+smoke_test.sh
+manual-approval
+smoke
+Human sign-off
+prod-deploy
+manual-approval
+prod_deploy.sh
+5. Terraform Modules
+5.1 VPC & Networking
+module "vpc" {
+  source = "./modules/vpc"
+  vpc_cidr = var.vpc_cidr
+}
+5.2 WorkSpaces Provisioning
+module "ignite_workspaces" {
+  source      = "./modules/workspaces"
+  account_id  = var.account_id
+  ami_id      = data.aws_ami.hardened.id
+  subnet_ids  = var.subnet_ids
+  instance_type = var.instance_type
+}
+5.3 Okta Integration
+resource "okta_group" "contractors" {
+  name        = "Contractors"
+  description = "All active contractors"
+}
+5.4 Budget Alerts
+resource "aws_budgets_budget" "ignite" {
+  name        = "ignite-monthly"
+  limit_amount = "400"
+  time_unit   = "MONTHLY"
+}
+6. Cloud Functions & ETL
+	•	autoDoc.js: Publishes Confluence page updates.
+	•	health.js: /healthz endpoints.
+	•	etlOkta.js: Ingests Okta logs → BigQuery.
+	•	etlLicense.js: Ingests NetSuite + Ramp data → BigQuery.
+	•	monitorBudget.js: Queries spend, posts Slack alerts.
+7. AI Model Training Pipeline
+	•	Dataset: ignite_ml in BigQuery.
+	•	Pipeline: GitHub Action triggers training, stores artifacts in GCS & Artifact Registry.
+	•	ETL: Ingests training metrics to Firestore for dashboard.
+8. Step Functions & Automation
+	•	idle-teardown.asl.json: Detects idle WorkSpaces → Hibernate → Destroy.
+	•	Purge Workflows: Clean up old snapshots & logs.
+9. Web UI Stub
+App.tsx with buttons to trigger:
+	•	Workflow runs
+	•	View status
+10. BigQuery & Firestore Schema
+BigQuery Tables: contractor_lifecycle, okta_events, license_costs, usage_metrics Views: license_spend_by_dept, monthly_contractors Firestore Collections: configs, alerts, doc_metadata
+11. Scheduler & Alerts
+	•	Cloud Scheduler: ETL functions at 02:00–04:00 CDT daily.
+	•	monitorBudget: runs every 15 minutes.
+12. Authentication & Access
+	•	OIDC-only: AWS & GCP workload identity.
+	•	Secrets: GitHub Secrets & GCP Secret Manager.
+	•	Service Accounts: Scoped roles for functions & ETL jobs.
+13. Compliance & Guardrails
+	•	Static Scans: Checkov, tfsec, ESLint, tflint pinned.
+	•	Budget Alerts: AWS Budget + GCP Monitoring.
+	•	IAM Boundaries: Least privilege enforced.
+14. Ramp Integration
+	•	Env Var: RAMP_API_KEY
+	•	ETL: Replace Zip ingestion with Ramp API calls in etlLicense.js.
+15. Intune Compliance Profiles
+	•	Windows 10 baseline JSON/XML under /intune/.
+16. Okta Workflows
+	•	Groups: contractors, workspace-admin, workspace-user.
+	•	Rules: 90‑day deactivation, license certification.
+17. Monitoring & Dashboards
+	•	AWS: WorkSpaces metrics in CloudWatch & dashboards.
+	•	GCP: Stackdriver dashboards for function invocations & cost.
+18. Stakeholders & Contacts
+	•	Owner: Joe Whittle (joe.whittle@flosports.tv)
+	•	Infra Manager: Jordan Garrison
+	•	IT Admins: Zach Hughes, Morgan Manns
+19. Budget & Cost Controls
+	•	Monthly Cap: $400
+	•	Alerts: AWS Budget, GCP cost alerts, Ramp spend thresholds.
+20. Roadmap & Timeline
+Phase
+Dates
+Deliverable
+Design & Bootstrap
+May 7–9, 2025
+Architecture docs & charter
+Development
+May 10–22, 2025
+Terraform modules, UI, ETL functions
+Security & Monitoring
+May 23–25, 2025
+Step Functions, static scans, alerts
+Documentation & Testing
+May 26–28, 2025
+Confluence auto-doc, smoke tests
+Launch & Handoff
+May 29–31, 2025
+Production go-live & knowledge transfer
+21. Additional Services & Future Enhancements
+	•	Slack Approval Workflows: Interactive Slack messages for manual approvals, status checks, and reminders.
+	•	ServiceNow Integration: Sync contractor records, incidents, and change requests with ServiceNow CMDB and workflows.
+	•	GitOps Deployment: Adopt Argo CD or Flux for declarative, Git-based infrastructure and function deployments.
+	•	GCP Security Command Center: Integrate SCC findings to trigger automated remediation via Cloud Functions.
+	•	PagerDuty Automation: Create incidents from health checks, budget alerts, and ETL failures; automate on-call rotations.
+	•	Centralized Logging & SIEM: Forward function and workspace logs to ElasticSearch or Splunk for unified search and alerts.
+	•	Cost Optimization Advisor: Leverage Cloud Billing and AWS Cost Explorer APIs to suggest rightsizing and idle resource identification.
+	•	Self-Service Portal: Expand the web UI stub into a portal with CSV import, audit trails, usage reports, and role-based access.
+	•	Runbook Automation: Use AI to generate and maintain runbooks based on incident postmortems and system logs.
+	•	Kubernetes Sandboxes: Provision ephemeral EKS/GKE clusters for dev/test workloads with automated teardown.
+22. Orbit Platform Integration
+Leverage the Orbit CV & Reference Platform and its modules to enrich Project Ignite workflows and data analytics:
+	•	Contractor Profiles & CV Management: Use Orbit as the central repository for contractor CVs and reference documentation. Integrate Orbit API calls within ETL pipelines to synchronize contractor metadata into BigQuery and Firestore.
+	•	Project Metadata Enrichment: Ingest Orbit project and reference data to augment GANTT, resource allocation, and pipeline triggers in Ignite. Use Orbit’s project modules to feed timelines and deliverables.
+	•	Power BI Dashboards: Utilize Orbit’s ready-to-go data connectors and template library to build premium Power BI dashboards. Link Orbit data with Ignite metrics for unified project and financial reporting.
+	•	Automated Workflows & Notifications: Trigger Orbit workflows (e.g., reference checks, CV approvals) directly from Ignite UI or Cloud Functions via Orbit Webhooks.
+	•	Capacity & Forecasting: Use Orbit’s sales pipeline and project forecasting data to feed occupancy and skill utilization dashboards in Ignite. Enhance cost analytics with Orbit projections.
+	•	Self-Service Integration: Embed Orbit’s module interface into Ignite’s Web UI stub, allowing project managers to upload CVs, request references, and view contractor histories without leaving Ignite.
+	•	Seamless Onboarding: Automate Okta provisioning based on Orbit credentialing status. When Orbit indicates a contractor is onboarded and approved, trigger Okta group assignments automatically.
+	•	Analytics Collaboration: Combine Orbit reference network insights with Ignite cost/license analytics to identify high-performing contractors and optimize allocations.
+Integrating Orbit deepens Ignite’s data foundation and streamlines contractor lifecycle management by unifying project, resource, and reference data in a cohesive, automated platform.
+23. ABP.IO Integration (AWS Lambda)
+Leverage the ABP.IO application framework to build, deploy, and manage .NET-based services on AWS Lambda:
+	•	Framework Scaffold: Use ABP.IO (https://abp.io) to generate modular .NET solutions with layered architecture (Domain, Application, Infrastructure, Presentation).
+	•	Lambda Hosting: Package ABP web APIs as AWS Lambda functions using the Amazon.Lambda.AspNetCoreServer package, deploying via AWS SAM or Terraform.
+	•	Domain Modules: Implement Okta workflows, ETL pipelines, and budget monitoring as ABP modules with dependency injection and event bus capabilities.
+	•	Background Jobs: Schedule ABP background jobs (e.g., ETL, idle teardown, audit cleanup) via AWS EventBridge integration.
+	•	Authentication & Authorization: Integrate Okta using ABP’s OpenID Connect and ASP.NET Core Identity modules for secure Lambda endpoints.
+	•	Logging & Auditing: Utilize ABP’s built-in logging/audit features, forwarding structured logs to CloudWatch or centralized SIEM.
+	•	Multi-Tenancy & Localization: Enable ABP’s multi-tenancy and localization features if Ignite expands to support multiple clients or regions.
+	•	Developer Productivity: Leverage ABP’s code generation CLI, Swagger integration, and modular design to accelerate feature development and maintain consistency.
+24. Custom Extension & Integration Layers
+Extend ABP.IO and Orbit with tailored Ignite modules and plugins to meet unique business needs:
+24.1 ABP.IO Extensions
+	•	Module Generation: Use ABP CLI...
+24.2 Orbit Platform Plugins
+	•	Plugin Packaging: ...
+24.3 Full-Stack Integration
+	•	Front-End: ...
+These extension layers provide a foundation for specialized business logic, seamless UI enhancements, and robust integration between Ignite, ABP.IO, and Orbit.
+25. Impact on Deployment Architecture
+Integrating ABP.IO and Orbit transforms our deployment in several key ways:
+	1	Polyglot Runtime: In addition to Node.js Cloud Functions, we now deploy .NET Lambda services via ABP.IO. CI/CD must build, test, and package both runtime environments.
+	2	Multi-Stage Build Pipelines: GitHub Actions workflow expands to include:
+	◦	build_abp: dotnet restore, build, test, publish for ABP modules.
+	◦	package_orbit_plugin: npm build and publish for Orbit UI extensions.
+	3	Terraform Enhancements: New Terraform modules for Lambda .NET deployments, IAM roles for ABP services, and Orbit webhook configurations.
+	4	Artifact Management: We now store .NET artifacts in AWS Artifact Registry or S3, alongside NPM packages in a private registry, and container images if required.
+	5	Additional Service Accounts: Create ignite-abp-sa with permissions for Lambda execution, EventBridge, and S3 access; ignite-orbit-sa for plugin CI publishing.
+	6	Enhanced Monitoring: Extend CloudWatch dashboards to include ABP service metrics, and integrate Orbit plugin health with synthetic checks.
+	7	Security & Compliance: Ensure OIDC trust between AWS and GCP for .NET Lambdas, update static scan jobs to include C# analyzers (e.g., SonarQube for .NET).
+	8	Operational Runbooks: Document new ABP/Orbit deployment runbooks in Confluence, including rollback procedures and multi-tenant considerations.
+These changes require updates to CI/CD, Terraform, IAM, monitoring, and documentation to support a hybrid Node.js/.NET platform integrated with Orbit.
+26. Runtime Language Strategy
+Integrating multiple runtimes (Node.js, .NET, Python) enhances flexibility but requires strategic CI/CD, infrastructure, and operational planning:
+Polyglot CI/CD Pipeline:
+	•	build_node: Install dependencies, lint, test, and package Cloud Functions and Orbit plugins.
+	•	build_abp: dotnet restore, dotnet build, dotnet test, dotnet publish for ABP.IO Lambda modules.
+	•	build_python (optional): Create virtualenv, install requirements, run pylint/mypy, package for Lambda if Python ETL is used.
+Runtime Comparison:
+Factor
+C# (.NET Lambda)
+Python Lambda
+Framework Support
+Full ABP.IO modular system, DI, EventBus, Jobs
+Lightweight scripting; no out-of-the-box ABP patterns
+Cold-Start
+Higher cold-start latency, faster warm performance
+Lower latency, quick startup
+Ecosystem
+Rich .NET libraries, NuGet, ABP CLI productivity
+Vast open-source libs, pip, strong data/AI support
+Maintenance
+Consistent C# codebase for ABP modules
+Additional fragmentation if added alongside Node/CLR
+Performance
+High throughput, robust error handling
+Good for gluing services, ETL, and quick tasks
+Recommendation:
+	•	Core ABP.IO Services remain in C# to leverage framework features and maintain consistency.
+	•	Lightweight ETL or Glue Logic can use Python for faster iteration and rich scripting libraries.
+	•	Cloud Functions and Orbit plugins continue in Node.js to minimize additional runtime contexts.
+Adopting this hybrid pattern ensures optimal use of each language’s strengths while managing operational complexity.
+27. Timeline & Execution Strategy
+Map out detailed phases with owners, objectives, and execution approach to ensure on-time delivery and quality:
+Phase
+Dates
+Owner
+Objectives
+Strategy Notes
+Design & Bootstrap
+May 7–9, 2025
+Arch Team
+Finalize architecture, set up repos & CI/CD
+Conduct architecture review; bootstrap Terraform & CI jobs; define SLIs & metrics.
+Development
+May 10–22, 2025
+Dev Team
+Build Terraform modules, Cloud Functions, UI stub
+Use feature branching; daily standups; integrate Orbit & ABP modules early.
+Security & Monitoring
+May 23–25, 2025
+SecOps Team
+Implement static scans, Step Functions, alerts
+Run end-to-end test scenarios; fine-tune budget & guardrail thresholds.
+Documentation & Testing
+May 26–28, 2025
+QA & Docs Team
+Publish Confluence docs, smoke tests, runbooks
+Automate smoke tests in CI; peer-review docs; train ops on runbooks.
+Launch & Handoff
+May 29–31, 2025
+Release Team
+Prod deploy, knowledge transfer, handoff
+Execute blue/green deploy; hold post-launch review; transfer runbooks & credentials.
+Execution Strategy:
+	1	Sprint Cadence: Two-week sprint with mid-sprint checkpoint on Orbit & ABP integration.
+	2	Communication: Daily standups, bi-weekly stakeholder demos, Slack status updates in #ignite-status.
+	3	Quality Gates: CI must pass all linting, security scans, and smoke tests before merge.
+	4	Rollback Plan: Maintain previous Terraform state; auto-trigger rollback via GitHub Actions on critical failures.
+	5	Performance Monitoring: SLIs for function latency, provisioning time, and CI build success rate; setup dashboards.
+	6	Continuous Improvement: Post-mortem after launch; iterate on embedded AI-generated runbooks and workflows.

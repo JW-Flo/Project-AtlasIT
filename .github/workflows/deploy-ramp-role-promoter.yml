@@ -1,0 +1,41 @@
+name: Deploy Ramp Role Promoter
+on:
+  push:
+    paths:
+      - cloud-functions/ramp_role_promoter/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-function:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ secrets.GCP_OIDC_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          install_components: "functions"
+
+      - name: Deploy Cloud Function
+        run: |
+          gcloud functions deploy ramp_role_promoter \
+            --entry-point handler \
+            --runtime python39 \
+            --trigger-http \
+            --region us-central1 \
+            --source cloud-functions/ramp_role_promoter \
+            --allow-unauthenticated \
+            --set-env-vars \
+               RAMP_CLIENT_ID=${{ secrets.RAMP_CLIENT_ID }},RAMP_CLIENT_SECRET=${{ secrets.RAMP_CLIENT_SECRET }}

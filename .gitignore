@@ -3,27 +3,29 @@ node_modules/
 
 # Local creds and build artifacts
 env/
-.env*
-.env.backup
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.mistral-venv/
-venv/
-ENV/
-
-# VSCode
-.vscode/
 
 # macOS metadata
 .DS_Store
 
-# Logs
+# Ignore environment files
+.env
+.env.backup
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore Terraform state files
+terraform.tfstate
+terraform.tfstate.backup
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore logs
 *.log
 
-# Misc
-*.rtf
+# Ignore other sensitive or generated files
+ai-agent/
+*.bak
+*.tmp

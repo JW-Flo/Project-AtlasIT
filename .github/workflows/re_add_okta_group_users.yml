@@ -1,0 +1,27 @@
+name: "Re-add Okta Group Users"
+on:
+  workflow_dispatch:
+
+jobs:
+  readd_users:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Re-add removed Okta users
+        env:
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+          OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN }}
+          GROUP_ID: ${{ secrets.GROUP_ID }}
+          START_TIME: ${{ secrets.START_TIME }}
+          END_TIME: ${{ secrets.END_TIME }}
+        run: scripts/re_add_okta_group_users.py

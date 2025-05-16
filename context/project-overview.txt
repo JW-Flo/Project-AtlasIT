@@ -1,0 +1,23 @@
+Secret Agent (GCP project: secret-agent-459814, #323113947411)
+
+Vision:
+  Automate contractor lifecycle, security remediations, cost analytics, SRE sandbox provisioning.
+
+Key Capabilities:
+  • Jira→Okta flows  
+  • Ramp API (card assign/revoke; secret rotation)  
+  • AWS WorkSpaces sandbox via Terraform  
+  • Auto-doc + CI health checks  
+  • Cost alerts & budget enforcement
+
+Repo Layout:
+/bin/secret-agent        — CLI  
+/config/default.yaml     — codegen targets  
+/templates/…             — Jinja stubs  
+/scripts/…               — generated helpers  
+/src/ignite_agent/agent.py — GPT-4o orchestrator  
+/context/…               — context snapshots  
+/docs/, /examples/, /tests/
+
+CI: GitHub Actions w/ OIDC → GCP  
+Usage: `secret-agent generate` then `secret-agent --model gpt-4o`
