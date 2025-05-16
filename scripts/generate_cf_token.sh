@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# generate_cf_token.sh - Generate a Cloudflare API token for Wrangler
+# generate_cf_token.sh - Generate a Cloudflare API token for Wrangler and push to GitHub secrets
 # Usage: ./scripts/generate_cf_token.sh
 
 : "${CF_ACCOUNT_EMAIL?Need to set CF_ACCOUNT_EMAIL}"
@@ -41,5 +41,18 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-echo "✅ Wrangler API token created. Copy and add to GitHub Secrets as WRANGLER_API_TOKEN:"
-echo "$TOKEN"
+echo "✅ Wrangler API token created."
+
+# Push token and account ID to GitHub secrets (requires gh CLI and auth)
+if command -v gh &>/dev/null; then
+  echo "Pushing token to GitHub secrets as WRANGLER_API_TOKEN..."
+  gh secret set WRANGLER_API_TOKEN -b"$TOKEN"
+  echo "✅ Token pushed to GitHub secrets."
+  echo "Pushing CF_ACCOUNT_ID to GitHub secrets..."
+  gh secret set CF_ACCOUNT_ID -b"$CF_ACCOUNT_ID"
+  echo "✅ CF_ACCOUNT_ID pushed to GitHub secrets."
+else
+  echo "⚠️  GitHub CLI (gh) not found. Please install it or add the secrets manually."
+  echo "WRANGLER_API_TOKEN: $TOKEN"
+  echo "CF_ACCOUNT_ID: $CF_ACCOUNT_ID"
+fi
