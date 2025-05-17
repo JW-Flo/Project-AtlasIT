@@ -1,50 +1,26 @@
-name: Deploy Cloudflare Worker
+name: Cloudflare Workers CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
-      - name: Install Wrangler
-        run: npm install -g @cloudflare/wrangler
+      - name: Run tests
+        run: npm test
 
-      - name: Login to Wrangler
-        run: wrangler login --api-token ${{ secrets.WRANGLER_API_TOKEN }}
-
-      - name: Sync secrets to Cloudflare
-        run: |
-          echo "${{ secrets.WRANGLER_API_TOKEN }}" | npx wrangler secret put WRANGLER_API_TOKEN --env production
-          echo "${{ secrets.CF_ACCOUNT_ID }}" | npx wrangler secret put CF_ACCOUNT_ID --env production
-          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
-            echo "${{ secrets.OPENAI_API_KEY }}" | npx wrangler secret put OPENAI_API_KEY --env production
-          fi
-          if [ -n "${{ secrets.OKTA_API_TOKEN }}" ]; then
-            echo "${{ secrets.OKTA_API_TOKEN }}" | npx wrangler secret put OKTA_API_TOKEN --env production
-          fi
-        env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
-
-      - name: Publish Worker
-        env:
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
-        run: npx wrangler publish
-
-      - name: Success message
-        if: success()
-        run: echo '✅ Workers deployed'
+      - name: Deploy to Cloudflare
+        run: npm run deploy
