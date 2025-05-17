@@ -3,6 +3,7 @@ import os, sys
 import logging
 from openai import OpenAI
 from github import Github
+import requests
 
 # — Setup logging —
 logging.basicConfig(level=logging.DEBUG,
@@ -41,6 +42,25 @@ def fetch_repo_files(path=""):
             files.append(f"### {item.path}\n```{item.decoded_content.decode()}```")
     return "\n\n".join(files)
 
+# Function to interact with Cloudflare API
+def setup_cloudflare_worker(api_token, account_id, worker_name, script):
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/workers/scripts/{worker_name}"
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/javascript"
+    }
+    response = requests.put(url, headers=headers, data=script)
+    if response.status_code == 200:
+        logger.info("Cloudflare Worker deployed successfully.")
+    else:
+        logger.error(f"Failed to deploy Cloudflare Worker: {response.text}")
+
+# Function to update GitHub Actions workflows
+def update_workflow_file(repo, file_path, new_content):
+    file = repo.get_contents(file_path)
+    repo.update_file(file.path, "Update workflow file", new_content, file.sha)
+    logger.info("Workflow file updated successfully.")
+
 # — Main —
 def main():
     resp = client.chat.completions.create(
@@ -53,6 +73,35 @@ def main():
     )
     logger.info("Received response")
     print(resp.choices[0].message.content)
+
+    # Example: Deploy a Cloudflare Worker
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    worker_name = "example-worker"
+    script = "console.log('Hello, Cloudflare!');"
+    setup_cloudflare_worker(api_token, account_id, worker_name, script)
+
+    # Example: Update a workflow file
+    workflow_path = ".github/workflows/cloudflare-workers.yml"
+    new_workflow_content = """name: Updated Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run tests
+        run: npm test
+"""
+    update_workflow_file(repo, workflow_path, new_workflow_content)
+
+    logger.info("AI agent tasks completed.")
 
 if __name__=="__main__":
     main()
