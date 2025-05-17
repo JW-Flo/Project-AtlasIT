@@ -1,0 +1,19 @@
+export default {
+  async fetch(request, env, ctx) {
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
+    const gatewayUrl = "https://gateway.ai.cloudflare.com/v1/620865722bd88ef0a77dbbb60c91392e/project-ignite/workers-ai/@cf/meta/llama-3.1-8b-instruct";
+    const token = env.AI_GATEWAY_TOKEN;
+    const body = await request.text();
+    const resp = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body
+    });
+    return resp;
+  }
+}

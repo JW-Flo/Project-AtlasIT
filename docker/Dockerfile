@@ -9,7 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY cloud-functions/ ./cloud-functions/
 COPY scripts/ ./scripts/
-COPY config/ ./config/
 COPY dashboard/ ./dashboard/
 
 # Set environment variables

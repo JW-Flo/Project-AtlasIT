@@ -9,6 +9,11 @@ set -euo pipefail
 : "${CF_GLOBAL_API_KEY?Need to set CF_GLOBAL_API_KEY}"
 : "${CF_ACCOUNT_ID?Need to set CF_ACCOUNT_ID}"
 
+if ! command -v gh &>/dev/null; then
+  echo "❌ GitHub CLI (gh) is required for automatic secret population. Please install it: https://cli.github.com/" >&2
+  exit 1
+fi
+
 TOKEN_NAME="wrangler-publish-$(date +%Y%m%d-%H%M%S)"
 
 cat <<EOF > /tmp/wrangler_token_policy.json
@@ -42,21 +47,10 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-echo "✅ Wrangler API token created."
-
-# Push token and account ID to GitHub secrets (requires gh CLI and auth)
-if command -v gh &>/dev/null; then
-  echo "Pushing token to GitHub secrets as WRANGLER_API_TOKEN..."
-  gh secret set WRANGLER_API_TOKEN -b"$TOKEN"
-  echo "✅ Token pushed to GitHub secrets."
-  echo "Pushing CF_ACCOUNT_ID to GitHub secrets..."
-  gh secret set CF_ACCOUNT_ID -b"$CF_ACCOUNT_ID"
-  echo "✅ CF_ACCOUNT_ID pushed to GitHub secrets."
-else
-  echo "⚠️  GitHub CLI (gh) not found. Please install it or add the secrets manually."
-  echo "WRANGLER_API_TOKEN: $TOKEN"
-  echo "CF_ACCOUNT_ID: $CF_ACCOUNT_ID"
-fi
+echo "✅ Wrangler API token created. Pushing to GitHub secrets..."
+gh secret set WRANGLER_API_TOKEN -b"$TOKEN"
+gh secret set CF_ACCOUNT_ID -b"$CF_ACCOUNT_ID"
+echo "✅ Secrets pushed to GitHub."
 
 # Self-healing: Validate token by running a dry-run Wrangler publish
 if command -v wrangler &>/dev/null; then

@@ -5,11 +5,12 @@ main = "index.js"
 compatibility_date = "2025-05-16"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 
-# Environment variables (set secrets with `wrangler secret put` for production)
+# Remove any invalid secret references. Do not use ${{ secrets.* }} or env var interpolation in wrangler.toml.
+# All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
+
 [vars]
-RAMP_API_KEY = "${RAMP_API_KEY}"
-# OKTA_API_TOKEN = "${OKTA_API_TOKEN}"
-# SLACK_WEBHOOK_URL = "${SLACK_WEBHOOK_URL}"
+# Place only non-secret, non-sensitive config here if needed.
+# Secrets like WRANGLER_API_TOKEN, CF_ACCOUNT_ID, etc. must be set with `wrangler secret put` or in CI/CD.
 
 # Example KV binding (uncomment and set if needed)
 # [[kv_namespaces]]
@@ -33,8 +34,29 @@ crons = [
 
 # Production environment overrides
 [env.production]
-route = "project-ignite.example.com/*" # Set your production route
+route = "project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
+
+[logs]
+sampling_rate = 1.0
+include_invocation_logs = true
+
+[observability.logs]
+enabled = true
+
+[env.ai]
+name = "ai-worker"
+main = "ai-worker.js"
+route = "ai-project-ignite.kd8jc7v8cd.workers.dev/*"
+usage_model = "bundled"
+compatibility_date = "2025-05-16"
+
+[env.ai.logs]
+sampling_rate = 1.0
+include_invocation_logs = true
+
+[env.ai.observability.logs]
+enabled = true
 
 # For local development, use a .env file or export env vars in your shell
 # See .env.example for required variables
