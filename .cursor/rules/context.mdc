@@ -1,5 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 Project Ignite – Master Single Source of Truth
-@Add
 1. Vision & Goals
 Vision: Deliver an end-to-end orchestration platform for contractor lifecycle, security remediation, license & cost analytics, Okta workflows, AWS SRE sandbox WorkSpaces, GCP CI/CD, AI model training pipelines, and documentation automation—zero manual steps post-deployment within a $400/month budget.
 Objectives:
