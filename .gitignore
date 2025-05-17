@@ -38,3 +38,4 @@ infra/
     gcp/
       main.tf
       README.md
+context/aspnet-core-aspnetcore-9.0.pdf
