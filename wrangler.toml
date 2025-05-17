@@ -1,7 +1,6 @@
 # Wrangler configuration for Project Ignite
 name = "project-ignite"
-type = "javascript"
-main = "index.js"
+main = "image-ai-worker.js"
 compatibility_date = "2025-05-16"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 
@@ -13,9 +12,13 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 # Secrets like WRANGLER_API_TOKEN, CF_ACCOUNT_ID, etc. must be set with `wrangler secret put` or in CI/CD.
 
 # Example KV binding (uncomment and set if needed)
-# [[kv_namespaces]]
-# binding = "IGNITE_KV"
-# id = "<kv-namespace-id>"
+[[kv_namespaces]]
+binding = "IGNITE_KV"
+id = "ignite-kv-namespace"
+
+[[kv_namespaces]]
+binding = "IMAGES_KV"
+id = "b0cb0763522146279345f3d7d7b511ce"
 
 # Example Durable Object binding (uncomment and set if needed)
 # [[durable_objects.bindings]]
@@ -24,12 +27,13 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 [[dispatch_namespaces]]
 binding = "dispatcher"
-namespace = "<PLACEHOLDER_NAMESPACE_ID>"
+namespace = "ignite-dispatcher"
 
 [triggers]
 crons = [
   "0 2 * * *",    # ETL functions at 2:00 CDT
-  "15 * * * *"    # monitorBudget every 15 minutes
+  "15 * * * *",   # monitorBudget every 15 minutes
+  "*/5 * * * *"   # AI task monitoring every 5 minutes
 ]
 
 # Production environment overrides
@@ -48,15 +52,52 @@ enabled = true
 name = "ai-worker"
 main = "ai-worker.js"
 route = "ai-project-ignite.kd8jc7v8cd.workers.dev/*"
-usage_model = "bundled"
 compatibility_date = "2025-05-16"
 
-[env.ai.logs]
-sampling_rate = 1.0
-include_invocation_logs = true
+[env.ai.vars]
+MAX_PARALLEL_TASKS = "25"
+AI_TIMEOUT_MS = "30000"
 
-[env.ai.observability.logs]
-enabled = true
+[env.ai.limits]
+cpu_ms = 50000
+memory_mb = 512
+
+[[env.ai.kv_namespaces]]
+binding = "IGNITE_KV"
+id = "ignite-kv-namespace"
 
 # For local development, use a .env file or export env vars in your shell
 # See .env.example for required variables
+
+# [migrations]
+# tag = "v1" 
+# new_classes = ["AICoordinator", "ModelPool"]
+
+AI_WORKER_URL = "https://ai-project-ignite.kd8jc7v8cd.workers.dev"
+
+[env.documentation]
+name = "documentation-worker"
+main = "documentation-worker.js"
+# route = "documentation-worker.kd8jc7v8cd.workers.dev/*"
+compatibility_date = "2025-05-16"
+
+[env.documentation.vars]
+MAX_PARALLEL_TASKS = "10"
+AI_TIMEOUT_MS = "30000"
+
+[env.documentation.limits]
+cpu_ms = 25000
+memory_mb = 256
+
+[[env.documentation.kv_namespaces]]
+binding = "IGNITE_KV"
+id = "deae11eb420846299fa9a70b0bd492cb"
+
+[env.imageai]
+name = "image-ai-worker"
+main = "image-ai-worker.js"
+compatibility_date = "2025-05-16"
+
+[[env.imageai.kv_namespaces]]
+binding = "IMAGES_KV"
+id = "b0cb0763522146279345f3d7d7b511ce"
