@@ -35,7 +35,8 @@ export default {
       }
       return subWorker.fetch(request);
     } catch (err) {
-      return new Response("Dispatch error: " + (err && err.message ? err.message : err), { status: 502 });
+      console.error("Error occurred:", err); // Log the error for debugging
+      return new Response("Bad Gateway", { status: 502 });
     }
   }
 };
