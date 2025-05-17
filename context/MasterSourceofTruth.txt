@@ -113,7 +113,7 @@ App.tsx with buttons to trigger:
 	•	Workflow runs
 	•	View status
 10. BigQuery & Firestore Schema
-BigQuery Tables: contractor_lifecycle, okta_events, license_costs, usage_metrics Views: license_spend_by_dept, monthly_contractors Firestore Collections: configs, alerts, doc_metadata
+BigQuery Tables: contractor_lifecycle, okta_events, license_costs, usage_metricsViews: license_spend_by_dept, monthly_contractorsFirestore Collections: configs, alerts, doc_metadata
 11. Scheduler & Alerts
 	•	Cloud Scheduler: ETL functions at 02:00–04:00 CDT daily.
 	•	monitorBudget: runs every 15 minutes.

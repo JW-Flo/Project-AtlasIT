@@ -1,5 +1,5 @@
 import pytest
-from . import ingest_alerts
+from cloud-functions import ingest_alerts
 
 def test_basic_setup():
     """Basic test to ensure testing infrastructure works"""
