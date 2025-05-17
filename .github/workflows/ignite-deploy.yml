@@ -13,12 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Mistral via Copilot stub
-        run: |
-          chmod +x scripts/install-mistral.sh
-          ./scripts/install-mistral.sh
-      - name: Verify Mistral
-        run: mistral --version
+      # Removed all Mistral install/verify steps
       - name: Terraform Init & Apply Scaffold
         run: |
           terraform -chdir=terraform init
