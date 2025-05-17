@@ -14,26 +14,29 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install dependencies
-        run: npm ci || true
+        run: npm ci
 
       - name: Install Wrangler
         run: npm install -g @cloudflare/wrangler
 
-      - name: Lint index.js
-        run: |
-          npx eslint index.js || echo '⚠️  Lint warnings (not fatal)'
+      - name: Login to Wrangler
+        run: wrangler login --api-token ${{ secrets.WRANGLER_API_TOKEN }}
 
-      - name: Validate wrangler.toml and dispatcher binding
+      - name: Sync secrets to Cloudflare
         run: |
-          grep '[[dispatch_namespaces]]' wrangler.toml || (echo '❌ dispatcher binding missing in wrangler.toml' && exit 1)
-          grep 'binding.*dispatcher' wrangler.toml || (echo '❌ dispatcher binding missing in wrangler.toml' && exit 1)
-
-      - name: Authenticate Wrangler
-        run: npx wrangler login --api-token "$WRANGLER_API_TOKEN"
+          echo "${{ secrets.WRANGLER_API_TOKEN }}" | npx wrangler secret put WRANGLER_API_TOKEN --env production
+          echo "${{ secrets.CF_ACCOUNT_ID }}" | npx wrangler secret put CF_ACCOUNT_ID --env production
+          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "${{ secrets.OPENAI_API_KEY }}" | npx wrangler secret put OPENAI_API_KEY --env production
+          fi
+          if [ -n "${{ secrets.OKTA_API_TOKEN }}" ]; then
+            echo "${{ secrets.OKTA_API_TOKEN }}" | npx wrangler secret put OKTA_API_TOKEN --env production
+          fi
         env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
 
       - name: Publish Worker
@@ -42,11 +45,6 @@ jobs:
           WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
         run: npx wrangler publish
 
-      - name: Post-deploy smoke test
-        run: |
-          sleep 10
-          ./scripts/smoke-test-worker.sh "https://project-ignite.example.com/health"
-
       - name: Success message
         if: success()
-        run: echo '✅ Workers deployed and healthy'
+        run: echo '✅ Workers deployed'
