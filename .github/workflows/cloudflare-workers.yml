@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y gnupg software-properties-common curl unzip
           curl -fsSL https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip -o terraform.zip
-          unzip terraform.zip
+          unzip -l terraform.zip
           sudo mv terraform /usr/local/bin/
           terraform --version
 
@@ -44,7 +44,54 @@ jobs:
           echo "CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}" >> $GITHUB_ENV
           echo "GH_PAT=${{ secrets.GH_PAT }}" >> $GITHUB_ENV
 
+      - name: Lint code
+        run: |
+          if [ -f package.json ] && grep -q '"lint"' package.json; then
+            npm run lint
+          else
+            npx eslint index.js
+          fi
+
+      - name: Start local worker for smoke test
+        run: |
+          npx wrangler dev --local --port 8787 &
+          sleep 5
+
+      - name: Run smoke test
+        env:
+          WORKER_URL: http://127.0.0.1:8787
+        run: ./scripts/smoke-test-worker.sh
+
+      - name: Verify Confluence API credentials
+        env:
+          CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+          CONFLUENCE_API_KEY: ${{ secrets.CONFLUENCE_API_KEY }}
+        run: |
+          curl -u "$CONFLUENCE_EMAIL:$CONFLUENCE_API_KEY" --fail \
+            "https://flocasts.atlassian.net/wiki/rest/api/content/5102141465?expand=body.storage,version"
+
+      - name: Sync Confluence secrets to Cloudflare
+        run: |
+          echo "${{ secrets.CONFLUENCE_EMAIL }}" | npx wrangler secret put CONFLUENCE_EMAIL --yes
+          echo "${{ secrets.CONFLUENCE_API_KEY }}" | npx wrangler secret put CONFLUENCE_API_KEY --yes
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          WRANGLER_API_TOKEN: ${{ secrets.WRNGLER_API_TOKEN }}
+
       - name: Deploy to Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy
+
+      - name: Append Confluence Change Log
+        if: success()
+        env:
+          CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+          CONFLUENCE_API_KEY: ${{ secrets.CONFLUENCE_API_KEY }}
+        run: |
+          node scripts/appendConfluenceChangeLog.js \
+            "Deployed documentation-worker to production" \
+            "Initial deployment of documentation-worker at https://documentation-worker.kd8jc7v8cd.workers.dev with KV and AI integration." \
+            "Joe Whittle" \
+            "IG-123" \
+            "https://flocasts.atlassian.net/wiki/spaces/ITIKB/folder/5102239762"

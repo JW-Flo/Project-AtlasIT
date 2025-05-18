@@ -24,4 +24,10 @@ jobs:
               exit 1
             fi
           done
-          echo "All commit messages have Jira references." 
+          echo "All commit messages have Jira references."
+      - name: Commit changes
+        run: git add . && git commit -m "IG-999 WIP: Save local changes before rebase"
+      - name: Pull and push changes
+        run: |
+          git pull --rebase origin IG-19-smart-commit-test
+          git push 

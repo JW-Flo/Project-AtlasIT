@@ -1,6 +1,6 @@
 // index.js - Cloudflare dispatch Worker
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     // Health check endpoint
     if (new URL(request.url).pathname === "/health") {
       if (!env.dispatcher) {
@@ -14,10 +14,10 @@ export default {
       const url = new URL(request.url);
       const pathParts = url.pathname.split('/').filter(Boolean);
       const subWorkerName = pathParts[0] || "customer-worker-1";
-
+    
       if (!subWorkerName) {
         return new Response('No sub-worker specified', { status: 400 });
-      }
+    }
 
       // Forward the request to the sub-worker in the dispatcher namespace
       if (!env.dispatcher) {

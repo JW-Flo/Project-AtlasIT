@@ -1,18 +1,24 @@
 // autoDoc.js - Ignite Documentation Automation Service
 // ES module, append-only, for Confluence/Jira/syslog integration
 
+import { appendFile } from 'fs/promises'
+
 export async function updateDocumentation({ summary, details, actor, jiraIssue, confluenceUrl }) {
-  // Placeholder: Append to project-truth.txt, agent-context.txt, iterm-context.txt
-  // Placeholder: Post update to Confluence via API
-  // Placeholder: Post update to Jira via API
-  // Placeholder: Log event to syslog (GCP/AWS)
-  // All secrets (tokens) must be sourced from environment variables
-  console.log('[autoDoc] Documentation update requested:', { summary, actor, jiraIssue, confluenceUrl })
-  // TODO: Implement file append logic
+  const timestamp = new Date().toISOString()
+  const entry = `\n# ${timestamp}\n- Actor: ${actor}\n- Summary: ${summary}\n- Details: ${details}\n- Jira: ${jiraIssue}\n- Confluence: ${confluenceUrl}\n`
+  const files = [
+    'context/project-truth.txt',
+    'context/agent-context.txt',
+    'context/iterm-context.txt'
+  ]
+  for (const file of files) {
+    await appendFile(file, entry)
+  }
   // TODO: Implement Confluence API integration
   // TODO: Implement Jira API integration
   // TODO: Implement syslog event logging
-  return { status: 'stub', message: 'autoDoc.js is not yet fully implemented' }
+  console.log('[autoDoc] Documentation appended:', { summary, actor, jiraIssue, confluenceUrl })
+  return { status: 'ok', message: 'Documentation appended to context files' }
 }
 
 // Example usage (to be removed in production)

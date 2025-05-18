@@ -53,7 +53,7 @@ After deployment, run:
 ```sh
 ./scripts/smoke-test-worker.sh
 ```
-This will curl your Worker’s production URL and verify a 200/502 response.
+This will curl your Worker's production URL and verify a 200/502 response.
 
 ---
 
@@ -109,3 +109,56 @@ scripts/smoke-test-worker.sh   # Post-deploy smoke test
 - `infra/terraform/aws/` — AWS real infra
 - `infra/terraform/gcp/` — GCP mock infra
 - `docker/` — (optional, for non-Worker services only)
+
+## Jira Integration & Smart Commit Requirements
+
+To ensure all code changes are traceable and auditable in Jira:
+
+- **Reference the correct Jira issue key** (e.g., `IG-123`) in every commit, PR, and branch name.
+- **Use Smart Commit commands** in commit messages to automate Jira actions:
+  - `#comment <text>` — Add a comment to the issue
+  - `#time <value>w <value>d <value>h <value>m <comment>` — Log time and comment
+  - `#<transition>` — Transition the issue (e.g., `#done`, `#close`)
+- **Example commit message:**
+  ```
+  IG-123 #comment Deployed documentation-worker to production #done
+  ```
+- **Your git user.email must match your Jira user email** for Smart Commits to work.
+- **Do not use Smart Commit commands in PR titles**—only in commit messages.
+- **Check the Jira issue's Development panel** to verify links and comments.
+
+All agents, automations, and contributors must follow this process for every code change.
+
+## Automated Documentation & Confluence Integration
+
+### Overview
+- All deployments/changes now create a new Confluence documentation page under the documentation folder ([link](https://flocasts.atlassian.net/wiki/spaces/ITIKB/folder/5102239762)).
+- Each page is created via the automation script (`scripts/appendConfluenceChangeLog.js`) and includes summary, details, actor, Jira issue, and timestamp.
+- Metadata for each doc is stored in `docs-metadata.json` for web UI consumption.
+
+### How to Use the Automation Script
+- Set required environment variables:
+  - `CONFLUENCE_EMAIL` (your Atlassian email)
+  - `CONFLUENCE_API_KEY` (your Atlassian API token)
+- Run the script with:
+  ```sh
+  CONFLUENCE_EMAIL="your-email" CONFLUENCE_API_KEY="your-token" node scripts/appendConfluenceChangeLog.js "Summary" "Details" "Actor" "JiraIssue" "5102239762"
+  ```
+- The script will create a new page and append metadata to `docs-metadata.json`.
+
+### Troubleshooting
+- If you see a 401 error, ensure both env vars are set and valid.
+- Inline env vars are most reliable for Node.js scripts.
+- The script will throw a clear error if env vars are missing.
+
+### Web UI Docs Integration
+- The web UI reads `docs-metadata.json` to display all generated documentation pages.
+- Each entry includes title, URL, summary, details, actor, Jira issue, and timestamp.
+
+### Lessons Learned
+- Confluence database/table API is not robust for automation; classic page creation is reliable.
+- Always use the documentation folder's parent page ID for new docs.
+
+### Next Steps
+- Begin AI agent-driven knowledge drops into Confluence for runbooks, architecture, and best practices.
+- Continue to automate and document all changes for full auditability.
