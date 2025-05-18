@@ -1,0 +1,27 @@
+name: Jira Reference Enforcement
+
+on:
+  push:
+    branches:
+      - main
+      - IG-*
+  pull_request:
+    branches:
+      - main
+      - IG-*
+
+jobs:
+  jira-enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Check commit messages for Jira reference
+        run: |
+          for msg in $(git log --format=%B origin/main..HEAD); do
+            if ! echo "$msg" | grep -qE 'IG-[0-9]+'; then
+              echo "[ERROR] Commit message missing Jira reference: $msg"
+              exit 1
+            fi
+          done
+          echo "All commit messages have Jira references." 
