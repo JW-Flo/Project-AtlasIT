@@ -1,0 +1,69 @@
+name: Autonomous Agent
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: autonomous-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  handle-agents:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run all AI agent scripts
+        run: |
+          for script in scripts/*.py; do
+            echo "Running $script..."
+            python "$script" || echo "Error running $script" >> error.log
+          done
+
+      - name: Check for errors
+        run: |
+          if [ -f error.log ]; then
+            echo "Errors were encountered during script execution. See error.log for details."
+            cat error.log
+            exit 1
+          fi
+
+      - name: Notify Slack and Create GitHub Issues for Errors
+        if: failure()
+        run: |
+          if [ -f error.log ]; then
+            while IFS= read -r line; do
+              # Create GitHub issue
+              gh issue create --title "Error in AI Agent Script" --body "$line" --label "bug" || echo "Failed to create issue for: $line";
+
+              # Notify Slack
+              curl -X POST -H 'Content-type: application/json' \
+                --data '{"text": "Error encountered in AI Agent Script: $line"}' \
+                $SLACK_WEBHOOK_URL || echo "Failed to notify Slack for: $line";
+            done < error.log
+          fi
+
+      - name: Log success
+        if: success()
+        run: echo "All AI agent scripts ran successfully."
+
+      - name: Log failure
+        if: failure()
+        run: echo "One or more AI agent scripts failed. Check logs for details."

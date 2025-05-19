@@ -1,0 +1,988 @@
+﻿2025-05-17T02:45:42.8222665Z Current runner version: '2.324.0'
+2025-05-17T02:45:42.8323637Z ##[group]Operating System
+2025-05-17T02:45:42.8324928Z Ubuntu
+2025-05-17T02:45:42.8325705Z 24.04.2
+2025-05-17T02:45:42.8326585Z LTS
+2025-05-17T02:45:42.8327488Z ##[endgroup]
+2025-05-17T02:45:42.8328318Z ##[group]Runner Image
+2025-05-17T02:45:42.8329401Z Image: ubuntu-24.04
+2025-05-17T02:45:42.8330268Z Version: 20250511.1.0
+2025-05-17T02:45:42.8332191Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20250511.1/images/ubuntu/Ubuntu2404-Readme.md
+2025-05-17T02:45:42.8334889Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20250511.1
+2025-05-17T02:45:42.8336697Z ##[endgroup]
+2025-05-17T02:45:42.8337532Z ##[group]Runner Image Provisioner
+2025-05-17T02:45:42.8338457Z 2.0.437.1
+2025-05-17T02:45:42.8339439Z ##[endgroup]
+2025-05-17T02:45:42.8364257Z ##[group]GITHUB_TOKEN Permissions
+2025-05-17T02:45:42.8367077Z Actions: write
+2025-05-17T02:45:42.8368168Z Attestations: write
+2025-05-17T02:45:42.8369407Z Checks: write
+2025-05-17T02:45:42.8370282Z Contents: write
+2025-05-17T02:45:42.8371185Z Deployments: write
+2025-05-17T02:45:42.8372112Z Discussions: write
+2025-05-17T02:45:42.8372887Z Issues: write
+2025-05-17T02:45:42.8374044Z Metadata: read
+2025-05-17T02:45:42.8374925Z Models: read
+2025-05-17T02:45:42.8375650Z Packages: write
+2025-05-17T02:45:42.8376531Z Pages: write
+2025-05-17T02:45:42.8377313Z PullRequests: write
+2025-05-17T02:45:42.8378205Z RepositoryProjects: write
+2025-05-17T02:45:42.8379071Z SecurityEvents: write
+2025-05-17T02:45:42.8380179Z Statuses: write
+2025-05-17T02:45:42.8381009Z ##[endgroup]
+2025-05-17T02:45:42.8391916Z Secret source: Actions
+2025-05-17T02:45:42.8393542Z Prepare workflow directory
+2025-05-17T02:45:42.8922479Z Prepare all required actions
+2025-05-17T02:45:42.8977691Z Getting action download info
+2025-05-17T02:45:43.1979420Z ##[group]Download immutable action package 'actions/checkout@v3'
+2025-05-17T02:45:43.1980407Z Version: 3.6.0
+2025-05-17T02:45:43.1981516Z Digest: sha256:942562b9c7d4b1f2557f1da21f4d3eb4eb4fd01f2ad78b2a6e187d1b193e0a0f
+2025-05-17T02:45:43.1982773Z Source commit SHA: f43a0e5ff2bd294095638e18286ca9a3d1956744
+2025-05-17T02:45:43.1983783Z ##[endgroup]
+2025-05-17T02:45:43.2875843Z ##[group]Download immutable action package 'docker/setup-buildx-action@v2'
+2025-05-17T02:45:43.2877367Z Version: 2.10.0
+2025-05-17T02:45:43.2878634Z Digest: sha256:0246269ef10a0a489293f9b45667dd6d87c500232734ddff4402cd9b375fa186
+2025-05-17T02:45:43.2880213Z Source commit SHA: 885d1462b80bc1c1c7f0b00334ad271f09369c55
+2025-05-17T02:45:43.2881608Z ##[endgroup]
+2025-05-17T02:45:43.4851297Z ##[group]Download immutable action package 'docker/build-push-action@v4'
+2025-05-17T02:45:43.4852300Z Version: 4.2.1
+2025-05-17T02:45:43.4853328Z Digest: sha256:295ced658312cfbe602d510dde94b23d332ec7b392ba1ce218956952bcec0d6e
+2025-05-17T02:45:43.4854322Z Source commit SHA: 0a97817b6ade9f46837855d676c4cca3a2471fc9
+2025-05-17T02:45:43.4855008Z ##[endgroup]
+2025-05-17T02:45:43.7896379Z Complete job name: build
+2025-05-17T02:45:43.8547940Z ##[group]Run actions/checkout@v3
+2025-05-17T02:45:43.8548809Z with:
+2025-05-17T02:45:43.8549254Z   repository: JW-Flo/Project-Ignite
+2025-05-17T02:45:43.8549955Z   token: ***
+2025-05-17T02:45:43.8550355Z   ssh-strict: true
+2025-05-17T02:45:43.8550797Z   persist-credentials: true
+2025-05-17T02:45:43.8551903Z   clean: true
+2025-05-17T02:45:43.8552610Z   sparse-checkout-cone-mode: true
+2025-05-17T02:45:43.8553717Z   fetch-depth: 1
+2025-05-17T02:45:43.8554488Z   fetch-tags: false
+2025-05-17T02:45:43.8555208Z   lfs: false
+2025-05-17T02:45:43.8555911Z   submodules: false
+2025-05-17T02:45:43.8556661Z   set-safe-directory: true
+2025-05-17T02:45:43.8557957Z ##[endgroup]
+2025-05-17T02:45:44.0691664Z Syncing repository: JW-Flo/Project-Ignite
+2025-05-17T02:45:44.0695286Z ##[group]Getting Git version info
+2025-05-17T02:45:44.0696693Z Working directory is '/home/runner/work/Project-Ignite/Project-Ignite'
+2025-05-17T02:45:44.0699409Z [command]/usr/bin/git version
+2025-05-17T02:45:44.0742057Z git version 2.49.0
+2025-05-17T02:45:44.0776303Z ##[endgroup]
+2025-05-17T02:45:44.0794956Z Temporarily overriding HOME='/home/runner/work/_temp/7690831c-5bf3-48bb-a8c8-05319abd9d71' before making global git config changes
+2025-05-17T02:45:44.0798747Z Adding repository directory to the temporary git global config as a safe directory
+2025-05-17T02:45:44.0804736Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Project-Ignite/Project-Ignite
+2025-05-17T02:45:44.0839359Z Deleting the contents of '/home/runner/work/Project-Ignite/Project-Ignite'
+2025-05-17T02:45:44.0843985Z ##[group]Initializing the repository
+2025-05-17T02:45:44.0848136Z [command]/usr/bin/git init /home/runner/work/Project-Ignite/Project-Ignite
+2025-05-17T02:45:44.0935326Z hint: Using 'master' as the name for the initial branch. This default branch name
+2025-05-17T02:45:44.0938216Z hint: is subject to change. To configure the initial branch name to use in all
+2025-05-17T02:45:44.0940206Z hint: of your new repositories, which will suppress this warning, call:
+2025-05-17T02:45:44.0942610Z hint:
+2025-05-17T02:45:44.0944288Z hint: 	git config --global init.defaultBranch <name>
+2025-05-17T02:45:44.0946133Z hint:
+2025-05-17T02:45:44.0948048Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2025-05-17T02:45:44.0951262Z hint: 'development'. The just-created branch can be renamed via this command:
+2025-05-17T02:45:44.0954190Z hint:
+2025-05-17T02:45:44.0955477Z hint: 	git branch -m <name>
+2025-05-17T02:45:44.0958473Z Initialized empty Git repository in /home/runner/work/Project-Ignite/Project-Ignite/.git/
+2025-05-17T02:45:44.0969057Z [command]/usr/bin/git remote add origin https://github.com/JW-Flo/Project-Ignite
+2025-05-17T02:45:44.1001077Z ##[endgroup]
+2025-05-17T02:45:44.1003810Z ##[group]Disabling automatic garbage collection
+2025-05-17T02:45:44.1005976Z [command]/usr/bin/git config --local gc.auto 0
+2025-05-17T02:45:44.1041903Z ##[endgroup]
+2025-05-17T02:45:44.1044356Z ##[group]Setting up auth
+2025-05-17T02:45:44.1046786Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-05-17T02:45:44.1076741Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-05-17T02:45:44.1407170Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-05-17T02:45:44.1444695Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-05-17T02:45:44.1678795Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2025-05-17T02:45:44.1717390Z ##[endgroup]
+2025-05-17T02:45:44.1720861Z ##[group]Fetching the repository
+2025-05-17T02:45:44.1731247Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --progress --no-recurse-submodules --depth=1 origin +c997ec28fedf71afe4093450a732182c4ee864e3:refs/remotes/origin/main
+2025-05-17T02:45:44.4375729Z remote: Enumerating objects: 2570, done.        
+2025-05-17T02:45:44.4382259Z remote: Counting objects:   0% (1/2570)        
+2025-05-17T02:45:44.4384527Z remote: Counting objects:   1% (26/2570)        
+2025-05-17T02:45:44.4386713Z remote: Counting objects:   2% (52/2570)        
+2025-05-17T02:45:44.4388720Z remote: Counting objects:   3% (78/2570)        
+2025-05-17T02:45:44.4390229Z remote: Counting objects:   4% (103/2570)        
+2025-05-17T02:45:44.4391570Z remote: Counting objects:   5% (129/2570)        
+2025-05-17T02:45:44.4392911Z remote: Counting objects:   6% (155/2570)        
+2025-05-17T02:45:44.4394467Z remote: Counting objects:   7% (180/2570)        
+2025-05-17T02:45:44.4395820Z remote: Counting objects:   8% (206/2570)        
+2025-05-17T02:45:44.4397160Z remote: Counting objects:   9% (232/2570)        
+2025-05-17T02:45:44.4398529Z remote: Counting objects:  10% (257/2570)        
+2025-05-17T02:45:44.4400112Z remote: Counting objects:  11% (283/2570)        
+2025-05-17T02:45:44.4401453Z remote: Counting objects:  12% (309/2570)        
+2025-05-17T02:45:44.4402829Z remote: Counting objects:  13% (335/2570)        
+2025-05-17T02:45:44.4404410Z remote: Counting objects:  14% (360/2570)        
+2025-05-17T02:45:44.4405753Z remote: Counting objects:  15% (386/2570)        
+2025-05-17T02:45:44.4407077Z remote: Counting objects:  16% (412/2570)        
+2025-05-17T02:45:44.4408405Z remote: Counting objects:  17% (437/2570)        
+2025-05-17T02:45:44.4409724Z remote: Counting objects:  18% (463/2570)        
+2025-05-17T02:45:44.4411066Z remote: Counting objects:  19% (489/2570)        
+2025-05-17T02:45:44.4412401Z remote: Counting objects:  20% (514/2570)        
+2025-05-17T02:45:44.4413934Z remote: Counting objects:  21% (540/2570)        
+2025-05-17T02:45:44.4415257Z remote: Counting objects:  22% (566/2570)        
+2025-05-17T02:45:44.4416790Z remote: Counting objects:  23% (592/2570)        
+2025-05-17T02:45:44.4418155Z remote: Counting objects:  24% (617/2570)        
+2025-05-17T02:45:44.4419793Z remote: Counting objects:  25% (643/2570)        
+2025-05-17T02:45:44.4421253Z remote: Counting objects:  26% (669/2570)        
+2025-05-17T02:45:44.4423645Z remote: Counting objects:  27% (694/2570)        
+2025-05-17T02:45:44.4425976Z remote: Counting objects:  28% (720/2570)        
+2025-05-17T02:45:44.4428216Z remote: Counting objects:  29% (746/2570)        
+2025-05-17T02:45:44.4430413Z remote: Counting objects:  30% (771/2570)        
+2025-05-17T02:45:44.4432686Z remote: Counting objects:  31% (797/2570)        
+2025-05-17T02:45:44.4435063Z remote: Counting objects:  32% (823/2570)        
+2025-05-17T02:45:44.4437258Z remote: Counting objects:  33% (849/2570)        
+2025-05-17T02:45:44.4439387Z remote: Counting objects:  34% (874/2570)        
+2025-05-17T02:45:44.4441088Z remote: Counting objects:  35% (900/2570)        
+2025-05-17T02:45:44.4442555Z remote: Counting objects:  36% (926/2570)        
+2025-05-17T02:45:44.4444245Z remote: Counting objects:  37% (951/2570)        
+2025-05-17T02:45:44.4445705Z remote: Counting objects:  38% (977/2570)        
+2025-05-17T02:45:44.4447133Z remote: Counting objects:  39% (1003/2570)        
+2025-05-17T02:45:44.4448570Z remote: Counting objects:  40% (1028/2570)        
+2025-05-17T02:45:44.4449993Z remote: Counting objects:  41% (1054/2570)        
+2025-05-17T02:45:44.4451413Z remote: Counting objects:  42% (1080/2570)        
+2025-05-17T02:45:44.4452814Z remote: Counting objects:  43% (1106/2570)        
+2025-05-17T02:45:44.4454499Z remote: Counting objects:  44% (1131/2570)        
+2025-05-17T02:45:44.4455904Z remote: Counting objects:  45% (1157/2570)        
+2025-05-17T02:45:44.4457331Z remote: Counting objects:  46% (1183/2570)        
+2025-05-17T02:45:44.4458718Z remote: Counting objects:  47% (1208/2570)        
+2025-05-17T02:45:44.4460115Z remote: Counting objects:  48% (1234/2570)        
+2025-05-17T02:45:44.4461745Z remote: Counting objects:  49% (1260/2570)        
+2025-05-17T02:45:44.4463384Z remote: Counting objects:  50% (1285/2570)        
+2025-05-17T02:45:44.4464774Z remote: Counting objects:  51% (1311/2570)        
+2025-05-17T02:45:44.4466137Z remote: Counting objects:  52% (1337/2570)        
+2025-05-17T02:45:44.4467488Z remote: Counting objects:  53% (1363/2570)        
+2025-05-17T02:45:44.4468824Z remote: Counting objects:  54% (1388/2570)        
+2025-05-17T02:45:44.4470170Z remote: Counting objects:  55% (1414/2570)        
+2025-05-17T02:45:44.4471508Z remote: Counting objects:  56% (1440/2570)        
+2025-05-17T02:45:44.4472844Z remote: Counting objects:  57% (1465/2570)        
+2025-05-17T02:45:44.4474375Z remote: Counting objects:  58% (1491/2570)        
+2025-05-17T02:45:44.4476375Z remote: Counting objects:  59% (1517/2570)        
+2025-05-17T02:45:44.4478477Z remote: Counting objects:  60% (1542/2570)        
+2025-05-17T02:45:44.4480501Z remote: Counting objects:  61% (1568/2570)        
+2025-05-17T02:45:44.4482194Z remote: Counting objects:  62% (1594/2570)        
+2025-05-17T02:45:44.4483692Z remote: Counting objects:  63% (1620/2570)        
+2025-05-17T02:45:44.4485042Z remote: Counting objects:  64% (1645/2570)        
+2025-05-17T02:45:44.4486362Z remote: Counting objects:  65% (1671/2570)        
+2025-05-17T02:45:44.4487684Z remote: Counting objects:  66% (1697/2570)        
+2025-05-17T02:45:44.4489001Z remote: Counting objects:  67% (1722/2570)        
+2025-05-17T02:45:44.4490307Z remote: Counting objects:  68% (1748/2570)        
+2025-05-17T02:45:44.4491610Z remote: Counting objects:  69% (1774/2570)        
+2025-05-17T02:45:44.4492917Z remote: Counting objects:  70% (1799/2570)        
+2025-05-17T02:45:44.4494319Z remote: Counting objects:  71% (1825/2570)        
+2025-05-17T02:45:44.4495620Z remote: Counting objects:  72% (1851/2570)        
+2025-05-17T02:45:44.4496924Z remote: Counting objects:  73% (1877/2570)        
+2025-05-17T02:45:44.4498237Z remote: Counting objects:  74% (1902/2570)        
+2025-05-17T02:45:44.4500343Z remote: Counting objects:  75% (1928/2570)        
+2025-05-17T02:45:44.4502476Z remote: Counting objects:  76% (1954/2570)        
+2025-05-17T02:45:44.4504402Z remote: Counting objects:  77% (1979/2570)        
+2025-05-17T02:45:44.4505860Z remote: Counting objects:  78% (2005/2570)        
+2025-05-17T02:45:44.4508002Z remote: Counting objects:  79% (2031/2570)        
+2025-05-17T02:45:44.4510043Z remote: Counting objects:  80% (2056/2570)        
+2025-05-17T02:45:44.4511713Z remote: Counting objects:  81% (2082/2570)        
+2025-05-17T02:45:44.4513300Z remote: Counting objects:  82% (2108/2570)        
+2025-05-17T02:45:44.4514633Z remote: Counting objects:  83% (2134/2570)        
+2025-05-17T02:45:44.4515970Z remote: Counting objects:  84% (2159/2570)        
+2025-05-17T02:45:44.4517310Z remote: Counting objects:  85% (2185/2570)        
+2025-05-17T02:45:44.4518638Z remote: Counting objects:  86% (2211/2570)        
+2025-05-17T02:45:44.4519970Z remote: Counting objects:  87% (2236/2570)        
+2025-05-17T02:45:44.4521298Z remote: Counting objects:  88% (2262/2570)        
+2025-05-17T02:45:44.4522621Z remote: Counting objects:  89% (2288/2570)        
+2025-05-17T02:45:44.4524028Z remote: Counting objects:  90% (2313/2570)        
+2025-05-17T02:45:44.4525364Z remote: Counting objects:  91% (2339/2570)        
+2025-05-17T02:45:44.4526661Z remote: Counting objects:  92% (2365/2570)        
+2025-05-17T02:45:44.4527981Z remote: Counting objects:  93% (2391/2570)        
+2025-05-17T02:45:44.4529300Z remote: Counting objects:  94% (2416/2570)        
+2025-05-17T02:45:44.4530615Z remote: Counting objects:  95% (2442/2570)        
+2025-05-17T02:45:44.4531941Z remote: Counting objects:  96% (2468/2570)        
+2025-05-17T02:45:44.4533390Z remote: Counting objects:  97% (2493/2570)        
+2025-05-17T02:45:44.4534702Z remote: Counting objects:  98% (2519/2570)        
+2025-05-17T02:45:44.4536028Z remote: Counting objects:  99% (2545/2570)        
+2025-05-17T02:45:44.4537514Z remote: Counting objects: 100% (2570/2570)        
+2025-05-17T02:45:44.4538952Z remote: Counting objects: 100% (2570/2570), done.        
+2025-05-17T02:45:44.4540359Z remote: Compressing objects:   0% (1/2031)        
+2025-05-17T02:45:44.4541669Z remote: Compressing objects:   1% (21/2031)        
+2025-05-17T02:45:44.4542987Z remote: Compressing objects:   2% (41/2031)        
+2025-05-17T02:45:44.4544782Z remote: Compressing objects:   3% (61/2031)        
+2025-05-17T02:45:44.4546358Z remote: Compressing objects:   4% (82/2031)        
+2025-05-17T02:45:44.4548997Z remote: Compressing objects:   5% (102/2031)        
+2025-05-17T02:45:44.4593519Z remote: Compressing objects:   6% (122/2031)        
+2025-05-17T02:45:44.4629657Z remote: Compressing objects:   7% (143/2031)        
+2025-05-17T02:45:44.4670487Z remote: Compressing objects:   8% (163/2031)        
+2025-05-17T02:45:44.4701253Z remote: Compressing objects:   9% (183/2031)        
+2025-05-17T02:45:44.4720524Z remote: Compressing objects:  10% (204/2031)        
+2025-05-17T02:45:44.4727048Z remote: Compressing objects:  11% (224/2031)        
+2025-05-17T02:45:44.4772669Z remote: Compressing objects:  12% (244/2031)        
+2025-05-17T02:45:44.4841357Z remote: Compressing objects:  13% (265/2031)        
+2025-05-17T02:45:44.4873272Z remote: Compressing objects:  14% (285/2031)        
+2025-05-17T02:45:44.4936566Z remote: Compressing objects:  15% (305/2031)        
+2025-05-17T02:45:44.4956897Z remote: Compressing objects:  16% (325/2031)        
+2025-05-17T02:45:44.4964595Z remote: Compressing objects:  17% (346/2031)        
+2025-05-17T02:45:44.5001060Z remote: Compressing objects:  18% (366/2031)        
+2025-05-17T02:45:44.5022566Z remote: Compressing objects:  19% (386/2031)        
+2025-05-17T02:45:44.5025086Z remote: Compressing objects:  20% (407/2031)        
+2025-05-17T02:45:44.5047957Z remote: Compressing objects:  21% (427/2031)        
+2025-05-17T02:45:44.5088081Z remote: Compressing objects:  22% (447/2031)        
+2025-05-17T02:45:44.5113625Z remote: Compressing objects:  23% (468/2031)        
+2025-05-17T02:45:44.5127408Z remote: Compressing objects:  24% (488/2031)        
+2025-05-17T02:45:44.5156107Z remote: Compressing objects:  25% (508/2031)        
+2025-05-17T02:45:44.5169323Z remote: Compressing objects:  26% (529/2031)        
+2025-05-17T02:45:44.5219363Z remote: Compressing objects:  27% (549/2031)        
+2025-05-17T02:45:44.5245718Z remote: Compressing objects:  28% (569/2031)        
+2025-05-17T02:45:44.5306349Z remote: Compressing objects:  29% (589/2031)        
+2025-05-17T02:45:44.5347354Z remote: Compressing objects:  30% (610/2031)        
+2025-05-17T02:45:44.5373592Z remote: Compressing objects:  31% (630/2031)        
+2025-05-17T02:45:44.5442622Z remote: Compressing objects:  32% (650/2031)        
+2025-05-17T02:45:44.5476065Z remote: Compressing objects:  33% (671/2031)        
+2025-05-17T02:45:44.5483357Z remote: Compressing objects:  34% (691/2031)        
+2025-05-17T02:45:44.5515343Z remote: Compressing objects:  35% (711/2031)        
+2025-05-17T02:45:44.5533445Z remote: Compressing objects:  36% (732/2031)        
+2025-05-17T02:45:44.5538582Z remote: Compressing objects:  37% (752/2031)        
+2025-05-17T02:45:44.5557319Z remote: Compressing objects:  38% (772/2031)        
+2025-05-17T02:45:44.5574512Z remote: Compressing objects:  39% (793/2031)        
+2025-05-17T02:45:44.5601391Z remote: Compressing objects:  40% (813/2031)        
+2025-05-17T02:45:44.5621642Z remote: Compressing objects:  41% (833/2031)        
+2025-05-17T02:45:44.5710952Z remote: Compressing objects:  42% (854/2031)        
+2025-05-17T02:45:44.5716479Z remote: Compressing objects:  43% (874/2031)        
+2025-05-17T02:45:44.5720992Z remote: Compressing objects:  44% (894/2031)        
+2025-05-17T02:45:44.5727211Z remote: Compressing objects:  45% (914/2031)        
+2025-05-17T02:45:44.5729554Z remote: Compressing objects:  46% (935/2031)        
+2025-05-17T02:45:44.5731828Z remote: Compressing objects:  47% (955/2031)        
+2025-05-17T02:45:44.5734562Z remote: Compressing objects:  48% (975/2031)        
+2025-05-17T02:45:44.5740672Z remote: Compressing objects:  49% (996/2031)        
+2025-05-17T02:45:44.5815926Z remote: Compressing objects:  50% (1016/2031)        
+2025-05-17T02:45:44.5865289Z remote: Compressing objects:  51% (1036/2031)        
+2025-05-17T02:45:44.5886576Z remote: Compressing objects:  52% (1057/2031)        
+2025-05-17T02:45:44.5902817Z remote: Compressing objects:  53% (1077/2031)        
+2025-05-17T02:45:44.5934883Z remote: Compressing objects:  54% (1097/2031)        
+2025-05-17T02:45:44.5967892Z remote: Compressing objects:  55% (1118/2031)        
+2025-05-17T02:45:44.6012913Z remote: Compressing objects:  56% (1138/2031)        
+2025-05-17T02:45:44.6047072Z remote: Compressing objects:  57% (1158/2031)        
+2025-05-17T02:45:44.6083829Z remote: Compressing objects:  58% (1178/2031)        
+2025-05-17T02:45:44.6096180Z remote: Compressing objects:  59% (1199/2031)        
+2025-05-17T02:45:44.6134454Z remote: Compressing objects:  60% (1219/2031)        
+2025-05-17T02:45:44.6152678Z remote: Compressing objects:  61% (1239/2031)        
+2025-05-17T02:45:44.6160092Z remote: Compressing objects:  62% (1260/2031)        
+2025-05-17T02:45:44.6174672Z remote: Compressing objects:  63% (1280/2031)        
+2025-05-17T02:45:44.6224501Z remote: Compressing objects:  64% (1300/2031)        
+2025-05-17T02:45:44.6274525Z remote: Compressing objects:  65% (1321/2031)        
+2025-05-17T02:45:44.6282038Z remote: Compressing objects:  66% (1341/2031)        
+2025-05-17T02:45:44.6291160Z remote: Compressing objects:  67% (1361/2031)        
+2025-05-17T02:45:44.6304512Z remote: Compressing objects:  68% (1382/2031)        
+2025-05-17T02:45:44.6306957Z remote: Compressing objects:  69% (1402/2031)        
+2025-05-17T02:45:44.6318678Z remote: Compressing objects:  70% (1422/2031)        
+2025-05-17T02:45:44.6322786Z remote: Compressing objects:  71% (1443/2031)        
+2025-05-17T02:45:44.6327664Z remote: Compressing objects:  72% (1463/2031)        
+2025-05-17T02:45:44.6334334Z remote: Compressing objects:  73% (1483/2031)        
+2025-05-17T02:45:44.6349720Z remote: Compressing objects:  74% (1503/2031)        
+2025-05-17T02:45:44.6480725Z remote: Compressing objects:  75% (1524/2031)        
+2025-05-17T02:45:44.6504975Z remote: Compressing objects:  76% (1544/2031)        
+2025-05-17T02:45:44.6510991Z remote: Compressing objects:  77% (1564/2031)        
+2025-05-17T02:45:44.6513589Z remote: Compressing objects:  78% (1585/2031)        
+2025-05-17T02:45:44.7221299Z remote: Compressing objects:  79% (1605/2031)        
+2025-05-17T02:45:44.7234753Z remote: Compressing objects:  80% (1625/2031)        
+2025-05-17T02:45:44.7243723Z remote: Compressing objects:  81% (1646/2031)        
+2025-05-17T02:45:44.7277831Z remote: Compressing objects:  82% (1666/2031)        
+2025-05-17T02:45:44.7354455Z remote: Compressing objects:  83% (1686/2031)        
+2025-05-17T02:45:44.7356235Z remote: Compressing objects:  84% (1707/2031)        
+2025-05-17T02:45:44.7392347Z remote: Compressing objects:  85% (1727/2031)        
+2025-05-17T02:45:44.7419772Z remote: Compressing objects:  86% (1747/2031)        
+2025-05-17T02:45:44.7423993Z remote: Compressing objects:  87% (1767/2031)        
+2025-05-17T02:45:44.7427261Z remote: Compressing objects:  88% (1788/2031)        
+2025-05-17T02:45:44.7430015Z remote: Compressing objects:  89% (1808/2031)        
+2025-05-17T02:45:44.7431950Z remote: Compressing objects:  90% (1828/2031)        
+2025-05-17T02:45:44.7434726Z remote: Compressing objects:  91% (1849/2031)        
+2025-05-17T02:45:44.7436203Z remote: Compressing objects:  92% (1869/2031)        
+2025-05-17T02:45:44.7437593Z remote: Compressing objects:  93% (1889/2031)        
+2025-05-17T02:45:44.7440210Z remote: Compressing objects:  94% (1910/2031)        
+2025-05-17T02:45:44.7442702Z remote: Compressing objects:  95% (1930/2031)        
+2025-05-17T02:45:44.7444986Z remote: Compressing objects:  96% (1950/2031)        
+2025-05-17T02:45:44.7447190Z remote: Compressing objects:  97% (1971/2031)        
+2025-05-17T02:45:44.7449111Z remote: Compressing objects:  98% (1991/2031)        
+2025-05-17T02:45:44.7450915Z remote: Compressing objects:  99% (2011/2031)        
+2025-05-17T02:45:44.7452723Z remote: Compressing objects: 100% (2031/2031)        
+2025-05-17T02:45:44.7454616Z remote: Compressing objects: 100% (2031/2031), done.        
+2025-05-17T02:45:44.7519492Z Receiving objects:   0% (1/2570)
+2025-05-17T02:45:44.7520874Z Receiving objects:   1% (26/2570)
+2025-05-17T02:45:44.7678130Z Receiving objects:   2% (52/2570)
+2025-05-17T02:45:44.8519343Z Receiving objects:   3% (78/2570)
+2025-05-17T02:45:44.8529081Z Receiving objects:   4% (103/2570)
+2025-05-17T02:45:44.8532206Z Receiving objects:   5% (129/2570)
+2025-05-17T02:45:44.8534133Z Receiving objects:   6% (155/2570)
+2025-05-17T02:45:44.8535811Z Receiving objects:   7% (180/2570)
+2025-05-17T02:45:44.8537754Z Receiving objects:   8% (206/2570)
+2025-05-17T02:45:44.8560727Z Receiving objects:   9% (232/2570)
+2025-05-17T02:45:44.8581684Z Receiving objects:  10% (257/2570)
+2025-05-17T02:45:44.8677776Z Receiving objects:  11% (283/2570)
+2025-05-17T02:45:45.1344478Z Receiving objects:  12% (309/2570)
+2025-05-17T02:45:45.1364586Z Receiving objects:  13% (335/2570)
+2025-05-17T02:45:45.1366588Z Receiving objects:  14% (360/2570)
+2025-05-17T02:45:45.1382257Z Receiving objects:  15% (386/2570)
+2025-05-17T02:45:45.1414353Z Receiving objects:  16% (412/2570)
+2025-05-17T02:45:45.1429378Z Receiving objects:  17% (437/2570)
+2025-05-17T02:45:45.1456513Z Receiving objects:  18% (463/2570)
+2025-05-17T02:45:45.1503940Z Receiving objects:  19% (489/2570)
+2025-05-17T02:45:45.1528820Z Receiving objects:  20% (514/2570)
+2025-05-17T02:45:45.1546718Z Receiving objects:  21% (540/2570)
+2025-05-17T02:45:45.1585488Z Receiving objects:  22% (566/2570)
+2025-05-17T02:45:45.1602056Z Receiving objects:  23% (592/2570)
+2025-05-17T02:45:45.1616562Z Receiving objects:  24% (617/2570)
+2025-05-17T02:45:45.1624039Z Receiving objects:  25% (643/2570)
+2025-05-17T02:45:45.1644240Z Receiving objects:  26% (669/2570)
+2025-05-17T02:45:45.1657187Z Receiving objects:  27% (694/2570)
+2025-05-17T02:45:45.1674057Z Receiving objects:  28% (720/2570)
+2025-05-17T02:45:45.1686824Z Receiving objects:  29% (746/2570)
+2025-05-17T02:45:45.1705913Z Receiving objects:  30% (771/2570)
+2025-05-17T02:45:45.1737050Z Receiving objects:  31% (797/2570)
+2025-05-17T02:45:45.1762467Z Receiving objects:  32% (823/2570)
+2025-05-17T02:45:45.1871483Z Receiving objects:  33% (849/2570)
+2025-05-17T02:45:45.1984477Z Receiving objects:  34% (874/2570)
+2025-05-17T02:45:45.1998847Z Receiving objects:  35% (900/2570)
+2025-05-17T02:45:45.2027789Z Receiving objects:  36% (926/2570)
+2025-05-17T02:45:45.2037701Z Receiving objects:  37% (951/2570)
+2025-05-17T02:45:45.2063884Z Receiving objects:  38% (977/2570)
+2025-05-17T02:45:45.2076083Z Receiving objects:  39% (1003/2570)
+2025-05-17T02:45:45.2098987Z Receiving objects:  40% (1028/2570)
+2025-05-17T02:45:45.2112825Z Receiving objects:  41% (1054/2570)
+2025-05-17T02:45:45.2128899Z Receiving objects:  42% (1080/2570)
+2025-05-17T02:45:45.2132843Z Receiving objects:  43% (1106/2570)
+2025-05-17T02:45:45.2139067Z Receiving objects:  44% (1131/2570)
+2025-05-17T02:45:45.2145191Z Receiving objects:  45% (1157/2570)
+2025-05-17T02:45:45.2150321Z Receiving objects:  46% (1183/2570)
+2025-05-17T02:45:45.2155834Z Receiving objects:  47% (1208/2570)
+2025-05-17T02:45:45.2163964Z Receiving objects:  48% (1234/2570)
+2025-05-17T02:45:45.2167371Z Receiving objects:  49% (1260/2570)
+2025-05-17T02:45:45.2172627Z Receiving objects:  50% (1285/2570)
+2025-05-17T02:45:45.2177503Z Receiving objects:  51% (1311/2570)
+2025-05-17T02:45:45.2185426Z Receiving objects:  52% (1337/2570)
+2025-05-17T02:45:45.2190990Z Receiving objects:  53% (1363/2570)
+2025-05-17T02:45:45.2197491Z Receiving objects:  54% (1388/2570)
+2025-05-17T02:45:45.2202453Z Receiving objects:  55% (1414/2570)
+2025-05-17T02:45:45.2216238Z Receiving objects:  56% (1440/2570)
+2025-05-17T02:45:45.2218355Z Receiving objects:  57% (1465/2570)
+2025-05-17T02:45:45.2221926Z Receiving objects:  58% (1491/2570)
+2025-05-17T02:45:45.2224984Z Receiving objects:  59% (1517/2570)
+2025-05-17T02:45:45.2227150Z Receiving objects:  60% (1542/2570)
+2025-05-17T02:45:45.2228807Z Receiving objects:  61% (1568/2570)
+2025-05-17T02:45:45.2237777Z Receiving objects:  62% (1594/2570)
+2025-05-17T02:45:45.2254696Z Receiving objects:  63% (1620/2570)
+2025-05-17T02:45:45.2292719Z Receiving objects:  64% (1645/2570)
+2025-05-17T02:45:45.2296169Z Receiving objects:  65% (1671/2570)
+2025-05-17T02:45:45.2311936Z Receiving objects:  66% (1697/2570)
+2025-05-17T02:45:45.2328870Z Receiving objects:  67% (1722/2570)
+2025-05-17T02:45:45.2351593Z Receiving objects:  68% (1748/2570)
+2025-05-17T02:45:45.2371700Z Receiving objects:  69% (1774/2570)
+2025-05-17T02:45:45.2390379Z Receiving objects:  70% (1799/2570)
+2025-05-17T02:45:45.2402166Z Receiving objects:  71% (1825/2570)
+2025-05-17T02:45:45.2501954Z Receiving objects:  72% (1851/2570)
+2025-05-17T02:45:45.2531629Z Receiving objects:  73% (1877/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2550512Z Receiving objects:  74% (1902/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2570020Z Receiving objects:  75% (1928/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2593457Z Receiving objects:  76% (1954/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2617010Z Receiving objects:  77% (1979/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2654100Z Receiving objects:  78% (2005/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2689015Z Receiving objects:  79% (2031/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2715583Z Receiving objects:  80% (2056/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2733966Z Receiving objects:  81% (2082/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2781217Z Receiving objects:  82% (2108/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2816243Z Receiving objects:  83% (2134/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2836884Z Receiving objects:  84% (2159/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2890982Z Receiving objects:  85% (2185/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.2925251Z Receiving objects:  86% (2211/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3482618Z Receiving objects:  87% (2236/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3498222Z Receiving objects:  88% (2262/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3504442Z Receiving objects:  89% (2288/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3514432Z Receiving objects:  90% (2313/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3532246Z Receiving objects:  91% (2339/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3542100Z Receiving objects:  92% (2365/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3584715Z Receiving objects:  93% (2391/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3590196Z Receiving objects:  94% (2416/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3625975Z Receiving objects:  95% (2442/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3705399Z Receiving objects:  96% (2468/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.3708203Z Receiving objects:  97% (2493/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.4151600Z Receiving objects:  98% (2519/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.4155131Z remote: Total 2570 (delta 494), reused 2499 (delta 460), pack-reused 0 (from 0)        
+2025-05-17T02:45:45.4183587Z Receiving objects:  99% (2545/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.4190861Z Receiving objects: 100% (2570/2570), 9.97 MiB | 19.94 MiB/s
+2025-05-17T02:45:45.4193940Z Receiving objects: 100% (2570/2570), 14.86 MiB | 22.22 MiB/s, done.
+2025-05-17T02:45:45.4205712Z Resolving deltas:   0% (0/494)
+2025-05-17T02:45:45.4215874Z Resolving deltas:   1% (5/494)
+2025-05-17T02:45:45.4217373Z Resolving deltas:   2% (10/494)
+2025-05-17T02:45:45.4218838Z Resolving deltas:   3% (15/494)
+2025-05-17T02:45:45.4220286Z Resolving deltas:   4% (20/494)
+2025-05-17T02:45:45.4221718Z Resolving deltas:   5% (25/494)
+2025-05-17T02:45:45.4251103Z Resolving deltas:   6% (30/494)
+2025-05-17T02:45:45.4380536Z Resolving deltas:   7% (35/494)
+2025-05-17T02:45:45.4404160Z Resolving deltas:   8% (40/494)
+2025-05-17T02:45:45.4410310Z Resolving deltas:   9% (45/494)
+2025-05-17T02:45:45.4411381Z Resolving deltas:  10% (50/494)
+2025-05-17T02:45:45.4412378Z Resolving deltas:  11% (55/494)
+2025-05-17T02:45:45.4413584Z Resolving deltas:  12% (60/494)
+2025-05-17T02:45:45.4414775Z Resolving deltas:  13% (65/494)
+2025-05-17T02:45:45.4415962Z Resolving deltas:  14% (70/494)
+2025-05-17T02:45:45.4417055Z Resolving deltas:  15% (75/494)
+2025-05-17T02:45:45.4418079Z Resolving deltas:  16% (80/494)
+2025-05-17T02:45:45.4419057Z Resolving deltas:  17% (84/494)
+2025-05-17T02:45:45.4420049Z Resolving deltas:  18% (89/494)
+2025-05-17T02:45:45.4474654Z Resolving deltas:  19% (94/494)
+2025-05-17T02:45:45.4475699Z Resolving deltas:  20% (99/494)
+2025-05-17T02:45:45.4476548Z Resolving deltas:  21% (104/494)
+2025-05-17T02:45:45.4477366Z Resolving deltas:  22% (109/494)
+2025-05-17T02:45:45.4478231Z Resolving deltas:  23% (114/494)
+2025-05-17T02:45:45.4511158Z Resolving deltas:  24% (119/494)
+2025-05-17T02:45:45.4523957Z Resolving deltas:  25% (124/494)
+2025-05-17T02:45:45.4525044Z Resolving deltas:  26% (129/494)
+2025-05-17T02:45:45.4528201Z Resolving deltas:  27% (134/494)
+2025-05-17T02:45:45.4535544Z Resolving deltas:  28% (139/494)
+2025-05-17T02:45:45.4548444Z Resolving deltas:  29% (144/494)
+2025-05-17T02:45:45.4552816Z Resolving deltas:  30% (149/494)
+2025-05-17T02:45:45.4559810Z Resolving deltas:  31% (154/494)
+2025-05-17T02:45:45.4577987Z Resolving deltas:  32% (159/494)
+2025-05-17T02:45:45.4594774Z Resolving deltas:  33% (164/494)
+2025-05-17T02:45:45.4633966Z Resolving deltas:  34% (168/494)
+2025-05-17T02:45:45.4634912Z Resolving deltas:  35% (173/494)
+2025-05-17T02:45:45.4646411Z Resolving deltas:  36% (178/494)
+2025-05-17T02:45:45.4668113Z Resolving deltas:  37% (183/494)
+2025-05-17T02:45:45.4669014Z Resolving deltas:  38% (188/494)
+2025-05-17T02:45:45.4854780Z Resolving deltas:  39% (193/494)
+2025-05-17T02:45:45.4856579Z Resolving deltas:  40% (198/494)
+2025-05-17T02:45:45.4857195Z Resolving deltas:  41% (203/494)
+2025-05-17T02:45:45.4857774Z Resolving deltas:  42% (208/494)
+2025-05-17T02:45:45.4858357Z Resolving deltas:  43% (213/494)
+2025-05-17T02:45:45.4858936Z Resolving deltas:  44% (218/494)
+2025-05-17T02:45:45.4859546Z Resolving deltas:  45% (223/494)
+2025-05-17T02:45:45.4860135Z Resolving deltas:  46% (228/494)
+2025-05-17T02:45:45.4860732Z Resolving deltas:  47% (233/494)
+2025-05-17T02:45:45.4861335Z Resolving deltas:  48% (238/494)
+2025-05-17T02:45:45.4861920Z Resolving deltas:  49% (243/494)
+2025-05-17T02:45:45.4862506Z Resolving deltas:  50% (247/494)
+2025-05-17T02:45:45.4863244Z Resolving deltas:  51% (252/494)
+2025-05-17T02:45:45.4863849Z Resolving deltas:  52% (257/494)
+2025-05-17T02:45:45.4864431Z Resolving deltas:  53% (262/494)
+2025-05-17T02:45:45.4865023Z Resolving deltas:  54% (267/494)
+2025-05-17T02:45:45.4865602Z Resolving deltas:  55% (272/494)
+2025-05-17T02:45:45.4866197Z Resolving deltas:  56% (277/494)
+2025-05-17T02:45:45.4866787Z Resolving deltas:  57% (282/494)
+2025-05-17T02:45:45.4867364Z Resolving deltas:  58% (287/494)
+2025-05-17T02:45:45.4867948Z Resolving deltas:  59% (292/494)
+2025-05-17T02:45:45.4868531Z Resolving deltas:  60% (297/494)
+2025-05-17T02:45:45.4869119Z Resolving deltas:  61% (302/494)
+2025-05-17T02:45:45.4869693Z Resolving deltas:  62% (307/494)
+2025-05-17T02:45:45.4870261Z Resolving deltas:  63% (312/494)
+2025-05-17T02:45:45.4870818Z Resolving deltas:  64% (317/494)
+2025-05-17T02:45:45.4871384Z Resolving deltas:  65% (322/494)
+2025-05-17T02:45:45.4871941Z Resolving deltas:  66% (327/494)
+2025-05-17T02:45:45.4872508Z Resolving deltas:  67% (331/494)
+2025-05-17T02:45:45.4873204Z Resolving deltas:  68% (336/494)
+2025-05-17T02:45:45.4873783Z Resolving deltas:  69% (341/494)
+2025-05-17T02:45:45.4874363Z Resolving deltas:  70% (346/494)
+2025-05-17T02:45:45.4874933Z Resolving deltas:  71% (351/494)
+2025-05-17T02:45:45.4875514Z Resolving deltas:  72% (356/494)
+2025-05-17T02:45:45.4876379Z Resolving deltas:  73% (361/494)
+2025-05-17T02:45:45.4876952Z Resolving deltas:  74% (366/494)
+2025-05-17T02:45:45.4877514Z Resolving deltas:  75% (371/494)
+2025-05-17T02:45:45.4878082Z Resolving deltas:  76% (376/494)
+2025-05-17T02:45:45.4878649Z Resolving deltas:  77% (381/494)
+2025-05-17T02:45:45.4879218Z Resolving deltas:  78% (386/494)
+2025-05-17T02:45:45.4879784Z Resolving deltas:  79% (391/494)
+2025-05-17T02:45:45.4880346Z Resolving deltas:  80% (396/494)
+2025-05-17T02:45:45.4880918Z Resolving deltas:  81% (401/494)
+2025-05-17T02:45:45.4881486Z Resolving deltas:  82% (406/494)
+2025-05-17T02:45:45.4882058Z Resolving deltas:  83% (411/494)
+2025-05-17T02:45:45.4882621Z Resolving deltas:  84% (415/494)
+2025-05-17T02:45:45.4883326Z Resolving deltas:  85% (421/494)
+2025-05-17T02:45:45.4883898Z Resolving deltas:  86% (426/494)
+2025-05-17T02:45:45.4884490Z Resolving deltas:  87% (430/494)
+2025-05-17T02:45:45.4885083Z Resolving deltas:  88% (435/494)
+2025-05-17T02:45:45.4892996Z Resolving deltas:  89% (440/494)
+2025-05-17T02:45:45.4894106Z Resolving deltas:  90% (445/494)
+2025-05-17T02:45:45.4900591Z Resolving deltas:  91% (450/494)
+2025-05-17T02:45:45.4921574Z Resolving deltas:  92% (455/494)
+2025-05-17T02:45:45.4929062Z Resolving deltas:  93% (460/494)
+2025-05-17T02:45:45.4933860Z Resolving deltas:  94% (465/494)
+2025-05-17T02:45:45.4941575Z Resolving deltas:  95% (470/494)
+2025-05-17T02:45:45.4946363Z Resolving deltas:  96% (475/494)
+2025-05-17T02:45:45.4954661Z Resolving deltas:  97% (480/494)
+2025-05-17T02:45:45.4955671Z Resolving deltas:  98% (485/494)
+2025-05-17T02:45:45.4960881Z Resolving deltas:  99% (490/494)
+2025-05-17T02:45:45.4961511Z Resolving deltas: 100% (494/494)
+2025-05-17T02:45:45.4962095Z Resolving deltas: 100% (494/494), done.
+2025-05-17T02:45:45.5281283Z From https://github.com/JW-Flo/Project-Ignite
+2025-05-17T02:45:45.5282963Z  * [new ref]         c997ec28fedf71afe4093450a732182c4ee864e3 -> origin/main
+2025-05-17T02:45:45.5318599Z ##[endgroup]
+2025-05-17T02:45:45.5321110Z ##[group]Determining the checkout info
+2025-05-17T02:45:45.5324214Z ##[endgroup]
+2025-05-17T02:45:45.5327836Z ##[group]Checking out the ref
+2025-05-17T02:45:45.5328699Z [command]/usr/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2025-05-17T02:45:45.8935454Z Switched to a new branch 'main'
+2025-05-17T02:45:45.8936463Z branch 'main' set up to track 'origin/main'.
+2025-05-17T02:45:45.8938393Z ##[endgroup]
+2025-05-17T02:45:45.8969724Z [command]/usr/bin/git log -1 --format='%H'
+2025-05-17T02:45:45.8996145Z 'c997ec28fedf71afe4093450a732182c4ee864e3'
+2025-05-17T02:45:45.9187696Z ##[group]Run docker/setup-buildx-action@v2
+2025-05-17T02:45:45.9187993Z with:
+2025-05-17T02:45:45.9188176Z   driver: docker-container
+2025-05-17T02:45:45.9188652Z   buildkitd-flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+2025-05-17T02:45:45.9189130Z   install: false
+2025-05-17T02:45:45.9189308Z   use: true
+2025-05-17T02:45:45.9189465Z   cleanup: true
+2025-05-17T02:45:45.9189647Z ##[endgroup]
+2025-05-17T02:45:46.0716973Z ##[group]Docker info
+2025-05-17T02:45:46.0740775Z [command]/usr/bin/docker version
+2025-05-17T02:45:46.9920650Z Client: Docker Engine - Community
+2025-05-17T02:45:46.9921705Z  Version:           28.0.4
+2025-05-17T02:45:46.9922278Z  API version:       1.48
+2025-05-17T02:45:46.9922740Z  Go version:        go1.23.7
+2025-05-17T02:45:46.9923533Z  Git commit:        b8034c0
+2025-05-17T02:45:46.9923919Z  Built:             Tue Mar 25 15:07:16 2025
+2025-05-17T02:45:46.9924352Z  OS/Arch:           linux/amd64
+2025-05-17T02:45:46.9924799Z  Context:           default
+2025-05-17T02:45:46.9925032Z 
+2025-05-17T02:45:46.9925184Z Server: Docker Engine - Community
+2025-05-17T02:45:46.9925570Z  Engine:
+2025-05-17T02:45:46.9925878Z   Version:          28.0.4
+2025-05-17T02:45:46.9926246Z   API version:      1.48 (minimum version 1.24)
+2025-05-17T02:45:46.9926693Z   Go version:       go1.23.7
+2025-05-17T02:45:46.9927062Z   Git commit:       6430e49
+2025-05-17T02:45:46.9927431Z   Built:            Tue Mar 25 15:07:16 2025
+2025-05-17T02:45:46.9927866Z   OS/Arch:          linux/amd64
+2025-05-17T02:45:46.9928229Z   Experimental:     false
+2025-05-17T02:45:46.9928554Z  containerd:
+2025-05-17T02:45:46.9928827Z   Version:          1.7.27
+2025-05-17T02:45:46.9929256Z   GitCommit:        05044ec0a9a75232cad458027ca83437aae3f4da
+2025-05-17T02:45:46.9929680Z  runc:
+2025-05-17T02:45:46.9929956Z   Version:          1.2.5
+2025-05-17T02:45:46.9935534Z   GitCommit:        v1.2.5-0-g59923ef
+2025-05-17T02:45:46.9936020Z  docker-init:
+2025-05-17T02:45:46.9936341Z   Version:          0.19.0
+2025-05-17T02:45:46.9936710Z   GitCommit:        de40ad0
+2025-05-17T02:45:46.9999061Z [command]/usr/bin/docker info
+2025-05-17T02:45:48.9132286Z Client: Docker Engine - Community
+2025-05-17T02:45:48.9132918Z  Version:    28.0.4
+2025-05-17T02:45:48.9137487Z  Context:    default
+2025-05-17T02:45:48.9137806Z  Debug Mode: false
+2025-05-17T02:45:48.9138080Z  Plugins:
+2025-05-17T02:45:48.9138371Z   buildx: Docker Buildx (Docker Inc.)
+2025-05-17T02:45:48.9139082Z     Version:  v0.23.0
+2025-05-17T02:45:48.9139482Z     Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+2025-05-17T02:45:48.9139983Z   compose: Docker Compose (Docker Inc.)
+2025-05-17T02:45:48.9140352Z     Version:  v2.35.1
+2025-05-17T02:45:48.9140742Z     Path:     /usr/libexec/docker/cli-plugins/docker-compose
+2025-05-17T02:45:48.9141091Z 
+2025-05-17T02:45:48.9141197Z Server:
+2025-05-17T02:45:48.9141451Z  Containers: 0
+2025-05-17T02:45:48.9141725Z   Running: 0
+2025-05-17T02:45:48.9141987Z   Paused: 0
+2025-05-17T02:45:48.9142250Z   Stopped: 0
+2025-05-17T02:45:48.9142506Z  Images: 0
+2025-05-17T02:45:48.9142771Z  Server Version: 28.0.4
+2025-05-17T02:45:48.9143278Z  Storage Driver: overlay2
+2025-05-17T02:45:48.9143623Z   Backing Filesystem: extfs
+2025-05-17T02:45:48.9143961Z   Supports d_type: true
+2025-05-17T02:45:48.9144279Z   Using metacopy: false
+2025-05-17T02:45:48.9144581Z   Native Overlay Diff: false
+2025-05-17T02:45:48.9144921Z   userxattr: false
+2025-05-17T02:45:48.9145242Z  Logging Driver: json-file
+2025-05-17T02:45:48.9145593Z  Cgroup Driver: systemd
+2025-05-17T02:45:48.9151032Z  Cgroup Version: 2
+2025-05-17T02:45:48.9151337Z  Plugins:
+2025-05-17T02:45:48.9151604Z   Volume: local
+2025-05-17T02:45:48.9152389Z   Network: bridge host ipvlan macvlan null overlay
+2025-05-17T02:45:48.9153026Z   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2025-05-17T02:45:48.9154886Z  Swarm: inactive
+2025-05-17T02:45:48.9155245Z  Runtimes: io.containerd.runc.v2 runc
+2025-05-17T02:45:48.9156073Z  Default Runtime: runc
+2025-05-17T02:45:48.9156444Z  Init Binary: docker-init
+2025-05-17T02:45:48.9156887Z  containerd version: 05044ec0a9a75232cad458027ca83437aae3f4da
+2025-05-17T02:45:48.9157417Z  runc version: v1.2.5-0-g59923ef
+2025-05-17T02:45:48.9157807Z  init version: de40ad0
+2025-05-17T02:45:48.9158127Z  Security Options:
+2025-05-17T02:45:48.9158432Z   apparmor
+2025-05-17T02:45:48.9158642Z   seccomp
+2025-05-17T02:45:48.9158798Z    Profile: builtin
+2025-05-17T02:45:48.9158972Z   cgroupns
+2025-05-17T02:45:48.9159136Z  Kernel Version: 6.11.0-1014-azure
+2025-05-17T02:45:48.9159364Z  Operating System: Ubuntu 24.04.2 LTS
+2025-05-17T02:45:48.9159596Z  OSType: linux
+2025-05-17T02:45:48.9159762Z  Architecture: x86_64
+2025-05-17T02:45:48.9159940Z  CPUs: 2
+2025-05-17T02:45:48.9160087Z  Total Memory: 7.758GiB
+2025-05-17T02:45:48.9160280Z  Name: fv-az817-775
+2025-05-17T02:45:48.9160478Z  ID: 3c185bab-9bf5-45bf-b0a2-ee913669905d
+2025-05-17T02:45:48.9160722Z  Docker Root Dir: /var/lib/docker
+2025-05-17T02:45:48.9160938Z  Debug Mode: false
+2025-05-17T02:45:48.9161109Z  Username: githubactions
+2025-05-17T02:45:48.9161301Z  Experimental: false
+2025-05-17T02:45:48.9161475Z  Insecure Registries:
+2025-05-17T02:45:48.9165884Z   ::1/128
+2025-05-17T02:45:48.9166087Z   127.0.0.0/8
+2025-05-17T02:45:48.9166281Z  Live Restore Enabled: false
+2025-05-17T02:45:48.9166426Z 
+2025-05-17T02:45:48.9167130Z ##[endgroup]
+2025-05-17T02:45:49.0416229Z ##[group]Buildx version
+2025-05-17T02:45:49.0489575Z [command]/usr/bin/docker buildx version
+2025-05-17T02:45:49.0931162Z github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a
+2025-05-17T02:45:49.0966686Z ##[endgroup]
+2025-05-17T02:45:49.0976155Z ##[group]Creating a new builder instance
+2025-05-17T02:45:49.1775499Z [command]/usr/bin/docker buildx create --name builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0 --driver docker-container --buildkitd-flags --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host --use
+2025-05-17T02:45:49.2496907Z builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0
+2025-05-17T02:45:49.2531468Z ##[endgroup]
+2025-05-17T02:45:49.2532297Z ##[group]Booting builder
+2025-05-17T02:45:49.2566961Z [command]/usr/bin/docker buildx inspect --bootstrap --builder builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0
+2025-05-17T02:45:49.3221295Z #1 [internal] booting buildkit
+2025-05-17T02:45:49.4724842Z #1 pulling image moby/buildkit:buildx-stable-1
+2025-05-17T02:45:52.3469225Z #1 pulling image moby/buildkit:buildx-stable-1 3.0s done
+2025-05-17T02:45:52.4977013Z #1 creating container buildx_buildkit_builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00
+2025-05-17T02:45:53.1314997Z #1 creating container buildx_buildkit_builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00 0.8s done
+2025-05-17T02:45:53.1347786Z #1 DONE 3.8s
+2025-05-17T02:45:53.1821092Z Name:          builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0
+2025-05-17T02:45:53.1821710Z Driver:        docker-container
+2025-05-17T02:45:53.1822114Z Last Activity: 2025-05-17 02:45:49 +0000 UTC
+2025-05-17T02:45:53.1822400Z 
+2025-05-17T02:45:53.1822537Z Nodes:
+2025-05-17T02:45:53.1823029Z Name:                  builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00
+2025-05-17T02:45:53.1828994Z Endpoint:              unix:///var/run/docker.sock
+2025-05-17T02:45:53.1829472Z Status:                running
+2025-05-17T02:45:53.1830262Z BuildKit daemon flags: --allow-insecure-entitlement security.insecure --allow-insecure-entitlement network.host
+2025-05-17T02:45:53.1831093Z BuildKit version:      v0.21.1
+2025-05-17T02:45:53.1831606Z Platforms:             linux/amd64, linux/amd64/v2, linux/amd64/v3, linux/386
+2025-05-17T02:45:53.1832125Z Labels:
+2025-05-17T02:45:53.1832485Z  org.mobyproject.buildkit.worker.executor:         oci
+2025-05-17T02:45:53.1834201Z  org.mobyproject.buildkit.worker.hostname:         54742664a356
+2025-05-17T02:45:53.1834847Z  org.mobyproject.buildkit.worker.network:          host
+2025-05-17T02:45:53.1835471Z  org.mobyproject.buildkit.worker.oci.process-mode: sandbox
+2025-05-17T02:45:53.1836433Z  org.mobyproject.buildkit.worker.selinux.enabled:  false
+2025-05-17T02:45:53.1844722Z  org.mobyproject.buildkit.worker.snapshotter:      overlayfs
+2025-05-17T02:45:53.1845313Z GC Policy rule#0:
+2025-05-17T02:45:53.1845608Z  All:            false
+2025-05-17T02:45:53.1846137Z  Filters:        type==source.local,type==exec.cachemount,type==source.git.checkout
+2025-05-17T02:45:53.1846732Z  Keep Duration:  48h0m0s
+2025-05-17T02:45:53.1847050Z  Max Used Space: 488.3MiB
+2025-05-17T02:45:53.1847350Z GC Policy rule#1:
+2025-05-17T02:45:53.1847636Z  All:            false
+2025-05-17T02:45:53.1847927Z  Keep Duration:  1440h0m0s
+2025-05-17T02:45:53.1848251Z  Reserved Space: 7.451GiB
+2025-05-17T02:45:53.1848574Z  Max Used Space: 54.02GiB
+2025-05-17T02:45:53.1848883Z  Min Free Space: 13.97GiB
+2025-05-17T02:45:53.1849180Z GC Policy rule#2:
+2025-05-17T02:45:53.1850028Z  All:            false
+2025-05-17T02:45:53.1850373Z  Reserved Space: 7.451GiB
+2025-05-17T02:45:53.1850668Z  Max Used Space: 54.02GiB
+2025-05-17T02:45:53.1850979Z  Min Free Space: 13.97GiB
+2025-05-17T02:45:53.1851313Z GC Policy rule#3:
+2025-05-17T02:45:53.1851590Z  All:            true
+2025-05-17T02:45:53.1851890Z  Reserved Space: 7.451GiB
+2025-05-17T02:45:53.1852215Z  Max Used Space: 54.02GiB
+2025-05-17T02:45:53.1857383Z  Min Free Space: 13.97GiB
+2025-05-17T02:45:53.1902492Z ##[endgroup]
+2025-05-17T02:45:53.2889411Z ##[group]Inspect builder
+2025-05-17T02:45:53.2965971Z {
+2025-05-17T02:45:53.2966637Z   "nodes": [
+2025-05-17T02:45:53.2967212Z     {
+2025-05-17T02:45:53.2969413Z       "name": "builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00",
+2025-05-17T02:45:53.2970229Z       "endpoint": "unix:///var/run/docker.sock",
+2025-05-17T02:45:53.2971232Z       "status": "running",
+2025-05-17T02:45:53.2972019Z       "platforms": "linux/amd64,linux/amd64/v2,linux/amd64/v3,linux/386",
+2025-05-17T02:45:53.2972853Z       "labels": {
+2025-05-17T02:45:53.2974106Z         "org.mobyproject.buildkit.worker.executor": "oci",
+2025-05-17T02:45:53.2974898Z         "org.mobyproject.buildkit.worker.hostname": "54742664a356",
+2025-05-17T02:45:53.2975559Z         "org.mobyproject.buildkit.worker.network": "host",
+2025-05-17T02:45:53.2976196Z         "org.mobyproject.buildkit.worker.oci.process-mode": "sandbox",
+2025-05-17T02:45:53.2976872Z         "org.mobyproject.buildkit.worker.selinux.enabled": "false",
+2025-05-17T02:45:53.2977518Z         "org.mobyproject.buildkit.worker.snapshotter": "overlayfs"
+2025-05-17T02:45:53.2978003Z       },
+2025-05-17T02:45:53.2978256Z       "gcPolicy": [
+2025-05-17T02:45:53.2978806Z         {
+2025-05-17T02:45:53.2979058Z           "all": false,
+2025-05-17T02:45:53.2979363Z           "filter": [
+2025-05-17T02:45:53.2979662Z             "type==source.local",
+2025-05-17T02:45:53.2980028Z             "type==exec.cachemount",
+2025-05-17T02:45:53.2980414Z             "type==source.git.checkout"
+2025-05-17T02:45:53.2980801Z           ],
+2025-05-17T02:45:53.2981091Z           "keepDuration": "48h0m0s"
+2025-05-17T02:45:53.2981476Z         },
+2025-05-17T02:45:53.2981725Z         {
+2025-05-17T02:45:53.2981996Z           "all": false,
+2025-05-17T02:45:53.2982337Z           "keepDuration": "1440h0m0s"
+2025-05-17T02:45:53.2982731Z         },
+2025-05-17T02:45:53.2982990Z         {
+2025-05-17T02:45:53.2984463Z           "all": false
+2025-05-17T02:45:53.2984813Z         },
+2025-05-17T02:45:53.2985073Z         {
+2025-05-17T02:45:53.2985328Z           "all": true
+2025-05-17T02:45:53.2985597Z         }
+2025-05-17T02:45:53.2985843Z       ]
+2025-05-17T02:45:53.2986094Z     }
+2025-05-17T02:45:53.2986363Z   ],
+2025-05-17T02:45:53.2987882Z   "name": "builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0",
+2025-05-17T02:45:53.2988414Z   "driver": "docker-container",
+2025-05-17T02:45:53.2988825Z   "lastActivity": "2025-05-17T02:45:49.000Z"
+2025-05-17T02:45:53.2989235Z }
+2025-05-17T02:45:53.2989774Z ##[endgroup]
+2025-05-17T02:45:53.2990335Z ##[group]BuildKit version
+2025-05-17T02:45:53.5660200Z builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00: moby/buildkit:buildx-stable-1 => buildkitd github.com/moby/buildkit v0.21.1 66735c67040bc80e6ed104f451683e094030a4e1
+2025-05-17T02:45:53.5661978Z ##[endgroup]
+2025-05-17T02:45:53.5818166Z ##[group]Run docker/build-push-action@v4
+2025-05-17T02:45:53.5818443Z with:
+2025-05-17T02:45:53.5818607Z   context: .
+2025-05-17T02:45:53.5818774Z   file: ./docker/Dockerfile
+2025-05-17T02:45:53.5818981Z   push: false
+2025-05-17T02:45:53.5819155Z   tags: project-ignite:latest
+2025-05-17T02:45:53.5819378Z   cache-from: type=gha
+2025-05-17T02:45:53.5819568Z   cache-to: type=gha,mode=max
+2025-05-17T02:45:53.5819786Z   load: false
+2025-05-17T02:45:53.5819938Z   no-cache: false
+2025-05-17T02:45:53.5820107Z   pull: false
+2025-05-17T02:45:53.5820390Z   github-token: ***
+2025-05-17T02:45:53.5820565Z ##[endgroup]
+2025-05-17T02:45:53.7265663Z ##[group]GitHub Actions runtime token ACs
+2025-05-17T02:45:53.7273752Z refs/heads/main: read/write
+2025-05-17T02:45:53.7274391Z ##[endgroup]
+2025-05-17T02:45:53.7275412Z ##[group]Docker info
+2025-05-17T02:45:53.7356101Z [command]/usr/bin/docker version
+2025-05-17T02:45:53.7565252Z Client: Docker Engine - Community
+2025-05-17T02:45:53.7578251Z  Version:           28.0.4
+2025-05-17T02:45:53.7578637Z  API version:       1.48
+2025-05-17T02:45:53.7578999Z  Go version:        go1.23.7
+2025-05-17T02:45:53.7579379Z  Git commit:        b8034c0
+2025-05-17T02:45:53.7579775Z  Built:             Tue Mar 25 15:07:16 2025
+2025-05-17T02:45:53.7580190Z  OS/Arch:           linux/amd64
+2025-05-17T02:45:53.7580559Z  Context:           default
+2025-05-17T02:45:53.7580782Z 
+2025-05-17T02:45:53.7580960Z Server: Docker Engine - Community
+2025-05-17T02:45:53.7581330Z  Engine:
+2025-05-17T02:45:53.7581613Z   Version:          28.0.4
+2025-05-17T02:45:53.7581988Z   API version:      1.48 (minimum version 1.24)
+2025-05-17T02:45:53.7582433Z   Go version:       go1.23.7
+2025-05-17T02:45:53.7582781Z   Git commit:       6430e49
+2025-05-17T02:45:53.7583426Z   Built:            Tue Mar 25 15:07:16 2025
+2025-05-17T02:45:53.7583848Z   OS/Arch:          linux/amd64
+2025-05-17T02:45:53.7584235Z   Experimental:     false
+2025-05-17T02:45:53.7584552Z  containerd:
+2025-05-17T02:45:53.7584826Z   Version:          1.7.27
+2025-05-17T02:45:53.7585254Z   GitCommit:        05044ec0a9a75232cad458027ca83437aae3f4da
+2025-05-17T02:45:53.7585729Z  runc:
+2025-05-17T02:45:53.7586010Z   Version:          1.2.5
+2025-05-17T02:45:53.7586363Z   GitCommit:        v1.2.5-0-g59923ef
+2025-05-17T02:45:53.7586757Z  docker-init:
+2025-05-17T02:45:53.7587046Z   Version:          0.19.0
+2025-05-17T02:45:53.7587396Z   GitCommit:        de40ad0
+2025-05-17T02:45:53.7620196Z [command]/usr/bin/docker info
+2025-05-17T02:45:53.8145617Z Client: Docker Engine - Community
+2025-05-17T02:45:53.8153817Z  Version:    28.0.4
+2025-05-17T02:45:53.8154120Z  Context:    default
+2025-05-17T02:45:53.8154398Z  Debug Mode: false
+2025-05-17T02:45:53.8154687Z  Plugins:
+2025-05-17T02:45:53.8154962Z   buildx: Docker Buildx (Docker Inc.)
+2025-05-17T02:45:53.8155336Z     Version:  v0.23.0
+2025-05-17T02:45:53.8155721Z     Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+2025-05-17T02:45:53.8156214Z   compose: Docker Compose (Docker Inc.)
+2025-05-17T02:45:53.8156605Z     Version:  v2.35.1
+2025-05-17T02:45:53.8156990Z     Path:     /usr/libexec/docker/cli-plugins/docker-compose
+2025-05-17T02:45:53.8157335Z 
+2025-05-17T02:45:53.8157440Z Server:
+2025-05-17T02:45:53.8157670Z  Containers: 1
+2025-05-17T02:45:53.8157936Z   Running: 1
+2025-05-17T02:45:53.8158188Z   Paused: 0
+2025-05-17T02:45:53.8158441Z   Stopped: 0
+2025-05-17T02:45:53.8158684Z  Images: 1
+2025-05-17T02:45:53.8158955Z  Server Version: 28.0.4
+2025-05-17T02:45:53.8159270Z  Storage Driver: overlay2
+2025-05-17T02:45:53.8159614Z   Backing Filesystem: extfs
+2025-05-17T02:45:53.8159959Z   Supports d_type: true
+2025-05-17T02:45:53.8160270Z   Using metacopy: false
+2025-05-17T02:45:53.8160587Z   Native Overlay Diff: false
+2025-05-17T02:45:53.8160919Z   userxattr: false
+2025-05-17T02:45:53.8161222Z  Logging Driver: json-file
+2025-05-17T02:45:53.8161549Z  Cgroup Driver: systemd
+2025-05-17T02:45:53.8161849Z  Cgroup Version: 2
+2025-05-17T02:45:53.8162122Z  Plugins:
+2025-05-17T02:45:53.8162362Z   Volume: local
+2025-05-17T02:45:53.8165829Z   Network: bridge host ipvlan macvlan null overlay
+2025-05-17T02:45:53.8166556Z   Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+2025-05-17T02:45:53.8167122Z  Swarm: inactive
+2025-05-17T02:45:53.8167447Z  Runtimes: io.containerd.runc.v2 runc
+2025-05-17T02:45:53.8167837Z  Default Runtime: runc
+2025-05-17T02:45:53.8168159Z  Init Binary: docker-init
+2025-05-17T02:45:53.8168639Z  containerd version: 05044ec0a9a75232cad458027ca83437aae3f4da
+2025-05-17T02:45:53.8169113Z  runc version: v1.2.5-0-g59923ef
+2025-05-17T02:45:53.8169461Z  init version: de40ad0
+2025-05-17T02:45:53.8169744Z  Security Options:
+2025-05-17T02:45:53.8170016Z   apparmor
+2025-05-17T02:45:53.8170265Z   seccomp
+2025-05-17T02:45:53.8170530Z    Profile: builtin
+2025-05-17T02:45:53.8170810Z   cgroupns
+2025-05-17T02:45:53.8171096Z  Kernel Version: 6.11.0-1014-azure
+2025-05-17T02:45:53.8171490Z  Operating System: Ubuntu 24.04.2 LTS
+2025-05-17T02:45:53.8171859Z  OSType: linux
+2025-05-17T02:45:53.8172150Z  Architecture: x86_64
+2025-05-17T02:45:53.8172441Z  CPUs: 2
+2025-05-17T02:45:53.8172719Z  Total Memory: 7.758GiB
+2025-05-17T02:45:53.8173041Z  Name: fv-az817-775
+2025-05-17T02:45:53.8174014Z  ID: 3c185bab-9bf5-45bf-b0a2-ee913669905d
+2025-05-17T02:45:53.8174455Z  Docker Root Dir: /var/lib/docker
+2025-05-17T02:45:53.8174845Z  Debug Mode: false
+2025-05-17T02:45:53.8175161Z  Username: githubactions
+2025-05-17T02:45:53.8175533Z  Experimental: false
+2025-05-17T02:45:53.8175862Z  Insecure Registries:
+2025-05-17T02:45:53.8176213Z   ::1/128
+2025-05-17T02:45:53.8176464Z   127.0.0.0/8
+2025-05-17T02:45:53.8176753Z  Live Restore Enabled: false
+2025-05-17T02:45:53.8176970Z 
+2025-05-17T02:45:53.8178780Z ##[endgroup]
+2025-05-17T02:45:53.8179388Z ##[group]Proxy configuration
+2025-05-17T02:45:53.8179745Z No proxy configuration found
+2025-05-17T02:45:53.8180332Z ##[endgroup]
+2025-05-17T02:45:53.8663840Z ##[group]Buildx version
+2025-05-17T02:45:53.8694860Z [command]/usr/bin/docker buildx version
+2025-05-17T02:45:53.9114223Z github.com/docker/buildx v0.23.0 28c90eadc4c12cc78155ad59ca5f486220241d2a
+2025-05-17T02:45:53.9146833Z ##[endgroup]
+2025-05-17T02:45:54.4217490Z [command]/usr/bin/docker buildx build --cache-from type=gha --cache-to type=gha,mode=max --file ./docker/Dockerfile --iidfile /tmp/docker-actions-toolkit-QIw6dJ/iidfile --tag project-ignite:latest --metadata-file /tmp/docker-actions-toolkit-QIw6dJ/metadata-file .
+2025-05-17T02:45:54.7532714Z #0 building with "builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0" instance using docker-container driver
+2025-05-17T02:45:54.7533857Z 
+2025-05-17T02:45:54.7534422Z #1 [internal] load build definition from Dockerfile
+2025-05-17T02:45:54.7535987Z #1 transferring dockerfile: 448B done
+2025-05-17T02:45:54.7536270Z #1 DONE 0.0s
+2025-05-17T02:45:54.7536398Z 
+2025-05-17T02:45:54.7536577Z #2 [auth] library/python:pull token for registry-1.docker.io
+2025-05-17T02:45:54.7536922Z #2 DONE 0.0s
+2025-05-17T02:45:54.7537039Z 
+2025-05-17T02:45:54.7537253Z #3 [internal] load metadata for docker.io/library/python:3.10-slim
+2025-05-17T02:45:54.9952542Z #3 DONE 0.4s
+2025-05-17T02:45:55.0965125Z 
+2025-05-17T02:45:55.0965798Z #4 [internal] load .dockerignore
+2025-05-17T02:45:55.0969358Z #4 transferring context: 2B done
+2025-05-17T02:45:55.0975103Z #4 DONE 0.0s
+2025-05-17T02:45:55.0975279Z 
+2025-05-17T02:45:55.0975862Z #5 [1/7] FROM docker.io/library/python:3.10-slim@sha256:e1013c40c02a7875ae30c78c69b68ea7bee31713e8ac1c0f5469c1206258d6d7
+2025-05-17T02:45:55.0977238Z #5 resolve docker.io/library/python:3.10-slim@sha256:e1013c40c02a7875ae30c78c69b68ea7bee31713e8ac1c0f5469c1206258d6d7 done
+2025-05-17T02:45:55.0978134Z #5 DONE 0.0s
+2025-05-17T02:45:55.0978304Z 
+2025-05-17T02:45:55.0978513Z #6 importing cache manifest from gha:13975680307488508570
+2025-05-17T02:45:55.0979009Z #6 DONE 0.1s
+2025-05-17T02:45:55.0993029Z 
+2025-05-17T02:45:55.0993356Z #7 [internal] load build context
+2025-05-17T02:45:55.2226174Z #7 transferring context: 33.06kB 0.0s done
+2025-05-17T02:45:55.2231991Z #7 DONE 0.0s
+2025-05-17T02:45:55.2233430Z 
+2025-05-17T02:45:55.2233608Z #8 [2/7] WORKDIR /app
+2025-05-17T02:45:55.2233910Z #8 CACHED
+2025-05-17T02:45:55.2234071Z 
+2025-05-17T02:45:55.2234467Z #9 [3/7] COPY requirements.txt .
+2025-05-17T02:45:55.2235211Z #9 CACHED
+2025-05-17T02:45:55.2235354Z 
+2025-05-17T02:45:55.2235523Z #10 [4/7] RUN pip install --no-cache-dir -r requirements.txt
+2025-05-17T02:45:55.2236727Z #10 sha256:5d66a27e733ac4f56a6f6669d01e6aed278e72919f683a73238cdf2ef90dbd31 249B / 249B 0.0s done
+2025-05-17T02:45:55.3279435Z #10 sha256:a6cbff08fb73a08ceeee71a6f8a065f1257969ab5c843748f4663cee44ca4484 179B / 179B 0.0s done
+2025-05-17T02:45:55.3281906Z #10 sha256:61024ab921a8f71c7f9b2cb8afaddc8d656dc89a39ed363eb65809406e116697 92B / 92B 0.1s done
+2025-05-17T02:45:55.3282966Z #10 sha256:9cd72f8c7683171a066fca53828bebbd1bb85245bb6c9bd1e10bf6d9758bf2c7 2.10MB / 15.38MB 0.2s
+2025-05-17T02:45:55.4752971Z #10 sha256:5cc9686f2aa90263bd53a0ee75237af8b54c307b443c5185997aaab2bfa07f73 15.65MB / 15.65MB 0.3s done
+2025-05-17T02:45:55.4756728Z #10 sha256:5e3380732964a9fa4272d7d4ab36e5b9f132b331f3bdbb80c3b6e55fb8cc6be2 3.51MB / 3.51MB 0.2s done
+2025-05-17T02:45:55.4758056Z #10 sha256:254e724d77862dc53abbd3bf0e27f9d2f64293909cdd3d0aad6a8fe5a6680659 2.10MB / 28.23MB 0.2s
+2025-05-17T02:45:55.6300954Z #10 sha256:9cd72f8c7683171a066fca53828bebbd1bb85245bb6c9bd1e10bf6d9758bf2c7 10.49MB / 15.38MB 0.5s
+2025-05-17T02:45:55.6302180Z #10 sha256:254e724d77862dc53abbd3bf0e27f9d2f64293909cdd3d0aad6a8fe5a6680659 18.87MB / 28.23MB 0.3s
+2025-05-17T02:45:55.7778440Z #10 sha256:9cd72f8c7683171a066fca53828bebbd1bb85245bb6c9bd1e10bf6d9758bf2c7 15.38MB / 15.38MB 0.6s done
+2025-05-17T02:45:55.7781736Z #10 sha256:254e724d77862dc53abbd3bf0e27f9d2f64293909cdd3d0aad6a8fe5a6680659 28.23MB / 28.23MB 0.4s done
+2025-05-17T02:45:55.7782791Z #10 extracting sha256:254e724d77862dc53abbd3bf0e27f9d2f64293909cdd3d0aad6a8fe5a6680659
+2025-05-17T02:45:56.7902923Z #10 extracting sha256:254e724d77862dc53abbd3bf0e27f9d2f64293909cdd3d0aad6a8fe5a6680659 1.1s done
+2025-05-17T02:45:56.7903884Z #10 DONE 1.7s
+2025-05-17T02:45:56.8974773Z 
+2025-05-17T02:45:56.8976087Z #10 [4/7] RUN pip install --no-cache-dir -r requirements.txt
+2025-05-17T02:45:56.8977196Z #10 extracting sha256:5e3380732964a9fa4272d7d4ab36e5b9f132b331f3bdbb80c3b6e55fb8cc6be2 0.1s done
+2025-05-17T02:45:56.8977989Z #10 DONE 1.8s
+2025-05-17T02:45:57.0483946Z 
+2025-05-17T02:45:57.0486470Z #10 [4/7] RUN pip install --no-cache-dir -r requirements.txt
+2025-05-17T02:45:57.0492119Z #10 extracting sha256:5cc9686f2aa90263bd53a0ee75237af8b54c307b443c5185997aaab2bfa07f73
+2025-05-17T02:45:57.4012011Z #10 extracting sha256:5cc9686f2aa90263bd53a0ee75237af8b54c307b443c5185997aaab2bfa07f73 0.5s done
+2025-05-17T02:45:57.4012790Z #10 DONE 2.3s
+2025-05-17T02:45:57.5673210Z 
+2025-05-17T02:45:57.5680664Z #10 [4/7] RUN pip install --no-cache-dir -r requirements.txt
+2025-05-17T02:45:57.5681509Z #10 extracting sha256:5d66a27e733ac4f56a6f6669d01e6aed278e72919f683a73238cdf2ef90dbd31 done
+2025-05-17T02:45:57.5683478Z #10 extracting sha256:61024ab921a8f71c7f9b2cb8afaddc8d656dc89a39ed363eb65809406e116697 done
+2025-05-17T02:45:57.5685070Z #10 extracting sha256:a6cbff08fb73a08ceeee71a6f8a065f1257969ab5c843748f4663cee44ca4484 done
+2025-05-17T02:45:57.5686714Z #10 extracting sha256:9cd72f8c7683171a066fca53828bebbd1bb85245bb6c9bd1e10bf6d9758bf2c7
+2025-05-17T02:45:58.2128212Z #10 extracting sha256:9cd72f8c7683171a066fca53828bebbd1bb85245bb6c9bd1e10bf6d9758bf2c7 0.8s done
+2025-05-17T02:45:58.2129039Z #10 DONE 3.1s
+2025-05-17T02:45:58.3646310Z 
+2025-05-17T02:45:58.3646773Z #11 [5/7] COPY cloud-functions/ ./cloud-functions/
+2025-05-17T02:45:59.0720211Z #11 DONE 0.9s
+2025-05-17T02:45:59.1850448Z 
+2025-05-17T02:45:59.1850933Z #12 [6/7] COPY scripts/ ./scripts/
+2025-05-17T02:45:59.1851384Z #12 DONE 0.0s
+2025-05-17T02:45:59.1851561Z 
+2025-05-17T02:45:59.1851721Z #13 [7/7] COPY dashboard/ ./dashboard/
+2025-05-17T02:45:59.1852062Z #13 DONE 0.0s
+2025-05-17T02:45:59.1852184Z 
+2025-05-17T02:45:59.1852290Z #14 exporting to GitHub Actions Cache
+2025-05-17T02:45:59.1853023Z #14 preparing build cache for export
+2025-05-17T02:45:59.1899847Z #14 writing layer sha256:28bd97dca32f9ad7b54944de79b3329b0fe49c62b6c5f8b4af91e672c30983af
+2025-05-17T02:45:59.3495094Z #14 writing layer sha256:28bd97dca32f9ad7b54944de79b3329b0fe49c62b6c5f8b4af91e672c30983af 0.2s done
+2025-05-17T02:45:59.4510882Z #14 writing layer sha256:ddc787e9638c8418794d5778d4659968486c43e733d2b01eb4a166225acd3ac3
+2025-05-17T02:45:59.5888177Z #14 writing layer sha256:ddc787e9638c8418794d5778d4659968486c43e733d2b01eb4a166225acd3ac3 0.1s done
+2025-05-17T02:45:59.5891040Z #14 writing layer sha256:e29df9eeb55a478673914737ed2368155cf5fb2d9aee9f658cf8497e24f84cc8 0.1s done
+2025-05-17T02:45:59.7063382Z #14 preparing build cache for export 0.6s done
+2025-05-17T02:45:59.7063955Z #14 DONE 0.6s
+2025-05-17T02:45:59.7252445Z 
+2025-05-17T02:45:59.7253647Z #15 resolving provenance for metadata file
+2025-05-17T02:45:59.7254793Z #15 DONE 0.0s
+2025-05-17T02:45:59.7256008Z WARNING: No output specified with docker-container driver. Build result will only remain in the build cache. To push result image into registry use --push or to load image into docker use --load
+2025-05-17T02:45:59.7347670Z ##[group]Metadata
+2025-05-17T02:45:59.7350011Z {
+2025-05-17T02:45:59.7351341Z   "buildx.build.provenance": {
+2025-05-17T02:45:59.7355900Z     "buildType": "https://mobyproject.org/buildkit@v1",
+2025-05-17T02:45:59.7356374Z     "materials": [
+2025-05-17T02:45:59.7356654Z       {
+2025-05-17T02:45:59.7357048Z         "uri": "pkg:docker/python@3.10-slim?platform=linux%2Famd64",
+2025-05-17T02:45:59.7357549Z         "digest": {
+2025-05-17T02:45:59.7358050Z           "sha256": "e1013c40c02a7875ae30c78c69b68ea7bee31713e8ac1c0f5469c1206258d6d7"
+2025-05-17T02:45:59.7358596Z         }
+2025-05-17T02:45:59.7358835Z       }
+2025-05-17T02:45:59.7359048Z     ],
+2025-05-17T02:45:59.7359283Z     "invocation": {
+2025-05-17T02:45:59.7359561Z       "configSource": {},
+2025-05-17T02:45:59.7359888Z       "parameters": {
+2025-05-17T02:45:59.7360196Z         "frontend": "dockerfile.v0",
+2025-05-17T02:45:59.7360561Z         "locals": [
+2025-05-17T02:45:59.7360808Z           {
+2025-05-17T02:45:59.7361090Z             "name": "context"
+2025-05-17T02:45:59.7361393Z           },
+2025-05-17T02:45:59.7361630Z           {
+2025-05-17T02:45:59.7361870Z             "name": "dockerfile"
+2025-05-17T02:45:59.7362183Z           }
+2025-05-17T02:45:59.7362412Z         ]
+2025-05-17T02:45:59.7362630Z       },
+2025-05-17T02:45:59.7362860Z       "environment": {
+2025-05-17T02:45:59.7363642Z         "platform": "linux/amd64"
+2025-05-17T02:45:59.7363988Z       }
+2025-05-17T02:45:59.7364223Z     }
+2025-05-17T02:45:59.7364461Z   },
+2025-05-17T02:45:59.7365373Z   "buildx.build.ref": "builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0/builder-baf275a1-3e9e-4c90-beb9-1636d150dbf00/aqli78kzvbewpas8vhf9n5f1k"
+2025-05-17T02:45:59.7366340Z }
+2025-05-17T02:45:59.7366816Z ##[endgroup]
+2025-05-17T02:45:59.7474688Z Post job cleanup.
+2025-05-17T02:45:59.8808576Z ##[group]Removing temp folder /tmp/docker-actions-toolkit-QIw6dJ
+2025-05-17T02:45:59.8823037Z ##[endgroup]
+2025-05-17T02:45:59.8931272Z Post job cleanup.
+2025-05-17T02:46:00.0644079Z ##[group]Removing builder
+2025-05-17T02:46:00.1519469Z [command]/usr/bin/docker buildx rm builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0
+2025-05-17T02:46:00.6642226Z builder-baf275a1-3e9e-4c90-beb9-1636d150dbf0 removed
+2025-05-17T02:46:00.6672756Z ##[endgroup]
+2025-05-17T02:46:00.6673818Z ##[group]Cleaning up certificates
+2025-05-17T02:46:00.6686074Z ##[endgroup]
+2025-05-17T02:46:00.6833855Z Post job cleanup.
+2025-05-17T02:46:00.7560355Z [command]/usr/bin/git version
+2025-05-17T02:46:00.7599429Z git version 2.49.0
+2025-05-17T02:46:00.7645825Z Temporarily overriding HOME='/home/runner/work/_temp/92ca5d19-a260-4aa9-a4a6-5d1a1c6119c9' before making global git config changes
+2025-05-17T02:46:00.7647639Z Adding repository directory to the temporary git global config as a safe directory
+2025-05-17T02:46:00.7649829Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Project-Ignite/Project-Ignite
+2025-05-17T02:46:00.7684366Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2025-05-17T02:46:00.7717331Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2025-05-17T02:46:00.8035443Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2025-05-17T02:46:00.8072686Z http.https://github.com/.extraheader
+2025-05-17T02:46:00.8094121Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2025-05-17T02:46:00.8126800Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2025-05-17T02:46:00.8474718Z Cleaning up orphan processes

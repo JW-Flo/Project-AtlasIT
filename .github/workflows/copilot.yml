@@ -1,0 +1,32 @@
+version: 1
+suggestions:
+  enable: true
+  languages:
+    toml: true
+    javascript: true
+    yaml: true
+    bash: true
+  paths:
+    include:
+      - wrangler.toml
+      - index.js
+      - scripts/generate_cf_token.sh
+      - .github/workflows/cloudflare-workers.yml
+    exclude:
+      - infra/**
+      - ai/**
+      - cloud-functions/**
+      - src/**
+      - .github/workflows/sandbox-pipeline.yml
+project: project-ignite
+prompts:
+  - name: cf-token
+    description: "Generate a Cloudflare API token scoped for Worker script read/write"
+  - name: wrangler-config
+    description: "Create a wrangler.toml with dispatch namespace binding"
+  - name: cf-dispatch-worker
+    description: "Implement index.js dispatch Worker forwarding requests"
+  - name: cf-deploy-workflow
+    description: "Generate GitHub Actions YAML to install Wrangler and publish Worker"
+  - name: smoke-test-worker
+    description: "Write a shell script to curl the Worker URL and verify HTTP 200"

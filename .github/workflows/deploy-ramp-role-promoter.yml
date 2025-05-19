@@ -39,3 +39,11 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars \
                RAMP_CLIENT_ID=${{ secrets.RAMP_CLIENT_ID }},RAMP_CLIENT_SECRET=${{ secrets.RAMP_CLIENT_SECRET }}
+
+      - name: Log success
+        if: success()
+        run: echo "✅ Ramp Role Promoter deployed successfully."
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ Failed to deploy Ramp Role Promoter. Check logs for details."

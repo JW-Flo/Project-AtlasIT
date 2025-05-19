@@ -1,0 +1,37 @@
+name = "ignite-mcp-idp"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+# KV Namespace for client registry
+[[kv_namespaces]]
+binding = "CLIENTS"
+id = "9dac31a00856439e96a8ad5dfbf560fc"
+preview_id = "9dac31a00856439e96a8ad5dfbf560fc"
+
+[env.production]
+route = "idp.project-ignite.kd8jc7v8cd.workers.dev/*"
+usage_model = "bundled"
+
+# Environment variables
+[vars]
+ENVIRONMENT = "development"
+
+# Security settings
+[vars]
+JWT_SECRET = ""  # Set this via wrangler secret
+MCP_MOBILE_SECRET = ""  # Set this via wrangler secret
+
+# SSL/TLS settings
+[env.production.ssl]
+mode = "strict"
+min_version = "TLSv1.2"
+
+# Observability
+[env.production.logs]
+enabled = true
+
+# Rate limiting
+[env.production.rate_limit]
+requests = 100
+period = 60 

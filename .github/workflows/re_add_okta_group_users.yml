@@ -24,4 +24,12 @@ jobs:
           GROUP_ID: ${{ secrets.GROUP_ID }}
           START_TIME: ${{ secrets.START_TIME }}
           END_TIME: ${{ secrets.END_TIME }}
-        run: scripts/re_add_okta_group_users.py
+        run: python scripts/re_add_okta_group_users.py
+
+      - name: Log success
+        if: success()
+        run: echo "✅ Successfully re-added Okta users."
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ Failed to re-add Okta users. Check logs for details."

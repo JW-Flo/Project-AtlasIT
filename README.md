@@ -21,6 +21,9 @@ Set these in your local `.env` (for local dev) and as GitHub Secrets (for CI/CD)
 - `WRANGLER_API_TOKEN`      # API token for Wrangler publish
 - `CF_GLOBAL_API_KEY`       # (for token creation script)
 - `CF_ACCOUNT_EMAIL`        # (for token creation script)
+- `MCP_HOST`                # Base URL of your MCP context-retrieval endpoint
+- `DATTO_EDR_TOKEN`         # API token for Datto EDR Cloud Function
+- `ROCKETCYBER_API_TOKEN`   # API token for RocketCyber Cloud Function
 
 See `.env.example` for a template.
 
@@ -109,3 +112,31 @@ scripts/smoke-test-worker.sh   # Post-deploy smoke test
 - `infra/terraform/aws/` — AWS real infra
 - `infra/terraform/gcp/` — GCP mock infra
 - `docker/` — (optional, for non-Worker services only)
+
+---
+
+## 9. Python Cloud Functions (GCP)
+This project includes a Python-based Cloud Function (`ingest_alerts`) for alert ingestion.
+
+1. Install dependencies:
+```sh
+pip install -r cloud_functions/requirements.txt
+```
+
+2. Ensure the following env vars are set (GCP Console or `gcloud functions deploy`):
+- `DATTO_EDR_TOKEN`
+- `ROCKETCYBER_API_TOKEN`
+
+3. Deploy the function:
+```sh
+gcloud functions deploy ingest_alerts \
+  --runtime python39 \
+  --trigger-http \
+  --entry-point ingest_alerts \
+  --allow-unauthenticated
+```
+
+4. Test via HTTP:
+```sh
+curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/ingest_alerts
+```

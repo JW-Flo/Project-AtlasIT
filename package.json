@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "pytest cloud-functions/test_*.py",
-    "lint": "eslint . && pylint cloud-functions/ scripts/"
+    "lint": "eslint . && pylint cloud-functions/ scripts/",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "start": "wrangler dev"
   },
   "repository": {
     "type": "git",
@@ -20,7 +23,15 @@
   "homepage": "https://github.com/JW-Flo/Project-Ignite#readme",
   "devDependencies": {
     "eslint": "^9.26.0",
-    "prettier": "^3.5.3"
+    "prettier": "^3.5.3",
+    "wrangler": "^4.15.2"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20240320.1",
+    "@modelcontextprotocol/sdk": "^1.11.4",
+    "hono": "^4.7.10",
+    "itty-router": "^4.0.27",
+    "node-fetch": "^3.3.2"
   },
   "type": "module"
 }

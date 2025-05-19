@@ -3,6 +3,8 @@ import json
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 import sys
 import datetime
+import requests
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from cloud_functions.ingest_alerts import main as ingest_alerts
@@ -21,6 +23,9 @@ GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID_SANDBOX")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY_SANDBOX")
 AWS_REGION = os.environ.get("AWS_REGION")
+LIVE_DATA_URL = os.environ.get(
+    "IGNITE_LIVE_API"
+)  # e.g., https://ignite-api.example.com
 
 # Sample data for demo purposes
 SAMPLE_ALERTS = [
@@ -32,7 +37,7 @@ SAMPLE_ALERTS = [
         "title": "Suspicious PowerShell Activity",
         "description": "PowerShell command with base64 encoded payload detected",
         "affected_device": "DESKTOP-8A7B2C3",
-        "status": "open"
+        "status": "open",
     },
     {
         "id": "alert-002",
@@ -42,7 +47,7 @@ SAMPLE_ALERTS = [
         "title": "Multiple Failed Login Attempts",
         "description": "10+ failed login attempts detected from IP 192.168.1.155",
         "affected_device": "LAPTOP-9X8Y7Z6",
-        "status": "open"
+        "status": "open",
     },
     {
         "id": "alert-003",
@@ -52,8 +57,8 @@ SAMPLE_ALERTS = [
         "title": "Potential Ransomware Activity",
         "description": "Multiple file encryption operations detected on network share",
         "affected_device": "SERVER-DC01",
-        "status": "investigating"
-    }
+        "status": "investigating",
+    },
 ]
 
 # Sample contractor data for demo purposes
@@ -68,7 +73,7 @@ SAMPLE_CONTRACTORS = [
         "end_date": "2025-06-15",
         "access_level": "Standard",
         "status": "Active",
-        "days_remaining": 37
+        "days_remaining": 37,
     },
     {
         "id": "C002",
@@ -80,7 +85,7 @@ SAMPLE_CONTRACTORS = [
         "end_date": "2025-05-15",
         "access_level": "Elevated",
         "status": "Active",
-        "days_remaining": 6
+        "days_remaining": 6,
     },
     {
         "id": "C003",
@@ -92,7 +97,7 @@ SAMPLE_CONTRACTORS = [
         "end_date": "2025-05-10",
         "access_level": "Standard",
         "status": "Expiring Soon",
-        "days_remaining": 1
+        "days_remaining": 1,
     },
     {
         "id": "C004",
@@ -104,108 +109,146 @@ SAMPLE_CONTRACTORS = [
         "end_date": "2025-05-08",
         "access_level": "Standard",
         "status": "Expired",
-        "days_remaining": -1
-    }
+        "days_remaining": -1,
+    },
 ]
 
 CONTRACTOR_NOT_FOUND = "Contractor not found"
 
-@app.route('/')
+
+@app.route("/")
 def index():
-    return render_template('dashboard.html')
+    return render_template("dashboard.html")
 
-@app.route('/contractors')
+
+@app.route("/contractors")
 def contractors():
-    return render_template('contractors.html')
+    return render_template("contractors.html")
 
-@app.route('/contractor/<contractor_id>')
+
+@app.route("/contractor/<contractor_id>")
 def contractor_detail(contractor_id):
+    if LIVE_DATA_URL:
+        try:
+            r = requests.get(f"{LIVE_DATA_URL}/contractor/{contractor_id}", timeout=5)
+            if r.status_code == 200:
+                return render_template("contractor_detail.html", contractor=r.json())
+        except Exception:
+            pass
     contractor = next((c for c in SAMPLE_CONTRACTORS if c["id"] == contractor_id), None)
     if contractor:
-        return render_template('contractor_detail.html', contractor=contractor)
+        return render_template("contractor_detail.html", contractor=contractor)
     return CONTRACTOR_NOT_FOUND, 404
 
-@app.route('/api/alerts')
+
+@app.route("/api/alerts")
 def get_alerts():
-    # In a production environment, this would call the actual ingest_alerts function
-    # and return real data, but for demo purposes, we'll return sample data
+    if LIVE_DATA_URL:
+        try:
+            r = requests.get(f"{LIVE_DATA_URL}/alerts", timeout=5)
+            if r.status_code == 200:
+                return jsonify(r.json())
+        except Exception:
+            pass  # fallback
+    # Fall back to sample data
     try:
-        # You would uncomment this to use real data in production
         # real_data = ingest_alerts(None)
         # return jsonify(real_data)
         return jsonify(SAMPLE_ALERTS)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/stats')
+
+@app.route("/api/stats")
 def get_stats():
     # Calculate some basic stats for the dashboard
     stats = {
         "total_alerts": len(SAMPLE_ALERTS),
-        "critical_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "critical"),
+        "critical_alerts": sum(
+            1 for alert in SAMPLE_ALERTS if alert["severity"] == "critical"
+        ),
         "high_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "high"),
-        "medium_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "medium"),
+        "medium_alerts": sum(
+            1 for alert in SAMPLE_ALERTS if alert["severity"] == "medium"
+        ),
         "low_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["severity"] == "low"),
         "open_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "open"),
-        "investigating_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "investigating"),
-        "closed_alerts": sum(1 for alert in SAMPLE_ALERTS if alert["status"] == "closed")
+        "investigating_alerts": sum(
+            1 for alert in SAMPLE_ALERTS if alert["status"] == "investigating"
+        ),
+        "closed_alerts": sum(
+            1 for alert in SAMPLE_ALERTS if alert["status"] == "closed"
+        ),
     }
     return jsonify(stats)
 
-@app.route('/api/contractors')
+
+@app.route("/api/contractors")
 def get_contractors():
-    # Return the sample contractor data
+    if LIVE_DATA_URL:
+        try:
+            r = requests.get(f"{LIVE_DATA_URL}/contractors", timeout=5)
+            if r.status_code == 200:
+                return jsonify(r.json())
+        except Exception:
+            pass  # fallback
     return jsonify(SAMPLE_CONTRACTORS)
 
-@app.route('/api/contractor-stats')
+
+@app.route("/api/contractor-stats")
 def get_contractor_stats():
     stats = {
         "total_contractors": len(SAMPLE_CONTRACTORS),
         "active": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Active"),
-        "expiring_soon": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Expiring Soon"),
+        "expiring_soon": sum(
+            1 for c in SAMPLE_CONTRACTORS if c["status"] == "Expiring Soon"
+        ),
         "expired": sum(1 for c in SAMPLE_CONTRACTORS if c["status"] == "Expired"),
-        "by_department": {}
+        "by_department": {},
     }
-    
+
     # Count contractors by department
     for contractor in SAMPLE_CONTRACTORS:
         dept = contractor["department"]
         if dept not in stats["by_department"]:
             stats["by_department"][dept] = 0
         stats["by_department"][dept] += 1
-    
+
     return jsonify(stats)
 
-@app.route('/api/extend-contract', methods=['POST'])
+
+@app.route("/api/extend-contract", methods=["POST"])
 def extend_contract():
     # In a real app, this would update a database
-    contractor_id = request.json.get('id')
-    days = request.json.get('days', 30)
-    
+    contractor_id = request.json.get("id")
+    days = request.json.get("days", 30)
+
     for contractor in SAMPLE_CONTRACTORS:
         if contractor["id"] == contractor_id:
             # Parse the end date and add days
-            end_date = datetime.datetime.strptime(contractor["end_date"], '%Y-%m-%d')
+            end_date = datetime.datetime.strptime(contractor["end_date"], "%Y-%m-%d")
             new_end_date = end_date + datetime.timedelta(days=days)
-            contractor["end_date"] = new_end_date.strftime('%Y-%m-%d')
+            contractor["end_date"] = new_end_date.strftime("%Y-%m-%d")
             contractor["days_remaining"] += days
             contractor["status"] = "Active"
             return jsonify({"success": True, "contractor": contractor})
-    
+
     return jsonify({"success": False, "message": CONTRACTOR_NOT_FOUND}), 404
 
-@app.route('/api/offboard-contractor', methods=['POST'])
+
+@app.route("/api/offboard-contractor", methods=["POST"])
 def offboard_contractor():
     # In a real app, this would update a database and trigger offboarding procedures
-    contractor_id = request.json.get('id')
-    
+    contractor_id = request.json.get("id")
+
     for i, contractor in enumerate(SAMPLE_CONTRACTORS):
         if contractor["id"] == contractor_id:
             contractor["status"] = "Offboarded"
             return jsonify({"success": True})
-    
+
     return jsonify({"success": False, "message": CONTRACTOR_NOT_FOUND}), 404
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host="0.0.0.0", port=port)

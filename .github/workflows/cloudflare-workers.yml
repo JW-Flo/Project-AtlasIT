@@ -19,13 +19,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Terraform
+      - id: cache-node
+        name: Cache Node.js dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - id: cache-terraform
+        name: Cache Terraform binary
+        uses: actions/cache@v3
+        with:
+          path: /usr/local/bin/terraform
+          key: ${{ runner.os }}-terraform-1.5.0
+
+      - name: Install Terraform (if not cached)
+        if: steps.cache-terraform.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update && sudo apt-get install -y gnupg software-properties-common curl unzip
           curl -fsSL https://releases.hashicorp.com/terraform/1.5.0/terraform_1.5.0_linux_amd64.zip -o terraform.zip
           unzip terraform.zip
           sudo mv terraform /usr/local/bin/
-          terraform --version
 
       - name: Verify Terraform Installation
         run: terraform --version
@@ -48,3 +64,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm run deploy
+
+      - name: Log success
+        if: success()
+        run: echo "✅ Cloudflare Workers deployed successfully."
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ Failed to deploy Cloudflare Workers. Check logs for details."

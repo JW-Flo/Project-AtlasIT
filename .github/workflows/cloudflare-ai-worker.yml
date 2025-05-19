@@ -16,14 +16,23 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Wrangler
-        run: npm install -g @cloudflare/wrangler
+      - name: Install Wrangler (if not cached)
+        run: |
+          npm uninstall -g @cloudflare/wrangler && npm install -g wrangler
 
-      - name: Login to Wrangler
-        run: wrangler login --api-token ${{ secrets.WRANGLER_API_TOKEN }}
+      - name: Authenticate Wrangler
+        run: echo "${{ secrets.WRANGLER_API_TOKEN }}" | wrangler login
 
       - name: Sync AI secrets to Cloudflare
         run: |
@@ -43,6 +52,14 @@ jobs:
           AI_WORKER_URL: "https://ai-project-ignite.kd8jc7v8cd.workers.dev"
           AI_GATEWAY_TOKEN: ${{ secrets.AI_GATEWAY_TOKEN }}
         run: ./scripts/smoke-test-ai-worker.sh
+
+      - name: Log success
+        if: success()
+        run: echo "✅ AI Worker deployed and tested successfully."
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ AI Worker deployment or testing failed. Check logs for details."
 
       - name: Success message
         if: success()

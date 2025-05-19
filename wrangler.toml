@@ -1,16 +1,12 @@
 # Wrangler configuration for Project Ignite
 name = "project-ignite"
-type = "javascript"
-main = "index.js"
-compatibility_date = "2025-05-16"
+main = "MCP_Index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 # Remove any invalid secret references. Do not use ${{ secrets.* }} or env var interpolation in wrangler.toml.
 # All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
-
-[vars]
-# Place only non-secret, non-sensitive config here if needed.
-# Secrets like WRANGLER_API_TOKEN, CF_ACCOUNT_ID, etc. must be set with `wrangler secret put` or in CI/CD.
 
 # Example KV binding (uncomment and set if needed)
 # [[kv_namespaces]]
@@ -22,24 +18,28 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 # name = "IGNITE_DO"
 # class_name = "IgniteDurableObject"
 
-[[dispatch_namespaces]]
-binding = "dispatcher"
-namespace = "<PLACEHOLDER_NAMESPACE_ID>"
-
 [triggers]
 crons = [
   "0 2 * * *",    # ETL functions at 2:00 CDT
   "15 * * * *"    # monitorBudget every 15 minutes
 ]
 
-# Production environment overrides
+# Production environment
 [env.production]
 route = "project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 
-[logs]
-sampling_rate = 1.0
-include_invocation_logs = true
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[env.production.durable_objects]
+bindings = [
+  { name = "MCP_OBJECT", class_name = "MyMCP" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["MyMCP"]
 
 [observability.logs]
 enabled = true
@@ -51,12 +51,29 @@ route = "ai-project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 compatibility_date = "2025-05-16"
 
+[env.ai.vars]
+# Add any environment-specific variables here
+
+[[env.ai.dispatch_namespaces]]
+binding = "dispatcher"
+namespace = "ignite-dispatcher-namespace"
+
 [env.ai.logs]
 sampling_rate = 1.0
 include_invocation_logs = true
 
 [env.ai.observability.logs]
 enabled = true
+
+[env.ai.ai]
+binding = "AI"
+
+[[dispatch_namespaces]]
+binding = "dispatcher"
+namespace = "ignite-dispatcher-namespace"
+
+[[tail_consumers]]
+service = "documentation-worker"
 
 # For local development, use a .env file or export env vars in your shell
 # See .env.example for required variables

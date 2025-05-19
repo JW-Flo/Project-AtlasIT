@@ -1,0 +1,19 @@
+name = "ignite-documentation"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+# KV Namespace for documentation
+[[kv_namespaces]]
+binding = "DOCS"
+id = "88514b613c2e4721a358352752580d65"
+preview_id = "f8c916deeae240f0825097e3b7d17214"
+
+# Production environment
+[env.production]
+route = "docs.project-ignite.kd8jc7v8cd.workers.dev/*"
+usage_model = "bundled"
+vars = { ENVIRONMENT = "production" }
+
+[env.production.logs]
+enabled = true 

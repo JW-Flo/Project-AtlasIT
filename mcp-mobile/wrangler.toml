@@ -1,0 +1,35 @@
+name = "ignite-mcp-mobile"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+# KV Namespace for mobile state
+[[kv_namespaces]]
+binding = "MOBILE_STATE"
+id = "ignite-mobile-state"
+preview_id = "ignite-mobile-state-preview"
+
+[env.production]
+route = "mcp.project-ignite.kd8jc7v8cd.workers.dev/*"
+usage_model = "bundled"
+vars = { ENVIRONMENT = "production" }
+
+# Security settings
+[env.production.vars]
+JWT_SECRET = ""  # Set this via wrangler secret
+ADMIN_USER = ""  # Set this via wrangler secret
+ADMIN_PASSWORD = ""  # Set this via wrangler secret
+
+# SSL/TLS settings
+[env.production.ssl]
+mode = "strict"
+min_version = "TLSv1.2"
+
+# Observability
+[env.production.logs]
+enabled = true
+
+# Rate limiting
+[env.production.rate_limit]
+requests = 100
+period = 60 

@@ -78,6 +78,7 @@ completion = client.chat.completions.create(
         {"role": "user", "content": explicit_prompt}
     ],
     temperature=0
+    # Removed function_call parameter as it is not required
 )
 
 # Explicitly print the actionable output

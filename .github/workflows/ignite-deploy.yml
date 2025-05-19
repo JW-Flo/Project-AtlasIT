@@ -37,4 +37,12 @@ jobs:
       - name: Init BigQuery/Firestore schema
         run: scripts/init-schema.sh
 
+      - name: Log success
+        if: success()
+        run: echo "✅ Ignite deployment completed successfully."
+
+      - name: Log failure
+        if: failure()
+        run: echo "❌ Ignite deployment failed. Check logs for details."
+
   # … rest of jobs (dev, ci-scans, smoke, manual-approval, prod-deploy)
