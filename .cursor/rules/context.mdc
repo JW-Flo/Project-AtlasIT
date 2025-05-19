@@ -1,5 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
 Project Ignite – Master Single Source of Truth
-@Add
 1. Vision & Goals
 Vision: Deliver an end-to-end orchestration platform for contractor lifecycle, security remediation, license & cost analytics, Okta workflows, AWS SRE sandbox WorkSpaces, GCP CI/CD, AI model training pipelines, and documentation automation—zero manual steps post-deployment within a $400/month budget.
 Objectives:
@@ -286,14 +290,3 @@ Execution Strategy:
 	4	Rollback Plan: Maintain previous Terraform state; auto-trigger rollback via GitHub Actions on critical failures.
 	5	Performance Monitoring: SLIs for function latency, provisioning time, and CI build success rate; setup dashboards.
 	6	Continuous Improvement: Post-mortem after launch; iterate on embedded AI-generated runbooks and workflows.
-
-# 2024-06-10: CONTINUOUS CONTEXT & DOCUMENTATION AUTOMATION KICKOFF
-- Actor: Joe Whittle (and Ignite AI)
-- Action: Initiated append-only, continuous update policy for all context, documentation, and change log files.
-- Details:
-  - All major architectural, service, and operational changes will be appended, not overwritten.
-  - Historical data is preserved for full auditability and project evolution tracking.
-  - All entries will reference the canonical Jira project: https://flocasts.atlassian.net/jira/software/projects/IG/boards/501?atlOrigin=eyJpIjoiYTI3MTRkYjlhMGI4NDVmYThmMjVlMDQ4Mjc3NzliZTEiLCJwIjoiaiJ9
-  - Syslog integration (GCP, then AWS) will be used for operational event logging and traceability.
-  - All automation will be handled by autoDoc.js and related services, with Confluence and Jira API integration.
-- Reason: To ensure a living, auditable record of Ignite's evolution and operational state, supporting transparency, compliance, and rapid onboarding for all stakeholders.

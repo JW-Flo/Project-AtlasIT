@@ -1,6 +1,6 @@
 // index.js - Cloudflare dispatch Worker
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     // Health check endpoint
     if (new URL(request.url).pathname === "/health") {
       if (!env.dispatcher) {
