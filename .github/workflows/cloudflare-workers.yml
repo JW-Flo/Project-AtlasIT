@@ -72,3 +72,9 @@ jobs:
       - name: Log failure
         if: failure()
         run: echo "❌ Failed to deploy Cloudflare Workers. Check logs for details."
+
+      - name: Run smoke test (end-to-end proof)
+        run: |
+          export MCP_URL="https://your-mcp.workers.dev"
+          export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/your-webhook-url"
+          bash ./scripts/smoke-test-worker.sh

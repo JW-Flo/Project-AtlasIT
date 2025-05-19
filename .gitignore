@@ -39,3 +39,9 @@ infra/
       main.tf
       README.md
 context/aspnet-core-aspnetcore-9.0.pdf
+
+# Ignore MCP/worker dev logs and background process artifacts
+nohup.out
+_remote.log
+mcp/nohup.out
+mcp/_remote.log

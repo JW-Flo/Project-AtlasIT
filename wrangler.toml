@@ -9,8 +9,10 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 # All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
 
 # Example KV binding (uncomment and set if needed)
-# [[kv_namespaces]]
-# binding = "IGNITE_KV"
+[[kv_namespaces]]
+binding = "MCP_STORE"
+preview_id = "a68ee6412d644992b79b6fddd8d17f47"
+id = "dummy-for-local"
 # id = "<kv-namespace-id>"
 
 # Example Durable Object binding (uncomment and set if needed)

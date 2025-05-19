@@ -276,6 +276,10 @@ def cicd_dashboard():
                 <h2>Task List</h2>
                 <pre id="tasks">Loading...</pre>
             </div>
+            <div class="section">
+                <button id="pauseBtn">Pause</button>
+                <button id="resumeBtn">Resume</button>
+            </div>
         </div>
         <script>
         async function fetchMetrics() {
@@ -286,11 +290,19 @@ def cicd_dashboard():
             const r = await fetch('/api/cicd/tasks');
             document.getElementById('tasks').textContent = JSON.stringify(await r.json(), null, 2);
         }
+        async function fetchState() {
+            const r = await fetch('/api/cicd/state');
+            const data = await r.json();
+            document.title = data.paused ? 'MCP PAUSED' : 'MCP RUNNING';
+        }
+        document.getElementById('pauseBtn').onclick = () => fetch('/api/cicd/pause', {method:'POST'});
+        document.getElementById('resumeBtn').onclick = () => fetch('/api/cicd/resume', {method:'POST'});
         function refresh() {
             fetchMetrics();
             fetchTasks();
+            fetchState();
         }
-        setInterval(refresh, 10000); // every 10s
+        setInterval(refresh, 5000);
         refresh();
         </script>
     </body>
@@ -314,6 +326,41 @@ def cicd_tasks():
     try:
         r = requests.get(
             os.environ.get("MCP_TASKS", "http://localhost:8080/task/list"), timeout=5
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api/cicd/state")
+def cicd_state():
+    try:
+        r = requests.get(
+            os.environ.get("MCP_STATE", "http://localhost:8080/state"), timeout=5
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api/cicd/pause", methods=["POST"])
+def cicd_pause():
+    try:
+        r = requests.post(
+            os.environ.get("MCP_PAUSE", "http://localhost:8080/control/pause"),
+            timeout=5,
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api/cicd/resume", methods=["POST"])
+def cicd_resume():
+    try:
+        r = requests.post(
+            os.environ.get("MCP_RESUME", "http://localhost:8080/control/resume"),
+            timeout=5,
         )
         return jsonify(r.json())
     except Exception as e:
