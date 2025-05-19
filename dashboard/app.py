@@ -249,6 +249,77 @@ def offboard_contractor():
     return jsonify({"success": False, "message": CONTRACTOR_NOT_FOUND}), 404
 
 
+@app.route("/cicd")
+def cicd_dashboard():
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>CI/CD Pipeline Monitor</title>
+        <style>
+            body { font-family: sans-serif; background: #181c20; color: #f3f3f3; margin: 0; padding: 0; }
+            .container { max-width: 700px; margin: 40px auto; background: #23272b; border-radius: 8px; box-shadow: 0 2px 8px #0003; padding: 32px; }
+            h1 { color: #7ed957; }
+            pre { background: #111; color: #7ed957; padding: 12px; border-radius: 6px; }
+            .section { margin-bottom: 32px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>CI/CD Pipeline Monitor</h1>
+            <div class="section">
+                <h2>Status Metrics</h2>
+                <pre id="metrics">Loading...</pre>
+            </div>
+            <div class="section">
+                <h2>Task List</h2>
+                <pre id="tasks">Loading...</pre>
+            </div>
+        </div>
+        <script>
+        async function fetchMetrics() {
+            const r = await fetch('/api/cicd/metrics');
+            document.getElementById('metrics').textContent = JSON.stringify(await r.json(), null, 2);
+        }
+        async function fetchTasks() {
+            const r = await fetch('/api/cicd/tasks');
+            document.getElementById('tasks').textContent = JSON.stringify(await r.json(), null, 2);
+        }
+        function refresh() {
+            fetchMetrics();
+            fetchTasks();
+        }
+        setInterval(refresh, 10000); // every 10s
+        refresh();
+        </script>
+    </body>
+    </html>
+    """
+
+
+@app.route("/api/cicd/metrics")
+def cicd_metrics():
+    try:
+        r = requests.get(
+            os.environ.get("MCP_METRICS", "http://localhost:8080/metrics"), timeout=5
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api/cicd/tasks")
+def cicd_tasks():
+    try:
+        r = requests.get(
+            os.environ.get("MCP_TASKS", "http://localhost:8080/task/list"), timeout=5
+        )
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host="0.0.0.0", port=port)

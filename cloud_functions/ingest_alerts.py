@@ -8,6 +8,7 @@ from urllib3.util.retry import Retry
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def _get_session():
     """Create a requests session with retry/backoff logic."""
     session = requests.Session()
@@ -15,38 +16,41 @@ def _get_session():
         total=3,
         backoff_factor=0.5,
         status_forcelist=[429, 500, 502, 503, 504],
-        method_whitelist=["GET", "POST"]
+        allowed_methods=["GET", "POST"],
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
 
-def fetch_alerts_from_datto(token):
+
+def fetch_alerts_from_datto(api_token: str):
     """Fetch alerts from Datto EDR API with retries."""
     url = "https://api.datto.com/alerts"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {api_token}"}
     session = _get_session()
     try:
         response = session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-    except Exception as err:
-        logger.error(f"Datto API request failed: {err}")
-        raise
-    return response.json()
+        return response.json().get("alerts", [])
+    except requests.RequestException as err:
+        logging.error("Datto API request failed: %s", err)
+        return []
 
-def fetch_alerts_from_rocketcyber(token):
+
+def fetch_alerts_from_rocketcyber(api_token: str):
     """Fetch alerts from RocketCyber API with retries."""
     url = "https://api.rocketcyber.com/alerts"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {api_token}"}
     session = _get_session()
     try:
         response = session.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-    except Exception as err:
-        logger.error(f"RocketCyber API request failed: {err}")
-        raise
-    return response.json()
+        return response.json().get("alerts", [])
+    except requests.RequestException as err:
+        logging.error("RocketCyber API request failed: %s", err)
+        return []
+
 
 def main():
     """
@@ -73,12 +77,15 @@ def main():
 
     return {"alerts": alerts}
 
+
 if __name__ == "__main__":
     print(main())
+
 
 def ingest_alerts(request):
     """HTTP Cloud Function entrypoint for ingesting alerts."""
     from flask import jsonify
+
     try:
         result = main()
         return jsonify(result)

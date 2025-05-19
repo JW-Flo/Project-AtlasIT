@@ -78,5 +78,51 @@
     },
     "root_cause_analysis": true,
     "no_blind_retries": true
+  },
+  "goals": [
+    "GCP proof-of-concept deployed and reachable via HTTPS",
+    "Okta contractor lifecycle automation (create, extend, offboard)",
+    "Slack interactive web UI with real-time access reviews",
+    "Guardian Department enforcement & auditability",
+    "All integrations safe, reversible, and cost-controlled"
+  ],
+  "timelines": {
+    "build_deadline_hrs": 6,
+    "slack_update_interval_min": 60,
+    "escalation_Tminus_min": 30
+  },
+  "auth_sources": {
+    "gcp": "Workload-Identity Federation (OIDC)",
+    "aws": "Cross-account ignite-deploy role (MFA enforced)",
+    "slack": "Bot OAuth – token stored in 1Password",
+    "github": "GitHub Actions OIDC → Cloudflare",
+    "password_policy": "No long-lived creds; env-vars or secrets-manager only"
+  },
+  "documentation": {
+    "auto_doc_function": "cloud_functions/autoDoc.js",
+    "confluence_space": "IGNITE",
+    "required_headings": ["What changed?", "Troubleshooting", "Rollback"],
+    "health_endpoint": "/healthz",
+    "metrics_endpoint": "/metrics"
+  },
+  "cost_controls": {
+    "openai_budget_usd": 400,
+    "cloud_budget_usd": 400,
+    "alert_threshold_pct": 75
+  },
+  "logging_policy": {
+    "format": "json",
+    "no_slack_content": true,
+    "fields": ["timestamp", "agent", "action", "result", "escalation_level"]
+  },
+  "guardian_policy": {
+    "override_roles": ["DevOps Head", "CISO Agent"],
+    "actions": ["block", "quarantine", "revoke"],
+    "max_auto_retry": 3
+  },
+  "compliance": {
+    "encryption": ["EBS", "GCS", "TLS"],
+    "mfa_required": true,
+    "static_scan_tools": ["Checkov", "tfsec", "ESLint", "tflint"]
   }
 } 

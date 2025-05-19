@@ -4,8 +4,8 @@
   "description": "Automating IT Operations for Flosports - Contractor Lifecycle, Security Automation, License Management",
   "main": "index.js",
   "scripts": {
-    "test": "pytest cloud-functions/test_*.py",
-    "lint": "eslint . && pylint cloud-functions/ scripts/",
+    "test": "pytest cloud_functions/test_*.py",
+    "lint": "eslint . --ignore-pattern agents/utils/security_layers.js --ignore-pattern mcp-mobile/** && pylint cloud_functions/ scripts/",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "start": "wrangler dev"

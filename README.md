@@ -56,7 +56,7 @@ After deployment, run:
 ```sh
 ./scripts/smoke-test-worker.sh
 ```
-This will curl your Worker’s production URL and verify a 200/502 response.
+This will curl your Worker's production URL and verify a 200/502 response.
 
 ---
 
@@ -140,3 +140,14 @@ gcloud functions deploy ingest_alerts \
 ```sh
 curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/ingest_alerts
 ```
+
+## Slack Status Reporter
+
+`scripts/slack_status_reporter.py` runs every 15 minutes, checks system health and MCP status, and posts a summary to Slack.
+
+**Setup:**
+- Set `SLACK_WEBHOOK` to your Slack Incoming Webhook URL.
+- Set `HEALTH_URL` and `MCP_METRICS` to your endpoints.
+- Run the script in the background: `python scripts/slack_status_reporter.py &`
+
+No Slack message content or metadata is logged. Only status summaries are sent.
