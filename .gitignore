@@ -26,19 +26,19 @@ __pycache__/
 *.log
 
 # Ignore other sensitive or generated files
-ai-agent/
+# ai-agent/
 *.bak
 *.tmp
 
-infra/
-  terraform/
-    aws/
-      main.tf
-      README.md
-    gcp/
-      main.tf
-      README.md
-context/aspnet-core-aspnetcore-9.0.pdf
+# infra/
+#   terraform/
+#     aws/
+#       main.tf
+#       README.md
+#     gcp/
+#       main.tf
+#       README.md
+# context/aspnet-core-aspnetcore-9.0.pdf
 
 # Ignore MCP/worker dev logs and background process artifacts
 nohup.out
@@ -51,3 +51,9 @@ export TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
 export TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
 export TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
 export TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
+
+# Ignore Terraform plugin cache and plans
+**/.terraform/
+*.tfplan
+*.hcl
+*.zip
