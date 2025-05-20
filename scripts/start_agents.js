@@ -7,7 +7,8 @@ const agents = [
   { name: 'filesystem', script: 'agents/filesystem_agent.js' }
 ];
 
-const MCP_URL = process.env.MCP_URL || 'https://project-ignite.kd8jc7v8cd.workers.dev';
+// Use the dedicated MCP endpoint so that tasks land where downstream agents poll
+const MCP_URL = process.env.MCP_URL || 'https://project-ignite-mcp.kd8jc7v8cd.workers.dev';
 
 function startAgent(agent) {
   console.log(`[INFO] Starting ${agent.name} agent...`);
@@ -25,18 +26,36 @@ function startAgent(agent) {
 }
 
 function submitTestTask(agentType) {
-  let content, provider;
+  // Build a task object that matches the contract expected by downstream agents
+  let action, params, priority = 'NORMAL';
   switch (agentType) {
     case 'infrastructure':
-      content = 'Run terraform plan'; provider = 'infrastructure'; break;
+      action = 'plan';
+      params = { workspace: 'default' };
+      priority = 'HIGH';
+      break;
     case 'production':
-      content = 'Deploy new release'; provider = 'production'; break;
+      action = 'deploy';
+      params = { target: 'latest' };
+      priority = 'CRITICAL';
+      break;
     case 'filesystem':
-      content = 'List files in /tmp'; provider = 'filesystem'; break;
+      action = 'list';
+      params = { target: '/tmp' };
+      break;
     default:
-      content = 'Test task'; provider = agentType;
+      action = 'echo';
+      params = { input: 'hello' };
   }
-  const payload = JSON.stringify({ content, provider });
+  const payload = JSON.stringify({
+    task_id: Date.now().toString(),
+    agent: `${agentType}-agent`,
+    priority,
+    action,
+    params,
+    created_at: new Date().toISOString(),
+    completed: false
+  });
   exec(`curl -X POST ${MCP_URL}/task -H 'Content-Type: application/json' -d '${payload}'`, (err, stdout, stderr) => {
     if (err) {
       console.error(`[ERROR] Failed to submit test task for ${agentType}:`, err);
@@ -53,7 +72,7 @@ const procs = agents.map(startAgent);
 // Give agents a moment to register, then submit test tasks
 setTimeout(() => {
   agents.forEach(agent => submitTestTask(agent.name));
-}, 5000);
+}, 1000);
 
 // Keep the main process alive
 process.stdin.resume(); 

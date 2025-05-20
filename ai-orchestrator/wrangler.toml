@@ -2,6 +2,7 @@ name = "ignite-ai-orchestrator"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
 
 # KV Namespace for task tracking
 [[kv_namespaces]]
@@ -10,7 +11,6 @@ id = "ignite-tasks"
 preview_id = "ignite-tasks-preview"
 
 [env.production]
-route = "ai.project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 vars = { ENVIRONMENT = "production" }
 

@@ -47,6 +47,8 @@ function getMockTasks() {
   ]
 }
 
+const MCP_API = 'https://project-ignite.kd8jc7v8cd.workers.dev'
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('status')
   const [tasks, setTasks] = useState([])
@@ -61,7 +63,7 @@ export default function App() {
     if (activeTab !== 'tasks') return
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('http://127.0.0.1:8000/api/tasks')
+        const res = await fetch(`${MCP_API}/tasks`)
         const data = await res.json()
         setTasks(data)
       } catch (err) {
@@ -77,7 +79,7 @@ export default function App() {
     setOnboardError('')
     setOnboardResult('')
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/onboard', {
+      const res = await fetch(`${MCP_API}/api/onboard`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(onboardForm),

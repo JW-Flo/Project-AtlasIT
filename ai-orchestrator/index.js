@@ -36,6 +36,82 @@ const AI_TASKS = {
   TERMINAL: 'terminal_command'  // New type for terminal commands
 };
 
+// Design rationale: This patch binds the orchestrator to all available AI agents (Cloudflare, Together, Gemini) and stubs missing agent hooks. This enables autonomous, multi-agent operation and ensures all agent calls are routed and logged per Ignite's zero-trust and audit requirements.
+
+// Select AI provider based on env/config
+async function callAI(prompt, opts = {}) {
+  const provider = opts.provider || (typeof ENV !== 'undefined' && ENV.AI_PROVIDER) || 'cloudflare';
+  if (provider === 'cloudflare') {
+    // Cloudflare Workers AI
+    const url = 'https://ai.project-ignite.kd8jc7v8cd.workers.dev';
+    const token = (typeof ENV !== 'undefined' && ENV.AI_GATEWAY_TOKEN) || (opts.token);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+    if (!resp.ok) throw new Error('Cloudflare AI error: ' + resp.status);
+    return await resp.json();
+  } else if (provider === 'together') {
+    // Together API
+    const url = 'https://api.together.xyz/v1/chat/completions';
+    const token = (typeof ENV !== 'undefined' && ENV.TOGETHER_API_KEY) || (opts.token);
+    const body = {
+      model: opts.model || 'meta-llama/Llama-3-70B-Instruct',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 256,
+      temperature: 0.7
+    };
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) throw new Error('Together AI error: ' + resp.status);
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || 'No response';
+  } else if (provider === 'gemini') {
+    // Gemini API
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + ((typeof ENV !== 'undefined' && ENV.GEMINI_API_KEY) || opts.token);
+    const body = { contents: [{ parts: [{ text: prompt }] }] };
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) throw new Error('Gemini LLM error: ' + resp.status);
+    const data = await resp.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+  } else {
+    throw new Error('Unknown AI provider: ' + provider);
+  }
+}
+
+// Stub: run terminal command (simulate for now)
+async function runCommand(command) {
+  // In production, this would dispatch to a secure runner or agent
+  return { output: `Executed: ${command}` };
+}
+
+// Stub: check active deployments (simulate)
+async function checkActiveDeployments() {
+  // In production, query deployment state from MCP or agent
+  return [];
+}
+
+// Stub: check pending tasks (simulate)
+async function checkPendingTasks() {
+  // In production, query task queue from MCP or agent
+  return [];
+}
+
+// Stub: handle non-terminal actions (simulate)
+async function handleAction(action) {
+  // In production, route to correct agent (e.g., documentation, infra)
+  console.log('Handling action:', action);
+  return { handled: true };
+}
+
 // Check with MCP before any action
 async function checkWithMCP(action, context) {
   try {

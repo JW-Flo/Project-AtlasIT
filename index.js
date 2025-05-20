@@ -9,6 +9,38 @@ export default {
       return new Response("OK", { status: 200 });
     }
 
+    // Add /tasks endpoint for progress reporting
+    if (new URL(request.url).pathname === "/tasks") {
+      // For now, return mock data; later, wire to KV or Durable Object
+      const tasks = [
+        {
+          id: 'task-1',
+          name: 'Sync Okta Users',
+          status: 'running',
+          owner: 'agent-1',
+          startedAt: '2025-05-19T18:00:00Z',
+        },
+        {
+          id: 'task-2',
+          name: 'License Audit',
+          status: 'pending',
+          owner: 'agent-2',
+          startedAt: '2025-05-19T18:05:00Z',
+        },
+        {
+          id: 'task-3',
+          name: 'Ramp ETL',
+          status: 'success',
+          owner: 'agent-3',
+          startedAt: '2025-05-19T18:10:00Z',
+        }
+      ]
+      return new Response(JSON.stringify(tasks), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
     try {
       // Extract the sub-worker name from the URL path
       const url = new URL(request.url);
