@@ -37,8 +37,16 @@ if [[ -z "$RESOURCE_SET_ID" ]]; then
 fi
 
 # Resolve group IDs
+# First try full list (fast)
 ADMIN_GROUP_ID=$(get_id_by_name "/api/v1/groups" "AWS_WorkSpacesAdmin" "profile.name")
 USER_GROUP_ID=$(get_id_by_name "/api/v1/groups" "AWS_WorkSpacesUser" "profile.name")
+# If not found, fallback to search
+if [[ -z "$ADMIN_GROUP_ID" ]]; then
+  ADMIN_GROUP_ID=$(curl -s "${BASE_URL}/api/v1/groups?q=AWS_WorkSpacesAdmin&limit=10" "${HEADERS[@]}" | jq -r '.[0].id // empty')
+fi
+if [[ -z "$USER_GROUP_ID" ]]; then
+  USER_GROUP_ID=$(curl -s "${BASE_URL}/api/v1/groups?q=AWS_WorkSpacesUser&limit=10" "${HEADERS[@]}" | jq -r '.[0].id // empty')
+fi
 if [[ -z "$ADMIN_GROUP_ID" || -z "$USER_GROUP_ID" ]]; then
   echo "[ERROR] One or both WorkSpaces groups not found in Okta." >&2
   exit 1
