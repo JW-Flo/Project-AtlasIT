@@ -1,5 +1,5 @@
 import { Agent } from '../MCP_Index.js';
-import { MCPClient } from '@cloudflare/mcp';
+import { MCPClient } from './mcp_client.js';
 import { RateLimiter, withBackoff, defaultClassifier } from '../utils/api_guard.js';
 
 export class BaseAgent extends Agent {
