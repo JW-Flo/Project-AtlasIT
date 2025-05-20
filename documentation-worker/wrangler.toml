@@ -11,7 +11,7 @@ preview_id = "f8c916deeae240f0825097e3b7d17214"
 
 # Production environment
 [env.production]
-route = "docs.project-ignite.kd8jc7v8cd.workers.dev/*"
+# route = "docs.project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 vars = { ENVIRONMENT = "production" }
 
