@@ -152,3 +152,10 @@ curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/ingest_alerts
 
 No Slack message content or metadata is logged. Only status summaries are sent.
 TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
+
+## Directory Naming Conventions
+
+- All Cloudflare Worker and service directories use **kebab-case** (e.g., `ai-orchestrator`, `documentation-worker`).
+- All Python utility/function folders use **snake_case** (e.g., `cloud_functions`, `scripts`).
+- Avoid camelCase and mixed styles for consistency.
+- No duplicate or ambiguous subfolders—each service or function has a unique, descriptive directory.

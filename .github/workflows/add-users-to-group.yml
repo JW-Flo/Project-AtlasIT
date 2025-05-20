@@ -1,0 +1,30 @@
+name: add-users-to-okta-group
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_reason:
+        description: 'Reason for running the workflow'
+        required: false
+        default: 'manual-trigger'
+
+jobs:
+  add-users:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run add_users_to_group script
+        env:
+          OKTA_DOMAIN: ${{ secrets.OKTA_DOMAIN }}
+          OKTA_API_TOKEN: ${{ secrets.OKTA_API_TOKEN }}
+        run: node scripts/add_users_to_group.js 

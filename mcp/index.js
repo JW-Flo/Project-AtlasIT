@@ -1,5 +1,16 @@
 import { Hono } from 'hono';
 
+// In-memory LRU-ish cache (simple TTL)
+const cache = new Map();
+function cached(key, ttl, fetcher) {
+  const hit = cache.get(key);
+  if (hit && (Date.now() < hit.exp)) return hit.val;
+  return fetcher().then((val) => {
+    cache.set(key, { val, exp: Date.now() + ttl });
+    return val;
+  });
+}
+
 const app = new Hono();
 
 // Root endpoint
@@ -20,8 +31,10 @@ app.post('/configure', async (c) => {
 app.post('/register', async (c) => {
   const agent = await c.req.json();
   // Store agent in KV (append to agents list)
-  const agentsRaw = await c.env.MCP_STORE.get('agents');
-  const agents = agentsRaw ? JSON.parse(agentsRaw) : [];
+  const agents = await cached('agents', 5000, async () => {
+    const raw = await c.env.MCP_STORE.get('agents');
+    return raw ? JSON.parse(raw) : [];
+  });
   agents.push(agent);
   await c.env.MCP_STORE.put('agents', JSON.stringify(agents));
   return c.json({ status: 'success' });
@@ -31,8 +44,10 @@ app.post('/register', async (c) => {
 app.post('/task', async (c) => {
   const task = await c.req.json();
   // Store task in KV (append to tasks list)
-  const tasksRaw = await c.env.MCP_STORE.get('tasks');
-  const tasks = tasksRaw ? JSON.parse(tasksRaw) : [];
+  const tasks = await cached('tasks', 5000, async () => {
+    const raw = await c.env.MCP_STORE.get('tasks');
+    return raw ? JSON.parse(raw) : [];
+  });
   tasks.push(task);
   await c.env.MCP_STORE.put('tasks', JSON.stringify(tasks));
   return c.json({ status: 'success', task });
@@ -83,14 +98,11 @@ app.post('/plan/approve', async (c) => {
 
 // Metrics endpoint
 app.get('/metrics', async (c) => {
-  const [agentsRaw, tasksRaw, planRaw] = await Promise.all([
-    c.env.MCP_STORE.get('agents'),
-    c.env.MCP_STORE.get('tasks'),
-    c.env.MCP_STORE.get('latest_plan')
+  const [agents, tasks, plan] = await Promise.all([
+    cached('agents', 5000, () => c.env.MCP_STORE.get('agents').then(r=> r?JSON.parse(r):[])),
+    cached('tasks', 5000, () => c.env.MCP_STORE.get('tasks').then(r=> r?JSON.parse(r):[])),
+    cached('plan', 5000, () => c.env.MCP_STORE.get('latest_plan').then(r=> r?JSON.parse(r):null))
   ]);
-  const agents = agentsRaw ? JSON.parse(agentsRaw) : [];
-  const tasks = tasksRaw ? JSON.parse(tasksRaw) : [];
-  const plan = planRaw ? JSON.parse(planRaw) : null;
 
   return c.json({
     timestamp: new Date().toISOString(),
@@ -117,4 +129,13 @@ app.post('/control/resume', async (c) => {
   return c.json({ status: 'running' });
 });
 
-export default app; 
+export default app;
+
+// Scheduled refresh of cache every minute to keep warm
+export const scheduled = async (event, env, ctx) => {
+  ctx.waitUntil(Promise.all([
+    env.MCP_STORE.get('agents').then(r=>cache.set('agents',{val:r?JSON.parse(r):[],exp:Date.now()+60000})),
+    env.MCP_STORE.get('tasks').then(r=>cache.set('tasks',{val:r?JSON.parse(r):[],exp:Date.now()+60000})),
+    env.MCP_STORE.get('latest_plan').then(r=>cache.set('plan',{val:r?JSON.parse(r):null,exp:Date.now()+60000}))
+  ]));
+}; 

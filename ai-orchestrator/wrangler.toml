@@ -11,8 +11,11 @@ id = "fa174a1795c94a48b47c22d6a138de29"
 preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 
 [env.production]
+route = "ai.project-ignite.workers.dev/*"
 usage_model = "bundled"
-vars = { ENVIRONMENT = "production" }
+
+[env.production.vars]
+ENVIRONMENT = "production"
 
 [env.production.logs]
 enabled = true

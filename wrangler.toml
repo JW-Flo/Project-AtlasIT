@@ -25,7 +25,7 @@ crons = [
 
 # Production environment
 [env.production]
-route = "project-ignite.kd8jc7v8cd.workers.dev/*"
+route = "project-ignite.workers.dev/*"
 usage_model = "bundled"
 
 [env.production.vars]

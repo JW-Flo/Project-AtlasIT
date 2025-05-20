@@ -10,12 +10,12 @@ id = "ignite-mobile-state"
 preview_id = "ignite-mobile-state-preview"
 
 [env.production]
-route = "mcp.project-ignite.kd8jc7v8cd.workers.dev/*"
+route = "mobile.project-ignite.workers.dev/*"
 usage_model = "bundled"
-vars = { ENVIRONMENT = "production" }
 
 # Security settings
 [env.production.vars]
+ENVIRONMENT = "production"
 JWT_SECRET = ""  # Set this via wrangler secret
 ADMIN_USER = ""  # Set this via wrangler secret
 ADMIN_PASSWORD = ""  # Set this via wrangler secret
