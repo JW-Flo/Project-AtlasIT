@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { jwt } from 'hono/jwt';
-import { serve } from '@hono/node-server';
 
 const app = new Hono();
 
@@ -42,7 +41,7 @@ app.post('/token', async (c) => {
   }
 
   // Generate access token
-  const token = await generateToken(client_id, scope);
+  const token = await generateToken(client_id, scope, client.clientSecret);
   
   return c.json({
     access_token: token,
@@ -57,7 +56,7 @@ app.post('/introspect', async (c) => {
   const { token } = await c.req.json();
   
   try {
-    const decoded = await verifyToken(token);
+    const decoded = await verifyToken(token, process.env.JWT_SECRET);
     return c.json({
       active: true,
       client_id: decoded.client_id,
@@ -70,32 +69,36 @@ app.post('/introspect', async (c) => {
 });
 
 // Generate JWT token
-async function generateToken(clientId, scope) {
+async function generateToken(clientId, scope, secret) {
   const payload = {
     client_id: clientId,
     scope: scope || 'mcp:read',
     exp: Math.floor(Date.now() / 1000) + 3600
   };
 
-  return jwt.sign(payload, process.env.JWT_SECRET);
+  return jwt.sign(payload, secret);
 }
 
 // Verify JWT token
-async function verifyToken(token) {
-  return jwt.verify(token, process.env.JWT_SECRET);
+async function verifyToken(token, secret) {
+  return jwt.verify(token, secret);
 }
 
 // Health check
 app.get('/healthz', (c) => c.text('OK'));
 
-// Development server
-if (process.env.NODE_ENV === 'development') {
-  serve({
-    fetch: app.fetch,
-    port: 3000
-  }, (info) => {
-    console.log(`IdP server running at http://localhost:${info.port}`);
-  });
-}
+// Wrapping fetch to inject env-based secrets
+export default {
+  async fetch(request, env, ctx) {
+    // expose env to helper functions
+    const secret = env.JWT_SECRET;
 
-export default app; 
+    // patch helper functions via closure
+    globalThis.__idp_secret = secret;
+
+    generateToken = (clientId, scope) => jwt.sign({ client_id: clientId, scope: scope || 'mcp:read', exp: Math.floor(Date.now()/1000)+3600 }, secret);
+    verifyToken  = (tok) => jwt.verify(tok, secret);
+
+    return app.fetch(request, env, ctx);
+  }
+}; 
