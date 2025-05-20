@@ -162,3 +162,29 @@ All agents, automations, and contributors must follow this process for every cod
 ### Next Steps
 - Begin AI agent-driven knowledge drops into Confluence for runbooks, architecture, and best practices.
 - Continue to automate and document all changes for full auditability.
+
+# Ignite Autonomous Agent
+
+## Usage
+
+1. Set the Cloudflare Worker endpoint:
+   
+   ```sh
+   export WORKER_URL="https://your-worker-url.workers.dev/endpoint"
+   ```
+
+2. (Optional) Provide an input file:
+   
+   ```sh
+   export INPUT_FILE=prompts.txt
+   ```
+   Or pipe prompts via stdin.
+
+3. Run the agent:
+   
+   ```sh
+   node agent.js
+   ```
+
+- All actions and errors are logged to `agent.log`.
+- The agent never blocks for user input, never writes secrets to disk, and always skips on error.

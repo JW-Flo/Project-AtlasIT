@@ -1,0 +1,3 @@
+List all open Jira tickets assigned to me.
+Summarize the last deployment change log.
+Trigger a smoke test for the production worker. 

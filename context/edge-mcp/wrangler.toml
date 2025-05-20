@@ -1,0 +1,14 @@
+name = "dns-monitor"
+main = "worker.js"
+compatibility_date = "2024-03-20"
+
+[vars]
+API_TOKEN = "" # Set this in the Cloudflare dashboard
+
+[[kv_namespaces]]
+binding = "DNS_EVENTS"
+id = "" # Set this in the Cloudflare dashboard
+preview_id = "" # Set this in the Cloudflare dashboard
+
+[triggers]
+crons = ["0 * * * *"] # Run every hour for cleanup tasks 
