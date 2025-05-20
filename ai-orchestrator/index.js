@@ -305,7 +305,11 @@ app.post('/terminal', async (c) => {
 // Health check
 app.get('/healthz', (c) => c.text('OK'));
 
-// Start monitoring
-setInterval(monitorProjectState, 5 * 60 * 1000); // Check every 5 minutes
+// Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
 
-export default app; 
+export default {
+  fetch: app.fetch,
+  scheduled: async (event, env, ctx) => {
+    ctx.waitUntil(monitorProjectState())
+  }
+}; 

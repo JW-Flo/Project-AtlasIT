@@ -15,4 +15,7 @@ usage_model = "bundled"
 vars = { ENVIRONMENT = "production" }
 
 [env.production.logs]
-enabled = true 
+enabled = true
+
+[triggers]
+crons = ["*/5 * * * *"] 
