@@ -7,8 +7,8 @@ workers_dev = true
 # KV Namespace for task tracking
 [[kv_namespaces]]
 binding = "TASKS"
-id = "ignite-tasks"
-preview_id = "ignite-tasks-preview"
+id = "fa174a1795c94a48b47c22d6a138de29"
+preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 
 [env.production]
 usage_model = "bundled"
