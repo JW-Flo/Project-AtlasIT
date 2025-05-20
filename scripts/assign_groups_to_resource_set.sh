@@ -19,7 +19,7 @@ set -euo pipefail
 : "${GROUP_IDS?Need GROUP_IDS (space-separated Okta group IDs)}"
 
 BASE_URL="https://${OKTA_DOMAIN}"
-RS_ENDPOINT="${BASE_URL}/api/v1/resource-sets/${RESOURCE_SET_ID}/resources"
+RS_ENDPOINT="${BASE_URL}/api/v1/iam/resource-sets/${RESOURCE_SET_ID}/resources"
 HEADERS=(
   -H "Accept: application/json"
   -H "Content-Type: application/json"

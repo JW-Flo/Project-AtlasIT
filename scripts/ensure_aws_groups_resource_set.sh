@@ -30,7 +30,7 @@ get_id_by_name() {
 
 # Resolve AWS_Groups resource set ID
 RESOURCE_SET_NAME="AWS_Groups"
-RESOURCE_SET_ID=$(get_id_by_name "/api/v1/resource-sets" "$RESOURCE_SET_NAME" "name")
+RESOURCE_SET_ID=$(get_id_by_name "/api/v1/iam/resource-sets" "$RESOURCE_SET_NAME" "label")
 if [[ -z "$RESOURCE_SET_ID" ]]; then
   echo "[ERROR] Resource set '$RESOURCE_SET_NAME' not found in Okta." >&2
   exit 1
