@@ -14,20 +14,22 @@ app.use('*', cors({
   maxAge: 600,
 }));
 
-// Client registry (in production, this would be in KV)
-const CLIENTS = new Map([
-  ['mcp-mobile', {
-    clientId: 'mcp-mobile',
-    clientSecret: process.env.MCP_MOBILE_SECRET,
-    redirectUris: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev/callback'],
-    grantTypes: ['client_credentials'],
-    scopes: ['mcp:read', 'mcp:write']
-  }]
-]);
+function buildClients(env) {
+  return new Map([
+    ['mcp-mobile', {
+      clientId: 'mcp-mobile',
+      clientSecret: env.MCP_MOBILE_SECRET,
+      redirectUris: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev/callback'],
+      grantTypes: ['client_credentials'],
+      scopes: ['mcp:read', 'mcp:write']
+    }]
+  ])
+}
 
 // Token endpoint
 app.post('/token', async (c) => {
   const { grant_type, client_id, client_secret, scope } = await c.req.json();
+  const CLIENTS = buildClients(c.env);
 
   // Validate client credentials
   const client = CLIENTS.get(client_id);
@@ -54,9 +56,11 @@ app.post('/token', async (c) => {
 // Token introspection endpoint
 app.post('/introspect', async (c) => {
   const { token } = await c.req.json();
+  const env = c.env;
+  const secret = env.JWT_SECRET;
   
   try {
-    const decoded = await verifyToken(token, process.env.JWT_SECRET);
+    const decoded = await verifyToken(token, secret);
     return c.json({
       active: true,
       client_id: decoded.client_id,
@@ -98,6 +102,9 @@ export default {
 
     generateToken = (clientId, scope) => jwt.sign({ client_id: clientId, scope: scope || 'mcp:read', exp: Math.floor(Date.now()/1000)+3600 }, secret);
     verifyToken  = (tok) => jwt.verify(tok, secret);
+
+    // rebuild clients per request with fresh env
+    globalThis.buildClients = () => buildClients(env);
 
     return app.fetch(request, env, ctx);
   }
