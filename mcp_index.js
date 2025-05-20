@@ -121,3 +121,60 @@ async function dispatchTask(env, id) {
   } else {
     task.status = 'error'
     task.result = `Unknown provider: ${provider}`
+  }
+  await env.MCP_STORE.put(key, JSON.stringify(task))
+  return task
+}
+
+// --- MCP Protocol Tool Registry ---
+const toolRegistry = {
+  echo: {
+    name: 'echo',
+    description: 'Echoes back the input',
+    parameters: { type: 'object', properties: { input: { type: 'string' } } },
+    handler: async ({ input }) => input
+  }
+  // Agents can add more tools here at runtime
+};
+
+function listTools() {
+  return Object.values(toolRegistry).map(({ handler, ...meta }) => meta);
+}
+
+// --- PATCH MCP Worker fetch handler ---
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // MCP metadata endpoint
+    if (request.method === 'GET' && url.pathname === '/v1/metadata') {
+      return new Response(JSON.stringify({
+        name: 'Project Ignite MCP',
+        description: 'MCP for Project Ignite',
+        tools: listTools()
+      }), { headers: { 'content-type': 'application/json' } });
+    }
+
+    // MCP tools endpoint
+    if (request.method === 'GET' && url.pathname === '/v1/tools') {
+      return new Response(JSON.stringify(listTools()), { headers: { 'content-type': 'application/json' } });
+    }
+
+    // MCP tool-call endpoint
+    if (request.method === 'POST' && url.pathname === '/v1/tool-call') {
+      try {
+        const { name, parameters } = await request.json();
+        const tool = toolRegistry[name];
+        if (!tool) {
+          return new Response(JSON.stringify({ error: 'Unknown tool' }), { status: 400 });
+        }
+        const result = await tool.handler(parameters);
+        return new Response(JSON.stringify({ result }), { headers: { 'content-type': 'application/json' } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+      }
+    }
+
+    // ...existing routes...
+  }
+}
