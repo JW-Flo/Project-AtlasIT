@@ -6,31 +6,58 @@ from dotenv import load_dotenv
 # Load credentials explicitly
 load_dotenv()
 
-# Initialize clients explicitly
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-gh = Github(os.getenv("GH_PAT"))
 
-# Explicitly define repository
-repo_name = "JW-Flo/Project-Ignite"
-repo = gh.get_repo(repo_name)
+def main():
+    """Entry point so external scripts can invoke the agent safely."""
+    # Validate GitHub token
+    gh_pat = os.getenv("GH_PAT")
+    if not gh_pat:
+        raise EnvironmentError("GH_PAT environment variable is required but not set.")
 
-# Function explicitly fetching all repository files
-def fetch_repo_files(path=""):
-    contents = repo.get_contents(path)
-    files = []
-    while contents:
-        file_content = contents.pop(0)
-        if file_content.type == "dir":
-            contents.extend(repo.get_contents(file_content.path))
-        else:
-            files.append(f"### {file_content.path}\n```\n{file_content.decoded_content.decode()}\n```")
-    return "\n\n".join(files)
+    # Only initialise OpenAI client if we have a key, otherwise warn & skip AI step
+    openai_key = os.getenv("OPENAI_API_KEY")
 
-# Get the current repository state explicitly
-repo_state = fetch_repo_files()
+    # Initialise GitHub client
+    gh = Github(gh_pat)
 
-# Explicit AI prompt (as provided by you, directly embedded)
-explicit_prompt = f"""
+    # Define repository
+    repo_name = "JW-Flo/Project-Ignite"
+    repo = gh.get_repo(repo_name)
+
+    # Function explicitly fetching all repository files
+    def fetch_repo_files(path=""):
+        contents = repo.get_contents(path)
+        files = []
+        while contents:
+            file_content = contents.pop(0)
+            if file_content.type == "dir":
+                contents.extend(repo.get_contents(file_content.path))
+            else:
+                try:
+                    files.append(
+                        f"### {file_content.path}\n```\n{file_content.decoded_content.decode('utf-8', errors='replace')}\n```"
+                    )
+                except Exception as e:
+                    files.append(
+                        f"### {file_content.path}\n[Error decoding file: {e}]\n"
+                    )
+        return "\n\n".join(files)
+
+    # Get the current repository state explicitly
+    repo_state = fetch_repo_files()
+
+    # If OpenAI key present, run LLM analysis; otherwise, print repo state and exit.
+    if not openai_key:
+        print(
+            "[WARN] OPENAI_API_KEY not set – skipping OpenAI analysis. Repo state captured for debugging.\n"
+        )
+        print(repo_state)
+        return
+
+    # OpenAI analysis section
+    client = OpenAI(api_key=openai_key)
+
+    explicit_prompt = f"""
 You are a senior autonomous DevOps AI expert. Your goal is to immediately fix, verify, and fully finalize an existing CI/CD pipeline implementation for a project called "Project-Ignite" in GitHub and Google Cloud Platform.
 
 Current explicit context and tools:
@@ -56,7 +83,7 @@ Explicit tasks you must autonomously execute and document clearly:
 - If missing resources, scripts, or configurations are identified, explicitly provide clear and immediately actionable code or commands to autonomously create and provision them.
 - Explicitly confirm the final pipeline will execute flawlessly, fully autonomously, and hands-free without additional human intervention once you have completed your corrections.
 
-Here’s the explicit current repository state:
+Here's the explicit current repository state:
 
 {repo_state}
 
@@ -70,17 +97,21 @@ Output explicitly:
 You must operate autonomously, relentlessly, with absolute precision and clarity until the pipeline runs successfully, autonomously, and flawlessly without human intervention.
 """
 
-# Explicit API call to OpenAI
-completion = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": "You explicitly debug, validate, and autonomously fix DevOps pipeline configurations."},
-        {"role": "user", "content": explicit_prompt}
-    ],
-    temperature=0
-    # Removed function_call parameter as it is not required
-)
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": "You explicitly debug, validate, and autonomously fix DevOps pipeline configurations.",
+            },
+            {"role": "user", "content": explicit_prompt},
+        ],
+        temperature=0,
+    )
 
-# Explicitly print the actionable output
-print(completion.choices[0].message.content)
+    print(completion.choices[0].message.content)
 
+
+# Ensure the module does nothing if imported without explicit call
+if __name__ == "__main__":
+    main()

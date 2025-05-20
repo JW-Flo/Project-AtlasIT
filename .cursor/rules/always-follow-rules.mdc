@@ -192,7 +192,7 @@ Context: Stay within a $400/month budget, with proactive warnings.
 
     Cloud Spend: Use monitorBudget.js to query AWS/GCP spend every 15 min.
 
-    Threshold Alerts:
+    Threshold Alerts:s
 
         AI Spend: Alert at $100/month via Slack webhook.
 
@@ -239,8 +239,6 @@ Context: The pipeline must run unattended, yet safely.
 10. Scope & Self-Governance
 
 Context: Keep the agent focused and controlled.
-
-    Fixed Domain: The agent may touch only Project Ignite’s repos, Terraform modules, Cloud Functions, and approved APIs.
 
     No Self-Modifying CI/CD: CI workflow YAML is off-limits unless explicitly updated in a major version release.
 

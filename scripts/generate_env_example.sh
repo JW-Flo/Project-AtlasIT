@@ -1,9 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cat > .env.example <<'EOF'
 # Project Ignite Example Environment Variables
 
 # --- Core Secrets ---
 GH_PAT=
 OPENAI_API_KEY=
-TOGETHER_API_KEY=
+TOGETHER_API_KEYtgp_v1_D6DofWSYYdwom90eedeZgdomJUjPc0Im1Mhv_Rixu-k=
 SLACK_WEBHOOK_URL=
 CF_ACCOUNT_ID=
 CF_GLOBAL_API_KEY=
@@ -31,3 +35,6 @@ AWS_REGION=
 
 # --- Miscellaneous ---
 MCP_URL=https://project-ignite.kd8jc7v8cd.workers.dev
+EOF
+
+echo "[INFO] .env.example generated at project root." 
