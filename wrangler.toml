@@ -1,6 +1,6 @@
 # Wrangler configuration for Project Ignite
 name = "project-ignite"
-main = "MCP_Index.js"
+main = "mcp_index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
@@ -8,12 +8,9 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 # Remove any invalid secret references. Do not use ${{ secrets.* }} or env var interpolation in wrangler.toml.
 # All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
 
-# Example KV binding (uncomment and set if needed)
 [[kv_namespaces]]
 binding = "MCP_STORE"
-preview_id = "a68ee6412d644992b79b6fddd8d17f47"
-id = "dummy-for-local"
-# id = "<kv-namespace-id>"
+id = "c7eba0c892bf4f2fbcf73fb60a38706c"
 
 # Example Durable Object binding (uncomment and set if needed)
 # [[durable_objects.bindings]]
@@ -34,14 +31,14 @@ usage_model = "bundled"
 [env.production.vars]
 ENVIRONMENT = "production"
 
-[env.production.durable_objects]
-bindings = [
-  { name = "MCP_OBJECT", class_name = "MyMCP" }
-]
+# [env.production.durable_objects]
+# bindings = [
+#   { name = "MCP_OBJECT", class_name = "MyMCP" }
+# ]
 
-[[migrations]]
-tag = "v1"
-new_classes = ["MyMCP"]
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["MyMCP"]
 
 [observability.logs]
 enabled = true

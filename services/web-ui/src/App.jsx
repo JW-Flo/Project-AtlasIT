@@ -49,18 +49,24 @@ function getMockTasks() {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('status')
-  const [tasks, setTasks] = useState(getMockTasks())
+  const [tasks, setTasks] = useState([])
   // Qwen onboarding agent state
   const [onboardForm, setOnboardForm] = useState({ name: '', email: '', role: 'Contractor', manager: '' })
   const [onboardResult, setOnboardResult] = useState('')
   const [onboardLoading, setOnboardLoading] = useState(false)
   const [onboardError, setOnboardError] = useState('')
 
-  // Poll for tasks every 3 seconds (simulate live updates)
+  // Poll for tasks every 3 seconds (live updates)
   useEffect(() => {
     if (activeTab !== 'tasks') return
-    const interval = setInterval(() => {
-      setTasks(getMockTasks())
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/tasks')
+        const data = await res.json()
+        setTasks(data)
+      } catch (err) {
+        setTasks([])
+      }
     }, 3000)
     return () => clearInterval(interval)
   }, [activeTab])

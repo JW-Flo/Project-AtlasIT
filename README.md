@@ -151,3 +151,4 @@ curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/ingest_alerts
 - Run the script in the background: `python scripts/slack_status_reporter.py &`
 
 No Slack message content or metadata is logged. Only status summaries are sent.
+TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"

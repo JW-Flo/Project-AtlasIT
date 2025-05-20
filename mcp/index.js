@@ -101,4 +101,20 @@ app.get('/metrics', async (c) => {
   });
 });
 
+// --- Control Endpoints -------------------------------------------------
+app.get('/state', async (c) => {
+  const paused = await c.env.MCP_STORE.get('paused');
+  return c.json({ paused: paused === 'true' });
+});
+
+app.post('/control/pause', async (c) => {
+  await c.env.MCP_STORE.put('paused', 'true');
+  return c.json({ status: 'paused' });
+});
+
+app.post('/control/resume', async (c) => {
+  await c.env.MCP_STORE.put('paused', 'false');
+  return c.json({ status: 'running' });
+});
+
 export default app; 

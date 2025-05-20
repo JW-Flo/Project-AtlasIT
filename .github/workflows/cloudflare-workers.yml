@@ -78,3 +78,22 @@ jobs:
           export MCP_URL="https://your-mcp.workers.dev"
           export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/your-webhook-url"
           bash ./scripts/smoke-test-worker.sh
+
+      - name: Deploy AI Worker
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+        run: npx wrangler publish --env ai
+
+      - name: Smoke test AI Worker
+        env:
+          AI_WORKER_URL: "https://ai-project-ignite.kd8jc7v8cd.workers.dev"
+          AI_GATEWAY_TOKEN: ${{ secrets.AI_GATEWAY_TOKEN }}
+        run: ./scripts/smoke-test-ai-worker.sh
+
+      - name: Test MCP dispatch to all AI providers
+        run: |
+          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Together","provider":"together"}'
+          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Gemini","provider":"gemini"}'
+          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Cloudflare AI","provider":"cloudflare-ai"}'
+          curl https://project-ignite.kd8jc7v8cd.workers.dev/tasks
