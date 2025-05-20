@@ -13,6 +13,7 @@ const DOCS = 'ignite_docs';
 
 // Update documentation
 app.post('/update', async (c) => {
+  if (!c.env.DOCS) return c.json({ success: false, error: 'DOCS KV not bound' }, 500)
   const { section, content } = await c.req.json();
   
   try {
@@ -33,6 +34,7 @@ app.post('/update', async (c) => {
 
 // Get documentation
 app.get('/docs', async (c) => {
+  if (!c.env.DOCS) return c.json({ success: false, error: 'DOCS KV not bound' }, 500)
   try {
     const doc = await c.env.DOCS.get('PROJECT_IGNITE.md');
     return c.json({ success: true, doc });
