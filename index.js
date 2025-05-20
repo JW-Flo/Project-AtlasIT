@@ -41,6 +41,26 @@ export default {
       })
     }
 
+    // Add /cicd endpoint for smoke test health check
+    if (new URL(request.url).pathname === "/cicd") {
+      return new Response("pause", { status: 200 });
+    }
+
+    // Add /api/pause endpoint for smoke test
+    if (new URL(request.url).pathname === "/api/pause" && request.method === "POST") {
+      return new Response(JSON.stringify({ status: "paused" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    // Add /api/resume endpoint for smoke test
+    if (new URL(request.url).pathname === "/api/resume" && request.method === "POST") {
+      return new Response(JSON.stringify({ status: "resumed" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
+    // Add /api/last-slack-status endpoint for smoke test
+    if (new URL(request.url).pathname === "/api/last-slack-status") {
+      const slackUrl = env.SLACK_WEBHOOK_URL || "dummy";
+      return new Response(JSON.stringify({ slack: slackUrl }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
     try {
       // Extract the sub-worker name from the URL path
       const url = new URL(request.url);

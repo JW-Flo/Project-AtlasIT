@@ -1,6 +1,6 @@
 # Wrangler configuration for Project Ignite
 name = "project-ignite"
-main = "mcp_index.js"
+main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
