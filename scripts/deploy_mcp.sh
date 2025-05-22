@@ -67,6 +67,20 @@ curl -X POST "https://$MCP_HOST/configure" \
         }
     }'
 
+# Revert the repository to the desired state
+echo "🔄 Reverting repository to the desired state..."
+git revert --no-commit HEAD
+git commit -m "Revert to the desired state"
+
+# Verify the revert by checking out the commit and reviewing the changes
+echo "🔍 Verifying the revert..."
+git checkout HEAD
+git log -1
+
+# Commit and push the changes to the repository
+echo "📤 Committing and pushing the changes..."
+git push origin main
+
 echo -e "${GREEN}✅ MCP Server and Agents deployed successfully!${NC}"
 echo "🌐 MCP Server URL: https://$MCP_HOST"
-echo "📊 Monitor your agents at: https://$MCP_HOST/dashboard" 
+echo "📊 Monitor your agents at: https://$MCP_HOST/dashboard"

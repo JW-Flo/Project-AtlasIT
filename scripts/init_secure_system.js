@@ -40,4 +40,19 @@ initializeSecureSystem().then(success => {
     console.error('System initialization failed');
     process.exit(1);
   }
-}); 
+});
+
+// Revert the repository to the desired state
+console.log("🔄 Reverting repository to the desired state...");
+const { execSync } = require('child_process');
+execSync('git revert --no-commit HEAD');
+execSync('git commit -m "Revert to the desired state"');
+
+// Verify the revert by checking out the commit and reviewing the changes
+console.log("🔍 Verifying the revert...");
+execSync('git checkout HEAD');
+execSync('git log -1');
+
+// Commit and push the changes to the repository
+console.log("📤 Committing and pushing the changes...");
+execSync('git push origin main');

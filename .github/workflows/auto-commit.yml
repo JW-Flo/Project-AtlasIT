@@ -93,4 +93,18 @@ jobs:
       - name: Notify on Failure
         if: failure()
         run: |
-          echo "Auto-commit failed" 
+          echo "Auto-commit failed"
+
+      - name: Revert Repository to Desired State
+        run: |
+          git revert --no-commit HEAD
+          git commit -m "Revert to the desired state"
+
+      - name: Verify Revert
+        run: |
+          git checkout HEAD
+          git log -1
+
+      - name: Commit and Push Changes
+        run: |
+          git push origin main

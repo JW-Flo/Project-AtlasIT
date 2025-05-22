@@ -1,4 +1,4 @@
-name: Deploy Ramp Role Sync
+name: Deploy Okta Ramp Sync
 
 on:
   push:
@@ -36,11 +36,14 @@ jobs:
 
       - name: Revert repository to desired state
         run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
-          git push origin main
+          git revert --no-commit HEAD
+          git commit -m "Revert to the desired state"
 
       - name: Verify revert
         run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
+          git checkout HEAD
+          git log -1
+
+      - name: Commit and push changes
+        run: |
+          git push origin main

@@ -18,3 +18,17 @@ gcloud run deploy ignite-dashboard \
 
 echo "Deployment complete. Fetching service URL..."
 gcloud run services describe ignite-dashboard --platform managed --region us-central1 --project $GCP_PROJECT_ID --format 'value(status.url)'
+
+# Revert the repository to the desired state
+echo "🔄 Reverting repository to the desired state..."
+git revert --no-commit HEAD
+git commit -m "Revert to the desired state"
+
+# Verify the revert by checking out the commit and reviewing the changes
+echo "🔍 Verifying the revert..."
+git checkout HEAD
+git log -1
+
+# Commit and push the changes to the repository
+echo "📤 Committing and pushing the changes..."
+git push origin main
