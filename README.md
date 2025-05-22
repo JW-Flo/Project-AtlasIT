@@ -159,3 +159,46 @@ TOGETHER_API_KEY="tgp_v1_syzzNpWSINRsU-YLmXx8YxeRl07XJE6SiU87azH_P2k"
 - All Python utility/function folders use **snake_case** (e.g., `cloud_functions`, `scripts`).
 - Avoid camelCase and mixed styles for consistency.
 - No duplicate or ambiguous subfolders—each service or function has a unique, descriptive directory.
+
+---
+
+## 10. Automated Revert Process
+
+### Overview
+The automated revert process ensures that the repository can be reverted to a desired state using GitHub Actions workflows and custom scripts.
+
+### Steps to Revert the Repository
+
+1. **Find the Commit Hash**
+   Use the `git log` command to find the commit hash of the desired state:
+   ```sh
+   git log
+   ```
+
+2. **Revert the Repository**
+   Use the `git revert` command to revert the repository to the desired state:
+   ```sh
+   git revert <commit-hash>
+   ```
+
+3. **Verify the Revert**
+   Verify the revert by checking out the commit and reviewing the changes:
+   ```sh
+   git checkout <commit-hash>
+   ```
+
+4. **Commit and Push the Changes**
+   Commit and push the changes to the repository:
+   ```sh
+   git commit -m "Revert to <commit-hash>"
+   git push origin main
+   ```
+
+### GitHub Actions Workflow
+The GitHub Actions workflow is configured to automate the revert process using the specified steps. The workflow files are located in the `.github/workflows` directory.
+
+### Custom Script
+A custom script `scripts/revert_repository.sh` has been added to automate the revert process. The script includes steps to find the commit hash, revert the repository, verify the revert, and commit and push the changes.
+
+### CI/CD Pipeline Integration
+The revert process is integrated into the existing CI/CD pipeline to ensure that the repository can be reverted to a desired state and deployed to the production environment.

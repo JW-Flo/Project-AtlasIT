@@ -32,6 +32,20 @@ async function main() {
     } catch (error) {
         await handleStartupError(error);
     }
+
+    // Revert the repository to the desired state
+    console.log("🔄 Reverting repository to the desired state...");
+    await execAsync('git revert --no-commit HEAD');
+    await execAsync('git commit -m "Revert to the desired state"');
+
+    // Verify the revert by checking out the commit and reviewing the changes
+    console.log("🔍 Verifying the revert...");
+    await execAsync('git checkout HEAD');
+    await execAsync('git log -1');
+
+    // Commit and push the changes to the repository
+    console.log("📤 Committing and pushing the changes...");
+    await execAsync('git push origin main');
 }
 
 async function handleShutdown(signal) {

@@ -16,8 +16,8 @@ export class InfrastructureAgent extends BaseAgent {
     super(ctx, env);
     this.name = 'infrastructure-agent';
     this.version = '1.0.0';
-    this.terraformPath = path.join(process.cwd(), 'terraform');
-    this.statePath = path.join(this.terraformPath, 'state');
+    this.terraformPath = process.env.TERRAFORM_PATH || path.join(process.cwd(), 'terraform');
+    this.statePath = process.env.STATE_PATH || path.join(this.terraformPath, 'state');
     this.logger = new Logger('infrastructure-agent');
     this.metrics = new MetricsCollector();
     this.circuitBreaker = new CircuitBreaker({
@@ -462,4 +462,4 @@ export class InfrastructureAgent extends BaseAgent {
     await this.metrics.close();
     await super.destroy();
   }
-} 
+}

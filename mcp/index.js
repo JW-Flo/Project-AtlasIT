@@ -138,4 +138,4 @@ export const scheduled = async (event, env, ctx) => {
     env.MCP_STORE.get('tasks').then(r=>cache.set('tasks',{val:r?JSON.parse(r):[],exp:Date.now()+60000})),
     env.MCP_STORE.get('latest_plan').then(r=>cache.set('plan',{val:r?JSON.parse(r):null,exp:Date.now()+60000}))
   ]));
-}; 
+};

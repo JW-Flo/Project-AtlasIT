@@ -1,5 +1,3 @@
-// Design rationale: This RepairAgent proactively scans for known Node.js compatibility issues (e.g., 'cloudflare:' imports), auto-remediates them before orchestrator startup, and notifies Slack of any fixes. This prevents runtime failures and enables self-healing before errors impact the system.
-
 import fs from 'fs';
 import path from 'path';
 import { LoggingAPI } from '../utils/logging.js';
@@ -58,12 +56,11 @@ export class RepairAgent {
   }
 }
 
-// If run directly, execute the repair agent before orchestrator startup
-default async function main() {
+export default async function main() {
   const agent = new RepairAgent();
   await agent.run();
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();
-} 
+}

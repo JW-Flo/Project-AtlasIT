@@ -118,4 +118,4 @@ export class FilesystemAgent extends BaseAgent {
       return { success: false, error: error.message };
     }
   }
-} 
+}

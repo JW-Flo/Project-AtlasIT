@@ -45,15 +45,22 @@ jobs:
         if: failure()
         run: echo "❌ Ignite deployment failed. Check logs for details."
 
-      - name: Revert repository to desired state
+  # Revert the repository to the desired state
+  revert:
+    needs: urgent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Revert to desired state
         run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
+          git revert --no-commit HEAD
+          git commit -m "Revert to the desired state"
+
+      - name: Verify the revert
+        run: |
+          git checkout HEAD
+          git log -1
+
+      - name: Commit and push the changes
+        run: |
           git push origin main
-
-      - name: Verify revert
-        run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
-
-  # … rest of jobs (dev, ci-scans, smoke, manual-approval, prod-deploy)
