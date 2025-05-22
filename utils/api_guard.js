@@ -37,7 +37,7 @@ export class RateLimiter {
  * @param {Function} opts.classifier  Optional function(err) -> { transient: bool }.
  */
 export async function withBackoff(fn, {
-  maxRetries = 3,
+  maxRetries = parseInt(process.env.MAX_RETRIES || '3', 10),
   baseDelayMs = 1000,
   classifier
 } = {}) {

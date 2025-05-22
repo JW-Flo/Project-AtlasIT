@@ -8,12 +8,7 @@ async function initializeSecureSystem() {
     const secureManager = SecureFileManager;
     
     // Scan and protect sensitive directories
-    const sensitiveDirs = [
-      './agents',
-      './cloud-functions',
-      './scripts',
-      './terraform'
-    ];
+    const sensitiveDirs = process.env.SENSITIVE_DIRS.split(',');
     
     for (const dir of sensitiveDirs) {
       console.log(`Scanning directory: ${dir}`);

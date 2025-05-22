@@ -51,14 +51,14 @@ def main():
         logging.error("OPENAI_API_KEY is not set")
         sys.exit(1)
 
-    ctx_file = os.path.join(os.getcwd(), "context", ".ai-agent-context.txt")
+    ctx_file = os.path.join(os.getenv("CTX_PATH", "./context"), ".ai-agent-context.txt")
     if not os.path.exists(ctx_file):
         logging.error(f"Context file missing at {ctx_file}")
         sys.exit(1)
     context = open(ctx_file).read()
 
     try:
-        repo = Repo(os.getcwd())
+        repo = Repo(os.getenv("REPO_DIR", os.getcwd()))
     except Exception as e:
         logging.error(f"Git repo error: {e}")
         sys.exit(1)

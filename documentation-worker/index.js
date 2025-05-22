@@ -9,11 +9,14 @@ app.use('*', logger());
 app.use('*', cors());
 
 // KV Namespace for storing documentation
-const DOCS = 'ignite_docs';
+const DOCS = process.env.DOCS;
 
 // Update documentation
 app.post('/update', async (c) => {
-  if (!c.env.DOCS) return c.json({ success: false, error: 'DOCS KV not bound' }, 500)
+  if (!c.env.DOCS) {
+    console.error('DOCS KV not bound');
+    return c.json({ success: false, error: 'DOCS KV not bound' }, 500);
+  }
   const { section, content } = await c.req.json();
   
   try {
@@ -26,19 +29,25 @@ app.post('/update', async (c) => {
     // Store updated documentation
     await c.env.DOCS.put('PROJECT_IGNITE.md', updatedDoc);
     
+    console.log('Documentation updated');
     return c.json({ success: true, message: 'Documentation updated' });
   } catch (error) {
+    console.error('Error updating documentation:', error.message);
     return c.json({ success: false, error: error.message }, 500);
   }
 });
 
 // Get documentation
 app.get('/docs', async (c) => {
-  if (!c.env.DOCS) return c.json({ success: false, error: 'DOCS KV not bound' }, 500)
+  if (!c.env.DOCS) {
+    console.error('DOCS KV not bound');
+    return c.json({ success: false, error: 'DOCS KV not bound' }, 500);
+  }
   try {
     const doc = await c.env.DOCS.get('PROJECT_IGNITE.md');
     return c.json({ success: true, doc });
   } catch (error) {
+    console.error('Error fetching documentation:', error.message);
     return c.json({ success: false, error: error.message }, 500);
   }
 });
@@ -58,4 +67,4 @@ function updateSection(doc, section, content) {
 // Health check
 app.get('/healthz', (c) => c.text('OK'));
 
-export default app; 
+export default app;
