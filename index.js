@@ -1,4 +1,5 @@
-// index.js - Cloudflare dispatch Worker
+import { createDispatcher } from 'cloudflare-dispatcher';
+
 export default {
   async fetch(request, env) {
     // Health check endpoint
