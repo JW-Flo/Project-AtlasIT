@@ -79,8 +79,13 @@ export class BaseAgent extends Agent {
    * Retrieve relevant workspace context from MCP before processing a query
    */
   async fetchContext(query) {
-    const response = await this.mcp.callTool({ name: 'context/retrieve', arguments: { query, topK: 5 } });
-    return response.content.map(part => part.text || '').join('\n');
+    try {
+      const response = await this.mcp.callTool({ name: 'context/retrieve', arguments: { query, topK: 5 } });
+      return response.content.map(part => part.text || '').join('\n');
+    } catch (error) {
+      await this.escalate('HIGH', `Failed to fetch context: ${error.message}`);
+      throw error;
+    }
   }
 
   async onMessage(connection, message) {
