@@ -97,3 +97,10 @@ jobs:
           curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Gemini","provider":"gemini"}'
           curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Cloudflare AI","provider":"cloudflare-ai"}'
           curl https://project-ignite.kd8jc7v8cd.workers.dev/tasks
+
+      - name: Revert repository to desired state
+        run: |
+          git log -1 --before="2023-04-01 13:15:00" --format="%H" > commit_hash.txt
+          git revert $(cat commit_hash.txt)
+          git checkout $(cat commit_hash.txt)
+          git push origin main

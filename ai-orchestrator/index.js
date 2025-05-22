@@ -89,8 +89,20 @@ async function callAI(prompt, opts = {}) {
 
 // Stub: run terminal command (simulate for now)
 async function runCommand(command) {
-  // In production, this would dispatch to a secure runner or agent
-  return { output: `Executed: ${command}` };
+  try {
+    // In production, this would dispatch to a secure runner or agent
+    const result = await fetch('/run-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command })
+    });
+    if (!result.ok) throw new Error('Command execution error: ' + result.status);
+    const data = await result.json();
+    return { output: data.output };
+  } catch (error) {
+    console.error('Failed to execute command:', error);
+    throw error;
+  }
 }
 
 // Stub: check active deployments (simulate)

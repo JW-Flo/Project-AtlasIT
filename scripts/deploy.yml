@@ -105,13 +105,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Revert repository to desired state
+      - name: Revert the repository to the desired state
         run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
-          git push origin main
+          git revert --no-commit HEAD
+          git commit -m "Revert to the desired state"
 
-      - name: Verify revert
+      - name: Verify the revert by checking out the commit and reviewing the changes
         run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
+          git checkout HEAD
+          git log -1
+
+      - name: Commit and push the changes to the repository
+        run: |
+          git push origin main
