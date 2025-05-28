@@ -1,0 +1,77 @@
+## AtlasIT Infrastructure & AI Addendum
+
+This addendum provides required context on the infrastructure and AI architecture powering AtlasIT. It supplements the Researcher prompt and design documents.
+
+---
+
+### ☁️ Deployment Architecture (Cloudflare-First)
+
+AtlasIT is deployed primarily via **Cloudflare Workers**, with supporting use of **Google Cloud Functions** where necessary. It is fully serverless and edge-distributed.
+
+#### Core Components
+
+| Component          | Technology                                      |
+| ------------------ | ----------------------------------------------- |
+| MCP Orchestrator   | Cloudflare Worker (with D1 + KV bindings)       |
+| MCP Modules        | Cloudflare Workers or GCP Functions             |
+| Deployment Tooling | Wrangler (Cloudflare CLI)                       |
+| State Storage      | Cloudflare KV (ephemeral), D1 (structured)      |
+| Secrets            | Cloudflare Secrets / GCP Secret Manager         |
+| Messaging          | GCP Pub/Sub OR service-dispatch (Cloudflare)    |
+| Scheduling         | Worker-level CRON + MCP-managed scheduled tasks |
+
+#### Cloudflare Features Used
+
+* **Dispatch namespaces** for inter-worker RPC
+* **Environment bindings** for secrets and tokens
+* **KV namespaces** for agent-level state and TTL-based tracking
+* **Durable Object compatibility** (planned)
+
+---
+
+### 🤖 Embedded AI Agents
+
+AtlasIT includes real-time and scheduled AI-based automations.
+
+#### Current Agent Types
+
+| AI Agent Type              | Purpose                                             |
+| -------------------------- | --------------------------------------------------- |
+| Docs Generator             | Summarizes FlowEvents into Markdown/Confluence logs |
+| Cost Report Analyzer       | Parses BQ/Firestore data for spend patterns         |
+| Slack Approval Interpreter | Parses Slack interactive message responses          |
+| GitHub AI Assistant        | Rewrites MCP module stubs, CI files, etc.           |
+
+#### AI Invocation
+
+* MCP triggers AI agents via internal API (dispatch or direct `fetch()`)
+* All AI events generate `FlowEvent` + `AuditLog`
+* Tokens are managed in Cloudflare Secrets only
+
+#### AI Models in Use
+
+* GPT-4 / GPT-4o via OpenAI API
+* Claude 3 (internal only)
+* Occasional use of Together.ai or Mistral (local, when applicable)
+
+---
+
+### 🛡️ Security & Observability
+
+* All secrets and tokens injected via Wrangler CLI (`wrangler secret put`)
+* AI agent interactions are fully logged and auditable
+* MCP worker enforces retry, validation, fallback for every agent call
+* Slack + email alerts are routed via MCP Event Bus
+
+---
+
+### ✅ Researcher Instructions
+
+Use this infrastructure context to:
+
+* Propose module deployment strategies with **Cloudflare Workers as the default target**
+* Leverage AI for summarization, detection, and auto-remediation logic where appropriate
+* Ensure **cost models** reflect serverless event-scale billing (e.g., OpenAI token cost, Cloudflare CPU cycles, Pub/Sub pricing)
+* Align all agent/module behaviors with **MCP standards** (observable, stateless, forkable, recoverable)
+
+Reference this addendum when defining workflows, module structure, or cost implications.
