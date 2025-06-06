@@ -1,0 +1,205 @@
+# AtlasIT Development Rules
+
+## 1. Project Structure Rules
+
+### 1.1 Architecture
+- Maintain modular microservices architecture with clear separation of concerns
+- Each service must be self-contained with its own package.json and dependencies
+- Use Cloudflare Workers for serverless deployment
+- Follow consistent file structure across all services:
+  ```
+  service/
+  ├── src/
+  │   ├── handlers/     # Request handlers
+  │   ├── models/       # Data models
+  │   ├── services/     # Business logic
+  │   └── utils/        # Helper functions
+  ├── tests/            # Test files
+  ├── wrangler.toml     # Cloudflare config
+  └── package.json
+  ```
+
+### 1.2 Service Organization
+- Onboarding: AI-guided tenant setup and configuration
+- Marketplace: App/integration discovery and management
+- Auth: Multi-tenant authentication and OIDC/SAML support
+- Orchestrator: Event processing and workflow management
+- API Manager: Request routing and security enforcement
+- Applications: SaaS integrations and custom solutions
+
+## 2. Development Workflow Rules
+
+### 2.1 Planning & Task Management
+USE: software-planning-mcp
+- Start each feature with detailed task planning
+- Break down tasks into manageable units
+- Track progress and dependencies
+- Update task status regularly
+
+### 2.2 UI Development
+USE: 21st-dev/magic-mcp
+- Generate UI components using magic-component-builder
+- Follow consistent design patterns
+- Implement responsive layouts
+- Use logo_search for brand assets
+
+### 2.3 Testing & Validation
+USE: browser-tools-mcp
+- Run accessibility audits
+- Perform performance testing
+- Execute SEO checks
+- Monitor console and network errors
+
+### 2.4 Research & Documentation
+USE: firecrawl-mcp
+- Research similar implementations
+- Generate documentation
+- Keep API references up-to-date
+- Monitor competitive features
+
+## 3. Code Quality Rules
+
+### 3.1 TypeScript Standards
+- Use strict type checking
+- Implement interfaces for data models
+- Document public APIs with JSDoc
+- Avoid any type unless absolutely necessary
+
+### 3.2 Testing Requirements
+- Write unit tests for all business logic
+- Include integration tests for API endpoints
+- Implement end-to-end tests for critical flows
+- Maintain >80% test coverage
+
+## 4. Security & Compliance Rules
+
+### 4.1 Authentication & Authorization
+- Implement JWT-based authentication
+- Use role-based access control
+- Secure all API endpoints
+- Rotate secrets regularly
+
+### 4.2 Data Protection
+- Follow GDPR requirements
+- Implement CCPA compliance
+- Encrypt sensitive data
+- Use secure communication channels
+
+## 5. Integration Rules
+
+### 5.1 API Standards
+- Use RESTful conventions
+- Implement versioning
+- Document with OpenAPI/Swagger
+- Handle rate limiting
+
+### 5.2 External Services
+- Use modular connectors
+- Implement retry logic
+- Handle API versioning
+- Monitor service health
+
+## 6. MCP Tool Usage Rules
+
+### 6.1 Development Tools
+USE: software-planning-mcp
+- Plan features and track progress
+- Generate task breakdowns
+- Update completion status
+- Document dependencies
+
+### 6.2 UI Generation
+USE: 21st-dev/magic-mcp
+- Create consistent components
+- Generate responsive layouts
+- Implement accessibility features
+- Maintain design system
+
+### 6.3 Testing Tools
+USE: browser-tools-mcp
+- Run automated tests
+- Check performance metrics
+- Validate accessibility
+- Monitor errors
+
+### 6.4 Documentation Tools
+USE: firecrawl-mcp
+- Generate API documentation
+- Research best practices
+- Update integration guides
+- Monitor changes
+
+## 7. Service-Specific Rules
+
+### 7.1 Onboarding Service
+- Implement AI-guided setup
+- Generate dynamic templates
+- Validate integrations
+- Handle multi-tenant config
+
+### 7.2 Marketplace Service
+- Manage app discovery
+- Handle plugin versioning
+- Process integrations
+- Track dependencies
+
+### 7.3 Auth Service
+- Support multiple auth methods
+- Implement SSO protocols
+- Manage user roles
+- Handle token lifecycle
+
+### 7.4 Orchestrator Service
+- Process events
+- Manage workflows
+- Handle state
+- Coordinate services
+
+### 7.5 API Manager
+- Route requests
+- Enforce security
+- Handle rate limits
+- Monitor usage
+
+### 7.6 Applications Service
+- Integrate SaaS apps
+- Monitor performance
+- Handle updates
+- Track usage
+
+## 8. Development Process Rules
+
+### 8.1 Feature Development Flow
+1. Planning Phase
+   - Use software-planning-mcp for task breakdown
+   - Research with firecrawl-mcp
+   - Document architecture decisions
+
+2. Implementation Phase
+   - Follow service structure
+   - Generate UI with 21st-dev/magic-mcp
+   - Write TypeScript code
+   - Add tests
+
+3. Testing Phase
+   - Run automated tests
+   - Use browser-tools-mcp
+   - Perform security audits
+   - Check performance
+
+4. Documentation Phase
+   - Update API docs
+   - Create examples
+   - Document integrations
+
+### 8.2 Code Review Requirements
+- Check type safety
+- Verify test coverage
+- Review security implications
+- Validate documentation
+
+### 8.3 Deployment Rules
+- Use Terraform for infrastructure
+- Follow blue-green deployment
+- Monitor performance metrics
+- Track error rates
