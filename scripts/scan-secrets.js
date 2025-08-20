@@ -31,6 +31,7 @@ const IGNORE_DIRS = new Set([
   "dist",
   "build",
   ".wrangler",
+  ".venv",
 ]);
 let findings = [];
 
