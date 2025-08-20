@@ -1,15 +1,22 @@
-import { Hono } from 'hono';
-import { logger } from 'hono/logger';
-import { cors } from 'hono/cors';
+import { Hono } from "hono";
+import { logger as honoLogger } from "hono/logger";
+import { cors } from "hono/cors";
+import {
+  logger as sharedLogger,
+  validateEnv,
+  commonEnvSpec,
+  generateAI,
+} from "@atlasit/shared";
 
 const app = new Hono();
+let envValidated = false;
 
 // Middleware
-app.use('*', logger());
-app.use('*', cors());
+app.use("*", honoLogger());
+app.use("*", cors());
 
 // MCP Integration
-const MCP_ENDPOINT = 'https://mcp.project-ignite.kd8jc7v8cd.workers.dev';
+const MCP_ENDPOINT = "https://mcp.project-ignite.kd8jc7v8cd.workers.dev";
 
 // State tracking
 let lastCheck = new Date();
@@ -19,88 +26,48 @@ let terminalCommands = new Map(); // Track terminal commands and their status
 
 // Task priorities
 const PRIORITIES = {
-  CRITICAL: 0,    // Immediate attention needed
-  HIGH: 1,        // Important but not urgent
-  NORMAL: 2,      // Regular tasks
-  LOW: 3          // Background tasks
+  CRITICAL: 0, // Immediate attention needed
+  HIGH: 1, // Important but not urgent
+  NORMAL: 2, // Regular tasks
+  LOW: 3, // Background tasks
 };
 
 // Task types that need AI assistance
 const AI_TASKS = {
-  DEPLOYMENT: 'deployment',
-  DOCUMENTATION: 'documentation',
-  CODE_REVIEW: 'code_review',
-  BUG_FIX: 'bug_fix',
-  FEATURE: 'feature',
-  OPTIMIZATION: 'optimization',
-  TERMINAL: 'terminal_command'  // New type for terminal commands
+  DEPLOYMENT: "deployment",
+  DOCUMENTATION: "documentation",
+  CODE_REVIEW: "code_review",
+  BUG_FIX: "bug_fix",
+  FEATURE: "feature",
+  OPTIMIZATION: "optimization",
+  TERMINAL: "terminal_command", // New type for terminal commands
 };
 
-// Design rationale: This patch binds the orchestrator to all available AI agents (Cloudflare, Together, Gemini) and stubs missing agent hooks. This enables autonomous, multi-agent operation and ensures all agent calls are routed and logged per Ignite's zero-trust and audit requirements.
-
-// Select AI provider based on env/config
-async function callAI(prompt, opts = {}) {
-  const provider = opts.provider || (typeof ENV !== 'undefined' && ENV.AI_PROVIDER) || 'cloudflare';
-  if (provider === 'cloudflare') {
-    // Cloudflare Workers AI
-    const url = 'https://ai.project-ignite.kd8jc7v8cd.workers.dev';
-    const token = (typeof ENV !== 'undefined' && ENV.AI_GATEWAY_TOKEN) || (opts.token);
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
-    });
-    if (!resp.ok) throw new Error('Cloudflare AI error: ' + resp.status);
-    return await resp.json();
-  } else if (provider === 'together') {
-    // Together API
-    const url = 'https://api.together.xyz/v1/chat/completions';
-    const token = (typeof ENV !== 'undefined' && ENV.TOGETHER_API_KEY) || (opts.token);
-    const body = {
-      model: opts.model || 'meta-llama/Llama-3-70B-Instruct',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 256,
-      temperature: 0.7
-    };
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!resp.ok) throw new Error('Together AI error: ' + resp.status);
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || 'No response';
-  } else if (provider === 'gemini') {
-    // Gemini API
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' + ((typeof ENV !== 'undefined' && ENV.GEMINI_API_KEY) || opts.token);
-    const body = { contents: [{ parts: [{ text: prompt }] }] };
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!resp.ok) throw new Error('Gemini LLM error: ' + resp.status);
-    const data = await resp.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
-  } else {
-    throw new Error('Unknown AI provider: ' + provider);
-  }
+// Unified AI invocation using shared abstraction with fallback & deterministic options
+async function callAI(prompt, env, opts = {}) {
+  const messages = [{ role: "user", content: prompt }];
+  return generateAI(messages, env, {
+    provider: opts.provider,
+    model: opts.model,
+    deterministic: env.AI_DETERMINISTIC === "1",
+  });
 }
 
 // Stub: run terminal command (simulate for now)
 async function runCommand(command) {
   try {
     // In production, this would dispatch to a secure runner or agent
-    const result = await fetch('/run-command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
+    const result = await fetch("/run-command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
     });
-    if (!result.ok) throw new Error('Command execution error: ' + result.status);
+    if (!result.ok)
+      throw new Error("Command execution error: " + result.status);
     const data = await result.json();
     return { output: data.output };
   } catch (error) {
-    console.error('Failed to execute command:', error);
+    console.error("Failed to execute command:", error);
     throw error;
   }
 }
@@ -120,7 +87,7 @@ async function checkPendingTasks() {
 // Stub: handle non-terminal actions (simulate)
 async function handleAction(action) {
   // In production, route to correct agent (e.g., documentation, infra)
-  console.log('Handling action:', action);
+  console.log("Handling action:", action);
   return { handled: true };
 }
 
@@ -128,15 +95,15 @@ async function handleAction(action) {
 async function checkWithMCP(action, context) {
   try {
     const response = await fetch(`${MCP_ENDPOINT}/approve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, context })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, context }),
     });
-    
+
     const result = await response.json();
     return result.approved;
   } catch (error) {
-    console.error('MCP approval check failed:', error);
+    sharedLogger.error("MCP approval check failed", { error: String(error) });
     return false;
   }
 }
@@ -144,7 +111,7 @@ async function checkWithMCP(action, context) {
 // Monitor project state
 async function monitorProjectState() {
   // Get MCP approval for monitoring
-  const approved = await checkWithMCP('monitor', { timestamp: new Date() });
+  const approved = await checkWithMCP("monitor", { timestamp: new Date() });
   if (!approved) return;
 
   // Check for active deployments
@@ -162,22 +129,32 @@ async function monitorProjectState() {
 // Execute terminal command with MCP approval
 async function executeTerminalCommand(command, context) {
   const commandId = Date.now().toString();
-  terminalCommands.set(commandId, { command, status: 'pending', context });
+  terminalCommands.set(commandId, { command, status: "pending", context });
 
   // Get MCP approval
-  const approved = await checkWithMCP('terminal', { command, context });
+  const approved = await checkWithMCP("terminal", { command, context });
   if (!approved) {
-    terminalCommands.set(commandId, { command, status: 'rejected', context });
-    return { success: false, reason: 'MCP rejected command' };
+    terminalCommands.set(commandId, { command, status: "rejected", context });
+    return { success: false, reason: "MCP rejected command" };
   }
 
   try {
     // Execute command (implement actual execution logic)
     const result = await runCommand(command);
-    terminalCommands.set(commandId, { command, status: 'completed', context, result });
+    terminalCommands.set(commandId, {
+      command,
+      status: "completed",
+      context,
+      result,
+    });
     return { success: true, result };
   } catch (error) {
-    terminalCommands.set(commandId, { command, status: 'failed', context, error });
+    terminalCommands.set(commandId, {
+      command,
+      status: "failed",
+      context,
+      error,
+    });
     return { success: false, error };
   }
 }
@@ -185,18 +162,22 @@ async function executeTerminalCommand(command, context) {
 // Determine if AI assistance is needed
 async function needsAIAssistance() {
   // Get MCP approval for AI assistance check
-  const approved = await checkWithMCP('ai_assistance_check', { timestamp: new Date() });
-  if (!approved) return { needed: false, reason: 'MCP rejected AI assistance check' };
+  const approved = await checkWithMCP("ai_assistance_check", {
+    timestamp: new Date(),
+  });
+  if (!approved)
+    return { needed: false, reason: "MCP rejected AI assistance check" };
 
   // Check for critical tasks
-  const criticalTasks = Array.from(pendingTasks)
-    .filter(task => task.priority === PRIORITIES.CRITICAL);
-  
+  const criticalTasks = Array.from(pendingTasks).filter(
+    (task) => task.priority === PRIORITIES.CRITICAL,
+  );
+
   if (criticalTasks.length > 0) {
     return {
       needed: true,
       tasks: criticalTasks,
-      reason: 'Critical tasks pending'
+      reason: "Critical tasks pending",
     };
   }
 
@@ -205,19 +186,20 @@ async function needsAIAssistance() {
     return {
       needed: true,
       tasks: Array.from(activeDeployments),
-      reason: 'Active deployment needs monitoring'
+      reason: "Active deployment needs monitoring",
     };
   }
 
   // Check for documentation updates
-  const docTasks = Array.from(pendingTasks)
-    .filter(task => task.type === AI_TASKS.DOCUMENTATION);
-  
+  const docTasks = Array.from(pendingTasks).filter(
+    (task) => task.type === AI_TASKS.DOCUMENTATION,
+  );
+
   if (docTasks.length > 0) {
     return {
       needed: true,
       tasks: docTasks,
-      reason: 'Documentation updates needed'
+      reason: "Documentation updates needed",
     };
   }
 
@@ -227,33 +209,41 @@ async function needsAIAssistance() {
 // Request AI assistance
 async function requestAIAssistance(tasks) {
   // Get MCP approval for AI assistance
-  const approved = await checkWithMCP('ai_assistance', { tasks });
-  if (!approved) return { success: false, reason: 'MCP rejected AI assistance' };
+  const approved = await checkWithMCP("ai_assistance", { tasks });
+  if (!approved)
+    return { success: false, reason: "MCP rejected AI assistance" };
 
   const prompt = generatePrompt(tasks);
-  
+
   try {
     // Call AI API with MCP context
-    const response = await callAI(prompt, { mcpContext: true });
-    
+    const response = await callAI(prompt, c.env || {}, { mcpContext: true });
+
     // Process AI response with MCP approval
-    const processApproved = await checkWithMCP('process_ai_response', { response });
-    if (!processApproved) return { success: false, reason: 'MCP rejected AI response processing' };
-    
+    const processApproved = await checkWithMCP("process_ai_response", {
+      response,
+    });
+    if (!processApproved)
+      return { success: false, reason: "MCP rejected AI response processing" };
+
     await processAIResponse(response);
-    
+
     return { success: true, response };
   } catch (error) {
-    console.error('AI assistance request failed:', error);
+    sharedLogger.error("AI assistance request failed", {
+      error: String(error),
+    });
     return { success: false, error };
   }
 }
 
 // Generate appropriate prompt for AI
 function generatePrompt(tasks) {
-  const taskDescriptions = tasks.map(task => {
-    return `Task: ${task.type}\nPriority: ${task.priority}\nDescription: ${task.description}`;
-  }).join('\n\n');
+  const taskDescriptions = tasks
+    .map((task) => {
+      return `Task: ${task.type}\nPriority: ${task.priority}\nDescription: ${task.description}`;
+    })
+    .join("\n\n");
 
   return `Please assist with the following tasks:\n\n${taskDescriptions}`;
 }
@@ -262,7 +252,7 @@ function generatePrompt(tasks) {
 async function processAIResponse(response) {
   // Get MCP approval for each action in the response
   for (const action of response.actions) {
-    const approved = await checkWithMCP('process_action', { action });
+    const approved = await checkWithMCP("process_action", { action });
     if (!approved) continue;
 
     // Execute approved action
@@ -276,52 +266,76 @@ async function processAIResponse(response) {
 }
 
 // API Endpoints
-app.get('/status', async (c) => {
-  const approved = await checkWithMCP('status_check', { timestamp: new Date() });
-  if (!approved) return c.json({ error: 'MCP rejected status check' }, 403);
+app.get("/status", async (c) => {
+  const approved = await checkWithMCP("status_check", {
+    timestamp: new Date(),
+  });
+  if (!approved) return c.json({ error: "MCP rejected status check" }, 403);
 
   return c.json({
     lastCheck,
     pendingTasks: Array.from(pendingTasks),
     activeDeployments: Array.from(activeDeployments),
-    terminalCommands: Array.from(terminalCommands.entries())
+    terminalCommands: Array.from(terminalCommands.entries()),
   });
 });
 
-app.post('/task', async (c) => {
+app.post("/task", async (c) => {
   const task = await c.req.json();
-  
+
   // Get MCP approval for task
-  const approved = await checkWithMCP('add_task', { task });
-  if (!approved) return c.json({ error: 'MCP rejected task' }, 403);
+  const approved = await checkWithMCP("add_task", { task });
+  if (!approved) return c.json({ error: "MCP rejected task" }, 403);
 
   pendingTasks.add(task);
-  
+
   // Check if AI assistance is needed
-  const { needed, tasks, reason } = await needsAIAssistance();
+  const { needed, tasks } = await needsAIAssistance();
   if (needed) {
     await requestAIAssistance(tasks);
   }
-  
+
   return c.json({ success: true, task });
 });
 
 // Terminal command endpoint
-app.post('/terminal', async (c) => {
+app.post("/terminal", async (c) => {
   const { command, context } = await c.req.json();
-  
+
   const result = await executeTerminalCommand(command, context);
   return c.json(result);
 });
 
 // Health check
-app.get('/healthz', (c) => c.text('OK'));
+app.get("/healthz", (c) => c.text("OK"));
+app.get("/health", (c) =>
+  c.json({
+    status: "healthy",
+    service: "orchestrator",
+    timestamp: new Date().toISOString(),
+  }),
+);
 
 // Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
 
-export default {
-  fetch: app.fetch,
-  scheduled: async (event, env, ctx) => {
-    ctx.waitUntil(monitorProjectState())
+export async function handleRequest(req, env, ctx) {
+  if (!envValidated) {
+    try {
+      validateEnv(commonEnvSpec, env);
+    } catch (e) {
+      sharedLogger.warn("Orchestrator env validation warning", {
+        error: String(e),
+      });
+    } finally {
+      envValidated = true;
+    }
   }
-}; 
+  return app.fetch(req, env, ctx);
+}
+
+export default {
+  fetch: handleRequest,
+  scheduled: async (event, env, ctx) => {
+    ctx.waitUntil(monitorProjectState());
+  },
+};

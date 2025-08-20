@@ -18,7 +18,7 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": [],
+    "types": ["vitest", "@cloudflare/workers-types"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
@@ -27,17 +27,10 @@
       "@auth/*": ["./auth/src/*"],
       "@orchestrator/*": ["./orchestrator/src/*"],
       "@api-manager/*": ["./api-manager/src/*"],
-      "@applications/*": ["./applications/src/*"]
+      "@applications/*": ["./applications/src/*"],
+      "@atlasit/shared": ["./packages/shared/src"]
     }
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

@@ -32,16 +32,19 @@ terraform/
 ## Quick Start
 
 1. Initialize Terraform:
+
 ```bash
 terraform init
 ```
 
 2. Plan the deployment:
+
 ```bash
 terraform plan -var-file=environments/dev/terraform.tfvars
 ```
 
 3. Apply the configuration:
+
 ```bash
 terraform apply -var-file=environments/dev/terraform.tfvars
 ```
@@ -89,3 +92,16 @@ environment           = "dev|staging|prod"
 3. Configure monitoring and alerting
 4. Implement backup and disaster recovery
 5. Add security compliance checks
+
+---
+
+### Phase 0 Minimal Baseline Addendum
+
+For current MVP foundation we will defer full multi-cloud build-out and focus on:
+
+- Cloudflare Workers + KV + D1 (no GCP expansion yet) to keep PoC free.
+- Single `main.tf` with provider + placeholder resources (to be added) instead of full env matrix.
+- Local Terraform state; remote backend deferred to Phase 4 (pricing & prod hardening).
+- Secrets remain outside Terraform (managed via `wrangler secret` and GitHub Actions secrets).
+
+Future sections in this document (GCP modules) are placeholders until cost justification in later phases.

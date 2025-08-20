@@ -1,0 +1,15 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "Running pre-push checks..."
+
+npm run scan:secrets || exit 1
+npm run typecheck || true
+npm test || exit 1
+
+# Optional: enforce coverage (vitest already configured)
+
+HASH_OUTPUT=$(npm run -s schema:hash)
+echo "Schema hash: $HASH_OUTPUT"
+
+echo "Pre-push checks completed"

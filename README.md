@@ -1,3 +1,54 @@
+## Onboarding Service Phase 1 Additions
+
+### Endpoints
+
+1. POST /api/onboarding
+   - Creates (or returns existing) onboarding configuration for a tenant.
+   - Idempotent: subsequent identical POSTs return 200 with `idempotent: true` and original config/template.
+2. GET /api/onboarding/questions?industry=tech&req=analytics&req=compliance
+   - Returns dynamic question set based on industry and requirement keywords.
+3. GET /api/onboarding/:tenantId
+   - Returns stored onboarding state (status, config, template) if exists.
+
+### Error Codes (taxonomy)
+
+| Code    | Meaning                                                |
+| ------- | ------------------------------------------------------ |
+| ONB-001 | Missing required fields (tenantId, name, industry)     |
+| ONB-002 | Unsupported industry (details includes allowed list)   |
+| ONB-003 | Invalid configuration (details list validation issues) |
+| ONB-004 | Onboarding already provisioned (idempotent path)       |
+| ONB-005 | Tenant ID required (status endpoint)                   |
+| ONB-006 | Onboarding not found (status endpoint)                 |
+| ONB-999 | Unknown error                                          |
+
+### Audit Events
+
+- On success an `audit_events` row is inserted: type `onboarding.completed` with payload `{ tenantId, industry }`.
+- Idempotent re-invocations do NOT create duplicate audit events.
+
+### Questions Generation Inputs
+
+- Industry (default technology) influences specialized questions (e.g., healthcare adds PHI question).
+- Requirements keywords (compliance, analytics, etc.) add targeted questions.
+
+### AI Config Enhancements
+
+- Extended keyword mapping for monitoring/observability, logging, audit, sso, gdpr/privacy.
+
+### Testing Coverage
+
+- Unit: health, onboarding POST (create + idempotent), questions, status (found & not found).
+- Integration: full flow, status retrieval, idempotent POST, error taxonomy (ONB-001, ONB-002, conditional ONB-003 attempt).
+
+### Idempotency Behavior
+
+- KV key `onboarding:{tenantId}` as source of truth; presence triggers 200 path with `idempotent: true`.
+
+### Future Work (Phase 2 Ideas)
+
+- Enrich validation details, add partial progress states, expand question taxonomy.
+
 # AtlasIT
 
 AtlasIT is a modular, cloud-first IT management platform for SMBs that automates user provisioning, SaaS onboarding, identity/infrastructure access, device enrollment, communications, security, reporting, and cost management—with compliance and AI-powered onboarding built in.
@@ -35,39 +86,55 @@ AtlasIT is a modular, cloud-first IT management platform for SMBs that automates
 ### Installation
 
 1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/atlasit.git
-   cd atlasit
-   ```
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+```bash
+git clone https://github.com/yourusername/atlasit.git
+cd atlasit
+```
 
-3. **Set up environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+1. **Install dependencies:**
 
-4. **Authenticate with Cloudflare:**
-   ```bash
-   wrangler login
-   ```
+```bash
+# Preferred (installs root + all workspaces)
+npm run install:all
 
-5. **Start development server:**
-   ```bash
-   npm run dev
-   ```
+# Or just root (then manually install per service)
+npm install
+```
 
-6. **Access the application:**
-   - API: `http://localhost:8787`
-   - Dashboard: `http://localhost:3000`
+1. **Set up environment:**
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+1. **Authenticate with Cloudflare:**
+
+```bash
+wrangler login
+```
+
+1. **Start core development services:**
+
+```bash
+npm run dev:core
+```
+
+Or start all declared dev targets (may include placeholders not yet implemented):
+
+```bash
+npm run dev
+```
+
+1. **Access the application:**
+
+- API: `http://localhost:8787`
+- Dashboard: `http://localhost:3000`
 
 ## 📁 Project Structure
 
-```
+```text
 atlasit/
 ├── 📚 docs/                    # Comprehensive documentation
 │   ├── api-documentation.md    # Complete API reference
@@ -94,54 +161,76 @@ atlasit/
 ## 🔧 Services Overview
 
 ### 🎯 Onboarding Service
+
 AI-powered tenant configuration with industry-specific templates, automated setup workflows, and integration validation.
 
 **Key Features:**
+
 - Dynamic questionnaire generation
 - Industry-specific configurations (Healthcare, Finance, Retail)
 - Automated template creation
 - Integration validation pipeline
 
+#### Current Endpoints
+
+| Method | Path                        | Description                                     |
+| ------ | --------------------------- | ----------------------------------------------- |
+| GET    | `/health`                   | Service health probe                            |
+| POST   | `/onboarding/start`         | Generate dynamic onboarding question set        |
+| POST   | `/onboarding/submit`        | Submit tenant data and generate config/template |
+| POST   | `/api/onboarding`           | Legacy alias of `/onboarding/submit`            |
+| GET    | `/api/onboarding/:tenantId` | Retrieve onboarding state & generated config    |
+
 ### 🏪 Marketplace Service
+
 Centralized app discovery and management platform for SaaS integrations and custom solutions.
 
 **Key Features:**
+
 - App discovery and installation
 - Version management
 - Dependency resolution
 - Usage analytics
 
 ### 🔐 Authentication Service
+
 Multi-tenant authentication with support for various identity providers and protocols.
 
 **Key Features:**
+
 - JWT/OAuth/SAML support
 - Role-based access control (RBAC)
 - Multi-tenant isolation
 - SSO integration
 
 ### 🎭 Orchestrator Service
+
 Event-driven workflow management using Model Context Protocol (MCP) for service coordination.
 
 **Key Features:**
+
 - Event processing and routing
 - Workflow automation
 - State management
 - Service coordination
 
 ### 🌐 API Manager
+
 Unified API gateway providing routing, security, rate limiting, and monitoring.
 
 **Key Features:**
+
 - Request routing and load balancing
 - Authentication and authorization
 - Rate limiting and throttling
 - API analytics and monitoring
 
 ### 📱 Applications Service
+
 Manages SaaS integrations and custom applications with health monitoring and performance tracking.
 
 **Key Features:**
+
 - SaaS integration management
 - Health monitoring
 - Performance analytics
@@ -149,61 +238,66 @@ Manages SaaS integrations and custom applications with health monitoring and per
 
 ## 📚 Documentation
 
-| Document | Description |
-|----------|-------------|
-| [🏗️ Architecture Guide](docs/architecture.md) | System design, components, and data flow |
-| [📖 API Documentation](docs/api-documentation.md) | Complete REST API reference with examples |
-| [🚀 Deployment Guide](docs/deployment-guide.md) | Production deployment and infrastructure setup |
-| [👨‍💻 Developer Guide](docs/developer-guide.md) | Development setup, coding standards, and best practices |
+| Document                                          | Description                                             |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| [🏗️ Architecture Guide](docs/architecture.md)     | System design, components, and data flow                |
+| [📖 API Documentation](docs/api-documentation.md) | Complete REST API reference with examples               |
+| [🚀 Deployment Guide](docs/deployment-guide.md)   | Production deployment and infrastructure setup          |
+| [👨‍💻 Developer Guide](docs/developer-guide.md)     | Development setup, coding standards, and best practices |
 
 ## 💻 Development
 
 ### Local Development Setup
 
 1. **Install service dependencies:**
-   ```bash
-   # Install all service dependencies
-   npm run install:all
-   
-   # Or install individually
-   cd onboarding && npm install
-   cd marketplace && npm install
-   # ... repeat for each service
-   ```
 
-2. **Set up databases:**
-   ```bash
-   # Create local D1 databases
-   wrangler d1 create atlasit-local
-   
-   # Run migrations
-   cd onboarding && wrangler d1 migrations apply atlasit-local --local
-   ```
+```bash
+# Install all service dependencies
+npm run install:all
 
-3. **Start development servers:**
-   ```bash
-   # Start all services
-   npm run dev
-   
-   # Or start individual services
-   cd onboarding && npm run dev
-   ```
+# Or install individually
+cd onboarding && npm install
+cd marketplace && npm install
+# ... repeat for each service
+```
+
+1. **Set up databases (D1 for onboarding service):**
+
+```bash
+# Create (or ensure) local D1 database (name can differ)
+wrangler d1 create atlasit-local
+
+# Apply onboarding service migrations
+cd onboarding
+wrangler d1 migrations apply atlasit-local --local
+```
+
+1. **Start development servers:**
+
+```bash
+# Core services (onboarding + orchestrator)
+npm run dev:core
+
+# All declared services (parallel)
+npm run dev
+
+# Individual
+cd onboarding && npm run dev
+```
 
 ### Testing
 
+Current implemented suite uses Vitest unit tests.
+
 ```bash
-# Run all tests
-npm test
+# Run unit tests
+npm run test:unit
 
-# Run tests with coverage
+# Run with coverage (thresholds enforced: lines 40%, funcs 40%, branches 30%, statements 40%)
 npm run test:coverage
-
-# Run integration tests
-npm run test:integration
-
-# Run e2e tests
-npm run test:e2e
 ```
+
+Service-specific tests can be run within each service directory.
 
 ### Code Quality
 
@@ -215,45 +309,117 @@ npm run lint
 npm run format
 
 # Type check
-npm run type-check
+npm run typecheck
 ```
+
+### Secret Scanning
+
+Secret scanning runs in CI (pre typecheck/lint) and can be invoked locally:
+
+```bash
+npm run scan:secrets
+```
+
+The script flags common credential patterns (API keys, private keys). Use mock-looking values that avoid real key patterns when adding fixtures.
+
+### Environment Validation
+
+Both onboarding and AI orchestrator perform a one-time environment validation on first request using a shared Zod schema. Warnings (not fatal) surface missing or invalid optional values early.
+
+## ✅ MVP Readiness Matrix
+
+| Component                          | Status                        | Included in MVP | Operational Criteria Met                                                    | Notes                                                    |
+| ---------------------------------- | ----------------------------- | --------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Onboarding Worker                  | Implemented                   | Yes             | Health, start/submit/state endpoints, negative tests, D1 migration baseline | Further: add persistence logic using D1                  |
+| AI Orchestrator (ai-orchestrator/) | Basic endpoints & state stubs | Yes (minimal)   | /health, /status (guarded), env validation, basic tests                     | AI call duplication to refactor into shared provider     |
+| Shared Utilities (@atlasit/shared) | Implemented                   | Yes             | Logger, env, AI abstraction, http helpers exported                          | Needs build step in CI before tests (pretest hook added) |
+| Auth Service                       | Placeholder                   | Deferred        | N/A                                                                         | Future: OIDC/SAML integration                            |
+| Marketplace                        | Placeholder                   | Deferred        | N/A                                                                         | Future: app registry & install flows                     |
+| API Manager                        | Placeholder                   | Deferred        | N/A                                                                         | Future: routing, rate limits                             |
+| Applications Service               | Placeholder                   | Deferred        | N/A                                                                         | Future: integration adapters                             |
+| Infrastructure (Terraform)         | Scaffold                      | Yes (baseline)  | Directory + plan docs                                                       | Apply once domains decided                               |
+| Security (Secret Scan)             | Implemented                   | Yes             | CI step + local script                                                      | Extend patterns incrementally                            |
+| Testing & Coverage                 | Partial                       | Yes             | Unit tests + coverage thresholds                                            | Increase thresholds over time                            |
+| Database (D1)                      | Initial migration             | Yes             | tenants & onboarding_sessions tables                                        | Add queries & persistence code                           |
+| Observability                      | Planned                       | Optional        | —                                                                           | Future: metrics, tracing, dashboards                     |
+| UI Dashboard                       | Planned                       | Optional        | —                                                                           | React app not yet scaffolded                             |
+
+## 🌟 Optional / Phase 2+ Components
+
+These are intentionally deferred to keep MVP lean while preserving clear upgrade paths:
+
+- Advanced AI workflow orchestration (multi-model strategies, tool selection)
+- Full Auth provider federation (Okta/Auth0/Entra) & SCIM provisioning
+- Marketplace publish/approval workflow & billing hooks
+- Comprehensive observability stack (Prometheus exporters, Grafana dashboards, tracing)
+- UI dashboard (tenant admin console & analytics)
+- Rate limiting & advanced API analytics (per-tenant quotas)
+- Fine-grained RBAC & policy engine (OPA/Rego or Cedar)
+- Automated compliance report generation (SOC2-style evidence collection)
+
+## 🔄 Roadmap Next Steps (Short-Term)
+
+1. Persist onboarding session state in D1 instead of in-memory KV-like map.
+2. Refactor orchestrator to use shared AI provider abstraction (`generateAI`).
+3. Expand test coverage (orchestrator action flows, error paths) and raise coverage thresholds.
+4. Introduce Auth service skeleton (health + /login placeholder) to anchor integration.
+5. Add migration automation script & document rollback approach.
+6. Add lint/typecheck/test steps for each workspace in CI matrix (incremental parallelization).
+
+## 🔁 Script Reference (Updated)
+
+| Script                  | Description                                            |
+| ----------------------- | ------------------------------------------------------ |
+| `npm run install:all`   | Install root + all workspace dependencies              |
+| `npm run dev:core`      | Start core MVP services (onboarding + ai-orchestrator) |
+| `npm run test:unit`     | Run Vitest unit suite (shared + service tests)         |
+| `npm run test:coverage` | Run tests with coverage & threshold enforcement        |
+| `npm run scan:secrets`  | Execute local secret scanning script                   |
+| `npm run build:shared`  | Build shared utilities package                         |
+
+## 📂 Orchestrator Directory Note
+
+The active orchestrator worker source lives in `ai-orchestrator/` (Hono-based). A legacy `orchestrator/` directory remains for documentation drafts; future consolidation will either migrate or remove the legacy folder.
 
 ## 🚀 Deployment
 
 ### Production Deployment
 
 1. **Configure infrastructure:**
-   ```bash
-   cd terraform/cloudflare
-   terraform init
-   terraform plan -var="domain=yourdomain.com"
-   terraform apply
-   ```
 
-2. **Deploy services:**
-   ```bash
-   # Deploy all services
-   npm run deploy
+```bash
+cd terraform/cloudflare
+terraform init
+terraform plan -var="domain=yourdomain.com"
+terraform apply
+```
 
-   # Or deploy individually
-   cd onboarding && npm run deploy
-   ```
+1. **Deploy services:**
 
-3. **Verify deployment:**
-   ```bash
-   # Check service health
-   curl https://api.yourdomain.com/health
-   ```
+```bash
+# Deploy all services
+npm run deploy
+
+# Or deploy individually
+cd onboarding && npm run deploy
+```
+
+1. **Verify deployment:**
+
+```bash
+# Check service health
+curl https://api.yourdomain.com/health
+```
 
 For detailed deployment instructions, see the [Deployment Guide](docs/deployment-guide.md).
 
 ### Environment Configuration
 
-| Environment | Purpose | URL |
-|-------------|---------|-----|
-| Development | Local development | `http://localhost:8787` |
-| Staging | Pre-production testing | `https://staging-api.yourdomain.com` |
-| Production | Live environment | `https://api.yourdomain.com` |
+| Environment | Purpose                | URL                                  |
+| ----------- | ---------------------- | ------------------------------------ |
+| Development | Local development      | `http://localhost:8787`              |
+| Staging     | Pre-production testing | `https://staging-api.yourdomain.com` |
+| Production  | Live environment       | `https://api.yourdomain.com`         |
 
 ## 🤝 Contributing
 
@@ -262,24 +428,33 @@ We welcome contributions! Please see our [Developer Guide](docs/developer-guide.
 ### Quick Contribution Steps
 
 1. **Fork the repository**
-2. **Create a feature branch:**
-   ```bash
-   git checkout -b feature/amazing-feature
-   ```
-3. **Make your changes and add tests**
-4. **Ensure all tests pass:**
-   ```bash
-   npm test
-   ```
-5. **Commit your changes:**
-   ```bash
-   git commit -m 'feat: add amazing feature'
-   ```
-6. **Push to your branch:**
-   ```bash
-   git push origin feature/amazing-feature
-   ```
-7. **Open a Pull Request**
+1. **Create a feature branch:**
+
+```bash
+git checkout -b feature/amazing-feature
+```
+
+1. **Make your changes and add tests**
+
+1. **Ensure all tests pass:**
+
+```bash
+npm test
+```
+
+1. **Commit your changes:**
+
+```bash
+git commit -m 'feat: add amazing feature'
+```
+
+1. **Push to your branch:**
+
+```bash
+git push origin feature/amazing-feature
+```
+
+1. **Open a Pull Request**
 
 ### Development Guidelines
 
@@ -291,16 +466,16 @@ We welcome contributions! Please see our [Developer Guide](docs/developer-guide.
 
 ## 🏗️ Technology Stack
 
-| Category | Technology |
-|----------|------------|
-| **Runtime** | Cloudflare Workers (V8 Isolates) |
-| **Language** | TypeScript |
-| **Database** | Cloudflare D1 (SQLite) |
-| **Storage** | Cloudflare KV |
-| **Frontend** | React + TypeScript |
-| **Testing** | Vitest + Playwright |
-| **Infrastructure** | Terraform |
-| **CI/CD** | GitHub Actions |
+| Category           | Technology                       |
+| ------------------ | -------------------------------- |
+| **Runtime**        | Cloudflare Workers (V8 Isolates) |
+| **Language**       | TypeScript                       |
+| **Database**       | Cloudflare D1 (SQLite)           |
+| **Storage**        | Cloudflare KV                    |
+| **Frontend**       | React + TypeScript               |
+| **Testing**        | Vitest + Playwright              |
+| **Infrastructure** | Terraform                        |
+| **CI/CD**          | GitHub Actions                   |
 
 ## 📊 Performance & Scalability
 
@@ -330,7 +505,7 @@ We welcome contributions! Please see our [Developer Guide](docs/developer-guide.
 - **📖 Documentation**: Comprehensive guides and API reference
 - **🐛 Issues**: [GitHub Issues](https://github.com/yourusername/atlasit/issues)
 - **💬 Discussions**: [GitHub Discussions](https://github.com/yourusername/atlasit/discussions)
-- **📧 Email**: support@atlasit.com
+- **📧 Email**: [support@atlasit.com](mailto:support@atlasit.com)
 - **📊 Status Page**: [status.atlasit.com](https://status.atlasit.com)
 
 ## 📄 License
@@ -345,4 +520,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Built with ❤️ by the AtlasIT team**
+### Built with ❤️ by the AtlasIT team

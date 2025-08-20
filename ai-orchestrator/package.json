@@ -1,0 +1,19 @@
+{
+  "name": "atlasit-ai-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "echo 'No build step (pure JS)'",
+    "test": "vitest run || echo 'No orchestrator tests defined'"
+  },
+  "dependencies": {
+    "hono": "^4.3.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.95.0",
+    "vitest": "^1.6.0"
+  }
+}

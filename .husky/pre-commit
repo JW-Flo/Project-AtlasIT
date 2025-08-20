@@ -1,0 +1,10 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "Running pre-commit hooks..."
+
+# Stash unstaged changes automatically (husky v9 doesn't have built-in, rely on git)
+# Format & lint staged files
+npx lint-staged || exit 1
+
+echo "Pre-commit hooks completed"

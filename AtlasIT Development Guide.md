@@ -6,14 +6,14 @@ Comprehensive blueprint for developing AtlasIT, a modular, cloud-first IT manage
 
 ## 1. Project Overview & Goals
 
-* **Purpose**: Deliver a turnkey IT backbone for SMBs lacking full IT teams.
-* **Scope**: User provisioning, SaaS account management, identity management, infrastructure access, device enrollment, communications orchestration, EDR/SIEM integration, reporting, and cost monitoring.
-* **Success Criteria**:
+- **Purpose**: Deliver a turnkey IT backbone for SMBs lacking full IT teams.
+- **Scope**: User provisioning, SaaS account management, identity management, infrastructure access, device enrollment, communications orchestration, EDR/SIEM integration, reporting, and cost monitoring.
+- **Success Criteria**:
 
-  * 99.9% uptime across all MCP modules
-  * Automated onboarding/offboarding in <60s per user
-  * Compliance reporting for GDPR/CCPA
-  * Monthly cloud spend alerts and cost dashboards
+  - 99.9% uptime across all MCP modules
+  - Automated onboarding/offboarding in <60s per user
+  - Compliance reporting for GDPR/CCPA
+  - Monthly cloud spend alerts and cost dashboards
 
 ---
 
@@ -120,25 +120,25 @@ atlasit/
 
 ### 5.1 docs/security.md
 
-* Threat model diagram
-* OWASP, CIS Benchmarks
-* Secrets management via Vault/GCP Secret Manager
-* Least privilege IAM policies
-* Network segmentation (VPC, Firewalls)
+- Threat model diagram
+- OWASP, CIS Benchmarks
+- Secrets management via Vault/GCP Secret Manager
+- Least privilege IAM policies
+- Network segmentation (VPC, Firewalls)
 
 ### 5.2 docs/observability.md
 
-* Logging: structure, correlation IDs
-* Metrics: Prometheus schemas, Grafana dashboards
-* SLO definitions and alert rules
-* Runbook templates
+- Logging: structure, correlation IDs
+- Metrics: Prometheus schemas, Grafana dashboards
+- SLO definitions and alert rules
+- Runbook templates
 
 ### 5.3 docs/roadmap.md
 
-* Q1: Core & provisioning MVP
-* Q2: All MCP modules + reporting
-* Q3: Local self-host option + IdP
-* Q4: Advanced analytics & AI suggestions
+- Q1: Core & provisioning MVP
+- Q2: All MCP modules + reporting
+- Q3: Local self-host option + IdP
+- Q4: Advanced analytics & AI suggestions
 
 ---
 
@@ -148,34 +148,41 @@ atlasit/
 
 1. **Generate MCP Module Template**
 
-   * Prompt: "Create a new MCP module scaffold named `<module-name>` in TypeScript, including `handler.ts`, `api.ts`, `schema.json`, `Dockerfile`, and unit test stub."
+   - Prompt: "Create a new MCP module scaffold named `<module-name>` in TypeScript, including `handler.ts`, `api.ts`, `schema.json`, `Dockerfile`, and unit test stub."
+
 2. **Write Connector Code**
 
-   * Prompt: "Implement the `createUser` function for the User Provisioning MCP using the Google Admin SDK, handling pagination and errors."
+   - Prompt: "Implement the `createUser` function for the User Provisioning MCP using the Google Admin SDK, handling pagination and errors."
+
 3. **Terraform Module**
 
-   * Prompt: "Generate a Terraform module for AWS WorkSpaces that creates a directory, security groups, and a parameterized WorkSpace resource."
+   - Prompt: "Generate a Terraform module for AWS WorkSpaces that creates a directory, security groups, and a parameterized WorkSpace resource."
+
 4. **CI Workflow YAML**
 
-   * Prompt: "Produce a GitHub Actions YAML for `ci-mcp-build.yml` that lints, type-checks, and validates JSON schemas."
+   - Prompt: "Produce a GitHub Actions YAML for `ci-mcp-build.yml` that lints, type-checks, and validates JSON schemas."
 
 ### 6.2 Operator GPT (Orchestration & Ops)
 
 1. **Run Connectivity Checks**
 
-   * Task: invoke `check-okta-connection.sh`, parse output, and create a Jira ticket if failures detected.
+   - Task: invoke `check-okta-connection.sh`, parse output, and create a Jira ticket if failures detected.
+
 2. **Deploy MCP Module**
 
-   * Task: on code merge, trigger `ci-mcp-deploy.yml` and report status in Slack channel.
+   - Task: on code merge, trigger `ci-mcp-deploy.yml` and report status in Slack channel.
+
 3. **Smoke Testing**
 
-   * Task: execute `smoke_test.sh`, collect metrics, and update health dashboard.
+   - Task: execute `smoke_test.sh`, collect metrics, and update health dashboard.
+
 4. **Cost Alerting**
 
-   * Task: daily ingest AWS/GCP cost data, compare against thresholds, and send email/SMS on overrun.
+   - Task: daily ingest AWS/GCP cost data, compare against thresholds, and send email/SMS on overrun.
+
 5. **Documentation Sweep**
 
-   * Task: weekly check for out-of-date docs via Confluence API and open PRs for stale files.
+   - Task: weekly check for out-of-date docs via Confluence API and open PRs for stale files.
 
 ---
 
@@ -186,4 +193,46 @@ atlasit/
 3. Assign Codex GPT tasks to generate initial scaffolding code.
 4. Setup Operator GPT runbooks for environment validation and deploy checks.
 
-*End of AtlasIT Development Guide.*
+_End of AtlasIT Development Guide._
+
+---
+
+## Appendix A: Testing & Bundling Strategy (Added Aug 2025)
+
+### A.1 Workers Testing Approach
+
+We use Vitest for both unit and lightweight integration tests:
+
+- Unit tests run in a plain Node environment for speed.
+- Integration tests instantiate a Miniflare instance to emulate Cloudflare KV + D1.
+- The onboarding worker is bundled on-the-fly via esbuild inside the integration test to avoid module resolution issues with TypeScript source and to keep tests hermetic.
+
+### A.2 Deterministic Configuration Generation
+
+AIConfigService currently returns deterministic baseline configs per industry (technology, healthcare, finance, retail) plus requirement-driven enhancements. A safety fallback always injects a baseline integration to satisfy validation ("at least one enabled integration").
+
+### A.3 Validation Rules
+
+- Request: tenantId, name, industry required; industry must be in allowlist (technology, healthcare, finance, retail).
+- TenantConfig: ≥1 enabled integration, each enabled workflow must have ≥1 action, RBAC roles required if rbac=true.
+
+### A.4 Common Test Commands
+
+- Core workers only: `npm run test:core`
+- Onboarding only: `npm run test:onboarding`
+
+### A.5 Bundling Script
+
+Added `npm run bundle` in `onboarding/` to produce `src/bundled-worker.mjs` for optional manual local debugging; integration tests still self-bundle to keep artifact isolated.
+
+## Appendix B: Phase 1 Onboarding Roadmap Enhancements
+
+| Item                          | Description                                                                                                            | Status  |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------- |
+| Onboarding Questions Endpoint | Surface dynamic baseline questions (stub exists) via `/api/onboarding/questions` with industry & requirements params   | Planned |
+| Status Endpoint & Idempotency | Add `/api/onboarding/:tenantId/status` returning stored KV state; duplicate POST returns 200 + existing config         | Planned |
+| AI Config Refinement          | Expand requirement keyword mapping (logging, monitoring, sso, compliance variants) and add scoring for recommendations | Planned |
+| Persistence Hardening         | Introduce migration to add JSON index / add audit event row on onboarding completion                                   | Planned |
+| Error Taxonomy                | Standardize error codes (ONB-xxx) in responses for client handling                                                     | Planned |
+
+Acceptance gates: green tests, deterministic config baseline, idempotent POST, question endpoint returns ≥3 baseline + conditional questions.
