@@ -10,6 +10,22 @@ env/
 # Ignore environment files
 .env
 .env.backup
+.env.*
+**/.env
+!.env.example
+
+# Ignore virtual environments
+.venv/
+venv/
+
+# Ignore keys and private certificates
+Keys/
+*.pem
+*.key
+*.crt
+
+# Ignore Prometheus local env
+Prometheus/.env
 
 # Ignore VS Code settings
 .vscode/

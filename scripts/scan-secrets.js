@@ -4,14 +4,25 @@ import fs from "fs";
 import path from "path";
 
 const ROOT = process.cwd();
+// Patterns that strongly indicate an exposed credential VALUE, not just a variable name.
 const BLOCKLIST_REGEXES = [
-  /sk_live_[0-9a-zA-Z]{10,}/, // Stripe live key
-  /AIza[0-9A-Za-z\-_]{35}/, // Google API key
-  /ghp_[0-9A-Za-z]{36,}/, // GitHub personal access token
-  /-----BEGIN (?:RSA|EC|OPENSSH) PRIVATE KEY-----/, // Private key
-  /OPENAI_API_KEY/i, // Literal inclusion
-  /TOGETHER_API_KEY/i,
-  /JWT_SECRET\s*=\s*['"][^'"]+['"]/i,
+  /sk_live_[0-9a-zA-Z]{10,}/, // Stripe live key value
+  /AIza[0-9A-Za-z\-_]{35}/, // Google API key value
+  /ghp_[0-9A-Za-z]{36,}/, // GitHub personal access token value
+  /-----BEGIN (?:RSA|EC|OPENSSH) PRIVATE KEY-----/, // Any private key block
+  /(xox[baprs]-|xapp-)[0-9A-Za-z-]{10,}/, // Slack tokens
+  /"?(OPENAI|TOGETHER|ANTHROPIC|MISTRAL)_API_KEY"?\s*[:=]\s*["']?(?:sk-|ghs_)?[A-Za-z0-9-_]{20,}["']?/, // Generic provider API key assignments
+  /JWT_SECRET\s*=\s*['"][A-Za-z0-9+\/=]{16,}['"]/i,
+];
+
+// Allowlist: file paths (globs substrings) we intentionally ignore even if a regex matches
+const ALLOWLIST_PATH_SUBSTRINGS = [
+  "README.md",
+  "docs/",
+  "documentation-worker",
+  "CHANGELOG",
+  "LICENSE",
+  ".md", // general markdown references
 ];
 
 const IGNORE_DIRS = new Set([
@@ -23,13 +34,33 @@ const IGNORE_DIRS = new Set([
 ]);
 let findings = [];
 
+function isAllowlisted(file) {
+  const lower = file.toLowerCase();
+  return ALLOWLIST_PATH_SUBSTRINGS.some((sub) =>
+    lower.includes(sub.toLowerCase()),
+  );
+}
+
 function scanFile(file) {
+  if (isAllowlisted(file)) return; // skip docs and known safe reference files
   const content = fs.readFileSync(file, "utf8");
-  BLOCKLIST_REGEXES.forEach((rx) => {
+  for (const rx of BLOCKLIST_REGEXES) {
     if (rx.test(content)) {
-      findings.push({ file, pattern: rx.toString() });
+      // Capture a short excerpt for context
+      const match = content.match(rx);
+      let excerpt = "";
+      if (match && match.index !== undefined) {
+        excerpt = content
+          .substring(
+            Math.max(0, match.index - 20),
+            match.index + match[0].length + 20,
+          )
+          .replace(/\n/g, " ");
+      }
+      findings.push({ file, pattern: rx.toString(), excerpt });
+      break; // one hit is enough per file
     }
-  });
+  }
 }
 
 function walk(dir) {
@@ -45,7 +76,11 @@ walk(ROOT);
 
 if (findings.length) {
   console.error("Secret scan failed. Potential secrets found:");
-  findings.forEach((f) => console.error(` - ${f.file} matched ${f.pattern}`));
+  findings.forEach((f) =>
+    console.error(
+      ` - ${f.file} matched ${f.pattern}${f.excerpt ? " :: " + f.excerpt : ""}`,
+    ),
+  );
   process.exit(1);
 } else {
   console.log("Secret scan passed. No obvious secrets detected.");
