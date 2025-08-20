@@ -1,140 +1,161 @@
-# AtlasIT System Architecture
+# AtlasIT Architecture
 
-AtlasIT is designed as a modular, cloud-first platform for automated IT operations, leveraging Cloudflare's edge network for global distribution and performance.
+Status: Draft (initial commit)
+Last Updated: 2025-08-20
+Owner: JW-Flo
 
-## System Overview
+## 1. Executive Summary
+AtlasIT is a modular, multi-tenant IT automation and lifecycle management platform. Core capabilities: identity & entitlement modeling, policy-driven provisioning/deprovisioning, standardized connector framework, auditable workflows, and protocol support (OAuth/OIDC, SAML, SCIM) delivered via an edge-first (Cloudflare Workers) architecture.
 
-### Core Services
+## 2. High-Level Architecture
+Layers:
+1. Edge / API Gateway: Cloudflare Workers entrypoint, request auth, tenant resolution, rate limiting.
+2. Auth & Protocol Services: OAuth2/OIDC issuer, SAML SP (ACS + metadata), SCIM (Users & Groups), session management, JWKS publication.
+3. Core Domain Services: Identity (canonical user graph), Tenant config, Policy & Entitlements Engine, Attribute Mapping Engine.
+4. Workflow Orchestrator: State machine executing provisioning / deprovisioning tasks with retries & compensation.
+5. Connector Framework: Registry + runtime + uniform interface for SaaS connectors (user create/update/deactivate, group ops, license ops, health check).
+6. Data & State: Primary relational store (initially D1/SQLite; roadmap to Postgres), KV/Redis (hot config & token cache), object storage (audit export), queue/event bus (initial: DB polling, later: durable queue).
+7. Observability & Compliance: Structured logs, metrics, traces (OTel), audit hash chain, webhook/event sink.
+8. Security & Secrets: Encryption (envelope), secret storage, key rotation, tenant isolation enforcement.
+9. Developer Platform: Connector SDK, CLI scaffolding, test harness, (future) marketplace & sandbox runtime (WASM).
 
-1. **Onboarding Service**
-   - AI-guided tenant configuration
-   - Dynamic template generation
-   - Automated setup workflows
-   - Integration validation
+## 3. Component Responsibilities
+- Identity Service: Canonical user record, attribute merge, external account references.
+- Policy Engine: Evaluates rules (CEL/minimal DSL) to derive entitlements & connector actions.
+- Attribute Mapping Engine: Transforms internal user model to connector schemas via mapping DSL (JMESPath subset target).
+- Workflow Orchestrator: Executes ordered/parallel task graph; retry/backoff, compensation on failure, emits audit events.
+- Connector Runtime: Executes connector modules with standardized context, handles rate limiting, pagination, error normalization.
+- Audit Service: Append-only event log with hash chain integrity; digest notarization (Beta).
+- Secrets Manager: Manages encrypted secrets (API tokens, client credentials) with rotation jobs.
+- SCIM Server: Standards-compliant ingress for user/group lifecycle.
+- SAML Service: Multi-tenant SAML SP for admin SSO; assertion validation to signed session/JWT.
+- OAuth/OIDC Service: Client registration, token issuance (access/refresh/ID), JWKS rotation & publishing.
 
-2. **Marketplace**
-   - App/integration discovery
-   - Plugin management
-   - Version control
-   - Dependency resolution
+## 4. Data Model (Key Entities)
+Tables / Collections (conceptual):
+- tenants (id, name, status, created_at)
+- tenant_settings (tenant_id, key, value)
+- users (id, tenant_id, primary_email, status, created_at)
+- user_attributes (user_id, key, value, source)
+- connector_versions (name, version, manifest, checksum)
+- tenant_connectors (id, tenant_id, connector_name, version, config_ref, enabled)
+- connector_user_accounts (id, user_id, connector_name, external_id, status, last_sync_at)
+- workflows (id, name, type, definition, version)
+- workflow_runs (id, workflow_id, trigger_type, status, started_at, completed_at)
+- tasks (id, workflow_run_id, type, connector_name, status, attempt, started_at, completed_at, error_code)
+- policy_rules (id, tenant_id, expression, actions_json, priority, enabled)
+- attribute_mappings (id, tenant_id, connector_name, mapping_json, version)
+- entitlements (id, tenant_id, connector_name, kind, value)
+- entitlement_assignments (id, user_id, entitlement_id, status)
+- audit_events (seq, tenant_id, actor, action, target, prev_hash, record_hash, timestamp)
+- secrets (id, tenant_id, purpose, cipher_text, created_at, rotated_at)
+- oauth_clients (id, tenant_id, name, client_id, client_secret_ref, grant_types, redirect_uris)
+- saml_configs (id, tenant_id, entity_id, acs_url, metadata_xml, cert_ref, enabled)
+- scim_tokens (id, tenant_id, token_hash, created_at, last_used_at, revoked)
 
-3. **Auth/IDP Service**
-   - Identity provider (built-in or external)
-   - OIDC/SAML/SCIM support
-   - Multi-tenant authentication
-   - Role-based access control
+Audit Hash Chain: record_hash = hash(json_event); audit_events.prev_hash references previous event's cumulative hash; chain_head persisted per tenant.
 
-4. **Orchestrator (MCP)**
-   - Event processing via Cloudflare Workers
-   - Workflow management with KV storage
-   - Service coordination
-   - State management using D1
+## 5. Reference Flows
+A. SCIM User Create
+1. SCIM POST /Users → SCIM Server validates & normalizes.
+2. Identity Service upserts user + attributes.
+3. Policy Engine evaluates rules → entitlement delta.
+4. Workflow Orchestrator creates provisioning workflow_run.
+5. Tasks enqueued (parallelizable by connector). Each task: mapping transform → connector API call → external_id stored.
+6. Audit events emitted at each step; final success triggers webhook.
 
-5. **API Manager**
-   - API gateway (Cloudflare Workers)
-   - Request routing
-   - Rate limiting
-   - Security enforcement
+B. Deprovision (User termination)
+1. Status change triggers policy re-evaluation (expected entitlements now empty).
+2. Workflow orchestrator runs deprovision tasks (license removal, group removal, deactivate user accounts).
+3. Audit & completion webhook.
 
-6. **Applications**
-   - Integrated SaaS apps
-   - Custom solutions
-   - Monitoring tools
-   - Security services
+C. SAML Admin Login
+1. IdP sends SAMLResponse to ACS.
+2. Validate signature + assertions → create admin session (JWT) with roles.
+3. Admin UI uses session to call management APIs.
 
-## Infrastructure
+D. Connector Task Execution
+1. Task picked up → mapping engine builds payload.
+2. Connector runtime executes action; handles rate-limit/retry.
+3. Updates connector_user_accounts or entitlements; emits audit.
 
-### Core Components
+## 6. Security Model (MVP Baseline)
+- All API calls require tenant-scoped auth (OAuth token or signed session cookie).
+- JWT key rotation every 30 days, JWKs endpoint cached.
+- Secrets stored encrypted (AES-GCM) with KMS-managed data key; rotation job scheduled.
+- Strict tenant_id predicate enforcement at DAL layer.
+- Input validation schemas (Zod/TypeBox) at all ingress points.
+- Least-privilege service tokens for outbound connectors.
+- Rate limiting per tenant + IP for auth & SCIM endpoints.
 
-| Component          | Technology                                |
-| ----------------- | ----------------------------------------- |
-| MCP Orchestrator  | Cloudflare Worker (with D1 + KV bindings) |
-| Service Modules   | Cloudflare Workers                        |
-| State Storage     | Cloudflare KV, D1                         |
-| Secrets           | Cloudflare Secrets                        |
-| Messaging         | Service-dispatch (Cloudflare)             |
-| Scheduling        | Worker-level CRON + MCP tasks             |
+## 7. Observability Strategy
+Phase 1 (POC): Structured JSON logs, basic counters (provision_success, provision_failure), latency histogram for workflow duration.
+Phase 2 (MVP): OpenTelemetry traces across edge → orchestrator → connector tasks; metrics exported (p95 task latency, task_retry_count). Webhook delivery metrics.
+Phase 3 (Beta): SLOs (p95 SCIM create→provision < 120s), anomaly detection for spike in failures, hash chain integrity verification alerts.
 
-### AI Integration
+## 8. Workflow Orchestrator Details
+- Representation: DAG (stored as JSON definition) with node types (connector_task, decision, parallel, compensation).
+- Execution: Initially linear + simple parallel groups; persisted task records; polling worker (DB) → transition to queue-based dispatch at Beta.
+- Retry Policy: Exponential backoff (base 2s, max 2m, cap 6 attempts) except terminal errors (4xx not retryable unless 429).
+- Compensation: For partial failure, previously successful tasks with defined compensators run reverse operations (e.g., created account then failed license assignment → on rollback disable account).
 
-| Agent Type               | Purpose                                             |
-| ----------------------- | --------------------------------------------------- |
-| Docs Generator          | Summarizes FlowEvents into Markdown/Confluence logs |
-| Cost Report Analyzer    | Analyzes spend patterns                             |
-| Slack Approval Handler  | Processes Slack interactive messages                |
-| GitHub AI Assistant     | Manages code generation and updates                 |
+## 9. Policy & Mapping
+MVP Policy Expression: Simple comparisons (==, !=) and logical AND; future: OR, IN list, attribute presence. Evaluated using safe CEL subset or custom parser.
+Example Rule:
+{
+  "if": "department == 'Sales' && country == 'US'",
+  "actions": [
+    {"type": "assign_group", "connector": "slack", "value": "sales-team"},
+    {"type": "assign_license", "connector": "google_workspace", "sku": "BUSINESS_STANDARD"}
+  ]
+}
+Mapping DSL: Key = external field, value = internal path or expression (JMESPath subset) e.g. {"email":"user.primary_email","display_name":"concat(user.first_name,' ',user.last_name)"}.
 
-## Logical Flow
+## 10. Connector Framework
+Manifest Fields: name, version, capabilities[], auth (type, scopes), rateLimits, mappings (default), configSchema.
+Interface (TypeScript sketch):
+export interface Connector {
+  provisionUser(ctx, user): Promise<Result>;
+  updateUser(ctx, user, changes): Promise<Result>;
+  deactivateUser(ctx, externalRef): Promise<Result>;
+  addUserToGroup(ctx, externalUserId, group): Promise<Result>;
+  removeUserFromGroup(ctx, externalUserId, group): Promise<Result>;
+  healthCheck(): Promise<Health>;
+}
+Packaging: Versioned, checksum verified; sandbox (Beta) executes untrusted connectors in WASM isolate.
 
-1. **Initial Onboarding**
-   ```mermaid
-   sequenceDiagram
-       participant Client
-       participant Onboarding
-       participant AI
-       participant MCP
-       
-       Client->>Onboarding: Start setup
-       Onboarding->>AI: Generate configuration
-       AI->>Onboarding: Template & recommendations
-       Onboarding->>MCP: Create tenant
-       MCP->>Client: Setup complete
-   ```
+## 11. Testing Strategy Overview
+- Unit: Policy evaluation, mapping, connector stubs.
+- Contract: Connector harness with mock external endpoints (fixtures for Slack/Google/GitHub).
+- Integration: End-to-end provisioning workflow simulation.
+- Resilience: Fault injection (429, 5xx, timeouts) to validate retries & compensation.
+- Security: Static analysis (semgrep), dependency vulnerability scan, secret scan.
+- Performance: Workflow duration benchmarks (p95 target). 
 
-2. **Marketplace Integration**
-   ```mermaid
-   sequenceDiagram
-       participant Tenant
-       participant Marketplace
-       participant MCP
-       participant Apps
-       
-       Tenant->>Marketplace: Browse apps
-       Marketplace->>MCP: Request integration
-       MCP->>Apps: Configure & deploy
-       Apps->>Tenant: Integration ready
-   ```
+## 12. Roadmap Link
+See docs/product-roadmap.md for phased delivery plan.
 
-## Security & Compliance
+## 13. Open Decisions
+- Backend language for orchestrator heavy logic (stay TS vs introduce Go for concurrency).
+- Queue evolution path (DB polling → durable queue provider).
+- Policy engine implementation detail (CEL vs custom DSL transpilable to AST).
+- WASM sandbox feasibility within Workers constraints.
 
-- Zero-trust security model
-- Audit logging for all operations
-- Compliance reporting (GDPR, CCPA)
-- Regular security scanning
+## 14. Risks & Mitigations (Summary)
+| Risk | Mitigation |
+|------|------------|
+| CI workflow instability | Canary job + alert on missing triggers |
+| Connector API drift | Nightly healthCheck + manifest validation |
+| Tenant data leak | Automated cross-tenant access tests in CI |
+| Audit tampering | Hash chain + external digest notarization |
+| Over-engineering early | Phase gating (sandbox & marketplace only at Beta) |
 
-## Deployment Model
+## 15. Glossary
+- Connector: Adapter implementing provisioning interface for an external SaaS.
+- Entitlement: Group/license/resource assignment derived from policy.
+- Workflow Run: Execution instance of a provisioning/deprovisioning DAG.
+- Mapping DSL: Expression rules translating internal attributes to connector schema.
+- Hash Chain: Cryptographic chaining of audit records for tamper detection.
 
-AtlasIT is deployed primarily through Cloudflare Workers, providing:
-- Global edge distribution
-- Automatic scaling
-- High availability
-- Low latency access
-
-### Storage Strategy
-- Cloudflare KV for ephemeral data
-- D1 for structured data
-- Durable Objects for consistency (planned)
-
-## Development Stack
-
-- **Backend**: TypeScript with Cloudflare Workers
-- **Frontend**: React with modern UI framework
-- **Infrastructure**: Cloudflare-first deployment
-- **CI/CD**: GitHub Actions with Wrangler
-
-## Next Steps
-
-1. **Development**
-   - Implement core services as Workers
-   - Build UI components
-   - Create API documentation
-
-2. **Testing**
-   - Unit test coverage
-   - Integration testing
-   - Performance benchmarks
-
-3. **Deployment**
-   - Wrangler configuration
-   - CI/CD pipeline
-   - Monitoring setup
+---
+Feedback & updates: open an issue with label architecture.
