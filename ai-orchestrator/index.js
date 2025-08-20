@@ -10,10 +10,97 @@ import {
 
 const app = new Hono();
 let envValidated = false;
+// In-memory rate limit tracker (per isolate, best-effort)
+const rateLimits = new Map();
 
 // Middleware
 app.use("*", honoLogger());
 app.use("*", cors());
+
+// Correlation ID middleware
+app.use("*", async (c, next) => {
+  const requestId = crypto.randomUUID();
+  c.set("requestId", requestId);
+  // Provide in response header after downstream handlers
+  await next();
+  c.res.headers.set("x-request-id", requestId);
+});
+
+// API Key authentication (hardening)
+app.use("*", async (c, next) => {
+  const env = c.env || {};
+  const raw = env.API_ALLOWED_KEYS || "";
+  // Allow unauthenticated access to basic health endpoints
+  const path = c.req.path;
+  if (path === "/health" || path === "/healthz") {
+    return next();
+  }
+  if (raw) {
+    const allowed = raw
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    if (allowed.length) {
+      const provided = c.req.header("x-api-key");
+      if (!provided || !allowed.includes(provided)) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      c.set("actor", provided);
+    }
+  }
+  await next();
+});
+
+// Rate limiting (after auth so we have actor)
+app.use("*", async (c, next) => {
+  const env = c.env || {};
+  const path = c.req.path;
+  if (path === "/health" || path === "/healthz") return next();
+  const actor = c.get("actor");
+  if (!actor) return next();
+  const max = parseInt(env.RATE_LIMIT_MAX_REQUESTS || "0", 10) || 0;
+  const windowSec = parseInt(env.RATE_LIMIT_WINDOW_SECONDS || "0", 10) || 0;
+  if (!(max > 0 && windowSec > 0)) return next();
+  const now = Date.now();
+  let entry = rateLimits.get(actor);
+  if (!entry) {
+    entry = { windowStart: now, count: 0 };
+  } else if (now - entry.windowStart >= windowSec * 1000) {
+    entry.windowStart = now;
+    entry.count = 0;
+  }
+  entry.count += 1;
+  rateLimits.set(actor, entry);
+  if (entry.count > max) {
+    const resetIn = windowSec - Math.floor((now - entry.windowStart) / 1000);
+    return c.json(
+      {
+        error: "Rate limit exceeded",
+        limit: max,
+        remaining: 0,
+        reset: resetIn,
+        requestId: c.get("requestId"),
+        actor,
+      },
+      429,
+      {
+        "X-RateLimit-Limit": String(max),
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": String(resetIn),
+      },
+    );
+  }
+  await next();
+  // Attach headers post-response
+  const now2 = Date.now();
+  const resetIn = windowSec - Math.floor((now2 - entry.windowStart) / 1000);
+  c.res.headers.set("X-RateLimit-Limit", String(max));
+  c.res.headers.set(
+    "X-RateLimit-Remaining",
+    String(Math.max(0, max - entry.count)),
+  );
+  c.res.headers.set("X-RateLimit-Reset", String(resetIn));
+});
 
 // MCP Integration
 const MCP_ENDPOINT = "https://mcp.project-ignite.kd8jc7v8cd.workers.dev";
@@ -23,6 +110,8 @@ let lastCheck = new Date();
 let pendingTasks = new Set();
 let activeDeployments = new Set();
 let terminalCommands = new Map(); // Track terminal commands and their status
+// In-memory workflow storage (MVP) keyed by workflow id
+const workflows = new Map();
 
 // Task priorities
 const PRIORITIES = {
@@ -277,6 +366,8 @@ app.get("/status", async (c) => {
     pendingTasks: Array.from(pendingTasks),
     activeDeployments: Array.from(activeDeployments),
     terminalCommands: Array.from(terminalCommands.entries()),
+    requestId: c.get("requestId"),
+    actor: c.get("actor"),
   });
 });
 
@@ -295,7 +386,12 @@ app.post("/task", async (c) => {
     await requestAIAssistance(tasks);
   }
 
-  return c.json({ success: true, task });
+  return c.json({
+    success: true,
+    task,
+    requestId: c.get("requestId"),
+    actor: c.get("actor"),
+  });
 });
 
 // Terminal command endpoint
@@ -303,7 +399,11 @@ app.post("/terminal", async (c) => {
   const { command, context } = await c.req.json();
 
   const result = await executeTerminalCommand(command, context);
-  return c.json(result);
+  return c.json({
+    ...result,
+    requestId: c.get("requestId"),
+    actor: c.get("actor"),
+  });
 });
 
 // Health check
@@ -313,8 +413,51 @@ app.get("/health", (c) =>
     status: "healthy",
     service: "orchestrator",
     timestamp: new Date().toISOString(),
+    requestId: c.get("requestId"),
+    actor: c.get("actor"),
   }),
 );
+
+// Create workflow (POST /workflow)
+app.post("/workflow", async (c) => {
+  const actor = c.get("actor");
+  const body = await c.req.json().catch(() => ({}));
+  const id = body.id || crypto.randomUUID();
+  const steps = Array.isArray(body.steps) ? body.steps : [];
+  const wf = {
+    id,
+    name: body.name || `workflow-${id.substring(0, 6)}`,
+    steps,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+    actor,
+    requestId: c.get("requestId"),
+  };
+  workflows.set(id, wf);
+  return c.json({ workflow: wf, requestId: c.get("requestId"), actor }, 201);
+});
+
+// Get workflow (GET /workflow/:id)
+app.get("/workflow/:id", (c) => {
+  const id = c.req.param("id");
+  if (!workflows.has(id)) {
+    return c.json(
+      {
+        error: "Workflow not found",
+        id,
+        requestId: c.get("requestId"),
+        actor: c.get("actor"),
+      },
+      404,
+    );
+  }
+  const wf = workflows.get(id);
+  return c.json({
+    workflow: wf,
+    requestId: c.get("requestId"),
+    actor: c.get("actor"),
+  });
+});
 
 // Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
 

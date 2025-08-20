@@ -2,6 +2,9 @@ export interface Env {
   STATE: KVNamespace;
   DB: D1Database;
   AI_API_KEY: string;
+  API_ALLOWED_KEYS?: string; // comma-separated list of API keys for auth
+  RATE_LIMIT_MAX_REQUESTS?: string; // numeric string
+  RATE_LIMIT_WINDOW_SECONDS?: string; // numeric string
 }
 
 export interface TenantConfig {
@@ -15,7 +18,7 @@ export interface TenantConfig {
 export interface Integration {
   id: string;
   name: string;
-  type: 'saas' | 'api' | 'database' | 'custom';
+  type: "saas" | "api" | "database" | "custom";
   config: Record<string, any>;
   enabled: boolean;
 }
@@ -29,18 +32,18 @@ export interface Workflow {
 }
 
 export interface WorkflowTrigger {
-  type: 'webhook' | 'schedule' | 'event';
+  type: "webhook" | "schedule" | "event";
   config: Record<string, any>;
 }
 
 export interface WorkflowAction {
-  type: 'api_call' | 'notification' | 'data_transform' | 'custom';
+  type: "api_call" | "notification" | "data_transform" | "custom";
   config: Record<string, any>;
 }
 
 export interface SecurityConfig {
   authentication: {
-    method: 'jwt' | 'oauth' | 'saml';
+    method: "jwt" | "oauth" | "saml";
     config: Record<string, any>;
   };
   authorization: {
@@ -80,5 +83,5 @@ export interface Template {
 export interface TemplateFile {
   path: string;
   content: string;
-  type: 'config' | 'code' | 'documentation';
+  type: "config" | "code" | "documentation";
 }

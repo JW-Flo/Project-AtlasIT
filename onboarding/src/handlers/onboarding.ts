@@ -19,6 +19,9 @@ export async function handleOnboarding(
   try {
     const body: OnboardingRequestBody = await request.json(); // Typed JSON body
     const { tenantId, name, industry, requirements } = body;
+    // Extract correlation id if upstream provided it (middleware)
+    const requestId = request.headers.get("x-request-id") || undefined;
+    const actor = request.headers.get("x-actor") || undefined;
 
     // Validate request
     if (!tenantId || !name || !industry) {
@@ -49,6 +52,8 @@ export async function handleOnboarding(
         config: parsed.config,
         template: parsed.template,
         idempotent: true,
+        requestId,
+        actor,
       });
     }
 
@@ -95,13 +100,13 @@ export async function handleOnboarding(
           crypto.randomUUID(),
           tenantId,
           "onboarding.completed",
-          JSON.stringify({ tenantId, industry }),
+          JSON.stringify({ tenantId, industry, requestId, actor }),
           new Date().toISOString(),
         )
         .run();
     } catch (e) {
       // Non-fatal; proceed without blocking success
-      console.warn("Audit event insert failed", e);
+      console.warn("Audit event insert failed", e, { requestId });
     }
 
     // Store onboarding state
@@ -121,6 +126,8 @@ export async function handleOnboarding(
         tenantId,
         config: recommendedConfig,
         template,
+        requestId,
+        actor,
       },
       201,
     );

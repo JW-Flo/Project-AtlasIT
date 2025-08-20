@@ -1,8 +1,23 @@
 import js from "@eslint/js";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Resolve repository root (directory containing this config file)
+const rootDir = fileURLToPath(new URL(".", import.meta.url));
 
 export default [
+  // Global ignores to avoid parsing build artifacts / declarations
+  {
+    ignores: [
+      "**/node_modules/**",
+      "**/.venv/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/*.d.ts",
+    ],
+  },
   {
     files: ["**/*.{js,ts,tsx}"],
     ...js.configs.recommended,
@@ -10,15 +25,7 @@ export default [
       ecmaVersion: "latest",
       sourceType: "module",
     },
-    ignores: [
-      "**/node_modules/**",
-      "**/.venv/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/*.d.ts",
-      "./agents/utils/**",
-      "./mcp-mobile/**",
-    ],
+    ignores: ["./agents/utils/**", "./mcp-mobile/**"],
     rules: {
       // Customize project-specific rules here
       // Temporarily disabled to satisfy zero-warning pre-commit; rely on TS rule when re-enabled
@@ -36,6 +43,8 @@ export default [
       "**/tests/**",
       "./tests/**",
       "./vitest.config.ts",
+      // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
+      "./ai-orchestrator/*.test.ts",
     ],
     languageOptions: {
       parser: tsParser,
@@ -43,9 +52,10 @@ export default [
         ecmaVersion: "latest",
         sourceType: "module",
         // Use project references only for source directories; exclude root loose test files to avoid parse errors
+        tsconfigRootDir: rootDir,
         project: [
-          "./onboarding/tsconfig.json",
-          "./packages/shared/tsconfig.json",
+          path.join(rootDir, "onboarding/tsconfig.json"),
+          path.join(rootDir, "packages/shared/tsconfig.json"),
         ],
       },
     },
@@ -76,5 +86,6 @@ export default [
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
     },
+    ignores: ["**/dist/**", "**/*.d.ts"],
   },
 ];

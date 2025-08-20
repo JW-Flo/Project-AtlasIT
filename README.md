@@ -27,6 +27,14 @@
 - On success an `audit_events` row is inserted: type `onboarding.completed` with payload `{ tenantId, industry }`.
 - Idempotent re-invocations do NOT create duplicate audit events.
 
+### Security & Observability (Phase 1 Hardening + Enhancements)
+
+- API Key Authentication: All onboarding endpoints optionally require an `x-api-key` when `API_ALLOWED_KEYS` is configured.
+- Actor Attribution: The provided API key is surfaced as `actor` in JSON responses and (for onboarding) embedded in `audit_events.payload` for provenance.
+- Correlation IDs: Each request has a `requestId` (UUID) in JSON and `x-request-id` header; joined with `actor` for consistent trace context.
+- Rate Limiting: Per-API-key sliding window controls (env: `RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`) return `429` with standard rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`).
+- Schema Drift Detection: `schema.hash` baseline + integrity test prevents unnoticed migration changes.
+
 ### Questions Generation Inputs
 
 - Industry (default technology) influences specialized questions (e.g., healthcare adds PHI question).
@@ -53,7 +61,7 @@
 
 AtlasIT is a modular, cloud-first IT management platform for SMBs that automates user provisioning, SaaS onboarding, identity/infrastructure access, device enrollment, communications, security, reporting, and cost management—with compliance and AI-powered onboarding built in.
 
-## 🚀 Key Features
+## Key Features
 
 - **🤖 AI-Guided Tenant Onboarding**: Dynamic template Q&A system for rapid, secure setup tailored to client needs
 - **🏪 App Marketplace**: Pluggable app/integration onboarding for SaaS, security, finance, and more
@@ -63,7 +71,7 @@ AtlasIT is a modular, cloud-first IT management platform for SMBs that automates
 - **☁️ Cloud-First, Serverless**: Powered by Cloudflare Workers with global edge distribution
 - **🛡️ Security & Compliance**: Built-in logging, audit trails, SIEM/EDR integrations, and compliance reporting
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
@@ -74,7 +82,7 @@ AtlasIT is a modular, cloud-first IT management platform for SMBs that automates
 - [Contributing](#contributing)
 - [License](#license)
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -132,7 +140,7 @@ npm run dev
 - API: `http://localhost:8787`
 - Dashboard: `http://localhost:3000`
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 atlasit/
@@ -158,7 +166,7 @@ atlasit/
 └── 📜 scripts/                 # Build & deployment scripts
 ```
 
-## 🔧 Services Overview
+## Services Overview
 
 ### 🎯 Onboarding Service
 
@@ -171,7 +179,7 @@ AI-powered tenant configuration with industry-specific templates, automated setu
 - Automated template creation
 - Integration validation pipeline
 
-#### Current Endpoints
+#### Current Orchestrator Endpoints
 
 | Method | Path                        | Description                                     |
 | ------ | --------------------------- | ----------------------------------------------- |
@@ -180,6 +188,7 @@ AI-powered tenant configuration with industry-specific templates, automated setu
 | POST   | `/onboarding/submit`        | Submit tenant data and generate config/template |
 | POST   | `/api/onboarding`           | Legacy alias of `/onboarding/submit`            |
 | GET    | `/api/onboarding/:tenantId` | Retrieve onboarding state & generated config    |
+| ANY    | (all above)                 | Require `x-api-key` if `API_ALLOWED_KEYS` set   |
 
 ### 🏪 Marketplace Service
 
@@ -213,6 +222,38 @@ Event-driven workflow management using Model Context Protocol (MCP) for service 
 - Workflow automation
 - State management
 - Service coordination
+
+#### Current Endpoints (with Security Metadata)
+
+| Method | Path            | Auth            | Description                                      |
+| ------ | --------------- | --------------- | ------------------------------------------------ |
+| GET    | `/health`       | None            | Health probe (returns status + requestId header) |
+| GET    | `/status`       | x-api-key (401) | Returns deployment/task state (MCP may 403)      |
+| POST   | `/task`         | x-api-key (401) | Submit a new task (MCP may 403)                  |
+| POST   | `/terminal`     | x-api-key (401) | Execute terminal command (MCP approval)          |
+| POST   | `/workflow`     | x-api-key (401) | Create in-memory workflow (MVP)                  |
+| GET    | `/workflow/:id` | x-api-key (401) | Fetch workflow by id                             |
+
+All authenticated endpoints also include a `x-request-id` header and JSON `requestId` field for correlation.
+
+#### Testing Status
+
+Vitest suites cover:
+
+- Public `/health` availability (200 + `x-request-id`)
+- Unauthorized access to `/status` without API key (401)
+- Authorized `/status` path behavior (MCP may 403, ensures no 401 when key valid)
+- Per-key rate limiting (third `/status` call -> 429)
+- Workflow create & retrieval (`/workflow` + `/workflow/:id`)
+
+Planned expansions:
+
+- `/task` success + MCP rejection path coverage
+- `/terminal` execution & rejection paths
+- AI assistance decision logic (mock MCP + AI provider)
+- Workflow step mutation & progression lifecycle
+
+Security note: `/health` deliberately bypasses API key enforcement to support external uptime monitoring while still emitting a correlation ID.
 
 ### 🌐 API Manager
 
@@ -326,25 +367,25 @@ The script flags common credential patterns (API keys, private keys). Use mock-l
 
 Both onboarding and AI orchestrator perform a one-time environment validation on first request using a shared Zod schema. Warnings (not fatal) surface missing or invalid optional values early.
 
-## ✅ MVP Readiness Matrix
+## MVP Readiness Matrix
 
-| Component                          | Status                        | Included in MVP | Operational Criteria Met                                                    | Notes                                                    |
-| ---------------------------------- | ----------------------------- | --------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Onboarding Worker                  | Implemented                   | Yes             | Health, start/submit/state endpoints, negative tests, D1 migration baseline | Further: add persistence logic using D1                  |
-| AI Orchestrator (ai-orchestrator/) | Basic endpoints & state stubs | Yes (minimal)   | /health, /status (guarded), env validation, basic tests                     | AI call duplication to refactor into shared provider     |
-| Shared Utilities (@atlasit/shared) | Implemented                   | Yes             | Logger, env, AI abstraction, http helpers exported                          | Needs build step in CI before tests (pretest hook added) |
-| Auth Service                       | Placeholder                   | Deferred        | N/A                                                                         | Future: OIDC/SAML integration                            |
-| Marketplace                        | Placeholder                   | Deferred        | N/A                                                                         | Future: app registry & install flows                     |
-| API Manager                        | Placeholder                   | Deferred        | N/A                                                                         | Future: routing, rate limits                             |
-| Applications Service               | Placeholder                   | Deferred        | N/A                                                                         | Future: integration adapters                             |
-| Infrastructure (Terraform)         | Scaffold                      | Yes (baseline)  | Directory + plan docs                                                       | Apply once domains decided                               |
-| Security (Secret Scan)             | Implemented                   | Yes             | CI step + local script                                                      | Extend patterns incrementally                            |
-| Testing & Coverage                 | Partial                       | Yes             | Unit tests + coverage thresholds                                            | Increase thresholds over time                            |
-| Database (D1)                      | Initial migration             | Yes             | tenants & onboarding_sessions tables                                        | Add queries & persistence code                           |
-| Observability                      | Planned                       | Optional        | —                                                                           | Future: metrics, tracing, dashboards                     |
-| UI Dashboard                       | Planned                       | Optional        | —                                                                           | React app not yet scaffolded                             |
+| Component                          | Status                             | Included in MVP | Operational Criteria Met                                                    | Notes                                                    |
+| ---------------------------------- | ---------------------------------- | --------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Onboarding Worker                  | Implemented                        | Yes             | Health, start/submit/state endpoints, negative tests, D1 migration baseline | Further: add persistence logic using D1                  |
+| AI Orchestrator (ai-orchestrator/) | Endpoints + rate limit + workflows | Yes (expanded)  | /health, /status, rate limiting, workflow create/get, tests                 | Refactor AI calls; persist workflows (Durable Object)    |
+| Shared Utilities (@atlasit/shared) | Implemented                        | Yes             | Logger, env, AI abstraction, http helpers exported                          | Needs build step in CI before tests (pretest hook added) |
+| Auth Service                       | Placeholder                        | Deferred        | N/A                                                                         | Future: OIDC/SAML integration                            |
+| Marketplace                        | Placeholder                        | Deferred        | N/A                                                                         | Future: app registry & install flows                     |
+| API Manager                        | Placeholder                        | Deferred        | N/A                                                                         | Future: routing, rate limits                             |
+| Applications Service               | Placeholder                        | Deferred        | N/A                                                                         | Future: integration adapters                             |
+| Infrastructure (Terraform)         | Scaffold                           | Yes (baseline)  | Directory + plan docs                                                       | Apply once domains decided                               |
+| Security (Secret Scan)             | Implemented                        | Yes             | CI step + local script                                                      | Extend patterns incrementally                            |
+| Testing & Coverage                 | Partial                            | Yes             | Unit tests + coverage thresholds                                            | Increase thresholds over time                            |
+| Database (D1)                      | Initial migration                  | Yes             | tenants & onboarding_sessions tables                                        | Add queries & persistence code                           |
+| Observability                      | Planned                            | Optional        | —                                                                           | Future: metrics, tracing, dashboards                     |
+| UI Dashboard                       | Planned                            | Optional        | —                                                                           | React app not yet scaffolded                             |
 
-## 🌟 Optional / Phase 2+ Components
+## Optional / Phase 2+ Components
 
 These are intentionally deferred to keep MVP lean while preserving clear upgrade paths:
 
@@ -357,16 +398,18 @@ These are intentionally deferred to keep MVP lean while preserving clear upgrade
 - Fine-grained RBAC & policy engine (OPA/Rego or Cedar)
 - Automated compliance report generation (SOC2-style evidence collection)
 
-## 🔄 Roadmap Next Steps (Short-Term)
+## Roadmap Next Steps (Short-Term Updated)
 
-1. Persist onboarding session state in D1 instead of in-memory KV-like map.
-2. Refactor orchestrator to use shared AI provider abstraction (`generateAI`).
-3. Expand test coverage (orchestrator action flows, error paths) and raise coverage thresholds.
-4. Introduce Auth service skeleton (health + /login placeholder) to anchor integration.
-5. Add migration automation script & document rollback approach.
-6. Add lint/typecheck/test steps for each workspace in CI matrix (incremental parallelization).
+1. Persist onboarding state fully in D1 (remove KV dependency) & add retrieval queries.
+2. Orchestrator: Refactor AI invocation to shared provider + mockable interface for tests.
+3. Durable Object (or R2) backed workflow engine (persist + status transitions, step logs).
+4. Expand orchestrator tests: `/task`, `/terminal`, AI assistance decision, negative paths.
+5. Add Auth service skeleton (health + /login + token issuance) & integrate with API gateway.
+6. Introduce centralized rate limit analytics (export metrics; prepare for Prometheus integration).
+7. CI: Per-workspace lint/typecheck/test matrix & coverage gating (raise thresholds gradually).
+8. Add SECURITY.md (threat model, key management, rate limiting strategy, future mTLS plan).
 
-## 🔁 Script Reference (Updated)
+## Script Reference (Updated)
 
 | Script                  | Description                                            |
 | ----------------------- | ------------------------------------------------------ |
@@ -377,11 +420,11 @@ These are intentionally deferred to keep MVP lean while preserving clear upgrade
 | `npm run scan:secrets`  | Execute local secret scanning script                   |
 | `npm run build:shared`  | Build shared utilities package                         |
 
-## 📂 Orchestrator Directory Note
+## Orchestrator Directory Note
 
 The active orchestrator worker source lives in `ai-orchestrator/` (Hono-based). A legacy `orchestrator/` directory remains for documentation drafts; future consolidation will either migrate or remove the legacy folder.
 
-## 🚀 Deployment
+## Deployment
 
 ### Production Deployment
 
@@ -421,7 +464,7 @@ For detailed deployment instructions, see the [Deployment Guide](docs/deployment
 | Staging     | Pre-production testing | `https://staging-api.yourdomain.com` |
 | Production  | Live environment       | `https://api.yourdomain.com`         |
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Developer Guide](docs/developer-guide.md) for detailed information.
 
@@ -464,7 +507,7 @@ git push origin feature/amazing-feature
 - Follow conventional commit messages
 - Ensure code passes all quality checks
 
-## 🏗️ Technology Stack
+## Technology Stack
 
 | Category           | Technology                       |
 | ------------------ | -------------------------------- |
@@ -477,14 +520,14 @@ git push origin feature/amazing-feature
 | **Infrastructure** | Terraform                        |
 | **CI/CD**          | GitHub Actions                   |
 
-## 📊 Performance & Scalability
+## Performance & Scalability
 
 - **Global Edge Distribution**: Deployed across 200+ Cloudflare data centers
 - **Sub-100ms Response Times**: Optimized for low latency
 - **Auto-scaling**: Serverless architecture scales automatically
 - **99.9% Uptime SLA**: Enterprise-grade reliability
 
-## 🛡️ Security Features
+## Security Features
 
 - **Zero-Trust Architecture**: Every request is authenticated and authorized
 - **End-to-End Encryption**: Data encrypted in transit and at rest
@@ -492,7 +535,7 @@ git push origin feature/amazing-feature
 - **Audit Logging**: Comprehensive audit trails for all operations
 - **Rate Limiting**: Protection against abuse and DDoS attacks
 
-## 📈 Monitoring & Observability
+## Monitoring & Observability
 
 - **Real-time Metrics**: Performance and usage analytics
 - **Error Tracking**: Comprehensive error monitoring and alerting
@@ -500,7 +543,7 @@ git push origin feature/amazing-feature
 - **Distributed Tracing**: Request tracing across services
 - **Custom Dashboards**: Grafana-based monitoring dashboards
 
-## 🆘 Support
+## Support
 
 - **📖 Documentation**: Comprehensive guides and API reference
 - **🐛 Issues**: [GitHub Issues](https://github.com/yourusername/atlasit/issues)
@@ -508,11 +551,11 @@ git push origin feature/amazing-feature
 - **📧 Email**: [support@atlasit.com](mailto:support@atlasit.com)
 - **📊 Status Page**: [status.atlasit.com](https://status.atlasit.com)
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Cloudflare Workers team for the excellent serverless platform
 - The open-source community for the amazing tools and libraries
