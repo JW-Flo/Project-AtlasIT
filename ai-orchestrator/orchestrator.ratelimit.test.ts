@@ -6,6 +6,7 @@ const envBase = {
   AI_DETERMINISTIC: "1",
   RATE_LIMIT_MAX_REQUESTS: "2",
   RATE_LIMIT_WINDOW_SECONDS: "60",
+  MCP_APPROVE_ALL: "1",
 };
 
 function invoke(path: string, key = "k1") {
