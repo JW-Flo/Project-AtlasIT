@@ -1,4 +1,4 @@
-name: CI
+name: Security Checks
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  build-test-sbom:
+  lint-and-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,10 +18,7 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm install
-      - name: Build, test, sbom
-        run: npm run ci:run
-      - name: Upload CI artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-artifacts
-          path: artifacts/ci
+      - name: Lint
+        run: npm run lint
+      - name: Secret scan
+        run: npm run scan:secrets

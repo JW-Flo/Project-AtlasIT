@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { writeArtifact } from '../src/lib/artifacts.js';
 
 function summarize(records) {
   const summary = { total: records.length, controls: {}, pass: 0, fail: 0 };
@@ -35,8 +36,6 @@ function renderMarkdown(summary) {
 async function main() {
   const input = process.argv[2] || 'artifacts/policy/evidence.json';
   const outputDoc = process.argv[3] || 'docs/COMPLIANCE_SNAPSHOT.md';
-  const outputArtifact = 'artifacts/policy/snapshot.md';
-  const runMeta = 'artifacts/policy/RUN.json';
 
   const records = JSON.parse(await readFile(input, 'utf8'));
   const summary = summarize(records);
@@ -44,13 +43,14 @@ async function main() {
 
   await mkdir(path.dirname(outputDoc), { recursive: true });
   await writeFile(outputDoc, md, 'utf8');
+  await writeArtifact('policy', 'snapshot.md', md);
+  await writeArtifact('policy', 'RUN.json', {
+    timestamp: new Date().toISOString(),
+    counts: summary,
+    source: path.relative(process.cwd(), input),
+  });
 
-  await mkdir(path.dirname(outputArtifact), { recursive: true });
-  await writeFile(outputArtifact, md, 'utf8');
-
-  await writeFile(runMeta, JSON.stringify({ timestamp: new Date().toISOString(), counts: summary }, null, 2) + '\n', 'utf8');
-
-  console.log(JSON.stringify({ status: 'ok', doc: outputDoc, artifact: outputArtifact }, null, 2));
+  console.log(JSON.stringify({ status: 'ok', doc: outputDoc, artifact: 'artifacts/policy/snapshot.md' }, null, 2));
 }
 
 main().catch(err => {

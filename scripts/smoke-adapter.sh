@@ -69,23 +69,26 @@ NODE
   echo "[$(date -Iseconds)] smoke:complete"
 } | tee "$LOG_FILE"
 
-node - <<'NODE' "$RUN_FILE" "$ADAPTER_DIR"
+node - <<'NODE' "$ADAPTER_DIR"
 const fs = require('node:fs');
 const path = require('node:path');
-const runFile = process.argv[2];
-const adapterDir = process.argv[3];
-const manifestPath = path.join(adapterDir, 'atlasit.adapter.json');
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const summary = {
-  task: 'PR4 Adapter Generator smoke',
-  completedAt: new Date().toISOString(),
-  adapter: manifest.slug,
-  featureFlag: manifest.featureFlag,
-  artifacts: {
-    log: 'artifacts/pr4_adapter/smoke.log',
-    junit: 'artifacts/pr4_adapter/junit.xml',
-    sbom: 'artifacts/pr4_adapter/sbom.json'
-  }
-};
-fs.writeFileSync(runFile, JSON.stringify(summary, null, 2) + '\n');
+
+(async () => {
+  const adapterDir = process.argv[2];
+  const { writeArtifact } = await import('./src/lib/artifacts.js');
+  const manifestPath = path.join(adapterDir, 'atlasit.adapter.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const summary = {
+    task: 'PR4 Adapter Generator smoke',
+    completedAt: new Date().toISOString(),
+    adapter: manifest.slug,
+    featureFlag: manifest.featureFlag,
+    artifacts: {
+      log: 'artifacts/pr4_adapter/smoke.log',
+      junit: 'artifacts/pr4_adapter/junit.xml',
+      sbom: 'artifacts/pr4_adapter/sbom.json'
+    }
+  };
+  await writeArtifact('pr4_adapter', 'RUN.json', summary);
+})();
 NODE

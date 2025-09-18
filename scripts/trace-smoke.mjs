@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { traceFetch, withSpan } from "../src/lib/trace.js";
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { writeArtifact } from "../src/lib/artifacts.js";
 
 const logs = [];
 const originalLog = console.log;
@@ -20,9 +19,7 @@ async function run() {
   const traced = traceFetch(handler);
   await traced(new Request("https://atlasit.dev/trace-smoke"), {}, {});
 
-  const dir = path.resolve("artifacts/obs");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "trace-smoke.log"), `${logs.join("\n")}\n`, "utf8");
+  await writeArtifact("obs", "trace-smoke.log", `${logs.join("\n")}\n`);
 }
 
 run()

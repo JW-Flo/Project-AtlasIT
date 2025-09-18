@@ -1,7 +1,39 @@
 {
   "version": 1,
-  "updatedAt": "2025-09-18T12:39:05.920Z",
+  "updatedAt": "2025-09-18T13:48:00.660Z",
   "active": [
+    {
+      "branch": "feat/ci-workflows",
+      "pr": "PR13 TBD",
+      "title": "CI workflows + artifacts",
+      "status": "staged",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/security.yml",
+        "scripts/ci-run.mjs",
+        "scripts/generate-sbom.mjs",
+        "artifacts/ci/**",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "CI workflow runs npm install + npm run ci:run to produce build/test logs and SBOM; security workflow handles lint and secret scan."
+    },
+    {
+      "branch": "feat/artifact-discipline",
+      "pr": "PR12 TBD",
+      "title": "Artifact helper and discipline",
+      "status": "staged",
+      "files": [
+        "src/lib/artifacts.js",
+        "scripts/render-compliance-snapshot.mjs",
+        "scripts/trace-smoke.mjs",
+        "scripts/smoke-adapter.sh",
+        "tests/artifacts.test.ts",
+        "artifacts/policy/RUN.json",
+        "artifacts/obs/trace-smoke.log",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Centralized writeArtifact helper wired through compliance, adapter smoke, and trace scripts with tests and refreshed artifacts."
+    },
     {
       "branch": "feat/observability-hooks",
       "pr": "PR11 TBD",
@@ -137,7 +169,28 @@
         "ops/pr-bodies/PR7_hybrid-aws-docs.md",
         "ops/codex-active-work.json"
       ],
-      "notes": "Ready to push (docs staged)"
+      "notes": "Hybrid AWS backplane guide is actionable (OIDC trust, scoped IAM, Terraform skeleton, zsh runbook, rollback). No runtime code changes.",
+      "status": "completed",
+      "completedAt": "2025-09-18T12:55:00Z"
+    },
+    {
+      "branch": "infra/aws-backplane-skeleton",
+      "pr": "PR13 TBD",
+      "title": "AWS backplane Terraform skeleton",
+      "status": "staged",
+      "files": [
+        "infra/aws/.gitignore",
+        "infra/aws/README.md",
+        "infra/aws/providers.tf",
+        "infra/aws/variables.tf",
+        "infra/aws/oidc.tf",
+        "infra/aws/eventing.tf",
+        "infra/aws/storage.tf",
+        "infra/aws/observability.tf",
+        "infra/aws/outputs.tf",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Terraform skeleton for dev backplane (EventBridge bus, S3 evidence mirror with lifecycle, DynamoDB TTL table, IAM role trust for OIDC, basic log group). No backend configured; use remote backend in env-specific wrapper."
     }
   ]
 }
