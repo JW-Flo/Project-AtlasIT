@@ -1,0 +1,318 @@
+{
+  "kind": "atlasit.research-schema",
+  "version": "2025-09-18T07:56:13.445Z",
+  "service": {
+    "name": "Slack Provisioning",
+    "slug": "slack-provisioning",
+    "summary": "Slack Provisioning automates workspace membership, channel enrollment, and deactivation workflows for distributed teams."
+  },
+  "sources": [
+    {
+      "type": "markdown",
+      "path": "research/raw/slack-provisioning.md"
+    }
+  ],
+  "entities": [
+    {
+      "name": "WorkspaceUser",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string ()",
+          "required": true,
+          "description": "Slack internal user identifier",
+          "source": {
+            "line": 9,
+            "text": "- id: string (required) - Slack internal user identifier"
+          }
+        },
+        {
+          "name": "email",
+          "type": "string ()",
+          "required": true,
+          "description": "Unique email linked to the workspace user",
+          "source": {
+            "line": 10,
+            "text": "- email: string (required) - Unique email linked to the workspace user"
+          }
+        },
+        {
+          "name": "displayName",
+          "type": "string",
+          "required": false,
+          "description": "Human readable display name",
+          "source": {
+            "line": 11,
+            "text": "- displayName: string - Human readable display name"
+          }
+        },
+        {
+          "name": "status",
+          "type": "enum[active,disabled,deleted]",
+          "required": false,
+          "description": "Lifecycle state for the workspace user",
+          "source": {
+            "line": 12,
+            "text": "- status: enum[active,disabled,deleted] - Lifecycle state for the workspace user"
+          }
+        },
+        {
+          "name": "roles",
+          "type": "string[]",
+          "required": false,
+          "description": "Collection of workspace roles (admin, owner, member)",
+          "source": {
+            "line": 13,
+            "text": "- roles: string[] - Collection of workspace roles (admin, owner, member)"
+          }
+        }
+      ],
+      "description": "Represents a user within the Slack workspace."
+    },
+    {
+      "name": "ChannelMembership",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string ()",
+          "required": true,
+          "description": "Unique membership identifier",
+          "source": {
+            "line": 17,
+            "text": "- id: string (required) - Unique membership identifier"
+          }
+        },
+        {
+          "name": "channelId",
+          "type": "string ()",
+          "required": true,
+          "description": "Channel identifier",
+          "source": {
+            "line": 18,
+            "text": "- channelId: string (required) - Channel identifier"
+          }
+        },
+        {
+          "name": "userId",
+          "type": "WorkspaceUser ()",
+          "required": true,
+          "description": "Linked workspace user",
+          "source": {
+            "line": 19,
+            "text": "- userId: WorkspaceUser (required) - Linked workspace user"
+          }
+        },
+        {
+          "name": "membershipType",
+          "type": "enum[member,guest,admin]",
+          "required": false,
+          "description": "Type of membership",
+          "source": {
+            "line": 20,
+            "text": "- membershipType: enum[member,guest,admin] - Type of membership"
+          }
+        },
+        {
+          "name": "joinedAt",
+          "type": "datetime",
+          "required": false,
+          "description": "Timestamp indicating when the user joined the channel",
+          "source": {
+            "line": 21,
+            "text": "- joinedAt: datetime - Timestamp indicating when the user joined the channel"
+          }
+        },
+        {
+          "name": "isPinned",
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the membership is pinned for provisioning purposes",
+          "source": {
+            "line": 22,
+            "text": "- isPinned: boolean - Whether the membership is pinned for provisioning purposes"
+          }
+        }
+      ],
+      "description": "Tracks a member's relationship to Slack channels."
+    }
+  ],
+  "operations": [
+    {
+      "name": "GET /users",
+      "method": "GET",
+      "path": "/users",
+      "description": "Return workspace users with provisioning details.",
+      "summary": "List workspace users",
+      "returns": "WorkspaceUser[]"
+    },
+    {
+      "name": "POST /users",
+      "method": "POST",
+      "path": "/users",
+      "description": "Create a new workspace user.",
+      "summary": "Create workspace user",
+      "returns": "WorkspaceUser"
+    },
+    {
+      "name": "GET /channels/{channelId}/members",
+      "method": "GET",
+      "path": "/channels/{channelId}/members",
+      "description": "Return channel memberships for the specified channel.",
+      "summary": "List channel memberships",
+      "returns": "ChannelMembership[]"
+    }
+  ],
+  "openapi": {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "Slack Provisioning",
+      "version": "2025-09-18T07:56:13.445Z",
+      "description": "Slack Provisioning automates workspace membership, channel enrollment, and deactivation workflows for distributed teams."
+    },
+    "paths": {
+      "/users": {
+        "get": {
+          "operationId": "get-users",
+          "summary": "List workspace users",
+          "description": "Return workspace users with provisioning details.",
+          "responses": {
+            "200": {
+              "description": "List workspace users",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WorkspaceUser"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "post-users",
+          "summary": "Create workspace user",
+          "description": "Create a new workspace user.",
+          "responses": {
+            "200": {
+              "description": "Create workspace user",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkspaceUser"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/channels/{channelId}/members": {
+        "get": {
+          "operationId": "get-channels-channelid-members",
+          "summary": "List channel memberships",
+          "description": "Return channel memberships for the specified channel.",
+          "responses": {
+            "200": {
+              "description": "List channel memberships",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ChannelMembership"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "WorkspaceUser": {
+          "type": "object",
+          "description": "Represents a user within the Slack workspace.",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Slack internal user identifier"
+            },
+            "email": {
+              "type": "string",
+              "description": "Unique email linked to the workspace user"
+            },
+            "displayName": {
+              "type": "string",
+              "description": "Human readable display name"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "active",
+                "disabled",
+                "deleted"
+              ],
+              "description": "Lifecycle state for the workspace user"
+            },
+            "roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Collection of workspace roles (admin, owner, member)"
+            }
+          },
+          "required": [
+            "id",
+            "email"
+          ]
+        },
+        "ChannelMembership": {
+          "type": "object",
+          "description": "Tracks a member's relationship to Slack channels.",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Unique membership identifier"
+            },
+            "channelId": {
+              "type": "string",
+              "description": "Channel identifier"
+            },
+            "userId": {
+              "type": "string",
+              "description": "Linked workspace user"
+            },
+            "membershipType": {
+              "type": "string",
+              "enum": [
+                "member",
+                "guest",
+                "admin"
+              ],
+              "description": "Type of membership"
+            },
+            "joinedAt": {
+              "type": "string",
+              "description": "Timestamp indicating when the user joined the channel"
+            },
+            "isPinned": {
+              "type": "boolean",
+              "description": "Whether the membership is pinned for provisioning purposes"
+            }
+          },
+          "required": [
+            "id",
+            "channelId",
+            "userId"
+          ]
+        }
+      }
+    }
+  }
+}

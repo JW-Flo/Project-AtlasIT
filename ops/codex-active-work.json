@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "updatedAt": "2025-09-18T12:39:05.920Z",
+  "active": [
+    {
+      "branch": "feat/observability-hooks",
+      "pr": "PR11 TBD",
+      "title": "Observability trace hooks",
+      "status": "staged",
+      "files": [
+        "src/lib/trace.js",
+        "index.js",
+        "scripts/trace-smoke.mjs",
+        "artifacts/obs/trace-smoke.log",
+        "tests/trace.test.ts",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Tracing helper emits JSON logs with request IDs and wraps worker fetch; smoke script captures sample spans."
+    },
+    {
+      "branch": "feat/evidence-locker",
+      "pr": "PR10 TBD",
+      "title": "Evidence locker",
+      "status": "staged",
+      "files": [
+        "src/lib/evidence.ts",
+        "tests/evidence-locker.test.ts",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Evidence locker persists blobs to R2 with sha256 keys and optionally mirrors to S3; contract covered by unit tests."
+    },
+    {
+      "branch": "feat/idp-interface-phase3",
+      "pr": "PR9 TBD",
+      "title": "IdP interface & fallback mocks",
+      "status": "staged",
+      "files": [
+        "packages/idp/**",
+        "tests/idp-adapters.test.ts",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Defined IdP adapter contract, provided mock adapters (Okta, Entra, Google, AWS, Paycom, CrowdStrike) and dev fallback OIDC provider with contract tests."
+    },
+    {
+      "branch": "feat/policy-engine-phase-2-5",
+      "pr": "PR8 TBD",
+      "title": "Policy engine evidence baseline",
+      "status": "completed",
+      "files": [
+        "src/policy/engine.ts",
+        "tests/policy-engine.test.ts",
+        "scripts/render-compliance-snapshot.mjs",
+        "docs/COMPLIANCE_SNAPSHOT.md",
+        "artifacts/policy/evidence.json",
+        "artifacts/policy/snapshot.md",
+        "artifacts/policy/RUN.json",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Policy controls enforce MFA, password length >=12, device posture=healthy. Evidence hashed under artifacts/policy; compliance snapshot renderer outputs docs/COMPLIANCE_SNAPSHOT.md and run metadata. QA: regenerate with `node scripts/generate-evidence.mjs` then `npm run render:compliance`.",
+      "completedAt": "2025-09-18T11:05:30Z"
+    },
+    {
+      "branch": "feat/jml-engine-demo",
+      "pr": "PR3 TBD",
+      "title": "JML Engine Demo flows",
+      "files": [
+        "index.js",
+        "fixtures/jml/*.json",
+        "tests/jml-engine.test.ts",
+        "artifacts/pr3_jml/RUN.json",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Joiner/Mover/Leaver flows restored; tests and artifacts staged"
+    },
+    {
+      "branch": "feat/ai-adapter-generator",
+      "pr": "PR4_adapter-gen",
+      "title": "AI adapter generator",
+      "status": "completed",
+      "files": [
+        "packages/adapter-gen/**",
+        "packages/adapter-sim/**",
+        "templates/worker/**",
+        "adapters/registry.json",
+        "adapters/example-hr-suite/**",
+        "contracts/examples/**",
+        "scripts/smoke-adapter.sh",
+        "docs/CONNECTORS.md",
+        "tests/adapter-gen.test.ts",
+        "artifacts/pr4_adapter/**",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Generator v1 + simulator verified. Registry updated. Tests green. Artifacts captured. Feature-flag gated connectors API working.",
+      "completedAt": "2025-09-18T07:58:30Z"
+    },
+    {
+      "branch": "feat/research-engine-deterministic",
+      "pr": "PR5 TBD",
+      "title": "Research engine deterministic JSON",
+      "files": [
+        "packages/research-engine/**",
+        "research/raw/**",
+        "artifacts/research/**",
+        "packages/adapter-gen/src/research.ts",
+        "packages/adapter-gen/src/generator.ts",
+        "tests/research-normalizer.test.ts",
+        "tests/adapter-gen-research.test.ts",
+        "docs/CONNECTORS.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Artifacts generated under artifacts/research for Example HR Suite, Slack Provisioning, Google Workspace. Research normalizer and generator integration verified.",
+      "status": "completed",
+      "completedAt": "2025-09-18T08:06:45Z"
+    },
+    {
+      "branch": "docs/roadmap-ops-alignment",
+      "pr": "PR6 TBD",
+      "title": "Docs alignment",
+      "files": [
+        "docs/ATLASIT_ROADMAP.md",
+        "ROADMAP.md",
+        "CONTEXT.md",
+        "OPERATIONS.md",
+        "ops/hand-off.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Ready to push (docs updated; changes staged)"
+    },
+    {
+      "branch": "chore/hybrid-aws-docs",
+      "pr": "PR7 TBD",
+      "title": "Hybrid AWS Support Docs",
+      "files": [
+        "docs/HYBRID_AWS.md",
+        "docs/ARCHITECTURE.md",
+        "docs/roadmap.md",
+        "ops/pr-bodies/PR7_hybrid-aws-docs.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Ready to push (docs staged)"
+    }
+  ]
+}

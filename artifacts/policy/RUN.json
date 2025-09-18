@@ -1,0 +1,22 @@
+{
+  "timestamp": "2025-09-18T10:57:30.504Z",
+  "counts": {
+    "total": 6,
+    "controls": {
+      "MFA_REQUIRED": {
+        "pass": 1,
+        "fail": 1
+      },
+      "PASSWORD_MIN_LENGTH": {
+        "pass": 1,
+        "fail": 1
+      },
+      "DEVICE_POSTURE_HEALTHY": {
+        "pass": 1,
+        "fail": 1
+      }
+    },
+    "pass": 3,
+    "fail": 3
+  }
+}

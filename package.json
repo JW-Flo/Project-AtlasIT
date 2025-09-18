@@ -48,7 +48,13 @@
     "test:coverage": "vitest run --coverage",
     "migrate:onboarding": "cd onboarding && wrangler d1 migrations apply ATLAS_ONBOARDING_DB",
     "schema:hash": "node scripts/schema-hash.js",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "build:adapter-gen": "cd packages/adapter-gen && npm run build",
+    "build:adapter-sim": "cd packages/adapter-sim && npm run build",
+    "test:adapter-gen": "vitest run tests/adapter-gen.test.ts",
+    "build:research-engine": "cd packages/research-engine && npm run build",
+    "test:research-engine": "vitest run tests/research-normalizer.test.ts tests/adapter-gen-research.test.ts",
+    "render:compliance": "node scripts/render-compliance-snapshot.mjs artifacts/policy/evidence.json docs/COMPLIANCE_SNAPSHOT.md"
   },
   "keywords": [
     "it-management",

@@ -5,10 +5,13 @@ Last Updated: 2025-08-20
 Owner: JW-Flo
 
 ## 1. Executive Summary
+
 AtlasIT is a modular, multi-tenant IT automation and lifecycle management platform. Core capabilities: identity & entitlement modeling, policy-driven provisioning/deprovisioning, standardized connector framework, auditable workflows, and protocol support (OAuth/OIDC, SAML, SCIM) delivered via an edge-first (Cloudflare Workers) architecture.
 
 ## 2. High-Level Architecture
+
 Layers:
+
 1. Edge / API Gateway: Cloudflare Workers entrypoint, request auth, tenant resolution, rate limiting.
 2. Auth & Protocol Services: OAuth2/OIDC issuer, SAML SP (ACS + metadata), SCIM (Users & Groups), session management, JWKS publication.
 3. Core Domain Services: Identity (canonical user graph), Tenant config, Policy & Entitlements Engine, Attribute Mapping Engine.
@@ -20,6 +23,7 @@ Layers:
 9. Developer Platform: Connector SDK, CLI scaffolding, test harness, (future) marketplace & sandbox runtime (WASM).
 
 ## 3. Component Responsibilities
+
 - Identity Service: Canonical user record, attribute merge, external account references.
 - Policy Engine: Evaluates rules (CEL/minimal DSL) to derive entitlements & connector actions.
 - Attribute Mapping Engine: Transforms internal user model to connector schemas via mapping DSL (JMESPath subset target).
@@ -32,7 +36,9 @@ Layers:
 - OAuth/OIDC Service: Client registration, token issuance (access/refresh/ID), JWKS rotation & publishing.
 
 ## 4. Data Model (Key Entities)
+
 Tables / Collections (conceptual):
+
 - tenants (id, name, status, created_at)
 - tenant_settings (tenant_id, key, value)
 - users (id, tenant_id, primary_email, status, created_at)
@@ -56,7 +62,9 @@ Tables / Collections (conceptual):
 Audit Hash Chain: record_hash = hash(json_event); audit_events.prev_hash references previous event's cumulative hash; chain_head persisted per tenant.
 
 ## 5. Reference Flows
+
 A. SCIM User Create
+
 1. SCIM POST /Users → SCIM Server validates & normalizes.
 2. Identity Service upserts user + attributes.
 3. Policy Engine evaluates rules → entitlement delta.
@@ -65,21 +73,25 @@ A. SCIM User Create
 6. Audit events emitted at each step; final success triggers webhook.
 
 B. Deprovision (User termination)
+
 1. Status change triggers policy re-evaluation (expected entitlements now empty).
 2. Workflow orchestrator runs deprovision tasks (license removal, group removal, deactivate user accounts).
 3. Audit & completion webhook.
 
 C. SAML Admin Login
+
 1. IdP sends SAMLResponse to ACS.
 2. Validate signature + assertions → create admin session (JWT) with roles.
 3. Admin UI uses session to call management APIs.
 
 D. Connector Task Execution
+
 1. Task picked up → mapping engine builds payload.
 2. Connector runtime executes action; handles rate-limit/retry.
 3. Updates connector_user_accounts or entitlements; emits audit.
 
 ## 6. Security Model (MVP Baseline)
+
 - All API calls require tenant-scoped auth (OAuth token or signed session cookie).
 - JWT key rotation every 30 days, JWKs endpoint cached.
 - Secrets stored encrypted (AES-GCM) with KMS-managed data key; rotation job scheduled.
@@ -89,17 +101,20 @@ D. Connector Task Execution
 - Rate limiting per tenant + IP for auth & SCIM endpoints.
 
 ## 7. Observability Strategy
+
 Phase 1 (POC): Structured JSON logs, basic counters (provision_success, provision_failure), latency histogram for workflow duration.
 Phase 2 (MVP): OpenTelemetry traces across edge → orchestrator → connector tasks; metrics exported (p95 task latency, task_retry_count). Webhook delivery metrics.
 Phase 3 (Beta): SLOs (p95 SCIM create→provision < 120s), anomaly detection for spike in failures, hash chain integrity verification alerts.
 
 ## 8. Workflow Orchestrator Details
+
 - Representation: DAG (stored as JSON definition) with node types (connector_task, decision, parallel, compensation).
 - Execution: Initially linear + simple parallel groups; persisted task records; polling worker (DB) → transition to queue-based dispatch at Beta.
 - Retry Policy: Exponential backoff (base 2s, max 2m, cap 6 attempts) except terminal errors (4xx not retryable unless 429).
 - Compensation: For partial failure, previously successful tasks with defined compensators run reverse operations (e.g., created account then failed license assignment → on rollback disable account).
 
 ## 9. Policy & Mapping
+
 MVP Policy Expression: Simple comparisons (==, !=) and logical AND; future: OR, IN list, attribute presence. Evaluated using safe CEL subset or custom parser.
 Example Rule:
 {
@@ -112,6 +127,7 @@ Example Rule:
 Mapping DSL: Key = external field, value = internal path or expression (JMESPath subset) e.g. {"email":"user.primary_email","display_name":"concat(user.first_name,' ',user.last_name)"}.
 
 ## 10. Connector Framework
+
 Manifest Fields: name, version, capabilities[], auth (type, scopes), rateLimits, mappings (default), configSchema.
 Interface (TypeScript sketch):
 export interface Connector {
@@ -125,23 +141,27 @@ export interface Connector {
 Packaging: Versioned, checksum verified; sandbox (Beta) executes untrusted connectors in WASM isolate.
 
 ## 11. Testing Strategy Overview
+
 - Unit: Policy evaluation, mapping, connector stubs.
 - Contract: Connector harness with mock external endpoints (fixtures for Slack/Google/GitHub).
 - Integration: End-to-end provisioning workflow simulation.
 - Resilience: Fault injection (429, 5xx, timeouts) to validate retries & compensation.
 - Security: Static analysis (semgrep), dependency vulnerability scan, secret scan.
-- Performance: Workflow duration benchmarks (p95 target). 
+- Performance: Workflow duration benchmarks (p95 target).
 
 ## 12. Roadmap Link
+
 See docs/product-roadmap.md for phased delivery plan.
 
 ## 13. Open Decisions
+
 - Backend language for orchestrator heavy logic (stay TS vs introduce Go for concurrency).
 - Queue evolution path (DB polling → durable queue provider).
 - Policy engine implementation detail (CEL vs custom DSL transpilable to AST).
 - WASM sandbox feasibility within Workers constraints.
 
 ## 14. Risks & Mitigations (Summary)
+
 | Risk | Mitigation |
 |------|------------|
 | CI workflow instability | Canary job + alert on missing triggers |
@@ -151,6 +171,7 @@ See docs/product-roadmap.md for phased delivery plan.
 | Over-engineering early | Phase gating (sandbox & marketplace only at Beta) |
 
 ## 15. Glossary
+
 - Connector: Adapter implementing provisioning interface for an external SaaS.
 - Entitlement: Group/license/resource assignment derived from policy.
 - Workflow Run: Execution instance of a provisioning/deprovisioning DAG.

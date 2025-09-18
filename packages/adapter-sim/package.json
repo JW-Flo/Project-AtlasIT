@@ -1,0 +1,12 @@
+{
+  "name": "@atlasit/adapter-sim",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "atlasit-sim": "./dist/cli.js"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.json"
+  }
+}

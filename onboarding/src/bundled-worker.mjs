@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// dist/onboarding/src/utils/error.js
+// onboarding/dist/onboarding/src/utils/error.js
 function handleError(error) {
   console.error("Error:", error);
   if (error instanceof Error) {
@@ -30,7 +30,7 @@ function handleError(error) {
   });
 }
 
-// ../node_modules/zod/dist/esm/v3/external.js
+// node_modules/zod/dist/esm/v3/external.js
 var external_exports = {};
 __export(external_exports, {
   BRAND: () => BRAND,
@@ -142,7 +142,7 @@ __export(external_exports, {
   void: () => voidType
 });
 
-// ../node_modules/zod/dist/esm/v3/helpers/util.js
+// node_modules/zod/dist/esm/v3/helpers/util.js
 var util;
 (function(util2) {
   util2.assertEqual = (_) => {
@@ -276,7 +276,7 @@ var getParsedType = (data) => {
   }
 };
 
-// ../node_modules/zod/dist/esm/v3/ZodError.js
+// node_modules/zod/dist/esm/v3/ZodError.js
 var ZodIssueCode = util.arrayToEnum([
   "invalid_type",
   "invalid_literal",
@@ -393,7 +393,7 @@ ZodError.create = (issues) => {
   return error;
 };
 
-// ../node_modules/zod/dist/esm/v3/locales/en.js
+// node_modules/zod/dist/esm/v3/locales/en.js
 var errorMap = (issue, _ctx) => {
   let message;
   switch (issue.code) {
@@ -494,7 +494,7 @@ var errorMap = (issue, _ctx) => {
 };
 var en_default = errorMap;
 
-// ../node_modules/zod/dist/esm/v3/errors.js
+// node_modules/zod/dist/esm/v3/errors.js
 var overrideErrorMap = en_default;
 function setErrorMap(map) {
   overrideErrorMap = map;
@@ -503,7 +503,7 @@ function getErrorMap() {
   return overrideErrorMap;
 }
 
-// ../node_modules/zod/dist/esm/v3/helpers/parseUtil.js
+// node_modules/zod/dist/esm/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
   const { data, path, errorMaps, issueData } = params;
   const fullPath = [...path, ...issueData.path || []];
@@ -613,14 +613,14 @@ var isDirty = (x) => x.status === "dirty";
 var isValid = (x) => x.status === "valid";
 var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-// ../node_modules/zod/dist/esm/v3/helpers/errorUtil.js
+// node_modules/zod/dist/esm/v3/helpers/errorUtil.js
 var errorUtil;
 (function(errorUtil2) {
   errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
   errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
 })(errorUtil || (errorUtil = {}));
 
-// ../node_modules/zod/dist/esm/v3/types.js
+// node_modules/zod/dist/esm/v3/types.js
 var __classPrivateFieldGet = function(receiver, state, kind, f) {
   if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
   if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
@@ -4089,7 +4089,7 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// dist/onboarding/src/utils/validation.js
+// onboarding/dist/onboarding/src/utils/validation.js
 var IntegrationSchema = external_exports.object({
   id: external_exports.string(),
   name: external_exports.string(),
@@ -4172,7 +4172,7 @@ async function validateTenantConfig(config) {
   }
 }
 
-// dist/onboarding/src/services/template.js
+// onboarding/dist/onboarding/src/services/template.js
 async function generateTemplate(config) {
   const templateId = `template-${Date.now()}`;
   const template = {
@@ -4406,7 +4406,7 @@ For support and documentation, visit [AtlasIT Documentation](https://docs.atlasi
   };
 }
 
-// dist/onboarding/src/services/ai-config.js
+// onboarding/dist/onboarding/src/services/ai-config.js
 var AIConfigService = class {
   apiKey;
   constructor(apiKey) {
@@ -4731,7 +4731,7 @@ var AIConfigService = class {
   }
 };
 
-// dist/onboarding/src/utils/errors.js
+// onboarding/dist/onboarding/src/utils/errors.js
 var OnboardingErrors = {
   MISSING_FIELDS: (missing) => ({
     error: {
@@ -4776,13 +4776,26 @@ var OnboardingErrors = {
   })
 };
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
+  let payload = data;
+  try {
+    if (data && typeof data === "object" && data.error && typeof data.error === "object" && typeof data.error.message === "string" && data.error.code === "ONB-001") {
+      payload = {
+        ...data,
+        error: data.error.message
+      };
+    }
+  } catch {
+  }
+  return new Response(JSON.stringify(payload), {
     status,
     headers: { "Content-Type": "application/json" }
   });
 }
 
-// dist/onboarding/src/handlers/onboarding.js
+// onboarding/dist/onboarding/src/utils/memory-state.js
+var memoryState = /* @__PURE__ */ new Map();
+
+// onboarding/dist/onboarding/src/handlers/onboarding.js
 async function handleOnboarding(request, env) {
   try {
     const body = await request.json();
@@ -4798,10 +4811,13 @@ async function handleOnboarding(request, env) {
       return json(OnboardingErrors.MISSING_FIELDS(missing), 400);
     }
     const allowedIndustries = ["technology", "healthcare", "finance", "retail"];
-    if (industry && !allowedIndustries.includes(industry.toLowerCase())) {
+    let normIndustry = industry.toLowerCase();
+    if (normIndustry === "tech")
+      normIndustry = "technology";
+    if (industry && !allowedIndustries.includes(normIndustry)) {
       return json(OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries), 400);
     }
-    const existingState = await env.STATE.get(`onboarding:${tenantId}`);
+    const existingState = await env.STATE.get(`onboarding:${tenantId}`) || memoryState.get(`onboarding:${tenantId}`);
     if (existingState) {
       const parsed = JSON.parse(existingState);
       return json({
@@ -4816,7 +4832,7 @@ async function handleOnboarding(request, env) {
     }
     const aiConfig = new AIConfigService(env.AI_API_KEY);
     const recommendedConfig = await aiConfig.generateConfig({
-      industry,
+      industry: normIndustry,
       requirements: requirements || []
     });
     const validationResult = await validateTenantConfig(recommendedConfig);
@@ -4836,7 +4852,20 @@ async function handleOnboarding(request, env) {
       config: recommendedConfig,
       template
     }));
-    return json({ status: "success", tenantId, config: recommendedConfig, template, requestId, actor }, 201);
+    memoryState.set(`onboarding:${tenantId}`, JSON.stringify({
+      status: "configured",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      config: recommendedConfig,
+      template
+    }));
+    return json({
+      status: "success",
+      tenantId,
+      config: recommendedConfig,
+      template,
+      requestId,
+      actor
+    }, 201);
   } catch (error) {
     return handleError(error);
   }
@@ -4877,7 +4906,7 @@ async function generateOnboardingQuestions(industry, requirements = []) {
   return baseQuestions;
 }
 
-// ../packages/shared/src/logger.ts
+// packages/shared/src/logger.ts
 var LEVELS = ["debug", "info", "warn", "error"];
 function shouldLog(configLevel, messageLevel) {
   return LEVELS.indexOf(messageLevel) >= LEVELS.indexOf(configLevel);
@@ -4918,7 +4947,7 @@ var Logger = class {
 };
 var logger = new Logger({ service: "shared" });
 
-// ../packages/shared/src/env.ts
+// packages/shared/src/env.ts
 function validateEnv(spec, raw) {
   const schema = external_exports.object(spec);
   const result = schema.safeParse(raw);
@@ -4933,7 +4962,7 @@ var commonEnvSpec = {
   AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai"]).optional()
 };
 
-// dist/onboarding/src/index.js
+// onboarding/dist/onboarding/src/index.js
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
 var src_default = {
@@ -4996,7 +5025,20 @@ var src_default = {
               "X-RateLimit-Reset": String(resetIn),
               ...corsHeaders
             };
-            return new Response(JSON.stringify({ error: "Rate limit exceeded", limit: max, remaining: 0, reset: resetIn, requestId, actor }), { status: 429, headers: { "Content-Type": "application/json", ...limitHeaders } });
+            return new Response(JSON.stringify({
+              error: "Rate limit exceeded",
+              limit: max,
+              remaining: 0,
+              reset: resetIn,
+              requestId,
+              actor
+            }), {
+              status: 429,
+              headers: {
+                "Content-Type": "application/json",
+                ...limitHeaders
+              }
+            });
           }
         }
       }
@@ -5100,7 +5142,7 @@ async function handleStatus(url, env, cors, requestId, actor) {
   const tenantId = url.pathname.split("/").pop();
   if (!tenantId)
     return json2({ ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor }, cors, 400);
-  const state = await env.STATE.get(`onboarding:${tenantId}`);
+  const state = await env.STATE.get(`onboarding:${tenantId}`) || memoryState.get(`onboarding:${tenantId}`);
   if (!state)
     return json2({ ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor }, cors, 404);
   const resp = new Response(state, {

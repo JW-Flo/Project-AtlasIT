@@ -1,0 +1,13 @@
+{
+  "adapter": "example-hr-suite",
+  "expects": {
+    "health": {
+      "path": "/health",
+      "status": 200,
+      "headers": {
+        "content-type": "application/json",
+        "x-adapter": "example-hr-suite"
+      }
+    }
+  }
+}

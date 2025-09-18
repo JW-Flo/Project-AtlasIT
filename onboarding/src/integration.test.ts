@@ -8,9 +8,9 @@ describe("Onboarding Service Integration Tests", () => {
   let mf: Miniflare;
 
   beforeAll(async () => {
-    // Set up Miniflare environment loading TypeScript source dynamically
-    // Bundle worker entry with esbuild so Miniflare gets a single module
-    const entry = path.join(__dirname, "../dist/onboarding/src/index.js");
+    // Set up Miniflare environment by bundling the TypeScript worker entry directly.
+    // This avoids stale dist artifacts causing mismatched error shapes.
+    const entry = path.join(__dirname, "index.ts");
     const outfile = path.join(__dirname, "bundled-worker.mjs");
     await build({
       entryPoints: [entry],
