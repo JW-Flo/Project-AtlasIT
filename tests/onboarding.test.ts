@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import worker from "../onboarding/src/index";
 
 // Minimal mock Env implementing only the pieces we touch.
-const mockEnv = (): any => ({
+const createMockEnv = (): any => ({
   STATE: {
     store: new Map<string, string>(),
     async get(key: string) {
@@ -29,6 +29,9 @@ const mockEnv = (): any => ({
   AI_API_KEY: "test-ai-key",
 });
 
+// Use a shared env across calls so KV state persists between requests in tests
+const sharedEnv = createMockEnv();
+
 async function call(method: string, path: string, body?: any) {
   const reqInit: RequestInit = {
     method,
@@ -36,7 +39,7 @@ async function call(method: string, path: string, body?: any) {
   };
   if (body) reqInit.body = JSON.stringify(body);
   const request = new Request(`https://example.com${path}`, reqInit);
-  const resp = await worker.fetch(request, mockEnv());
+  const resp = await worker.fetch(request, sharedEnv);
   const text = await resp.text();
   let json: any = undefined;
   try {
@@ -70,7 +73,7 @@ describe("Onboarding worker endpoints", () => {
     const res = await call("POST", "/onboarding/submit", {
       tenantId,
       name: "Test Co",
-      industry: "tech",
+      industry: "technology",
       requirements: [],
     });
     expect(res.status).toBe(201);
@@ -83,7 +86,7 @@ describe("Onboarding worker endpoints", () => {
     await call("POST", "/onboarding/submit", {
       tenantId,
       name: "Org Two",
-      industry: "tech",
+      industry: "technology",
       requirements: [],
     });
     const res = await call("GET", `/api/onboarding/${tenantId}`);
@@ -95,10 +98,10 @@ describe("Onboarding worker endpoints", () => {
   it("rejects submit missing required fields", async () => {
     const res = await call("POST", "/onboarding/submit", {
       name: "NoTenant",
-      industry: "tech",
+      industry: "technology",
     });
     expect(res.status).toBe(400);
-    expect(res.json.error).toMatch(/Missing required fields/);
+    expect(res.json.error.message).toMatch(/Missing required fields/);
   });
 
   it("returns 404 for unknown onboarding status", async () => {

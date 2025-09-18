@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
+  build-test-sbom:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,28 +18,10 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm install
-      - name: Secret scan
-        run: npm run scan:secrets
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Build shared package
-        run: npm run build:shared
-      - name: Unit tests
-        run: npm run test:unit
-
-  # Placeholder for future deploy job with wrangler publish
-  # deploy:
-  #   needs: build-test
-  #   runs-on: ubuntu-latest
-  #   if: github.ref == 'refs/heads/main'
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #     - name: Install
-  #       run: npm install
-  #     - name: Wrangler Publish (stub)
-  #       run: echo "Deploy step placeholder"
+      - name: Build, test, sbom
+        run: npm run ci:run
+      - name: Upload CI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: artifacts/ci

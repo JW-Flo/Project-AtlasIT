@@ -1,28 +1,26 @@
 export function handleError(error: unknown): Response {
   console.error('Error:', error);
-  
-  if (error instanceof Error) {
-    return new Response(JSON.stringify({
-      error: 'Internal server error',
-      message: error.message,
-      timestamp: new Date().toISOString()
-    }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-  }
-  
-  return new Response(JSON.stringify({
-    error: 'Unknown error occurred',
-    timestamp: new Date().toISOString()
-  }), {
-    status: 500,
-    headers: {
-      'Content-Type': 'application/json'
-    }
+
+  // Standardized error mapping to onboarding error shapes
+  const toJson = (payload: any, status = 500) => new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
   });
+
+  if (error instanceof ValidationError) {
+    return toJson({ error: { code: 'ONB-001', message: error.message, details: error.details } }, 400);
+  }
+  if (error instanceof ConfigurationError) {
+    return toJson({ error: { code: 'ONB-003', message: error.message } }, 400);
+  }
+  if (error instanceof IntegrationError) {
+    return toJson({ error: { code: 'ONB-010', message: error.message } }, 502);
+  }
+
+  if (error instanceof Error) {
+    return toJson({ error: { code: 'ONB-999', message: error.message } }, 500);
+  }
+  return toJson({ error: { code: 'ONB-999', message: 'Unknown error occurred' } }, 500);
 }
 
 export class ValidationError extends Error {

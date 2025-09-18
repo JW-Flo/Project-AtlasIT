@@ -1,0 +1,26 @@
+{
+  "type": "leaver",
+  "tenantId": "tenant-acme",
+  "user": {
+    "id": "user-leave-003",
+    "email": "sam.taylor@acme.example",
+    "displayName": "Sam Taylor",
+    "department": "Finance",
+    "title": "Payroll Specialist"
+  },
+  "exit": {
+    "lastDay": "2025-08-31",
+    "reason": "Voluntary",
+    "equipment": ["macbook-pro-2023", "yubi-key-5"]
+  },
+  "entitlements": [
+    "okta",
+    "netsuite",
+    "workday",
+    "expensify"
+  ],
+  "notifications": {
+    "channels": ["email", "ticket"],
+    "recipients": ["security@acme.example", "payroll@acme.example"]
+  }
+}

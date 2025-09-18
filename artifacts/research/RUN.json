@@ -1,0 +1,36 @@
+{
+  "task": "PR5 Research normalization",
+  "generatedAt": "2025-09-18T07:57:05.576Z",
+  "runs": [
+    {
+      "completedAt": "2025-09-18T07:57:05.575Z",
+      "service": {
+        "name": "Example HR Suite",
+        "slug": "example-hr-suite",
+        "summary": "Example HR Suite centralises employee lifecycle management, provisioning, and compliance checkpoints for mid-market teams."
+      },
+      "source": "research/raw/example-hr-suite.md",
+      "output": "artifacts/research/example-hr-suite/schema.json"
+    },
+    {
+      "completedAt": "2025-09-18T07:57:05.576Z",
+      "service": {
+        "name": "Slack Provisioning",
+        "slug": "slack-provisioning",
+        "summary": "Slack Provisioning automates workspace membership, channel enrollment, and deactivation workflows for distributed teams."
+      },
+      "source": "research/raw/slack-provisioning.md",
+      "output": "artifacts/research/slack-provisioning/schema.json"
+    },
+    {
+      "completedAt": "2025-09-18T07:57:05.576Z",
+      "service": {
+        "name": "Google Workspace Admin",
+        "slug": "google-workspace-admin",
+        "summary": "Google Workspace Admin centralises identity, license, and group governance across Gmail, Drive, and third-party marketplace apps."
+      },
+      "source": "research/raw/google-workspace.md",
+      "output": "artifacts/research/google-workspace/schema.json"
+    }
+  ]
+}

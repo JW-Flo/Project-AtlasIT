@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "composite": false,
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  },
+  "include": [
+    "index.ts",
+    "routes.ts",
+    "types.ts"
+  ]
+}

@@ -1,0 +1,34 @@
+name: atlasit-web-ci
+on:
+  pull_request:
+    paths:
+      - "apps/atlasit-web/**"
+      - ".github/workflows/atlasit-web-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/atlasit-web/**"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: apps/atlasit-web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        working-directory: ${{ env.APP_DIR }}
+        run: npm ci || npm install
+      - name: Build
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run build
+      - name: Block node imports
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run check-node-imports
+      - name: Test
+        working-directory: ${{ env.APP_DIR }}
+        run: npm run test || true

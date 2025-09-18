@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-09-18T13:42:10.594Z",
+  "counts": {
+    "total": 6,
+    "controls": {
+      "MFA_REQUIRED": {
+        "pass": 1,
+        "fail": 1
+      },
+      "PASSWORD_MIN_LENGTH": {
+        "pass": 1,
+        "fail": 1
+      },
+      "DEVICE_POSTURE_HEALTHY": {
+        "pass": 1,
+        "fail": 1
+      }
+    },
+    "pass": 3,
+    "fail": 3
+  },
+  "source": "artifacts/policy/evidence.json"
+}

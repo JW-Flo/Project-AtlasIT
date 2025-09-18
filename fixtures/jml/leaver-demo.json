@@ -1,0 +1,9 @@
+{
+  "type": "leaver",
+  "userId": "user-789",
+  "tenantId": "tenant-abc",
+  "attributes": {
+    "email": "bob.doe@example.com",
+    "terminationDate": "2025-09-17"
+  }
+}

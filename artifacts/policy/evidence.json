@@ -1,0 +1,59 @@
+[
+  {
+    "control": "MFA_REQUIRED",
+    "subject": "user-1",
+    "result": {
+      "status": "pass"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "6956204d0ff91f91f292e5aef0880496619a63928c040af4f932f261b806dfed"
+  },
+  {
+    "control": "PASSWORD_MIN_LENGTH",
+    "subject": "user-1",
+    "result": {
+      "status": "pass"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "fafbb8eaf523a49546f1ffc97a2813f94c119b9142aca13abb25d2b36d27c124"
+  },
+  {
+    "control": "DEVICE_POSTURE_HEALTHY",
+    "subject": "user-1",
+    "result": {
+      "status": "pass"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "aebcecdda9afc18e25cb3a74ace1834ab385de5091eb31fbb3f17b15efc3b0d0"
+  },
+  {
+    "control": "MFA_REQUIRED",
+    "subject": "user-2",
+    "result": {
+      "status": "fail",
+      "reason": "Multi-factor authentication is not enabled"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "1852890811e59324eec6a368341f6b1e5efea36652e9fda9c1162e828840f185"
+  },
+  {
+    "control": "PASSWORD_MIN_LENGTH",
+    "subject": "user-2",
+    "result": {
+      "status": "fail",
+      "reason": "Password length 8 is below minimum of 12"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "bf4594a7502ae5fd05bdbca81ba4e412b554b8836962e99bed5e5110c0006707"
+  },
+  {
+    "control": "DEVICE_POSTURE_HEALTHY",
+    "subject": "user-2",
+    "result": {
+      "status": "fail",
+      "reason": "Reported posture 'risky' is not healthy"
+    },
+    "timestamp": "2025-09-18T10:57:30.457Z",
+    "hash": "a358dc4cea06257381c13f63cb7f16b35debf3e38f7f644442d26fe23f6bee19"
+  }
+]
