@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+  - packages/**
+  - routes/**
+  - onboarding
+  - ai-orchestrator
+  - mcp*
+  - documentation-worker
+  - slack-approval-worker

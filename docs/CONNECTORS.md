@@ -58,3 +58,12 @@ node packages/research-engine/dist/cli.js normalize \
 ```
 
 The resulting `atlasit.research-schema` document includes `openapi` output for adapter scaffolding. When the generator receives a research schema, it stores both the original research payload (`research.schema.json`) and the derived `schema.json` in the adapter directory.
+
+## Identity Providers
+
+The IdP layer shares the same feature-flag approach. Enable adapters with `FEATURE_IDP_*` flags:
+
+- `FEATURE_IDP_OKTA=1` exposes the Okta mock through `/api/idp/list` and `/api/idp/provision`.
+- Future adapters (Entra, Google, AWS, Paycom, CrowdStrike) will reuse the same registry and routes.
+
+Run `npx atlasit-idp-sim` (after building packages) to exercise the Okta mock and emit artifacts under `artifacts/idp/`.

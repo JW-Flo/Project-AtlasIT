@@ -45,6 +45,11 @@ export default [
       "./vitest.config.ts",
       // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
       "./ai-orchestrator/*.test.ts",
+      // Exclude IdP packages and idp routes from project-aware parsing; they use lightweight override below
+      "./packages/idp/**",
+      "./packages/idp-adapters/**",
+      "./packages/idp-sim/**",
+      "./routes/api/idp/**",
     ],
     languageOptions: {
       parser: tsParser,
@@ -69,6 +74,29 @@ export default [
       // Temporarily relax explicit any until types added
       "@typescript-eslint/no-explicit-any": "off",
     },
+  },
+  // Lightweight parsing for IdP packages and idp routes (no project required)
+  {
+    files: [
+      "packages/idp/**/*.ts",
+      "packages/idp-adapters/**/*.ts",
+      "packages/idp-sim/**/*.ts",
+      "routes/api/idp/**/*.ts",
+    ],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+      },
+    },
+    plugins: { "@typescript-eslint": tsPlugin },
+    rules: {
+      ...tsPlugin.configs["recommended"].rules,
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+    ignores: ["**/dist/**", "**/*.d.ts"],
   },
   // Lightweight parsing for test and config TS files (no project required)
   {

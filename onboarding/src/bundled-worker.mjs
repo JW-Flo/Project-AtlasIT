@@ -4,33 +4,50 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// onboarding/dist/onboarding/src/utils/error.js
+// src/utils/error.ts
 function handleError(error) {
   console.error("Error:", error);
-  if (error instanceof Error) {
-    return new Response(JSON.stringify({
-      error: "Internal server error",
-      message: error.message,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString()
-    }), {
-      status: 500,
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-  }
-  return new Response(JSON.stringify({
-    error: "Unknown error occurred",
-    timestamp: (/* @__PURE__ */ new Date()).toISOString()
-  }), {
-    status: 500,
-    headers: {
-      "Content-Type": "application/json"
-    }
+  const toJson = (payload, status = 500) => new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" }
   });
+  if (error instanceof ValidationError) {
+    return toJson({ error: { code: "ONB-001", message: error.message, details: error.details } }, 400);
+  }
+  if (error instanceof ConfigurationError) {
+    return toJson({ error: { code: "ONB-003", message: error.message } }, 400);
+  }
+  if (error instanceof IntegrationError) {
+    return toJson({ error: { code: "ONB-010", message: error.message } }, 502);
+  }
+  if (error instanceof Error) {
+    return toJson({ error: { code: "ONB-999", message: error.message } }, 500);
+  }
+  return toJson({ error: { code: "ONB-999", message: "Unknown error occurred" } }, 500);
 }
+var ValidationError = class extends Error {
+  constructor(message, details) {
+    super(message);
+    this.details = details;
+    this.name = "ValidationError";
+  }
+};
+var ConfigurationError = class extends Error {
+  constructor(message, config) {
+    super(message);
+    this.config = config;
+    this.name = "ConfigurationError";
+  }
+};
+var IntegrationError = class extends Error {
+  constructor(message, integration) {
+    super(message);
+    this.integration = integration;
+    this.name = "IntegrationError";
+  }
+};
 
-// node_modules/zod/dist/esm/v3/external.js
+// ../node_modules/zod/dist/esm/v3/external.js
 var external_exports = {};
 __export(external_exports, {
   BRAND: () => BRAND,
@@ -142,7 +159,7 @@ __export(external_exports, {
   void: () => voidType
 });
 
-// node_modules/zod/dist/esm/v3/helpers/util.js
+// ../node_modules/zod/dist/esm/v3/helpers/util.js
 var util;
 (function(util2) {
   util2.assertEqual = (_) => {
@@ -276,7 +293,7 @@ var getParsedType = (data) => {
   }
 };
 
-// node_modules/zod/dist/esm/v3/ZodError.js
+// ../node_modules/zod/dist/esm/v3/ZodError.js
 var ZodIssueCode = util.arrayToEnum([
   "invalid_type",
   "invalid_literal",
@@ -393,7 +410,7 @@ ZodError.create = (issues) => {
   return error;
 };
 
-// node_modules/zod/dist/esm/v3/locales/en.js
+// ../node_modules/zod/dist/esm/v3/locales/en.js
 var errorMap = (issue, _ctx) => {
   let message;
   switch (issue.code) {
@@ -494,7 +511,7 @@ var errorMap = (issue, _ctx) => {
 };
 var en_default = errorMap;
 
-// node_modules/zod/dist/esm/v3/errors.js
+// ../node_modules/zod/dist/esm/v3/errors.js
 var overrideErrorMap = en_default;
 function setErrorMap(map) {
   overrideErrorMap = map;
@@ -503,7 +520,7 @@ function getErrorMap() {
   return overrideErrorMap;
 }
 
-// node_modules/zod/dist/esm/v3/helpers/parseUtil.js
+// ../node_modules/zod/dist/esm/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
   const { data, path, errorMaps, issueData } = params;
   const fullPath = [...path, ...issueData.path || []];
@@ -613,14 +630,14 @@ var isDirty = (x) => x.status === "dirty";
 var isValid = (x) => x.status === "valid";
 var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-// node_modules/zod/dist/esm/v3/helpers/errorUtil.js
+// ../node_modules/zod/dist/esm/v3/helpers/errorUtil.js
 var errorUtil;
 (function(errorUtil2) {
   errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
   errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
 })(errorUtil || (errorUtil = {}));
 
-// node_modules/zod/dist/esm/v3/types.js
+// ../node_modules/zod/dist/esm/v3/types.js
 var __classPrivateFieldGet = function(receiver, state, kind, f) {
   if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
   if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
@@ -4089,7 +4106,7 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// onboarding/dist/onboarding/src/utils/validation.js
+// src/utils/validation.ts
 var IntegrationSchema = external_exports.object({
   id: external_exports.string(),
   name: external_exports.string(),
@@ -4172,7 +4189,7 @@ async function validateTenantConfig(config) {
   }
 }
 
-// onboarding/dist/onboarding/src/services/template.js
+// src/services/template.ts
 async function generateTemplate(config) {
   const templateId = `template-${Date.now()}`;
   const template = {
@@ -4353,15 +4370,21 @@ Auto-generated configuration for ${config.industry} industry.
 
 ## Integrations
 
-${config.integrations.map((integration) => `- **${integration.name}** (${integration.type}): ${integration.enabled ? "Enabled" : "Disabled"}`).join("\n")}
+${config.integrations.map(
+    (integration) => `- **${integration.name}** (${integration.type}): ${integration.enabled ? "Enabled" : "Disabled"}`
+  ).join("\n")}
 
 ## Workflows
 
-${config.workflows.map((workflow) => `- **${workflow.name}**: Triggered by ${workflow.trigger.type}, ${workflow.actions.length} actions`).join("\n")}
+${config.workflows.map(
+    (workflow) => `- **${workflow.name}**: Triggered by ${workflow.trigger.type}, ${workflow.actions.length} actions`
+  ).join("\n")}
 
 ## Security Roles
 
-${config.security.authorization.roles.map((role) => `- **${role.name}**: ${role.permissions.join(", ")}`).join("\n")}
+${config.security.authorization.roles.map(
+    (role) => `- **${role.name}**: ${role.permissions.join(", ")}`
+  ).join("\n")}
 
 ## Getting Started
 
@@ -4392,7 +4415,9 @@ JWT_SECRET=your-jwt-secret
 ENCRYPTION_KEY=your-encryption-key
 
 # Integrations
-${config.integrations.map((integration) => `${integration.name.toUpperCase().replace(/\s+/g, "_")}_API_KEY=your-api-key`).join("\n")}
+${config.integrations.map(
+    (integration) => `${integration.name.toUpperCase().replace(/\s+/g, "_")}_API_KEY=your-api-key`
+  ).join("\n")}
 \`\`\`
 
 ## Support
@@ -4406,7 +4431,7 @@ For support and documentation, visit [AtlasIT Documentation](https://docs.atlasi
   };
 }
 
-// onboarding/dist/onboarding/src/services/ai-config.js
+// src/services/ai-config.ts
 var AIConfigService = class {
   apiKey;
   constructor(apiKey) {
@@ -4731,7 +4756,7 @@ var AIConfigService = class {
   }
 };
 
-// onboarding/dist/onboarding/src/utils/errors.js
+// src/utils/errors.ts
 var OnboardingErrors = {
   MISSING_FIELDS: (missing) => ({
     error: {
@@ -4776,26 +4801,13 @@ var OnboardingErrors = {
   })
 };
 function json(data, status = 200) {
-  let payload = data;
-  try {
-    if (data && typeof data === "object" && data.error && typeof data.error === "object" && typeof data.error.message === "string" && data.error.code === "ONB-001") {
-      payload = {
-        ...data,
-        error: data.error.message
-      };
-    }
-  } catch {
-  }
-  return new Response(JSON.stringify(payload), {
+  return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" }
   });
 }
 
-// onboarding/dist/onboarding/src/utils/memory-state.js
-var memoryState = /* @__PURE__ */ new Map();
-
-// onboarding/dist/onboarding/src/handlers/onboarding.js
+// src/handlers/onboarding.ts
 async function handleOnboarding(request, env) {
   try {
     const body = await request.json();
@@ -4811,13 +4823,13 @@ async function handleOnboarding(request, env) {
       return json(OnboardingErrors.MISSING_FIELDS(missing), 400);
     }
     const allowedIndustries = ["technology", "healthcare", "finance", "retail"];
-    let normIndustry = industry.toLowerCase();
-    if (normIndustry === "tech")
-      normIndustry = "technology";
-    if (industry && !allowedIndustries.includes(normIndustry)) {
-      return json(OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries), 400);
+    if (industry && !allowedIndustries.includes(industry.toLowerCase())) {
+      return json(
+        OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries),
+        400
+      );
     }
-    const existingState = await env.STATE.get(`onboarding:${tenantId}`) || memoryState.get(`onboarding:${tenantId}`);
+    const existingState = await env.STATE.get(`onboarding:${tenantId}`);
     if (existingState) {
       const parsed = JSON.parse(existingState);
       return json({
@@ -4832,40 +4844,59 @@ async function handleOnboarding(request, env) {
     }
     const aiConfig = new AIConfigService(env.AI_API_KEY);
     const recommendedConfig = await aiConfig.generateConfig({
-      industry: normIndustry,
+      industry,
       requirements: requirements || []
     });
     const validationResult = await validateTenantConfig(recommendedConfig);
     if (!validationResult.isValid) {
-      return json(OnboardingErrors.INVALID_CONFIG(validationResult.errors), 400);
+      return json(
+        OnboardingErrors.INVALID_CONFIG(validationResult.errors),
+        400
+      );
     }
     const template = await generateTemplate(recommendedConfig);
-    await env.DB.prepare("INSERT INTO tenants (id, name, industry, config, created_at) VALUES (?, ?, ?, ?, ?)").bind(tenantId, name, industry, JSON.stringify(recommendedConfig), (/* @__PURE__ */ new Date()).toISOString()).run();
+    await env.DB.prepare(
+      "INSERT INTO tenants (id, name, industry, config, created_at) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      tenantId,
+      name,
+      industry,
+      JSON.stringify(recommendedConfig),
+      (/* @__PURE__ */ new Date()).toISOString()
+    ).run();
     try {
-      await env.DB.prepare("INSERT INTO audit_events (id, tenant_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), tenantId, "onboarding.completed", JSON.stringify({ tenantId, industry, requestId, actor }), (/* @__PURE__ */ new Date()).toISOString()).run();
+      await env.DB.prepare(
+        "INSERT INTO audit_events (id, tenant_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(
+        crypto.randomUUID(),
+        tenantId,
+        "onboarding.completed",
+        JSON.stringify({ tenantId, industry, requestId, actor }),
+        (/* @__PURE__ */ new Date()).toISOString()
+      ).run();
     } catch (e) {
       console.warn("Audit event insert failed", e, { requestId });
     }
-    await env.STATE.put(`onboarding:${tenantId}`, JSON.stringify({
-      status: "configured",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      config: recommendedConfig,
-      template
-    }));
-    memoryState.set(`onboarding:${tenantId}`, JSON.stringify({
-      status: "configured",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      config: recommendedConfig,
-      template
-    }));
-    return json({
-      status: "success",
-      tenantId,
-      config: recommendedConfig,
-      template,
-      requestId,
-      actor
-    }, 201);
+    await env.STATE.put(
+      `onboarding:${tenantId}`,
+      JSON.stringify({
+        status: "configured",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        config: recommendedConfig,
+        template
+      })
+    );
+    return json(
+      {
+        status: "success",
+        tenantId,
+        config: recommendedConfig,
+        template,
+        requestId,
+        actor
+      },
+      201
+    );
   } catch (error) {
     return handleError(error);
   }
@@ -4906,7 +4937,7 @@ async function generateOnboardingQuestions(industry, requirements = []) {
   return baseQuestions;
 }
 
-// packages/shared/src/logger.ts
+// ../packages/shared/src/logger.ts
 var LEVELS = ["debug", "info", "warn", "error"];
 function shouldLog(configLevel, messageLevel) {
   return LEVELS.indexOf(messageLevel) >= LEVELS.indexOf(configLevel);
@@ -4947,7 +4978,7 @@ var Logger = class {
 };
 var logger = new Logger({ service: "shared" });
 
-// packages/shared/src/env.ts
+// ../packages/shared/src/env.ts
 function validateEnv(spec, raw) {
   const schema = external_exports.object(spec);
   const result = schema.safeParse(raw);
@@ -4962,7 +4993,7 @@ var commonEnvSpec = {
   AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai"]).optional()
 };
 
-// onboarding/dist/onboarding/src/index.js
+// src/index.ts
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
 var src_default = {
@@ -5025,24 +5056,34 @@ var src_default = {
               "X-RateLimit-Reset": String(resetIn),
               ...corsHeaders
             };
-            return new Response(JSON.stringify({
-              error: "Rate limit exceeded",
-              limit: max,
-              remaining: 0,
-              reset: resetIn,
-              requestId,
-              actor
-            }), {
-              status: 429,
-              headers: {
-                "Content-Type": "application/json",
-                ...limitHeaders
+            return new Response(
+              JSON.stringify({
+                error: "Rate limit exceeded",
+                limit: max,
+                remaining: 0,
+                reset: resetIn,
+                requestId,
+                actor
+              }),
+              {
+                status: 429,
+                headers: {
+                  "Content-Type": "application/json",
+                  ...limitHeaders
+                }
               }
-            });
+            );
           }
         }
       }
-      const routeResponse = await routeRequest(request, url, env, corsHeaders, requestId, actor);
+      const routeResponse = await routeRequest(
+        request,
+        url,
+        env,
+        corsHeaders,
+        requestId,
+        actor
+      );
       if (actor && routeResponse) {
         const max = parseInt(env.RATE_LIMIT_MAX_REQUESTS || "0", 10) || 0;
         const windowSec = parseInt(env.RATE_LIMIT_WINDOW_SECONDS || "0", 10) || 0;
@@ -5052,13 +5093,15 @@ var src_default = {
             const now = Date.now();
             const resetIn = windowSec - Math.floor((now - entry.windowStart) / 1e3);
             routeResponse.headers.set("X-RateLimit-Limit", String(max));
-            routeResponse.headers.set("X-RateLimit-Remaining", String(Math.max(0, max - entry.count)));
+            routeResponse.headers.set(
+              "X-RateLimit-Remaining",
+              String(Math.max(0, max - entry.count))
+            );
             routeResponse.headers.set("X-RateLimit-Reset", String(resetIn));
           }
         }
       }
-      if (routeResponse)
-        return routeResponse;
+      if (routeResponse) return routeResponse;
       return notFound(url, request.method, corsHeaders, requestId);
     } catch (error) {
       console.error("Unhandled error:", error, { requestId });
@@ -5074,8 +5117,7 @@ function getCorsHeaders() {
   };
 }
 async function routeRequest(request, url, env, corsHeaders, requestId, actor) {
-  if (url.pathname === "/health")
-    return handleHealth(corsHeaders, requestId);
+  if (url.pathname === "/health") return handleHealth(corsHeaders, requestId);
   if (isStart(url, request))
     return handleStart(request, corsHeaders, requestId, actor);
   if (isSubmit(url, request))
@@ -5088,20 +5130,26 @@ async function routeRequest(request, url, env, corsHeaders, requestId, actor) {
 }
 function handleHealth(cors, requestId) {
   logger.info("Health check", { requestId });
-  return json2({
-    status: "healthy",
-    service: "onboarding",
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    version: "1.0.0",
-    requestId
-  }, cors);
+  return json2(
+    {
+      status: "healthy",
+      service: "onboarding",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      version: "1.0.0",
+      requestId
+    },
+    cors
+  );
 }
 function isStart(url, req) {
   return url.pathname === "/onboarding/start" && req.method === "POST";
 }
 async function handleStart(request, cors, requestId, actor) {
   const body = await request.json().catch(() => ({}));
-  const questions = await generateOnboardingQuestions(body.industry || "general", body.requirements || []);
+  const questions = await generateOnboardingQuestions(
+    body.industry || "general",
+    body.requirements || []
+  );
   return json2({ questions, version: "1.0.0", requestId, actor }, cors);
 }
 function isSubmit(url, req) {
@@ -5110,14 +5158,12 @@ function isSubmit(url, req) {
 async function handleSubmit(request, env, cors, requestId, actor) {
   const headers = new Headers(request.headers);
   headers.set("x-request-id", requestId);
-  if (actor)
-    headers.set("x-actor", actor);
+  if (actor) headers.set("x-actor", actor);
   const cloned = new Request(request, { headers });
   const response = await handleOnboarding(cloned, env);
   Object.entries(cors).forEach(([k, v]) => response.headers.set(k, v));
   response.headers.set("x-request-id", requestId);
-  if (actor)
-    response.headers.set("x-actor", actor);
+  if (actor) response.headers.set("x-actor", actor);
   return response;
 }
 function isQuestions(url, req) {
@@ -5128,12 +5174,14 @@ async function handleQuestions(url, cors, requestId, actor) {
   const reqParams = url.searchParams.getAll("req");
   const reqCsv = url.searchParams.get("requirements");
   let requirements = [];
-  if (reqParams.length > 0)
-    requirements = reqParams;
+  if (reqParams.length > 0) requirements = reqParams;
   else if (reqCsv)
     requirements = reqCsv.split(",").map((r) => r.trim()).filter(Boolean);
   const questions = await generateOnboardingQuestions(industry, requirements);
-  return json2({ industry, count: questions.length, questions, requestId, actor }, cors);
+  return json2(
+    { industry, count: questions.length, questions, requestId, actor },
+    cors
+  );
 }
 function isStatus(url, req) {
   return url.pathname.startsWith("/api/onboarding/") && req.method === "GET";
@@ -5141,20 +5189,31 @@ function isStatus(url, req) {
 async function handleStatus(url, env, cors, requestId, actor) {
   const tenantId = url.pathname.split("/").pop();
   if (!tenantId)
-    return json2({ ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor }, cors, 400);
-  const state = await env.STATE.get(`onboarding:${tenantId}`) || memoryState.get(`onboarding:${tenantId}`);
+    return json2(
+      { ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor },
+      cors,
+      400
+    );
+  const state = await env.STATE.get(`onboarding:${tenantId}`);
   if (!state)
-    return json2({ ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor }, cors, 404);
+    return json2(
+      { ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor },
+      cors,
+      404
+    );
   const resp = new Response(state, {
     headers: { "Content-Type": "application/json", ...cors }
   });
   resp.headers.set("x-request-id", requestId);
-  if (actor)
-    resp.headers.set("x-actor", actor);
+  if (actor) resp.headers.set("x-actor", actor);
   return resp;
 }
 function notFound(url, method, corsHeaders, requestId, actor) {
-  return json2({ error: "Not Found", path: url.pathname, method, requestId, actor }, corsHeaders, 404);
+  return json2(
+    { error: "Not Found", path: url.pathname, method, requestId, actor },
+    corsHeaders,
+    404
+  );
 }
 function json2(obj, corsHeaders, status = 200) {
   const payload = { ...obj };
