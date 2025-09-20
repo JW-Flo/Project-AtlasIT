@@ -1,15 +1,19 @@
 import {
   registerAdapter,
   listAdapters,
-} from "../../../../packages/idp/src/index.ts";
-import oktaAdapter from "../../../../packages/idp-adapters/okta/src/index.ts";
+} from "../../../../packages/idp/src/index";
+import {
+  createOktaAdapter,
+  OKTA_ADAPTER_ID,
+  OKTA_FLAG_ENV,
+} from "@atlasit/idp-adapters/okta";
 
 let registryInitialized = false;
 
 function ensureRegistry() {
   if (!registryInitialized) {
-    registerAdapter(oktaAdapter.id, oktaAdapter, {
-      flagEnvVar: oktaAdapter.featureFlag,
+    registerAdapter(OKTA_ADAPTER_ID, createOktaAdapter(), {
+      flagEnvVar: OKTA_FLAG_ENV,
     });
     registryInitialized = true;
   }
@@ -26,9 +30,11 @@ function toEnv(event: any): Record<string, string | undefined> {
 export async function GET(event: any) {
   ensureRegistry();
   const env = toEnv(event);
-  const adapters = listAdapters({ enabledOnly: true, env }).map((entry) => ({
+  // listAdapters reads from process.env; apply incoming env for tests
+  Object.assign(process.env, env);
+  const adapters = listAdapters({ enabledOnly: true }).map((entry) => ({
     id: entry.id,
-    displayName: entry.displayName,
+    enabled: entry.enabled,
   }));
   return new Response(JSON.stringify({ adapters }, null, 2), {
     status: 200,

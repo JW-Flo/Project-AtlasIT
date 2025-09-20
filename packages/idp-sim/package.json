@@ -13,6 +13,6 @@
   },
   "dependencies": {
     "@atlasit/idp": "0.1.0",
-    "@atlasit/idp-okta": "0.1.0"
+    "@atlasit/idp-adapters/okta": "0.1.0"
   }
 }
