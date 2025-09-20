@@ -1,66 +1,64 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
-  registerAdapter,
-  listAdapters,
   clearRegistry,
   getAdapter,
-} from "../packages/idp/src/index.ts";
-import type {
-  IdentityProvider,
-  ProvisionRequest,
-  MoveRequest,
-  DeprovisionRequest,
-  OperationResult,
-} from "../packages/idp/src/types.ts";
-
-class DummyAdapter implements IdentityProvider {
-  id = "dummy";
-  displayName = "Dummy Adapter";
-  featureFlag = "FEATURE_IDP_DUMMY";
-
-  async provisionUser(_: ProvisionRequest): Promise<OperationResult> {
-    return { ok: true };
-  }
-  async moveUser(_: MoveRequest): Promise<OperationResult> {
-    return { ok: true };
-  }
-  async deprovisionUser(_: DeprovisionRequest): Promise<OperationResult> {
-    return { ok: true };
-  }
-  async getUser() {
-    return null;
-  }
-  async listGroups() {
-    return [];
-  }
-}
-
-beforeEach(() => {
-  clearRegistry();
-});
+  listAdapters,
+  registerAdapter,
+} from "@atlasit/idp";
+import type { IdpAdapter } from "@atlasit/idp";
 
 describe("IdP registry", () => {
-  it("lists only enabled adapters when flag required", () => {
-    registerAdapter("dummy", new DummyAdapter());
-    const enabled = listAdapters({
-      enabledOnly: true,
-      env: { FEATURE_IDP_DUMMY: "1" },
-    });
-    expect(enabled).toHaveLength(1);
-    expect(enabled[0]?.id).toBe("dummy");
+  const flag = "FEATURE_TEST_ADAPTER";
 
-    const disabled = listAdapters({ enabledOnly: true, env: {} });
-    expect(disabled).toHaveLength(0);
+  function createAdapter(name: string): IdpAdapter {
+    return {
+      metadata: { name, kind: "fallback" },
+      async getUser() {
+        return null;
+      },
+      async listUsers() {
+        return [];
+      },
+      async listGroups() {
+        return [];
+      },
+      async issueToken() {
+        return {
+          token: "token",
+          issuedAt: new Date(0).toISOString(),
+          expiresAt: new Date(0).toISOString(),
+        };
+      },
+    };
+  }
+
+  beforeEach(() => {
+    clearRegistry();
+    delete process.env[flag];
   });
 
-  it("getAdapter respects requireEnabled", () => {
-    registerAdapter("dummy", new DummyAdapter());
-    expect(getAdapter("dummy", { env: {}, requireEnabled: true })).toBeNull();
-    expect(
-      getAdapter("dummy", {
-        env: { FEATURE_IDP_DUMMY: "1" },
-        requireEnabled: true,
-      }),
-    ).not.toBeNull();
+  it("registers adapters and reports enabled state", () => {
+    const adapter = createAdapter("Sample");
+
+    registerAdapter("sample", adapter, { flagEnvVar: flag });
+
+    const [entry] = listAdapters();
+    expect(entry).toBeDefined();
+    expect(entry.id).toBe("sample");
+    expect(entry.enabled).toBe(false);
+    expect(entry.flagEnvVar).toBe(flag);
+    expect(getAdapter("sample")).toBe(adapter);
+  });
+
+  it("filters enabled adapters when requested", () => {
+    const adapter = createAdapter("Sample");
+    registerAdapter("sample", adapter, { flagEnvVar: flag });
+
+    process.env[flag] = "1";
+
+    const enabled = listAdapters({ enabledOnly: true });
+    expect(enabled).toHaveLength(1);
+    expect(enabled[0].id).toBe("sample");
+    expect(enabled[0].enabled).toBe(true);
   });
 });

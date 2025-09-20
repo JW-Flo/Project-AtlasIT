@@ -65,6 +65,10 @@ class OktaOfflineAdapter implements LifecycleAwareIdpAdapter {
       users: new Map(users.map((user) => [user.id, clone(user)])),
       groups: new Map(groups.map((group) => [group.id, clone(group)])),
     };
+
+    for (const user of this.state.users.values()) {
+      this.syncMembership(user.id, user.groups ?? []);
+    }
   }
 
   async provision(request: ProvisionRequest): Promise<ProvisionResult> {

@@ -74,6 +74,22 @@
       "notes": "Defined IdP adapter contract, provided mock adapters (Okta, Entra, Google, AWS, Paycom, CrowdStrike) and dev fallback OIDC provider with contract tests."
     },
     {
+      "branch": "phase3a_idp_core_okta",
+      "pr": "PR17 TBD",
+      "title": "Phase 3a - IdP core + Okta",
+      "status": "staged",
+      "files": [
+        "packages/idp/**",
+        "packages/idp-adapters/okta/**",
+        "tests/idp-registry.test.ts",
+        "tests/idp-okta.test.ts",
+        "artifacts/idp_core/RUN.json",
+        "artifacts/idp_okta/RUN.json",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Flag-gated registry with lifecycle API and offline Okta adapter backed by deterministic fixtures; staged with unit tests and artifacts."
+    },
+    {
       "branch": "feat/policy-engine-phase-2-5",
       "pr": "PR8 TBD",
       "title": "Policy engine evidence baseline",

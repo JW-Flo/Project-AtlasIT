@@ -39,6 +39,7 @@ export default [
       "**/dist/**",
       "**/*.d.ts",
       "**/vitest.config.ts",
+      "**/vite.config.ts",
       "**/jest.config.ts",
       "**/tests/**",
       "./tests/**",
@@ -100,7 +101,7 @@ export default [
   },
   // Lightweight parsing for test and config TS files (no project required)
   {
-    files: ["**/vitest.config.ts", "**/*.test.ts"],
+    files: ["**/vitest.config.ts", "**/vite.config.ts", "**/*.test.ts"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

@@ -1,4 +1,4 @@
-export * from "./types.ts";
+export * from "./types.js";
 export {
   registerAdapter,
   clearRegistry,
@@ -7,4 +7,4 @@ export {
   getRegistration,
   isAdapterEnabled,
   getRegisteredAdapters,
-} from "./registry.ts";
+} from "./registry.js";

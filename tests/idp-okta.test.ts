@@ -1,37 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { OktaMockAdapter } from "../packages/idp-adapters/okta/src/index.ts";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  createOktaAdapter,
+  OKTA_FLAG_ENV,
+  OKTA_ADAPTER_ID,
+} from "@atlasit/idp-adapters/okta";
+import { clearRegistry, getRegistration, registerAdapter } from "@atlasit/idp";
 
-describe("Okta mock adapter", () => {
-  it("provisions, moves, and deprovisions users", async () => {
-    const adapter = new OktaMockAdapter();
-    const email = "new.user@okta.example";
-    const result = await adapter.provisionUser({
-      user: {
-        id: "okta-new",
-        email,
-        displayName: "New User",
-      },
-      groups: ["okta-group-admin"],
-    });
-    expect(result.ok).toBe(true);
+function resetEnv() {
+  delete process.env[OKTA_FLAG_ENV];
+}
 
-    const move = await adapter.moveUser({
-      userId: "okta-new",
-      targetGroups: ["okta-group-finance"],
-    });
-    expect(move.ok).toBe(true);
-
-    const deprovision = await adapter.deprovisionUser({ userId: "okta-new" });
-    expect(deprovision.ok).toBe(true);
-    expect(deprovision.user?.status).toBe("inactive");
+describe("Okta offline adapter", () => {
+  beforeEach(() => {
+    clearRegistry();
+    resetEnv();
   });
 
-  it("returns failure when moving unknown user", async () => {
-    const adapter = new OktaMockAdapter();
-    const move = await adapter.moveUser({
-      userId: "missing",
-      targetGroups: [],
+  it("provisions a user with valid groups", async () => {
+    const adapter = createOktaAdapter();
+
+    registerAdapter(OKTA_ADAPTER_ID, adapter, { flagEnvVar: OKTA_FLAG_ENV });
+
+    const result = await adapter.provision({
+      user: {
+        id: "user-999",
+        email: "new.joiner@okta.local",
+        displayName: "New Joiner",
+      },
+      groups: ["group-admins", "group-it"],
     });
-    expect(move.ok).toBe(false);
+
+    expect(result.created).toBe(true);
+    expect(result.user.groups).toEqual(["group-admins", "group-it"]);
+
+    const fetched = await adapter.getUser("user-999");
+    expect(fetched?.email).toBe("new.joiner@okta.local");
+    expect(fetched?.groups).toEqual(["group-admins", "group-it"]);
+
+    const groups = await adapter.listGroups();
+    const admins = groups.find((group) => group.id === "group-admins");
+    const it = groups.find((group) => group.id === "group-it");
+    expect(admins?.members).toContain("user-999");
+    expect(it?.members).toContain("user-999");
+
+    const registration = getRegistration(OKTA_ADAPTER_ID);
+    expect(registration?.flagEnvVar).toBe(OKTA_FLAG_ENV);
+  });
+
+  it("rejects provisioning when groups are unknown", async () => {
+    const adapter = createOktaAdapter();
+
+    await expect(
+      adapter.provision({
+        user: {
+          id: "user-998",
+          email: "missing.group@okta.local",
+        },
+        groups: ["group-missing"],
+      }),
+    ).rejects.toThrow(/Unknown groups/);
   });
 });
