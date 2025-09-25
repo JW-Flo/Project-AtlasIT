@@ -56,7 +56,11 @@
     "test:research-engine": "vitest run tests/research-normalizer.test.ts tests/adapter-gen-research.test.ts",
     "render:compliance": "node scripts/render-compliance-snapshot.mjs artifacts/policy/evidence.json docs/COMPLIANCE_SNAPSHOT.md",
     "ci:run": "node scripts/ci-run.mjs",
-    "sbom": "node scripts/generate-sbom.mjs"
+    "sbom": "node scripts/generate-sbom.mjs",
+    "docs:changelog": "node scripts/docs-generate-changelog.mjs",
+    "docs:links": "node scripts/docs-links-audit.mjs",
+    "docs:runmeta": "node scripts/docs-generate-run.mjs",
+    "docs:artifacts": "npm run docs:changelog && npm run docs:links && npm run docs:runmeta"
   },
   "keywords": [
     "it-management",
