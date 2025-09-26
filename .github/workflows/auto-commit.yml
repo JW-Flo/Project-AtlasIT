@@ -1,13 +1,7 @@
 name: Auto-Commit After Deployment
 
 on:
-  workflow_run:
-    workflows: ["Deploy Documentation Agent", "Deploy Confluence Agent"]
-    types: [completed]
-    branches: [main]
-  schedule:
-    - cron: '0 0 * * *'  # Run daily at midnight
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:  # Manual trigger only (auto triggers disabled to control spend)
 
 jobs:
   auto-commit:
@@ -60,30 +54,12 @@ jobs:
           
           # Check if there are changes to commit
           if [[ -n $(git status --porcelain) ]]; then
-            # Generate commit message based on context
-            if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-              COMMIT_MSG="auto: commit after deployment of ${{ github.event.workflow_run.name }}"
-            else
-              COMMIT_MSG="auto: commit after QA pass"
-            fi
-            
-            git commit -m "$COMMIT_MSG"
+            COMMIT_MSG="auto: commit after manual QA run"
+            git commit -m "${COMMIT_MSG}"
             git push
           else
             echo "No changes to commit."
           fi
-
-      - name: Update Confluence (Weekly)
-        if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * 0'
-        run: |
-          # Generate weekly summary
-          CHANGES=$(git log --since="7 days ago" --pretty=format:"%h - %s (%cr)" --no-merges)
-          SUMMARY="## Weekly Summary $(date +%Y-%m-%d)\n\n$CHANGES"
-          
-          # Update Confluence
-          curl -X POST ${{ secrets.CONFLUENCE_WEBHOOK }} \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"$SUMMARY\"}"
 
       - name: Notify on Success
         if: success()
@@ -93,4 +69,4 @@ jobs:
       - name: Notify on Failure
         if: failure()
         run: |
-        echo "Auto-commit failed"
+          echo "Auto-commit failed"
