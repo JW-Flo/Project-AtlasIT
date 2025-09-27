@@ -76,3 +76,5 @@ onboarding/dist/
 *.tfplan
 *.hcl
 *.zip
+# Ignore SvelteKit build artifacts
+console-app/.svelte-kit/
