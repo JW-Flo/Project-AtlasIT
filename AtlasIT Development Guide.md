@@ -104,6 +104,12 @@ atlasit/
 
 ## 4. Development Roadmap & Milestones
 
+### 3.1 Current Worker Snapshot
+
+- **Onboarding worker** – Authenticated endpoints for start/submit/status with shared rate limiting and env validation guards.
+- **AI orchestrator** – Workflow/task APIs behind MCP approvals with rate limits and health checks.
+- **Documentation worker** – Baseline `/health` probe plus `/docs` JSON stub with request-id header coverage and automated tests.
+
 | Phase          | Duration  | Deliverables                                      |
 | -------------- | --------- | ------------------------------------------------- |
 | Prereq         | 1 week    | Mistral install, Terraform scaffold, project init |

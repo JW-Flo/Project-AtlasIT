@@ -26,8 +26,10 @@ Current AtlasIT service endpoints (feat/pr12-idp-core-okta). Authentication refl
 
 ## Documentation Worker
 
-| Method | Path           | Auth | Description                                  | Notes                                               |
-| ------ | -------------- | ---- | -------------------------------------------- | --------------------------------------------------- |
-| ANY    | `/` (any path) | None | Placeholder worker returning `Hello World!`. | Currently dev-only; no additional routes published. |
+| Method | Path          | Auth | Description                                                | Notes                                                 |
+| ------ | ------------- | ---- | ---------------------------------------------------------- | ----------------------------------------------------- |
+| GET    | `/health`     | None | JSON health response with service metadata and request id. | Public; emits `x-request-id` header for traceability. |
+| GET    | `/docs`       | None | Minimal docs index placeholder returning `{ ok: true }`.   | Returns informational stub until ingestion is wired.  |
+| GET    | `/docs/index` | None | Alias for `/docs` JSON placeholder.                        | Maintains compatibility for early consumers.          |
 
 Update this catalog as new routes are promoted or authentication models change.
