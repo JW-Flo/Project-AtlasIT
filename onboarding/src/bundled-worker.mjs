@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// src/utils/error.ts
+// dist/onboarding/src/utils/error.js
 function handleError(error) {
   console.error("Error:", error);
   const toJson = (payload, status = 500) => new Response(JSON.stringify(payload), {
@@ -26,6 +26,7 @@ function handleError(error) {
   return toJson({ error: { code: "ONB-999", message: "Unknown error occurred" } }, 500);
 }
 var ValidationError = class extends Error {
+  details;
   constructor(message, details) {
     super(message);
     this.details = details;
@@ -33,6 +34,7 @@ var ValidationError = class extends Error {
   }
 };
 var ConfigurationError = class extends Error {
+  config;
   constructor(message, config) {
     super(message);
     this.config = config;
@@ -40,6 +42,7 @@ var ConfigurationError = class extends Error {
   }
 };
 var IntegrationError = class extends Error {
+  integration;
   constructor(message, integration) {
     super(message);
     this.integration = integration;
@@ -4106,7 +4109,7 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// src/utils/validation.ts
+// dist/onboarding/src/utils/validation.js
 var IntegrationSchema = external_exports.object({
   id: external_exports.string(),
   name: external_exports.string(),
@@ -4189,7 +4192,7 @@ async function validateTenantConfig(config) {
   }
 }
 
-// src/services/template.ts
+// dist/onboarding/src/services/template.js
 async function generateTemplate(config) {
   const templateId = `template-${Date.now()}`;
   const template = {
@@ -4370,21 +4373,15 @@ Auto-generated configuration for ${config.industry} industry.
 
 ## Integrations
 
-${config.integrations.map(
-    (integration) => `- **${integration.name}** (${integration.type}): ${integration.enabled ? "Enabled" : "Disabled"}`
-  ).join("\n")}
+${config.integrations.map((integration) => `- **${integration.name}** (${integration.type}): ${integration.enabled ? "Enabled" : "Disabled"}`).join("\n")}
 
 ## Workflows
 
-${config.workflows.map(
-    (workflow) => `- **${workflow.name}**: Triggered by ${workflow.trigger.type}, ${workflow.actions.length} actions`
-  ).join("\n")}
+${config.workflows.map((workflow) => `- **${workflow.name}**: Triggered by ${workflow.trigger.type}, ${workflow.actions.length} actions`).join("\n")}
 
 ## Security Roles
 
-${config.security.authorization.roles.map(
-    (role) => `- **${role.name}**: ${role.permissions.join(", ")}`
-  ).join("\n")}
+${config.security.authorization.roles.map((role) => `- **${role.name}**: ${role.permissions.join(", ")}`).join("\n")}
 
 ## Getting Started
 
@@ -4415,9 +4412,7 @@ JWT_SECRET=your-jwt-secret
 ENCRYPTION_KEY=your-encryption-key
 
 # Integrations
-${config.integrations.map(
-    (integration) => `${integration.name.toUpperCase().replace(/\s+/g, "_")}_API_KEY=your-api-key`
-  ).join("\n")}
+${config.integrations.map((integration) => `${integration.name.toUpperCase().replace(/\s+/g, "_")}_API_KEY=your-api-key`).join("\n")}
 \`\`\`
 
 ## Support
@@ -4431,7 +4426,7 @@ For support and documentation, visit [AtlasIT Documentation](https://docs.atlasi
   };
 }
 
-// src/services/ai-config.ts
+// dist/onboarding/src/services/ai-config.js
 var AIConfigService = class {
   apiKey;
   constructor(apiKey) {
@@ -4756,7 +4751,7 @@ var AIConfigService = class {
   }
 };
 
-// src/utils/errors.ts
+// dist/onboarding/src/utils/errors.js
 var OnboardingErrors = {
   MISSING_FIELDS: (missing) => ({
     error: {
@@ -4807,7 +4802,7 @@ function json(data, status = 200) {
   });
 }
 
-// src/handlers/onboarding.ts
+// dist/onboarding/src/handlers/onboarding.js
 async function handleOnboarding(request, env) {
   try {
     const body = await request.json();
@@ -4824,10 +4819,7 @@ async function handleOnboarding(request, env) {
     }
     const allowedIndustries = ["technology", "healthcare", "finance", "retail"];
     if (industry && !allowedIndustries.includes(industry.toLowerCase())) {
-      return json(
-        OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries),
-        400
-      );
+      return json(OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries), 400);
     }
     const existingState = await env.STATE.get(`onboarding:${tenantId}`);
     if (existingState) {
@@ -4849,54 +4841,29 @@ async function handleOnboarding(request, env) {
     });
     const validationResult = await validateTenantConfig(recommendedConfig);
     if (!validationResult.isValid) {
-      return json(
-        OnboardingErrors.INVALID_CONFIG(validationResult.errors),
-        400
-      );
+      return json(OnboardingErrors.INVALID_CONFIG(validationResult.errors), 400);
     }
     const template = await generateTemplate(recommendedConfig);
-    await env.DB.prepare(
-      "INSERT INTO tenants (id, name, industry, config, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).bind(
-      tenantId,
-      name,
-      industry,
-      JSON.stringify(recommendedConfig),
-      (/* @__PURE__ */ new Date()).toISOString()
-    ).run();
+    await env.DB.prepare("INSERT INTO tenants (id, name, industry, config, created_at) VALUES (?, ?, ?, ?, ?)").bind(tenantId, name, industry, JSON.stringify(recommendedConfig), (/* @__PURE__ */ new Date()).toISOString()).run();
     try {
-      await env.DB.prepare(
-        "INSERT INTO audit_events (id, tenant_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(
-        crypto.randomUUID(),
-        tenantId,
-        "onboarding.completed",
-        JSON.stringify({ tenantId, industry, requestId, actor }),
-        (/* @__PURE__ */ new Date()).toISOString()
-      ).run();
+      await env.DB.prepare("INSERT INTO audit_events (id, tenant_id, type, payload, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), tenantId, "onboarding.completed", JSON.stringify({ tenantId, industry, requestId, actor }), (/* @__PURE__ */ new Date()).toISOString()).run();
     } catch (e) {
       console.warn("Audit event insert failed", e, { requestId });
     }
-    await env.STATE.put(
-      `onboarding:${tenantId}`,
-      JSON.stringify({
-        status: "configured",
-        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-        config: recommendedConfig,
-        template
-      })
-    );
-    return json(
-      {
-        status: "success",
-        tenantId,
-        config: recommendedConfig,
-        template,
-        requestId,
-        actor
-      },
-      201
-    );
+    await env.STATE.put(`onboarding:${tenantId}`, JSON.stringify({
+      status: "configured",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      config: recommendedConfig,
+      template
+    }));
+    return json({
+      status: "success",
+      tenantId,
+      config: recommendedConfig,
+      template,
+      requestId,
+      actor
+    }, 201);
   } catch (error) {
     return handleError(error);
   }
@@ -4993,7 +4960,7 @@ var commonEnvSpec = {
   AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai"]).optional()
 };
 
-// src/index.ts
+// dist/onboarding/src/index.js
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
 var src_default = {
@@ -5056,34 +5023,24 @@ var src_default = {
               "X-RateLimit-Reset": String(resetIn),
               ...corsHeaders
             };
-            return new Response(
-              JSON.stringify({
-                error: "Rate limit exceeded",
-                limit: max,
-                remaining: 0,
-                reset: resetIn,
-                requestId,
-                actor
-              }),
-              {
-                status: 429,
-                headers: {
-                  "Content-Type": "application/json",
-                  ...limitHeaders
-                }
+            return new Response(JSON.stringify({
+              error: "Rate limit exceeded",
+              limit: max,
+              remaining: 0,
+              reset: resetIn,
+              requestId,
+              actor
+            }), {
+              status: 429,
+              headers: {
+                "Content-Type": "application/json",
+                ...limitHeaders
               }
-            );
+            });
           }
         }
       }
-      const routeResponse = await routeRequest(
-        request,
-        url,
-        env,
-        corsHeaders,
-        requestId,
-        actor
-      );
+      const routeResponse = await routeRequest(request, url, env, corsHeaders, requestId, actor);
       if (actor && routeResponse) {
         const max = parseInt(env.RATE_LIMIT_MAX_REQUESTS || "0", 10) || 0;
         const windowSec = parseInt(env.RATE_LIMIT_WINDOW_SECONDS || "0", 10) || 0;
@@ -5093,15 +5050,13 @@ var src_default = {
             const now = Date.now();
             const resetIn = windowSec - Math.floor((now - entry.windowStart) / 1e3);
             routeResponse.headers.set("X-RateLimit-Limit", String(max));
-            routeResponse.headers.set(
-              "X-RateLimit-Remaining",
-              String(Math.max(0, max - entry.count))
-            );
+            routeResponse.headers.set("X-RateLimit-Remaining", String(Math.max(0, max - entry.count)));
             routeResponse.headers.set("X-RateLimit-Reset", String(resetIn));
           }
         }
       }
-      if (routeResponse) return routeResponse;
+      if (routeResponse)
+        return routeResponse;
       return notFound(url, request.method, corsHeaders, requestId);
     } catch (error) {
       console.error("Unhandled error:", error, { requestId });
@@ -5117,7 +5072,8 @@ function getCorsHeaders() {
   };
 }
 async function routeRequest(request, url, env, corsHeaders, requestId, actor) {
-  if (url.pathname === "/health") return handleHealth(corsHeaders, requestId);
+  if (url.pathname === "/health")
+    return handleHealth(corsHeaders, requestId);
   if (isStart(url, request))
     return handleStart(request, corsHeaders, requestId, actor);
   if (isSubmit(url, request))
@@ -5130,26 +5086,20 @@ async function routeRequest(request, url, env, corsHeaders, requestId, actor) {
 }
 function handleHealth(cors, requestId) {
   logger.info("Health check", { requestId });
-  return json2(
-    {
-      status: "healthy",
-      service: "onboarding",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      version: "1.0.0",
-      requestId
-    },
-    cors
-  );
+  return json2({
+    status: "healthy",
+    service: "onboarding",
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    version: "1.0.0",
+    requestId
+  }, cors);
 }
 function isStart(url, req) {
   return url.pathname === "/onboarding/start" && req.method === "POST";
 }
 async function handleStart(request, cors, requestId, actor) {
   const body = await request.json().catch(() => ({}));
-  const questions = await generateOnboardingQuestions(
-    body.industry || "general",
-    body.requirements || []
-  );
+  const questions = await generateOnboardingQuestions(body.industry || "general", body.requirements || []);
   return json2({ questions, version: "1.0.0", requestId, actor }, cors);
 }
 function isSubmit(url, req) {
@@ -5158,12 +5108,14 @@ function isSubmit(url, req) {
 async function handleSubmit(request, env, cors, requestId, actor) {
   const headers = new Headers(request.headers);
   headers.set("x-request-id", requestId);
-  if (actor) headers.set("x-actor", actor);
+  if (actor)
+    headers.set("x-actor", actor);
   const cloned = new Request(request, { headers });
   const response = await handleOnboarding(cloned, env);
   Object.entries(cors).forEach(([k, v]) => response.headers.set(k, v));
   response.headers.set("x-request-id", requestId);
-  if (actor) response.headers.set("x-actor", actor);
+  if (actor)
+    response.headers.set("x-actor", actor);
   return response;
 }
 function isQuestions(url, req) {
@@ -5174,14 +5126,12 @@ async function handleQuestions(url, cors, requestId, actor) {
   const reqParams = url.searchParams.getAll("req");
   const reqCsv = url.searchParams.get("requirements");
   let requirements = [];
-  if (reqParams.length > 0) requirements = reqParams;
+  if (reqParams.length > 0)
+    requirements = reqParams;
   else if (reqCsv)
     requirements = reqCsv.split(",").map((r) => r.trim()).filter(Boolean);
   const questions = await generateOnboardingQuestions(industry, requirements);
-  return json2(
-    { industry, count: questions.length, questions, requestId, actor },
-    cors
-  );
+  return json2({ industry, count: questions.length, questions, requestId, actor }, cors);
 }
 function isStatus(url, req) {
   return url.pathname.startsWith("/api/onboarding/") && req.method === "GET";
@@ -5189,31 +5139,20 @@ function isStatus(url, req) {
 async function handleStatus(url, env, cors, requestId, actor) {
   const tenantId = url.pathname.split("/").pop();
   if (!tenantId)
-    return json2(
-      { ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor },
-      cors,
-      400
-    );
+    return json2({ ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor }, cors, 400);
   const state = await env.STATE.get(`onboarding:${tenantId}`);
   if (!state)
-    return json2(
-      { ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor },
-      cors,
-      404
-    );
+    return json2({ ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor }, cors, 404);
   const resp = new Response(state, {
     headers: { "Content-Type": "application/json", ...cors }
   });
   resp.headers.set("x-request-id", requestId);
-  if (actor) resp.headers.set("x-actor", actor);
+  if (actor)
+    resp.headers.set("x-actor", actor);
   return resp;
 }
 function notFound(url, method, corsHeaders, requestId, actor) {
-  return json2(
-    { error: "Not Found", path: url.pathname, method, requestId, actor },
-    corsHeaders,
-    404
-  );
+  return json2({ error: "Not Found", path: url.pathname, method, requestId, actor }, corsHeaders, 404);
 }
 function json2(obj, corsHeaders, status = 200) {
   const payload = { ...obj };
