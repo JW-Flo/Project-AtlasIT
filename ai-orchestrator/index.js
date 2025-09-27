@@ -6,6 +6,7 @@ import {
   validateEnv,
   commonEnvSpec,
   generateAI,
+  resolveCfApiToken,
 } from "@atlasit/shared";
 
 const app = new Hono();
@@ -480,6 +481,7 @@ app.get("/workflow/:id", (c) => {
 // Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
 
 export async function handleRequest(req, env, ctx) {
+  resolveCfApiToken(env);
   if (!envValidated) {
     try {
       validateEnv(commonEnvSpec, env);
@@ -497,6 +499,7 @@ export async function handleRequest(req, env, ctx) {
 export default {
   fetch: handleRequest,
   scheduled: async (event, env, ctx) => {
+    resolveCfApiToken(env);
     ctx.waitUntil(monitorProjectState());
   },
 };

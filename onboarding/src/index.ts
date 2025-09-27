@@ -4,7 +4,12 @@ import {
 } from "./handlers/onboarding";
 import { Env } from "./types";
 import { handleError } from "./utils/error";
-import { logger, validateEnv, commonEnvSpec } from "@atlasit/shared";
+import {
+  logger,
+  validateEnv,
+  commonEnvSpec,
+  resolveCfApiToken,
+} from "@atlasit/shared";
 import { OnboardingErrors } from "./utils/errors";
 
 // NOTE: Env validation integration deferred to Phase 1 (tracked in sprint backlog)
@@ -17,6 +22,7 @@ const rateLimits: Map<string, { windowStart: number; count: number }> =
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    resolveCfApiToken(env as any);
     const corsHeaders = getCorsHeaders();
     if (request.method === "OPTIONS")
       return new Response(null, { headers: corsHeaders });

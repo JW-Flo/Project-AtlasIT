@@ -46,12 +46,18 @@ if (fs.existsSync(envFile)) {
 
 const missing = [];
 
+const CF_API_TOKEN =
+  process.env.CLOUDFLARE_API_TOKEN || process.env.CF_API_TOKEN || '';
+if (CF_API_TOKEN && !process.env.CF_API_TOKEN) {
+  process.env.CF_API_TOKEN = CF_API_TOKEN;
+}
+
 for (const key of REQUIRED_BASE) {
   if (!has(key)) missing.push(key);
 }
 
 // Cloudflare token check (either new or legacy)
-if (!has('CLOUDFLARE_API_TOKEN') && !has('CF_API_TOKEN')) {
+if (!CF_API_TOKEN) {
   missing.push('CLOUDFLARE_API_TOKEN (or legacy CF_API_TOKEN)');
 }
 
