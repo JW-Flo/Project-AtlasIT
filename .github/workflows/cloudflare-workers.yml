@@ -17,6 +17,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ONBOARDING_API_KEY: dummy-onboarding-ci
+      ORCHESTRATOR_API_KEY: dummy-orchestrator-ci
 
     steps:
       - id: cache-node

@@ -8,6 +8,9 @@ on:
 jobs:
   build-test-sbom:
     runs-on: ubuntu-latest
+    env:
+      ONBOARDING_API_KEY: dummy-onboarding-ci
+      ORCHESTRATOR_API_KEY: dummy-orchestrator-ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
