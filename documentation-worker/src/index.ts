@@ -11,8 +11,26 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
+function json(data: unknown, init: ResponseInit = {}): Response {
+	const headers = new Headers(init.headers);
+	if (!headers.has('content-type')) headers.set('content-type', 'application/json');
+	return new Response(JSON.stringify(data), { ...init, headers });
+}
+
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
+		const url = new URL(request.url);
+		const requestId = crypto.randomUUID();
+		const baseHeaders: HeadersInit = { 'x-request-id': requestId };
+
+		if (url.pathname === '/health') {
+			return json({ status: 'ok', service: 'documentation-worker', requestId }, { status: 200, headers: baseHeaders });
+		}
+
+		if (request.method === 'GET' && (url.pathname === '/docs' || url.pathname === '/docs/index')) {
+			return json({ ok: true, message: 'Documentation worker placeholder' }, { status: 200, headers: baseHeaders });
+		}
+
+		return json({ error: 'Not Found', path: url.pathname, requestId }, { status: 404, headers: baseHeaders });
 	},
 } satisfies ExportedHandler<Env>;

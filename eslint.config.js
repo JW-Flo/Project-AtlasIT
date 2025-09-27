@@ -62,6 +62,7 @@ export default [
         project: [
           path.join(rootDir, "onboarding/tsconfig.json"),
           path.join(rootDir, "packages/shared/tsconfig.json"),
+          path.join(rootDir, "documentation-worker/tsconfig.json"),
         ],
       },
     },
