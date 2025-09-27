@@ -3,7 +3,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "declaration": true
+    "declaration": true,
+    "composite": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
   },
   "include": ["src/**/*.ts"],
   "references": [{ "path": "../../idp" }]

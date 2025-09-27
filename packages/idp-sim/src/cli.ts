@@ -5,7 +5,7 @@ import {
   OKTA_ADAPTER_ID,
   OKTA_FLAG_ENV,
   loadFixtureUsers,
-} from "@atlasit/idp-adapters/okta";
+} from "@atlasit/idp-okta";
 import { writeArtifact } from "../../../src/lib/artifacts.js";
 
 export async function runSimulation() {
