@@ -1,28 +1,30 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Miniflare } from "miniflare";
 import { build } from "esbuild";
-import { readFileSync } from "fs";
 import path from "path";
+// Switch to in-memory esbuild output (no filesystem write) to avoid
+// intermittent Miniflare parse errors ("Unterminated regular expression")
+// observed when reading the on-disk bundled file. Using write:false
+// yields a stable string we can pass directly to Miniflare.
 
 describe("Onboarding Service Integration Tests", () => {
   let mf: Miniflare;
 
   beforeAll(async () => {
-    // Set up Miniflare environment by bundling the TypeScript worker entry directly.
-    // This avoids stale dist artifacts causing mismatched error shapes.
     const entry = path.join(__dirname, "index.ts");
-    const outfile = path.join(__dirname, "bundled-worker.mjs");
-    await build({
+    const result = await build({
       entryPoints: [entry],
       bundle: true,
       format: "esm",
       platform: "browser",
-      outfile,
+      write: false,
       sourcemap: false,
       logLevel: "silent",
+      target: "es2022",
+      charset: "utf8",
+      legalComments: "none",
     });
-
-    const bundled = readFileSync(outfile, "utf-8");
+    const bundled = result.outputFiles[0].text;
     mf = new Miniflare({
       modules: true,
       script: bundled,
