@@ -1,6 +1,7 @@
 {
   "name": "@atlasit/idp-sim",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "bin": {
     "atlasit-idp-sim": "dist/cli.js"
@@ -12,7 +13,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@atlasit/idp": "0.1.0",
-    "@atlasit/idp-adapters/okta": "0.1.0"
+    "@atlasit/idp": "file:../idp",
+    "@atlasit/idp-okta": "file:../idp-adapters/okta"
   }
 }

@@ -1,9 +1,11 @@
-# Project Ignite Documentation Index
+# AtlasIT Documentation Index
 
 ## Overview
-This directory serves as the single source of truth for all documentation, context, and change logs for Project Ignite. All files are append-only and reflect the living history and operational state of the platform.
+
+This directory serves as the single source of truth for all documentation, context, and change logs for the AtlasIT Platform (formerly Project Ignite). All files are append-only and reflect the living history and operational state of the platform.
 
 ## Structure
+
 - `project-truth.txt`: Master context and architectural log (append-only)
 - `agent-context.txt`: AI/automation agent context and actions (append-only)
 - `iterm-context.txt`: Terminal and operational context (append-only)
@@ -11,14 +13,21 @@ This directory serves as the single source of truth for all documentation, conte
 - Additional PDFs and reference docs: For deep dives and compliance
 
 ## Automation Policy
+
 - All documentation and context files are updated continuously by both human and AI actors.
 - No historical data is overwritten; all changes are appended for full auditability.
-- Major changes are cross-referenced with the Ignite Jira project and syslog events.
+- Major changes were historically cross-referenced with the Ignite Jira project and syslog events; future references will use AtlasIT tracking systems.
 - Documentation automation is handled by `autoDoc.js` and related services.
 
 ## External References
-- Jira: https://flocasts.atlassian.net/jira/software/projects/IG/boards/501
+
+- (Legacy) Jira: <https://flocasts.atlassian.net/jira/software/projects/IG/boards/501> (retained for historical cross-links)
 - Confluence: See project-truth.txt for canonical documentation URLs
 
 ---
-For details on the automation kickoff and policy, see the latest section in `project-truth.txt`. 
+
+### Legacy Note
+
+Historical documents may still reference the term "Project Ignite". These references are intentionally retained for auditability and are catalogued in `LEGACY.md`.
+
+For details on the automation kickoff and policy, see the latest section in `project-truth.txt`.

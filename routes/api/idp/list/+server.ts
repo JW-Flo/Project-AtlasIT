@@ -6,7 +6,7 @@ import {
   createOktaAdapter,
   OKTA_ADAPTER_ID,
   OKTA_FLAG_ENV,
-} from "@atlasit/idp-adapters/okta";
+} from "@atlasit/idp-okta";
 
 let registryInitialized = false;
 

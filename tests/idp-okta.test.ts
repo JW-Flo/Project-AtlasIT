@@ -3,7 +3,7 @@ import {
   createOktaAdapter,
   OKTA_FLAG_ENV,
   OKTA_ADAPTER_ID,
-} from "@atlasit/idp-adapters/okta";
+} from "@atlasit/idp-okta";
 import { clearRegistry, getRegistration, registerAdapter } from "@atlasit/idp";
 
 function resetEnv() {

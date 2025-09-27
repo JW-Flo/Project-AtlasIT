@@ -7,3 +7,4 @@ packages:
   - mcp*
   - documentation-worker
   - slack-approval-worker
+  - console-app

@@ -7,7 +7,7 @@ export default defineConfig({
       "@atlasit/idp": fileURLToPath(
         new URL("./packages/idp/src", import.meta.url),
       ),
-      "@atlasit/idp-adapters/okta": fileURLToPath(
+      "@atlasit/idp-okta": fileURLToPath(
         new URL("./packages/idp-adapters/okta/src", import.meta.url),
       ),
     },

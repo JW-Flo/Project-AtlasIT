@@ -21,3 +21,17 @@ AtlasIT now prioritises a slimmer, worker-centric platform: onboarding automatio
 - **Advanced Agent Integrations** – AI agent orchestration ideas from Ignite can inform future roadmap items after core stability milestones.
 
 See the main [`README`](README.md) for current components and [`ops/DEPLOYMENT_READINESS_SUMMARY.md`](ops/DEPLOYMENT_READINESS_SUMMARY.md) for the live hardening checklist.
+
+## Retained Legacy Artifacts (Indexed)
+
+| Artifact Type            | Location / Pattern                           | Reason Retained                | Planned Action                            |
+| ------------------------ | -------------------------------------------- | ------------------------------ | ----------------------------------------- |
+| Historical Workflows     | `.github/workflows/*ignite*`                 | Provenance / audit trail       | Rename or archive in Phase 4              |
+| Worker Names (old)       | Deployed `ignite-*` workers                  | Zero-downtime migration window | Remove after new atlasit-\* verified      |
+| KV Namespace (old)       | `ignite-dispatcher-namespace`, `ignite_docs` | Staging dual-read period       | Decommission Phase 3 end                  |
+| MCP Assets               | `mcp/` directory                             | Experimental reference         | Potential future reuse; otherwise archive |
+| Branding Strings         | Slack alerts, scripts comments               | Not yet renamed pre Phase 1    | Update Phase 1 sweep                      |
+| Deployment Scripts       | `scripts/ignite-*`                           | Historical CI patterns         | Archive Phase 4                           |
+| Documentation References | Legacy PDFs / brainstorm text                | Historical context             | Remain indefinitely                       |
+
+All items above are non-operational unless explicitly noted and do not affect active AtlasIT production behavior.

@@ -1,13 +1,19 @@
 # AtlasIT
 
-AtlasIT is a Cloudflare Workers–first platform that automates day-zero onboarding tasks for small and midsize teams. The current stack focuses on three workers that coordinate tenant onboarding flows, AI-assisted orchestration, and lightweight documentation publishing, backed by a shared TypeScript utility package.
+> Reality Snapshot (Sept 2025): The production codebase currently ships **three Cloudflare Workers (onboarding, orchestrator, docs)** plus a shared utility package. The broader UI vision (compliance center, policy engine, risk matrix, marketplace, API manager) **is NOT implemented yet**. This README makes that distinction explicit and outlines the incremental path forward.
 
-## Active Components
+AtlasIT is an edge‑native automation substrate. The present deployed scope is intentionally slim: provision onboarding flows, run internal automation tasks, and publish operational documentation. All higher‑level governance & compliance modules remain roadmap items.
 
-- **Onboarding Worker** – Handles `/onboarding/*` APIs, dynamic question generation, and rate-limited, API-key–secured submissions stored in KV/D1.
-- **AI Orchestrator Worker** – Brokers task workflows, approval hooks, and rate limiting for internal automation calls.
-- **Documentation Worker** – Provides `/health` and `/docs` JSON endpoints as a staging point for published runbooks.
-- **Shared Library (`@atlasit/shared`)** – Reusable logging, environment validation, AI helpers, and HTTP utilities consumed by all workers.
+## Active Components (Implemented Today)
+
+| Component            | Purpose                                          | Storage                     | Notes                                         |
+| -------------------- | ------------------------------------------------ | --------------------------- | --------------------------------------------- |
+| Onboarding Worker    | Initial tenant/user process + future IDP tie‑ins | KV / (planned D1)           | Auth via API key (temporary)                  |
+| Orchestrator Worker  | Task submission, scheduled cron execution        | KV (tasks)                  | Cron every 5m; to expand into workflow engine |
+| Documentation Worker | Mutable operational runbook JSON + health        | KV (`atlasit_docs` primary) | Dual‑read legacy key supported                |
+| Shared Library       | Logging, env validation, small utilities         | —                           | Consumed by all workers                       |
+
+Non‑production / legacy artifacts are isolated in `LEGACY.md`.
 
 ## Quick Start
 
@@ -41,7 +47,7 @@ npm run dev:core
 npm run dev:onboarding
 ```
 
-Refer to `ops/ENDPOINTS.md` for the list of active routes and authentication notes.
+Refer to `ops/ENDPOINTS.md` for the live route inventory (only the three workers). A future `frontend/` app will surface a dashboard once APIs for compliance/policies exist.
 
 ## Testing & Validation
 
@@ -54,7 +60,7 @@ Refer to `ops/ENDPOINTS.md` for the list of active routes and authentication not
 
 Secret scanning and dependency audits (`npm run scan:secrets`, `npm audit --omit=dev`) complement predeploy checks.
 
-## Deployment (Preview)
+## Deployment
 
 1. **Pre-check**
 
@@ -96,26 +102,35 @@ Secret scanning and dependency audits (`npm run scan:secrets`, `npm audit --omit
    curl https://<docs-domain>/docs
    ```
 
-See `ops/DEPLOYMENT_READINESS_SUMMARY.md` for the latest validation status and open hardening tasks.
+See `ops/DEPLOYMENT_SUCCESS_REPORT.md` for last deployment snapshot and `ops/ALIGNMENT_PLAN.md` for branding & migration tasks.
 
 ## Documentation
 
 - `ops/ENDPOINTS.md` – Current API catalog for the three workers (docs worker marked experimental).
-- `AtlasIT Development Guide.md` – Architecture, repository structure, and development practices.
-- `LEGACY.md` – Archived legacy context retained for reference only.
+- `AtlasIT Development Guide.md` – Architecture & dev practices.
+- `LEGACY.md` – Archived Ignite/MCP context retained for provenance.
+- `ops/ALIGNMENT_PLAN.md` – Branding + migration phases.
 
-## Future Roadmap (Not Yet Implemented)
+## Roadmap Phases (Planned – Not Implemented)
 
-- Authentication service (OIDC/SAML/SCIM) to back orchestrated provisioning.
-- Marketplace catalog and app onboarding routines.
-- API manager gateway consolidation and routing.
-- Dashboard/UI refresh for tenant-admin experience.
+| Phase | Title                     | Key Deliverables                                                   | Exit Criteria                           |
+| ----- | ------------------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| 1     | UI & API Stubs            | Frontend scaffold, compliance score stub, policy stub endpoints    | Dashboard loads with stub data          |
+| 2     | Compliance Core           | D1 schema (framework status, audits, risks), real score calc cron  | Score persists & updates <15m interval  |
+| 3     | Policy Engine             | Template rendering, tenant profile, versioned policy storage       | Generate & retrieve 5 baseline policies |
+| 4     | Directory & JML           | Okta sync (users/groups), lifecycle metrics, orchestrator triggers | New user appears in <2 min              |
+| 5     | Reporting & Export        | Report generation (PDF/MD), signed export links, audit timeline    | Downloadable compliance report          |
+| 6     | Hardening & Observability | Rate limits, metrics, structured logs, security scan gating        | p95 latency <75ms, 0 high vulns         |
 
-These items remain deferred until the core workers reach production stability.
+Anything beyond Phase 6 (LLM refinement, marketplace, advanced analytics) will be chartered separately once core stability is proven.
+
+### Gap Clarification
+
+If a feature is visible in design mockups (e.g. Risk Assessment Matrix) but absent here, it is _not built_. Track its status through issues mapped to the phases above.
 
 ## Legacy Notes
 
-Historic pre-refactor automation material has been moved to [`LEGACY.md`](LEGACY.md) and should not be treated as active requirements.
+Historic Ignite and MCP automation materials now reside in [`LEGACY.md`](LEGACY.md). They are excluded from sprint planning unless explicitly re-scoped into a roadmap phase.
 
 ## Contributing
 
@@ -124,3 +139,15 @@ Please open issues or PRs for bug fixes and improvements. Run `npm run predeploy
 ## License
 
 MIT License. See `LICENSE` if provided by the repository owner.
+
+## UI Console (SvelteKit – Experimental)
+
+An internal compliance & risk prototype now lives under `console-app/` (SvelteKit + Tailwind). It exposes a mock endpoint at `/api/mock/compliance/snapshot` and a dashboard view at `/console` visualizing framework coverage, a risk matrix, and policy cards.
+
+Run locally:
+
+```bash
+npm run dev:console
+```
+
+The prior temporary React `demo-app/` has been removed after migration to a unified SvelteKit approach.

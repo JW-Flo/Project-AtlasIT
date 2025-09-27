@@ -30,7 +30,7 @@
       "@applications/*": ["./applications/src/*"],
       "@atlasit/shared": ["./packages/shared/src"],
       "@atlasit/idp": ["./packages/idp/src"],
-      "@atlasit/idp-adapters/okta": ["./packages/idp-adapters/okta/src"]
+      "@atlasit/idp-okta": ["./packages/idp-adapters/okta/src"]
     }
   },
   "include": [
