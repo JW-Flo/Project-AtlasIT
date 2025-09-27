@@ -44,6 +44,8 @@ export default [
       "**/tests/**",
       "./tests/**",
       "./vitest.config.ts",
+      // Exclude generated build output (but allow source including worker-entry for type parsing)
+      "./console-app/.svelte-kit/**",
       // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
       "./ai-orchestrator/*.test.ts",
       // Exclude IdP packages and idp routes from project-aware parsing; they use lightweight override below
@@ -63,6 +65,7 @@ export default [
           path.join(rootDir, "onboarding/tsconfig.json"),
           path.join(rootDir, "packages/shared/tsconfig.json"),
           path.join(rootDir, "documentation-worker/tsconfig.json"),
+          path.join(rootDir, "console-app/tsconfig.json"),
         ],
       },
     },
