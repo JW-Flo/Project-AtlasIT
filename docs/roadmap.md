@@ -1,20 +1,29 @@
 # AtlasIT Roadmap
 
-## Quarterly View (Existing)
+## Near Term (0–30 days)
 
-- Q1: Core & provisioning MVP
-- Q2: All MCP modules + reporting
-- Q3: Local self-host option + IdP
-- Q4: Advanced analytics & AI suggestions
+| Item                                                            | Status  | Notes                                                                               |
+| --------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| Durable workflow persistence (Durable Object or KV)             | planned | Persist orchestrator state beyond in-memory maps.                                   |
+| Baseline metrics & tracing (latency distribution, error counts) | planned | Instrument onboarding/orchestrator with Workers Analytics Engine or custom logging. |
+| Coverage uplift & threshold enforcement                         | planned | Raise Vitest coverage minimums after persistence lands.                             |
+| Automated post-deploy smoke tests                               | planned | Script curl-based checks for each worker after `wrangler deploy`.                   |
+| Secrets rotation playbook                                       | planned | Document rotation cadence referencing `ops/DEPLOYMENT_SECRETS_CHECKLIST.md`.        |
 
-## Phase 1 (Aug 2025) Onboarding Enhancements
+## Mid Term (30–90 days)
 
-| Epic         | Item                        | Description                                                                                                 | Target |
-| ------------ | --------------------------- | ----------------------------------------------------------------------------------------------------------- | ------ |
-| ONB-QUEST    | Onboarding Questions API    | Expose dynamic questions at `/api/onboarding/questions?industry=...&requirements=...`                       | Week 1 |
-| ONB-STATUS   | Status/Idempotency          | Add `/api/onboarding/:tenantId/status`; duplicate POST returns existing config (200)                        | Week 1 |
-| ONB-AIREFINE | AI Config Keyword Expansion | Map additional requirement keywords (monitoring, logging, audit, sso, gdpr) to integrations/security tweaks | Week 2 |
-| ONB-PERSIST  | Persistence Hardening       | Audit event insert + optional JSON index/migration for tenants config                                       | Week 2 |
-| ONB-ERRORS   | Error Taxonomy              | Introduce structured codes (ONB-001..n) and docs                                                            | Week 2 |
+| Item                            | Status  | Notes                                                                 |
+| ------------------------------- | ------- | --------------------------------------------------------------------- |
+| Authentication service scaffold | planned | Introduce OIDC/SAML/SCIM worker aligned with onboarding flows.        |
+| Marketplace catalog schema      | planned | Define data model & APIs for integration marketplace (no deploy yet). |
+| API gateway consolidation       | planned | Evaluate routing layer to unify public endpoints and auth.            |
 
-Exit Criteria: All new endpoints tested (unit + Miniflare), idempotent behavior verified, expanded AI config deterministic, docs updated (Development Guide Appendix + API reference).
+## Long Term (90+ days)
+
+| Item                                   | Status  | Notes                                                             |
+| -------------------------------------- | ------- | ----------------------------------------------------------------- |
+| Advanced AI orchestration              | planned | Multi-provider strategy selection, richer approval workflows.     |
+| Multi-tenant billing & usage reporting | planned | Usage metering, billing exports, and tenant dashboards.           |
+| Compliance automation & evidence packs | planned | Generate SOC2-ready evidence bundles from orchestrated workflows. |
+
+Legacy initiatives are archived in [`LEGACY.md`](../LEGACY.md) and no longer tracked on the active roadmap.
