@@ -13,21 +13,34 @@ fi
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+WRANGLER_CMD="$(command -v wrangler || true)"
+if [[ -z "$WRANGLER_CMD" ]]; then
+  # fallback to npx wrangler (local devDependency)
+  WRANGLER_CMD="npx wrangler"
+fi
+
+echo "[deploy] Using wrangler command: $WRANGLER_CMD"
+
 echo "[deploy] Building SvelteKit project"
 npm run build --silent
 
 if $DRY_RUN; then
   echo "[deploy] Performing wrangler dry-run"
-  wrangler deploy --dry-run
+  $WRANGLER_CMD deploy --dry-run || { echo "[deploy] Dry-run failed" >&2; exit 1; }
   echo "[deploy] Dry-run complete"
   exit 0
 fi
 
+if grep -q "__REPLACE_ACCOUNT_ID__" wrangler.toml; then
+  echo "[deploy] ERROR: account_id placeholder still present in wrangler.toml" >&2
+  exit 1
+fi
+
 echo "[deploy] Publishing worker"
-wrangler deploy --var DEPLOY_TS:$(date -u +%Y%m%dT%H%M%SZ)
+$WRANGLER_CMD deploy --var DEPLOY_TS:$(date -u +%Y%m%dT%H%M%SZ)
 
 # Capture deployment URL from wrangler output (best-effort)
-URL_LINE=$(wrangler routes list 2>/dev/null | grep -E "atlasit-console" || true)
+URL_LINE=$($WRANGLER_CMD routes list 2>/dev/null | grep -E "atlasit-console" || true)
 if [[ -z "$URL_LINE" ]]; then
   echo "[deploy] NOTE: Could not auto-detect route. Fetching whoami to infer preview URL." >&2
 fi

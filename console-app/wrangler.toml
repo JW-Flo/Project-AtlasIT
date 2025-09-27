@@ -1,7 +1,13 @@
 name = "atlasit-console"
+# IMPORTANT: replace with your real Cloudflare account ID before deploy
+account_id = "__REPLACE_ACCOUNT_ID__"
 main = "src/worker-entry.ts" # wrapper entry that imports built SvelteKit worker
 compatibility_date = "2025-09-27"
 workers_dev = true
+
+# Optional: uncomment and set a custom route/zone once you map to a domain
+# zone_id = "__REPLACE_ZONE_ID__"
+# routes = ["console.example.com/*"]
 
 [build]
 command = "npm run build"
@@ -17,7 +23,7 @@ enabled = true
 [[d1_databases]]
 binding = "ATLAS_CORE_DB"        # Access via env.ATLAS_CORE_DB
 database_name = "atlas_core_db"  # Cloudflare D1 database name
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "00000000-0000-0000-0000-000000000000" # REPLACE: wrangler d1 list
 
 [[d1_databases]]
 binding = "ATLAS_AUDIT_DB"
@@ -36,7 +42,7 @@ database_id = "00000000-0000-0000-0000-000000000011"
 
 [[kv_namespaces]]
 binding = "KV_SESSIONS"
-id = "00000000000000000000000000000000"
+id = "00000000000000000000000000000000" # REPLACE: wrangler kv:namespace create KV_SESSIONS
 
 [[kv_namespaces]]
 binding = "KV_CACHE"
