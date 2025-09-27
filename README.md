@@ -372,6 +372,7 @@ npm run validate:env
 ```
 
 This checks for: Cloudflare account id, API token (prefers CLOUDFLARE_API_TOKEN, accepts legacy CF_API_TOKEN), D1 db name, KV namespace, R2 bucket, service API keys, and Okta credentials when `FEATURE_IDP_OKTA=true`.
+Cross-reference `ops/DEPLOYMENT_SECRETS_CHECKLIST.md` for 1Password mapping and service key generation guidance before deploys.
 
 ### Environment Validation (Runtime)
 

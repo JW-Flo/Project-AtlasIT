@@ -11,8 +11,8 @@ Supporting files:
 
 ## Core Platform
 
-- CLOUD_FLARE_API_TOKEN
-- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_API_TOKEN (preferred) / CF_API_TOKEN (legacy fallback)
+- CF_ACCOUNT_ID
 - D1_DATABASE_ID
 - R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
 - KV_NAMESPACE_ID (auth/session)
@@ -50,9 +50,16 @@ Supporting files:
 
 1. Create secrets in GitHub Actions (Repo Settings > Secrets and variables > Actions).
 2. Mirror production-only secrets in Cloudflare dashboard (Workers > Settings > Variables & Secrets).
-3. For local dev, populate `.env.local` (never commit) referencing sanitized placeholders.
-4. Run `wrangler deploy --dry-run` to validate bindings.
-5. Execute smoke tests (`ops/checks/dev-smoke.sh`) against staging before prod deploy.
+3. Record final values in 1Password using the field map in `ops/secrets/op-map.json` (invoked via `ops/secrets/op-inject.sh`).
+4. For local dev, populate `.env.local` (never commit) referencing sanitized placeholders.
+5. Run `npm run validate:env` before commits or deploys to fail fast on missing configuration.
+6. Run `wrangler deploy --dry-run` to validate bindings.
+7. Execute smoke tests (`ops/checks/dev-smoke.sh`) against staging before prod deploy.
+
+## Secret Creation Tips
+
+- Generate 24-byte service keys with `openssl rand -hex 24` before storing in 1Password.
+- Map each generated key to the appropriate vault field using `ops/secrets/op-map.json` to enable scripted injection.
 
 ## Validation Command Examples
 
