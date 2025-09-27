@@ -4959,6 +4959,15 @@ var commonEnvSpec = {
   LOG_LEVEL: external_exports.enum(["debug", "info", "warn", "error"]).default("info"),
   AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai"]).optional()
 };
+function resolveCfApiToken(raw) {
+  const target = raw ? raw : typeof process !== "undefined" ? process.env : void 0;
+  if (!target) return void 0;
+  const preferred = target.CLOUDFLARE_API_TOKEN || target.CF_API_TOKEN;
+  if (preferred && !target.CF_API_TOKEN) {
+    target.CF_API_TOKEN = preferred;
+  }
+  return preferred;
+}
 
 // dist/onboarding/src/index.js
 var envValidated = false;
@@ -4966,6 +4975,7 @@ var rateLimits = /* @__PURE__ */ new Map();
 var src_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
+    resolveCfApiToken(env);
     const corsHeaders = getCorsHeaders();
     if (request.method === "OPTIONS")
       return new Response(null, { headers: corsHeaders });
