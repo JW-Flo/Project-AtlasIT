@@ -46,6 +46,56 @@ Supporting files:
 - SLACK_WEBHOOK_URL (alerts)
 - PAGERDUTY_INTEGRATION_KEY (critical alerts)
 
+## Service API Keys (AtlasIT Specific)
+
+**Generation Example:**
+
+```bash
+# Generate 24-byte hex keys for service authentication
+openssl rand -hex 24  # Use output for ONBOARDING_API_KEY
+openssl rand -hex 24  # Use output for ORCHESTRATOR_API_KEY
+```
+
+**Required Per Worker:**
+
+- **ONBOARDING_API_KEY** – Authentication for onboarding service endpoints
+- **ORCHESTRATOR_API_KEY** – Authentication for orchestrator service endpoints
+- **API_ALLOWED_KEYS** – Comma-separated list of valid API keys (include both above keys)
+
+**Wrangler Secret Commands:**
+
+```bash
+# Set secrets per worker (run from each worker directory)
+cd onboarding
+wrangler secret put ONBOARDING_API_KEY
+wrangler secret put API_ALLOWED_KEYS
+wrangler secret put RATE_LIMIT_MAX_REQUESTS  # optional: "100"
+wrangler secret put RATE_LIMIT_WINDOW_SECONDS  # optional: "3600"
+
+cd ../ai-orchestrator
+wrangler secret put ORCHESTRATOR_API_KEY
+wrangler secret put API_ALLOWED_KEYS
+wrangler secret put ONBOARDING_API_KEY  # for cross-service calls
+wrangler secret put RATE_LIMIT_MAX_REQUESTS
+wrangler secret put RATE_LIMIT_WINDOW_SECONDS
+
+cd ../documentation-worker
+wrangler secret put API_ALLOWED_KEYS  # if auth enabled
+```
+
+**Key Rotation Schedule:**
+
+- Monthly: Service API keys
+- Quarterly: Cross-service keys
+- As-needed: Rate limit configs
+
+**Validation:**
+
+```bash
+# Verify environment meets requirements before deployment
+npm run validate:env
+```
+
 ## Process
 
 1. Create secrets in GitHub Actions (Repo Settings > Secrets and variables > Actions).
