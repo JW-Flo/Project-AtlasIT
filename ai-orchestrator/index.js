@@ -204,12 +204,11 @@ async function checkWithMCP(action, context) {
     const result = await response.json();
     return result.approved;
   } catch (error) {
-    if (
-      (context && context.env && context.env.DEBUG_MCP_LOGS === "true") ||
+    const debugMcpLogs =
+      context?.env?.DEBUG_MCP_LOGS === "true" ||
       (typeof process !== "undefined" &&
-        process.env &&
-        process.env.DEBUG_MCP_LOGS === "true")
-    ) {
+        process?.env?.DEBUG_MCP_LOGS === "true");
+    if (debugMcpLogs) {
       sharedLogger.error("MCP approval check failed", { error: String(error) });
     }
     return false;
