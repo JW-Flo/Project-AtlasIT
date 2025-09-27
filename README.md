@@ -57,9 +57,11 @@ Secret scanning and dependency audits (`npm run scan:secrets`, `npm audit --omit
 ## Deployment (Preview)
 
 1. **Pre-check**
+
    ```bash
    npm run predeploy
    ```
+
 2. **Seed Secrets** (repeat per worker as needed)
 
    ```bash
@@ -79,12 +81,15 @@ Secret scanning and dependency audits (`npm run scan:secrets`, `npm audit --omit
    ```
 
 3. **Deploy Workers**
+
    ```bash
    cd onboarding && wrangler deploy
    cd ../ai-orchestrator && wrangler deploy
    cd ../documentation-worker && wrangler deploy
    ```
+
 4. **Post-Deploy Smoke Tests**
+
    ```bash
    curl -H "x-api-key: $ONBOARDING_API_KEY" https://<onboarding-domain>/onboarding/start -d '{"industry":"technology"}'
    curl https://<orchestrator-domain>/health

@@ -16,20 +16,20 @@ Current AtlasIT service endpoints (feat/pr12-idp-core-okta). Authentication refl
 
 | Method | Path            | Auth        | Description                                                                    | Notes                                                            |
 | ------ | --------------- | ----------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| GET    | `/healthz`      | None        | Text health probe for uptime checks.                                           | Public; skips MCP + rate limit guards.                           |
+| GET    | `/healthz`      | None        | Text health probe for uptime checks.                                           | Public; skips approval and rate-limit guards.                    |
 | GET    | `/health`       | None        | JSON health snapshot with timestamp and request id.                            | Public; includes actor echo when provided.                       |
-| GET    | `/status`       | `x-api-key` | Summarizes orchestrator state (pending tasks, deployments, terminal commands). | MCP `status_check` gate precedes response; rate limited.         |
-| POST   | `/task`         | `x-api-key` | Registers task for orchestration and triggers AI assistance when needed.       | MCP `add_task` gate; rate limited; tasks stored in-memory.       |
+| GET    | `/status`       | `x-api-key` | Summarizes orchestrator state (pending tasks, deployments, terminal commands). | Approval hook runs before response; rate limited.                |
+| POST   | `/task`         | `x-api-key` | Registers task for orchestration and triggers AI assistance when needed.       | Approval hook + rate limit; tasks stored in-memory today.        |
 | POST   | `/terminal`     | `x-api-key` | Proxies terminal command execution through orchestrator stub.                  | Returns simulated output; tracked per command id; rate limited.  |
 | POST   | `/workflow`     | `x-api-key` | Creates in-memory workflow definition with optional custom steps.              | Responds `201` with workflow metadata; rate limited.             |
 | GET    | `/workflow/:id` | `x-api-key` | Fetches workflow state by identifier.                                          | 404 when missing; outputs request + actor context; rate limited. |
 
 ## Documentation Worker
 
-| Method | Path          | Auth | Description                                                | Notes                                                 |
-| ------ | ------------- | ---- | ---------------------------------------------------------- | ----------------------------------------------------- |
-| GET    | `/health`     | None | JSON health response with service metadata and request id. | Public; emits `x-request-id` header for traceability. |
-| GET    | `/docs`       | None | Minimal docs index placeholder returning `{ ok: true }`.   | Returns informational stub until ingestion is wired.  |
-| GET    | `/docs/index` | None | Alias for `/docs` JSON placeholder.                        | Maintains compatibility for early consumers.          |
+| Method | Path          | Auth | Description                                                | Notes                                                              |
+| ------ | ------------- | ---- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| GET    | `/health`     | None | JSON health response with service metadata and request id. | Public; emits `x-request-id` header for traceability.              |
+| GET    | `/docs`       | None | Minimal docs index placeholder returning `{ ok: true }`.   | Experimental; returns informational stub until ingestion is wired. |
+| GET    | `/docs/index` | None | Alias for `/docs` JSON placeholder.                        | Experimental alias for early consumers.                            |
 
 Update this catalog as new routes are promoted or authentication models change.
