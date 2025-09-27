@@ -363,7 +363,17 @@ npm run scan:secrets
 
 The script flags common credential patterns (API keys, private keys). Use mock-looking values that avoid real key patterns when adding fixtures.
 
-### Environment Validation
+### Environment Validation (Script)
+
+Validate required environment variables before running broader workflows:
+
+```bash
+npm run validate:env
+```
+
+This checks for: Cloudflare account id, API token (prefers CLOUDFLARE_API_TOKEN, accepts legacy CF_API_TOKEN), D1 db name, KV namespace, R2 bucket, service API keys, and Okta credentials when `FEATURE_IDP_OKTA=true`.
+
+### Environment Validation (Runtime)
 
 Both onboarding and AI orchestrator perform a one-time environment validation on first request using a shared Zod schema. Warnings (not fatal) surface missing or invalid optional values early.
 

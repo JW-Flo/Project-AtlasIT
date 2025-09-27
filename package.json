@@ -13,6 +13,7 @@
     "slack-approval-worker"
   ],
   "scripts": {
+    "validate:env": "node scripts/validate-env.mjs",
     "dev": "npm-run-all --parallel dev:*",
     "scan:secrets": "node scripts/scan-secrets.js",
     "dev:onboarding": "cd onboarding && npm run dev",
