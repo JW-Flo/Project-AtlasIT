@@ -33,6 +33,31 @@
       "@atlasit/idp-adapters/okta": ["./packages/idp-adapters/okta/src"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": [
+    "onboarding/src/**/*.ts",
+    "onboarding/src/**/*.tsx",
+    "ai-orchestrator/**/*.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
+    "documentation-worker/src/**/*.ts",
+    "documentation-worker/test/**/*.ts",
+    "scripts/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "apps",
+    "auth",
+    "context",
+    "docs/servers-main",
+    "marketplace",
+    "documentation-worker/dist",
+    "packages/**/dist",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
+  ]
 }
