@@ -18,6 +18,8 @@ jobs:
           cache: "npm"
       - name: Install dependencies
         run: npm install
+      - name: Validate environment
+        run: npm run validate:env
       - name: Build, test, sbom
         run: npm run ci:run
       - name: Upload CI artifacts

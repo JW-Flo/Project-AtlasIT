@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Validate environment
+        run: npm run validate:env
       - name: Install
         working-directory: ${{ env.APP_DIR }}
         run: npm ci || npm install
