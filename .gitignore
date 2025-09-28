@@ -78,3 +78,10 @@ onboarding/dist/
 *.zip
 # Ignore SvelteKit build artifacts
 console-app/.svelte-kit/
+
+# Cloudflare Wrangler local state / telemetry
+.wrangler/
+
+# Large local audit artifacts (regenerate on demand)
+audit-full.json
+audit-prod.json
