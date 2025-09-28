@@ -288,4 +288,31 @@ Risks & Mitigations:
 - Stale code path referencing removed KV: comprehensive grep + test suite gate; add optional runtime warning if legacy binding env var absent.
 
 Next Action (not yet executed): Implement Step 1 (KV Reference Scan) and create snapshot file.
+
+### 2025-09-28 Cron Trigger Quota Mitigation (Option A)
+
+Context:
+- Cloudflare free plan imposes a hard limit of 5 scheduled (cron) triggers across the account. Adding a new orchestrator cron (*/5 * * * *) resulted in deployment errors due to exceeding this quota.
+
+Action Taken:
+- Removed/commented the `[triggers]` cron block from `ai-orchestrator/wrangler.toml` (commit message: `chore(orchestrator): remove cron trigger to stay within free plan limit`).
+- Re-deployed orchestrator worker (`atlasit-orchestrator`) successfully without schedule.
+- Verified `/health` endpoint at workers.dev base (`https://atlasit-orchestrator.kd8jc7v8cd.workers.dev/health`) returns HTTP 200 with `r2` metrics object (all buckets currently unbound in this worker, reporting `{ bound: false }`).
+
+Follow-up Options:
+1. Option B (Deferred): Reintroduce orchestrator scheduling after consolidating or removing other legacy scheduled workers to free a cron slot.
+2. Option C (Upgrade): Move to a paid Workers plan to increase cron quota, then reinstate monitoring schedule.
+
+Interim Monitoring Strategy:
+- Manual or ad-hoc invocation of orchestration/monitoring endpoints until a cron slot is reclaimed or plan upgraded.
+
+Rollback:
+- Re-add original cron stanza to `ai-orchestrator/wrangler.toml` and deploy (subject to quota availability).
+
+Verification Artifacts:
+- Deployment output captured in session (Version ID 33b70f1d-1474-4122-a740-83cca6e23a5f).
+- `curl` check confirming health JSON shape with `status`, `service`, `timestamp`, `requestId`, and `r2` fields.
+
+Next Step (Branding Alignment):
+- Proceed to worker & route renames (Phase 2) for remaining Ignite-branded services and implement configuration indirection for MCP endpoint constant currently hardcoded in `ai-orchestrator/index.js`.
 ```
