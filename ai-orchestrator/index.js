@@ -426,15 +426,59 @@ app.post("/terminal", async (c) => {
 
 // Health check
 app.get("/healthz", (c) => c.text("OK"));
-app.get("/health", (c) =>
-  c.json({
+// Lightweight in-memory cache for R2 metrics (per isolate)
+let r2MetricsCache = { ts: 0, data: null };
+async function collectR2Metrics(env) {
+  const now = Date.now();
+  if (r2MetricsCache.data && now - r2MetricsCache.ts < 30_000) {
+    return r2MetricsCache.data;
+  }
+  const buckets = [
+    { key: "atlas_policies", ref: env?.atlas_policies },
+    { key: "atlas_evidence", ref: env?.atlas_evidence },
+    { key: "atlas_artifacts", ref: env?.atlas_artifacts },
+  ];
+  const result = {};
+  await Promise.all(
+    buckets.map(async (b) => {
+      if (!b.ref) {
+        result[b.key] = { bound: false };
+        return;
+      }
+      try {
+        // Limit listing to small sample to avoid heavy scans; indicates bucket accessibility.
+        const listing = await b.ref.list({ limit: 10 });
+        result[b.key] = {
+          bound: true,
+          listed: listing.objects?.length || 0,
+          truncated: Boolean(listing.truncated),
+          sampleKeys: (listing.objects || []).map((o) => o.key).slice(0, 3),
+          // Approximate indicator (cannot know total cheaply without full iteration)
+          objectsApprox:
+            listing.objects?.length === 10
+              ? ">=10"
+              : String(listing.objects?.length || 0),
+        };
+      } catch (e) {
+        result[b.key] = { bound: true, error: String(e) };
+      }
+    }),
+  );
+  r2MetricsCache = { ts: now, data: result };
+  return result;
+}
+
+app.get("/health", async (c) => {
+  const r2 = await collectR2Metrics(c.env || {});
+  return c.json({
     status: "healthy",
     service: "orchestrator",
     timestamp: new Date().toISOString(),
     requestId: c.get("requestId"),
     actor: c.get("actor"),
-  }),
-);
+    r2,
+  });
+});
 
 // Create workflow (POST /workflow)
 app.post("/workflow", async (c) => {

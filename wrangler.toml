@@ -3,7 +3,7 @@ name = "project-ignite"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
-account_id = "620865722bd88ef0a77dbbb60c91392e"
+account_id = "620865722bd88ef0a77dbbb60c91392e"  # Injected after infra rebuild
 
 # Remove any invalid secret references. Do not use ${{ secrets.* }} or env var interpolation in wrangler.toml.
 # All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
@@ -11,6 +11,71 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 [[kv_namespaces]]
 binding = "MCP_STORE"
 id = "c7eba0c892bf4f2fbcf73fb60a38706c"
+
+# New core KV namespaces
+[[kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
+# D1 database bindings (one primary + supporting / audit / compliance / shadow)
+[[d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
+
+[[d1_databases]]
+binding = "ATLAS_COMPLIANCE_DB"
+database_name = "atlas_compliance"
+database_id = "f14bde38-795d-46b5-b174-fe4d559f2ac7"
+
+[[d1_databases]]
+binding = "ATLAS_AUDIT_SHADOW"
+database_name = "atlas_audit_shadow"
+database_id = "d72ddfd9-c892-42ec-a5c3-b920788485c1"
+
+# R2 buckets (evidence / policies / artifacts)
+[[r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+
+[[r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+
+[[r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+# Queues were planned but are unavailable on current (free) plan; omit bindings until upgrade.
+# [[queues.producers]]
+# binding = "ATLAS_WORKFLOW_QUEUE"
+# queue = "atlas-workflow-queue"
+#
+# After upgrading to a Workers Paid plan, uncomment and adjust the following queue bindings:
+# [[queues.producers]]
+# binding = "ATLAS_WORKFLOW_QUEUE"
+# queue = "atlas-workflow-queue"
+#
+# [[queues.producers]]
+# binding = "POLICY_REBUILD_QUEUE"
+# queue = "policy-rebuild"
+#
+# [[queues.producers]]
+# binding = "RISK_RECALC_QUEUE"
+# queue = "risk-recalc"
 
 # Example Durable Object binding (uncomment and set if needed)
 # [[durable_objects.bindings]]

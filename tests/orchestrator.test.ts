@@ -29,6 +29,13 @@ describe("Orchestrator worker basic endpoints", () => {
     expect(res.status).toBe(200);
     expect(res.json.status).toBe("healthy");
     expect(res.json.service).toBe("orchestrator");
+    // New R2 metrics appended (non-breaking). Validate shape minimally.
+    expect(res.json).toHaveProperty("r2");
+    if (res.json.r2) {
+      ["atlas_policies", "atlas_evidence", "atlas_artifacts"].forEach((k) => {
+        expect(res.json.r2).toHaveProperty(k);
+      });
+    }
   });
 
   it("GET /status returns structure (may be MCP rejected)", async () => {

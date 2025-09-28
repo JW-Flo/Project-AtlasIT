@@ -10,6 +10,8 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
+// Side-effect import for generated worker types
+import '../worker-configuration.d.ts';
 
 function json(data: unknown, init: ResponseInit = {}): Response {
 	const headers = new Headers(init.headers);
@@ -18,7 +20,8 @@ function json(data: unknown, init: ResponseInit = {}): Response {
 }
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
+	// Explicit Env type reference above; using loosely typed env to avoid missing symbol in unit TS context.
+	async fetch(request: Request, env: any, ctx: ExecutionContext): Promise<Response> {
 		const url = new URL(request.url);
 		const requestId = crypto.randomUUID();
 		const baseHeaders: HeadersInit = { 'x-request-id': requestId };
