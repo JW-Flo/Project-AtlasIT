@@ -21,5 +21,6 @@ ENVIRONMENT = "production"
 [env.production.logs]
 enabled = true
 
-[triggers]
-crons = ["*/5 * * * *"] 
+# Temporarily disable cron trigger to avoid exceeding free plan limit (5). Re-enable when consolidating other workers.
+# [triggers]
+# crons = ["*/5 * * * *"] 
