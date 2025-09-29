@@ -226,16 +226,16 @@ Action Completed: All remaining legacy D1 databases exported (snapshotted) then 
 Sequence Executed:
 1. qa-pipeline-db
 
-	- Export: ops/snapshots/d1/qa-pipeline-db.sql (267 lines, contained QA pipeline run metadata)
-	- Deletion: Confirmed absent via `wrangler d1 list`.
+ - Export: ops/snapshots/d1/qa-pipeline-db.sql (267 lines, contained QA pipeline run metadata)
+ - Deletion: Confirmed absent via `wrangler d1 list`.
 2. mcp-store
 
-	- Export: ops/snapshots/d1/mcp-store.sql (1 line; empty schema only)
-	- Deletion: Confirmed absent.
+ - Export: ops/snapshots/d1/mcp-store.sql (1 line; empty schema only)
+ - Deletion: Confirmed absent.
 3. tesla-journey-tracker
 
-	- Export: ops/snapshots/d1/tesla-journey-tracker.sql (2,477 lines; includes vehicle/journey schema & historical data)
-	- Deletion: Confirmed absent.
+ - Export: ops/snapshots/d1/tesla-journey-tracker.sql (2,477 lines; includes vehicle/journey schema & historical data)
+ - Deletion: Confirmed absent.
 
 Temporary Config Adjustment:
 - Added transient binding `LEGACY_QA_PIPELINE_DB` to `wrangler.toml` solely to enable remote export; export ultimately required `--remote` flag. Binding can be removed in next config tidy-up commit.
@@ -263,25 +263,25 @@ Objectives:
 
 Steps:
 1. KV Reference Scan
-	- Action: Grep for old namespace identifiers (e.g., ignite-dispatcher-namespace, ignite_docs) across repo.
-	- Produce: `ops/snapshots/kv/kv_reference_scan.txt` with line references.
-	- Exit Criteria: No runtime imports or get/put calls remain for legacy namespaces.
+ - Action: Grep for old namespace identifiers (e.g., ignite-dispatcher-namespace, ignite_docs) across repo.
+ - Produce: `ops/snapshots/kv/kv_reference_scan.txt` with line references.
+ - Exit Criteria: No runtime imports or get/put calls remain for legacy namespaces.
 2. KV Deletion Checklist
-	- Create `ops/kv-deletion-checklist.md` enumerating each legacy namespace, last-seen usage (git blame or logs), and deletion decision.
-	- After 24h with zero references & logs, execute `wrangler kv namespace delete` commands (manual step documented, not scripted to avoid accidents).
+ - Create `ops/kv-deletion-checklist.md` enumerating each legacy namespace, last-seen usage (git blame or logs), and deletion decision.
+ - After 24h with zero references & logs, execute `wrangler kv namespace delete` commands (manual step documented, not scripted to avoid accidents).
 3. R2 Bucket Inventory
-	- Use dashboard or `wrangler r2 object list <bucket>` (if enabled) to capture object counts & total size.
-	- Store outputs under `ops/snapshots/r2/<bucket>-inventory.txt`.
+ - Use dashboard or `wrangler r2 object list <bucket>` (if enabled) to capture object counts & total size.
+ - Store outputs under `ops/snapshots/r2/<bucket>-inventory.txt`.
 4. Retention Classification
-	- For each bucket: classify (Regulatory Evidence / Operational Artifacts / Derived Cache) with retention window & purge policy.
-	- Document in `docs/DATA_RETENTION_MATRIX.md` (new file) and reference in alignment plan.
+ - For each bucket: classify (Regulatory Evidence / Operational Artifacts / Derived Cache) with retention window & purge policy.
+ - Document in `docs/DATA_RETENTION_MATRIX.md` (new file) and reference in alignment plan.
 5. Purge & Lifecycle Policies
-	- For cache / derived artifacts: define automated purge (cron job or manual script) with max age threshold.
-	- For evidence/policies: ensure immutability rules (no overwrite) & versioning strategy (tracked via git or R2 object versioning if enabled).
+ - For cache / derived artifacts: define automated purge (cron job or manual script) with max age threshold.
+ - For evidence/policies: ensure immutability rules (no overwrite) & versioning strategy (tracked via git or R2 object versioning if enabled).
 6. Health Endpoint Extension
-	- Add R2 object count + last modified age metrics to /health (append-only fields) for observability.
+ - Add R2 object count + last modified age metrics to /health (append-only fields) for observability.
 7. QA & CI
-	- Add contract test ensuring new /health fields present and non-negative when retention plan enacted.
+ - Add contract test ensuring new /health fields present and non-negative when retention plan enacted.
 
 Risks & Mitigations:
 - Accidental deletion of evidentiary objects: enforce manual confirmation & snapshot inventory prior to deletion.
@@ -364,11 +364,11 @@ Decision:
 Implementation Details:
 1. Created directory `scheduler-worker/` with its own `wrangler.toml` (name: `atlasit-scheduler`).
 2. Added two initial cron entries equivalent to previously removed triggers:
-	- `0 2 * * *` (daily ETL / aggregation window placeholder)
-	- `15 * * * *` (quarter‑hour monitoring / budget check placeholder)
+ - `0 2 * * *` (daily ETL / aggregation window placeholder)
+ - `15 * * * *` (quarter‑hour monitoring / budget check placeholder)
 3. Implemented `index.js` with:
-	- `/health` endpoint returning JSON status.
-	- `scheduled` handler stub (currently logs + placeholder comment for future fetch to orchestrator/core endpoints).
+ - `/health` endpoint returning JSON status.
+ - `scheduled` handler stub (currently logs + placeholder comment for future fetch to orchestrator/core endpoints).
 4. Updated root `wrangler.toml` to keep `[triggers]` commented; schedules now centralized.
 5. Removed stray `tail_consumers` stanza to silence environment inheritance warnings (not required until log pipeline defined).
 
