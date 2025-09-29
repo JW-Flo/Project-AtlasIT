@@ -53,6 +53,9 @@ export default [
       "./packages/idp-adapters/**",
       "./packages/idp-sim/**",
       "./routes/api/idp/**",
+      // Exclude demo-app standalone non-imported utility TS not covered by its tsconfig include
+      "./demo-app/mock-api-server.ts",
+      "./demo-app/tailwind.config.ts",
     ],
     languageOptions: {
       parser: tsParser,
@@ -66,6 +69,7 @@ export default [
           path.join(rootDir, "packages/shared/tsconfig.json"),
           path.join(rootDir, "documentation-worker/tsconfig.json"),
           path.join(rootDir, "console-app/tsconfig.json"),
+          path.join(rootDir, "demo-app/tsconfig.json"),
         ],
       },
     },
@@ -105,7 +109,12 @@ export default [
   },
   // Lightweight parsing for test and config TS files (no project required)
   {
-    files: ["**/vitest.config.ts", "**/vite.config.ts", "**/*.test.ts"],
+    files: [
+      "**/vitest.config.ts",
+      "**/vite.config.ts",
+      "**/*.test.ts",
+      "**/tailwind.config.ts",
+    ],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

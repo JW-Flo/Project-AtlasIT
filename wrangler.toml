@@ -200,8 +200,9 @@ binding = "AI"
 
 # Dispatch namespaces removed (account lacks feature on free plan). Reintroduce post-upgrade.
 
-[[tail_consumers]]
-service = "documentation-worker"
+# Tail consumer temporarily disabled to reduce deployment warnings; re-enable when log tail processing worker required.
+# [[tail_consumers]]
+# service = "documentation-worker"
 
 # For local development, use a .env file or export env vars in your shell
 # See .env.example for required variables

@@ -41,4 +41,15 @@ See the main [`README`](README.md) for current components and [`ops/DEPLOYMENT_R
 | Orchestrator cron trigger removed | Scheduled monitoring (Ignite pattern) | Disabled to stay within free plan quota (5)                       | Re-introduce post consolidation or plan upgrade |
 | Hardcoded MCP endpoint refactored | `mcp.project-ignite.*` URL            | Now env-configurable with fallback in `ai-orchestrator/config.js` | Enables gradual base domain realignment         |
 
+### Worker & Route Mapping (Phase 2 Parallel Period)
+
+| Legacy Worker / Route                                      | New Worker / Route                            | Status             | Cutover Criteria                           |
+| ---------------------------------------------------------- | --------------------------------------------- | ------------------ | ------------------------------------------ |
+| `project-ignite` -> project-ignite.workers.dev/\*          | `atlasit-core` -> core.atlasit.workers.dev/\* | Deployed (pending) | All consumers updated to new core endpoint |
+| `ai-worker` -> ai-project-ignite.kd8jc7v8cd.workers.dev/\* | `atlasit-ai` -> ai.atlasit.workers.dev/\*     | Deployed (pending) | AI integrations switched & stable for 24h  |
+| `ignite-ai-orchestrator` (now atlasit-orchestrator)        | (No further rename)                           | Complete           | Verified /health & documented              |
+| `ignite-documentation` (now atlasit-docs)                  | (No further rename)                           | Complete           | Verified /health & documented              |
+
+Retirement of legacy worker names/routes will occur only after verification logs confirm zero traffic for 24h and README mapping published.
+
 All items above are non-operational unless explicitly noted and do not affect active AtlasIT production behavior.

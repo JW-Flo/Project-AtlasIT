@@ -350,4 +350,45 @@ Follow-up (Post Plan Upgrade):
 1. Reintroduce cron triggers in a scoped manner (prefer new core worker only).
 2. Restore dispatcher-based multi-worker routing if still needed, else remove dispatch code paths.
 3. Add `/health` to AI worker if operational visibility required.
+
+### 2025-09-29 Dedicated Scheduler Worker Introduction (Cron Quota Resolution)
+
+Context:
+- Free plan 5-cron quota blocked re‑enabling operational schedules after parallel env expansion.
+- Embedding schedules in primary `project-ignite` (or future `atlasit-core`) risks repeated quota churn as new workers are added.
+
+Decision:
+- Introduce isolated `scheduler-worker` whose sole responsibility is owning all permitted cron schedules and invoking internal orchestration endpoints (HTTP fan‑out) as needed.
+- Application workers (`atlasit-core`, `atlasit-ai`, orchestrator, docs) remain schedule‑free, simplifying their deploy risk profile and avoiding future quota edits in multiple wrangler files.
+
+Implementation Details:
+1. Created directory `scheduler-worker/` with its own `wrangler.toml` (name: `atlasit-scheduler`).
+2. Added two initial cron entries equivalent to previously removed triggers:
+	- `0 2 * * *` (daily ETL / aggregation window placeholder)
+	- `15 * * * *` (quarter‑hour monitoring / budget check placeholder)
+3. Implemented `index.js` with:
+	- `/health` endpoint returning JSON status.
+	- `scheduled` handler stub (currently logs + placeholder comment for future fetch to orchestrator/core endpoints).
+4. Updated root `wrangler.toml` to keep `[triggers]` commented; schedules now centralized.
+5. Removed stray `tail_consumers` stanza to silence environment inheritance warnings (not required until log pipeline defined).
+
+Future Work:
+- Flesh out `scheduled` handler with concrete fetch calls (e.g., `/internal/etl/run`, `/internal/monitor/budget`).
+- Add lightweight auth (signed internal token or IP restriction if elevated functions introduced).
+- Add contract test ensuring scheduler `/health` shape + that core/orchestrator endpoints remain schedule‑agnostic.
+- If plan upgraded (higher cron limit), retain centralized pattern; only adjust cron list in `scheduler-worker/wrangler.toml`.
+
+Rollback Strategy:
+- If centralization causes issues, re‑comment cron block in scheduler and (temporarily) restore minimal required triggers to core worker; low risk as logic is stateless.
+
+Rationale Benefits:
+- Single file for all schedule governance.
+- Avoids redeploying business workers for schedule tweaks.
+- Keeps core worker bundle smaller (no schedule logic branches).
+
+Verification (Pending):
+- Deploy `atlasit-scheduler` and confirm `/health` 200.
+- Observe first cron invocation logs (after next 15‑minute boundary) to validate handler wiring.
+
+Status: SCAFFOLDED (awaiting deployment & handler enrichment)
 ```
