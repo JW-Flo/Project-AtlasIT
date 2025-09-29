@@ -36,7 +36,7 @@ Next Actions:
 
 Status: DRAFT (Phase 0 – Discovery Complete)
 Owner: Automation (GitHub Copilot) / Maintainer: Platform Engineering
-Last Updated: <!--DATE-->
+Last Updated: 2025-09-29
 
 ## Objectives
 
@@ -138,21 +138,21 @@ Acceptance:
 
 ## Detailed Task Matrix
 
-| Task                         | File(s)                                              | Phase | Status  |
-| ---------------------------- | ---------------------------------------------------- | ----- | ------- |
-| Update docs README           | docs/README.md                                       | 1     | DONE    |
-| Slack username rename        | utils/slack.js                                       | 1     | PENDING |
-| Extend LEGACY.md table       | LEGACY.md                                            | 1     | PENDING |
-| Orchestrator worker rename   | ai-orchestrator/wrangler.toml                        | 2     | DONE    |
-| Docs worker rename           | documentation-worker/wrangler.toml                   | 2     | DONE    |
-| Base URL constants to config | ai-orchestrator/index.js, cloud-functions/autoDoc.js | 2     | PENDING |
-| Add /health to docs worker   | documentation-worker/index.js                        | 2     | PENDING |
-| Introduce dual KV bindings   | wrangler.toml(s)                                     | 3     | PENDING |
-| Implement dual-read logic    | documentation-worker/index.js                        | 3     | PENDING |
-| Migration script (if needed) | scripts/migrate_kv_docs.js (new)                     | 3     | PENDING |
-| Remove old KV & fallback     | wrangler + code                                      | 4     | PENDING |
-| Rename GH workflows          | .github/workflows/\*                                 | 4     | PENDING |
-| Archive ignite scripts       | scripts/_ignite_                                     | 4     | PENDING |
+| Task                         | File(s)                                              | Phase | Status                          |
+| ---------------------------- | ---------------------------------------------------- | ----- | ------------------------------- |
+| Update docs README           | docs/README.md                                       | 1     | DONE                            |
+| Slack username rename        | utils/slack.js                                       | 1     | PENDING                         |
+| Extend LEGACY.md table       | LEGACY.md                                            | 1     | PENDING                         |
+| Orchestrator worker rename   | ai-orchestrator/wrangler.toml                        | 2     | DONE                            |
+| Docs worker rename           | documentation-worker/wrangler.toml                   | 2     | DONE                            |
+| Base URL constants to config | ai-orchestrator/index.js, cloud-functions/autoDoc.js | 2     | PARTIAL (orchestrator complete) |
+| Add /health to docs worker   | documentation-worker/index.js                        | 2     | PENDING                         |
+| Introduce dual KV bindings   | wrangler.toml(s)                                     | 3     | PENDING                         |
+| Implement dual-read logic    | documentation-worker/index.js                        | 3     | PENDING                         |
+| Migration script (if needed) | scripts/migrate_kv_docs.js (new)                     | 3     | PENDING                         |
+| Remove old KV & fallback     | wrangler + code                                      | 4     | PENDING                         |
+| Rename GH workflows          | .github/workflows/\*                                 | 4     | PENDING                         |
+| Archive ignite scripts       | scripts/_ignite_                                     | 4     | PENDING                         |
 
 ---
 

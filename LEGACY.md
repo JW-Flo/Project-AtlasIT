@@ -34,4 +34,11 @@ See the main [`README`](README.md) for current components and [`ops/DEPLOYMENT_R
 | Deployment Scripts       | `scripts/ignite-*`                           | Historical CI patterns         | Archive Phase 4                           |
 | Documentation References | Legacy PDFs / brainstorm text                | Historical context             | Remain indefinitely                       |
 
+### Recent Adjustments (2025-09-29)
+
+| Change                            | Legacy Aspect                         | Current State                                                     | Notes                                           |
+| --------------------------------- | ------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| Orchestrator cron trigger removed | Scheduled monitoring (Ignite pattern) | Disabled to stay within free plan quota (5)                       | Re-introduce post consolidation or plan upgrade |
+| Hardcoded MCP endpoint refactored | `mcp.project-ignite.*` URL            | Now env-configurable with fallback in `ai-orchestrator/config.js` | Enables gradual base domain realignment         |
+
 All items above are non-operational unless explicitly noted and do not affect active AtlasIT production behavior.

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { resolveMcpEndpoint } from "./config.js";
 import { logger as honoLogger } from "hono/logger";
 import { cors } from "hono/cors";
 import {
@@ -103,8 +104,14 @@ app.use("*", async (c, next) => {
   c.res.headers.set("X-RateLimit-Reset", String(resetIn));
 });
 
-// MCP Integration
-const MCP_ENDPOINT = "https://mcp.project-ignite.kd8jc7v8cd.workers.dev";
+// MCP Integration (resolved dynamically; cached after first access)
+let MCP_ENDPOINT_CACHE = null;
+function getMcpEndpoint(env) {
+  if (!MCP_ENDPOINT_CACHE) {
+    MCP_ENDPOINT_CACHE = resolveMcpEndpoint(env || {});
+  }
+  return MCP_ENDPOINT_CACHE;
+}
 
 // State tracking
 let lastCheck = new Date();
@@ -194,8 +201,9 @@ async function checkWithMCP(action, context) {
     return true;
   if (typeof action === "string" && globalThis.MCP_APPROVE_ALL === "1")
     return true;
+  const endpoint = getMcpEndpoint(context?.env);
   try {
-    const response = await fetch(`${MCP_ENDPOINT}/approve`, {
+    const response = await fetch(`${endpoint}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, context }),
