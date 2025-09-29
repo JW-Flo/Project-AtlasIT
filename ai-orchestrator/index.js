@@ -120,6 +120,14 @@ let activeDeployments = new Set();
 let terminalCommands = new Map(); // Track terminal commands and their status
 // In-memory workflow storage (MVP) keyed by workflow id
 const workflows = new Map();
+// Simple in-memory ETL lock & last run metadata (non-persistent)
+let etlLock = {
+  running: false,
+  startedAt: null,
+  lastSuccess: null,
+  lastError: null,
+  lastId: null,
+};
 
 // Task priorities
 const PRIORITIES = {
@@ -392,9 +400,69 @@ app.get("/status", async (c) => {
     pendingTasks: Array.from(pendingTasks),
     activeDeployments: Array.from(activeDeployments),
     terminalCommands: Array.from(terminalCommands.entries()),
+    etl: {
+      running: etlLock.running,
+      startedAt: etlLock.startedAt,
+      lastSuccess: etlLock.lastSuccess,
+      lastError: etlLock.lastError,
+      lastId: etlLock.lastId,
+    },
     requestId: c.get("requestId"),
     actor: c.get("actor"),
   });
+});
+
+// Internal ETL trigger (invoked by scheduler daily)
+app.post("/internal/etl/run", async (c) => {
+  // Require API key (middleware already enforced except health) so just double-check actor presence
+  if (!c.get("actor")) return c.json({ error: "Unauthorized" }, 401);
+  const body = (await c.req.json().catch(() => ({}))) || {};
+  const requestedId = body.runId || crypto.randomUUID();
+  if (etlLock.running) {
+    return c.json(
+      {
+        status: "already_running",
+        runId: etlLock.lastId,
+        startedAt: etlLock.startedAt,
+      },
+      409,
+    );
+  }
+  // Basic idempotency: if same runId executed successfully in last hour, short-circuit
+  if (
+    etlLock.lastId === requestedId &&
+    etlLock.lastSuccess &&
+    Date.now() - new Date(etlLock.lastSuccess).getTime() < 60 * 60 * 1000
+  ) {
+    return c.json({ status: "duplicate_ignored", runId: requestedId }, 200);
+  }
+  etlLock.running = true;
+  etlLock.startedAt = new Date().toISOString();
+  etlLock.lastId = requestedId;
+  // Simulate asynchronous ETL steps
+  c.executionCtx.waitUntil(
+    (async () => {
+      try {
+        // Placeholder: replace with real ETL logic (e.g., aggregate metrics, cleanup, rollups)
+        await new Promise((r) => setTimeout(r, 50));
+        etlLock.lastSuccess = new Date().toISOString();
+        etlLock.lastError = null;
+      } catch (e) {
+        etlLock.lastError = String(e);
+      } finally {
+        etlLock.running = false;
+      }
+    })(),
+  );
+  return c.json(
+    {
+      status: "accepted",
+      runId: requestedId,
+      startedAt: etlLock.startedAt,
+      message: "ETL run accepted",
+    },
+    202,
+  );
 });
 
 app.post("/task", async (c) => {

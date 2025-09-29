@@ -47,4 +47,28 @@ describe("Orchestrator worker basic endpoints", () => {
       expect(res.json).toHaveProperty("activeDeployments");
     }
   });
+
+  it("POST /internal/etl/run accepts run and prevents duplicate while running", async () => {
+    // Provide API key to satisfy auth middleware (simulate single allowed key)
+    mockEnv.API_ALLOWED_KEYS = "test-key";
+    const firstReq = new Request("https://example.com/internal/etl/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": "test-key" },
+      body: JSON.stringify({ runId: "test-etl-1" }),
+    });
+    const firstResp = await handleRequest(firstReq, mockEnv, {
+      waitUntil: (p) => p,
+    } as any);
+    expect([202, 200]).toContain(firstResp.status); // 202 accepted or 200 duplicate (if extremely fast)
+    // Immediately attempt second run; likely returns 409 already_running or 200 duplicate if finished
+    const secondReq = new Request("https://example.com/internal/etl/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": "test-key" },
+      body: JSON.stringify({ runId: "test-etl-1" }),
+    });
+    const secondResp = await handleRequest(secondReq, mockEnv, {
+      waitUntil: (p) => p,
+    } as any);
+    expect([200, 409]).toContain(secondResp.status);
+  });
 });
