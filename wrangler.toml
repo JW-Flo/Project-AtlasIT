@@ -82,19 +82,79 @@ bucket_name = "atlas-artifacts"
 # name = "IGNITE_DO"
 # class_name = "IgniteDurableObject"
 
-[triggers]
-crons = [
-  "0 2 * * *",    # ETL functions at 2:00 CDT
-  "15 * * * *"    # monitorBudget every 15 minutes
-]
+# Triggers temporarily disabled to permit parallel env deployments within free plan cron quota.
+# [triggers]
+# crons = [
+#   "0 2 * * *",    # ETL functions at 2:00 CDT
+#   "15 * * * *"    # monitorBudget every 15 minutes
+# ]
 
-# Production environment
+# Production environment (legacy canonical during transition)
 [env.production]
 route = "project-ignite.workers.dev/*"
 usage_model = "bundled"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+
+# New core AtlasIT worker environment (Phase 2 rename). Deployed in parallel.
+[env.core]
+name = "atlasit-core"
+main = "index.js"
+usage_model = "bundled"
+workers_dev = true
+
+[[env.core.kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[env.core.kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[env.core.kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
+[[env.core.kv_namespaces]]
+binding = "MCP_STORE"
+id = "c7eba0c892bf4f2fbcf73fb60a38706c"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_COMPLIANCE_DB"
+database_name = "atlas_compliance"
+database_id = "f14bde38-795d-46b5-b174-fe4d559f2ac7"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_SHADOW"
+database_name = "atlas_audit_shadow"
+database_id = "d72ddfd9-c892-42ec-a5c3-b920788485c1"
+
+[[env.core.r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+
+[[env.core.r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+
+[[env.core.r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+[env.core.vars]
+ENVIRONMENT = "production"
+RENAMING_PHASE = "core_parallel"
 
 # [env.production.durable_objects]
 # bindings = [
@@ -109,18 +169,24 @@ ENVIRONMENT = "production"
 enabled = true
 
 [env.ai]
-name = "ai-worker"
+name = "atlasit-ai" # previously ai-worker / ai-project-ignite
 main = "ai-worker.js"
-route = "ai-project-ignite.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 compatibility_date = "2025-05-16"
+workers_dev = true
 
 [env.ai.vars]
 # Add any environment-specific variables here
 
-[[env.ai.dispatch_namespaces]]
-binding = "dispatcher"
-namespace = "ignite-dispatcher-namespace"
+## Dispatch namespace removed (free plan). Previously:
+# [[env.ai.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "ignite-dispatcher-namespace"
+
+# Planned new dispatcher namespace (Phase 3). Create via `wrangler dispatch-namespace create atlasit-dispatcher-namespace` then add id.
+# [[env.ai.dispatch_namespaces]]
+# binding = "dispatcher_new"
+# namespace = "atlasit-dispatcher-namespace"
 
 [env.ai.logs]
 sampling_rate = 1.0
@@ -132,9 +198,7 @@ enabled = true
 [env.ai.ai]
 binding = "AI"
 
-[[dispatch_namespaces]]
-binding = "dispatcher"
-namespace = "ignite-dispatcher-namespace"
+# Dispatch namespaces removed (account lacks feature on free plan). Reintroduce post-upgrade.
 
 [[tail_consumers]]
 service = "documentation-worker"

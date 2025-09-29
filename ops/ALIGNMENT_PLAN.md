@@ -315,4 +315,39 @@ Verification Artifacts:
 
 Next Step (Branding Alignment):
 - Proceed to worker & route renames (Phase 2) for remaining Ignite-branded services and implement configuration indirection for MCP endpoint constant currently hardcoded in `ai-orchestrator/index.js`.
+
+### 2025-09-29 Phase 2 Parallel Worker Deployment (Core & AI)
+
+Initiated parallel naming strategy:
+
+- Added `[env.core]` with `name = "atlasit-core"` and route `core.atlasit.workers.dev/*` (legacy `project-ignite` retained).
+- Updated `[env.ai]` to use `name = "atlasit-ai"` and route `ai.atlasit.workers.dev/*` (legacy route referenced only historically).
+- Left legacy dispatch namespace (`ignite-dispatcher-namespace`) in place; added commented placeholder for future `atlasit-dispatcher-namespace` dual binding (requires manual creation to obtain namespace id/slug).
+
+Deployment Plan:
+1. Deploy core: `wrangler deploy --env core`.
+2. Deploy ai: `wrangler deploy --env ai`.
+3. Verify `/health` responds 200 on both new workers.
+4. Publish mapping table in LEGACY.md (old -> new names & routes).
+5. Update any consuming services / scripts to point to new atlasit-* endpoints.
+
+Success Criteria:
+- New endpoints reachable; legacy endpoints remain operational during transition window.
+- No test regressions (vitest suite remains green).
+
+Pending:
+- Creation & binding of new dispatch namespace.
+- KV dual-read migration (Phase 3).
+
+### 2025-09-29 Trigger Suspension & Dispatcher Removal (Free Plan Constraints)
+
+- Global cron triggers commented out to enable parallel deployment without exceeding 5-cron quota.
+- Dispatcher namespace bindings removed (account lacks Workers for Platforms / dispatch feature on current plan) to allow deployment of `atlasit-core` and `atlasit-ai`.
+- Adjusted root `/health` to succeed even when `env.dispatcher` absent (previously 502).
+- AI worker deployed without /health endpoint (non-blocking); add later if required by monitoring.
+
+Follow-up (Post Plan Upgrade):
+1. Reintroduce cron triggers in a scoped manner (prefer new core worker only).
+2. Restore dispatcher-based multi-worker routing if still needed, else remove dispatch code paths.
+3. Add `/health` to AI worker if operational visibility required.
 ```
