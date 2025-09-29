@@ -391,6 +391,46 @@ Verification (Pending):
 - Observe first cron invocation logs (after next 15‑minute boundary) to validate handler wiring.
 
 Status: SCAFFOLDED (awaiting deployment & handler enrichment)
+
+### 2025-09-29 Scheduler Worker Job Implementation
+
+Enhancement Completed:
+- Implemented concrete job execution in `scheduler-worker/index.js` with:
+	- `daily_etl` (mapped from cron `0 2 * * *`) hitting orchestrator `/internal/etl/run` (placeholder endpoint pending server implementation).
+	- `quarter_hour_monitor` (mapped from cron `15 * * * *`) calling orchestrator `/status` for lightweight health/ratelimit signal.
+- Added retry/backoff wrapper (`fetchWithRetry`) and structured JSON logging for job start/success/failure.
+- Added guarded manual trigger endpoint `/internal/run?jobs=job1,job2` protected via `x-debug-key` header (`SCHEDULER_DEBUG_KEY`).
+- Added `ORCHESTRATOR_URL` + `SCHEDULER_DEBUG_KEY` placeholders to `.env.example` and vars stanza in `scheduler-worker/wrangler.toml`.
+
+Operational Notes:
+- If orchestrator introduces authenticated internal endpoints, replace placeholder calls with signed variants (HMAC or short-lived token).
+- Failures are logged; consider future aggregation into analytics D1 for historical job success rates.
+- Manual invocation should only be enabled in non-production or with a rotated secret; remove endpoint if not needed post-stabilization.
+
+Next Hardening Steps (Future):
+- Implement orchestrator `/internal/etl/run` route with idempotency (return 409 if already running).
+- Add contract test(s) asserting scheduler `/health` shape and that job mapping returns expected array for known crons.
+- Introduce exponential backoff jitter and circuit-breaker if repeated failures occur.
+
+Status: IMPLEMENTED & DEPLOYED (Version ID noted in deployment logs)
+
+### 2025-09-29 Orchestrator ETL Endpoint & AI Health
+
+Added `/internal/etl/run` to `atlasit-orchestrator`:
+- Accepts POST with optional `runId` (JSON).
+- Enforces API key via existing middleware; returns 202 on acceptance, 409 if already running, 200 if duplicate within 1h (idempotent short-circuit).
+- Maintains in-memory lock + metadata: `running`, `startedAt`, `lastSuccess`, `lastError`, `lastId`.
+- Scheduler maps cron `0 2 * * *` to this endpoint (`daily_etl` job) using retry wrapper.
+
+Added `/health` (GET) to `atlasit-ai` worker for operational parity; returns `{ status:"ok", service:"ai-gateway", timestamp }`.
+
+Test Coverage:
+- Extended orchestrator test to assert ETL endpoint acceptance and conflict / duplicate behavior (tolerates race by accepting 202/200 then 409/200).
+
+Future Hardening Ideas:
+- Persist ETL run ledger to D1 for cross-isolate idempotency.
+- Introduce exponential backoff & multi-phase ETL steps with progress state machine.
+- Add metrics export (counts, last run age) to orchestrator `/health` under an `etl` field (append-only).
 \n+### 2025-09-29 Scheduler Worker Job Implementation
 \n+Enhancement Completed:\n+- Implemented concrete job execution in `scheduler-worker/index.js` with:\n+  - `daily_etl` (mapped from cron `0 2 * * *`) hitting orchestrator `/internal/etl/run` (placeholder endpoint pending server implementation).\n+  - `quarter_hour_monitor` (mapped from cron `15 * * * *`) calling orchestrator `/status` for lightweight health/ratelimit signal.\n+- Added retry/backoff wrapper (`fetchWithRetry`) and structured JSON logging for job start/success/failure.\n+- Added guarded manual trigger endpoint `/internal/run?jobs=job1,job2` protected via `x-debug-key` header (`SCHEDULER_DEBUG_KEY`).\n+- Added `ORCHESTRATOR_URL` + `SCHEDULER_DEBUG_KEY` placeholders to `.env.example` and vars stanza in `scheduler-worker/wrangler.toml`.\n+\n+Operational Notes:\n+- If orchestrator introduces authenticated internal endpoints, replace placeholder calls with signed variants (HMAC or short-lived token).\n+- Failures are logged; consider future aggregation into analytics D1 for historical job success rates.\n+- Manual invocation should only be enabled in non-production or with a rotated secret; remove endpoint if not needed post-stabilization.\n+\n+Next Hardening Steps (Future):\n+- Implement orchestrator `/internal/etl/run` route with idempotency (return 409 if already running).\n+- Add contract test(s) asserting scheduler `/health` shape and that job mapping returns expected array for known crons.\n+- Introduce exponential backoff jitter and circuit-breaker if repeated failures occur.\n+\n+Status: IMPLEMENTED & DEPLOYED (Version ID noted in deployment logs)\n*** End Patch
 ```

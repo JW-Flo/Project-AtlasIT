@@ -4,6 +4,10 @@ compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+[vars]
+# Optional override of orchestrator base URL; fallback uses workers.dev default if unset
+ORCHESTRATOR_URL = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
+
 [observability.logs]
 enabled = true
 
