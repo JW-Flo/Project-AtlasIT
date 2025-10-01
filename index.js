@@ -385,6 +385,39 @@ export class JMLEngine {
 }
 
 async function handleFetch(request, env, ctx) {
+  // Early runtime binding diagnostics (only once per instance)
+  try {
+    if (!env.__BINDING_DIAGNOSTICS_EMITTED) {
+      const expected = [
+        "KV_SESSIONS",
+        "KV_CACHE",
+        "KV_FEATURE_FLAGS",
+        "MCP_STORE",
+        // D1
+        "ATLAS_CORE_DB",
+        "ATLAS_AUDIT_DB",
+        "ATLAS_COMPLIANCE_DB",
+        "ATLAS_AUDIT_SHADOW",
+        // R2 buckets
+        "atlas_policies",
+        "atlas_evidence",
+        "atlas_artifacts",
+      ];
+      const missing = expected.filter((k) => !(k in env));
+      if (missing.length) {
+        console.warn(
+          "[bindings] Missing Cloudflare bindings detected",
+          JSON.stringify({
+            missing,
+            hint: "Ensure wrangler.toml env.<name> sections include these bindings and they exist in the Cloudflare dashboard.",
+          }),
+        );
+      }
+      env.__BINDING_DIAGNOSTICS_EMITTED = true; // marker (non-persisted)
+    }
+  } catch (e) {
+    // swallow – diagnostics should never break request handling
+  }
   // Health check endpoint
   if (new URL(request.url).pathname === "/health") {
     // Allow health to succeed even if dispatcher binding not present (free plan / parallel rename mode)
@@ -491,8 +524,17 @@ async function handleFetch(request, env, ctx) {
       // NOTE: This is a placeholder. Cloudflare Workers cannot create bindings at runtime.
       // Instead, return a clear error and remediation hint.
       return new Response(
-        "Dispatcher namespace not configured. To auto-remediate: redeploy with correct wrangler.toml [[dispatch_namespaces]] binding.",
-        { status: 500 },
+        JSON.stringify({
+          error: "DISPATCHER_BINDING_MISSING",
+          message:
+            "Dispatcher namespace not configured (env.dispatcher undefined). Add a dispatch_namespaces entry to wrangler.toml or remove dispatch routing logic.",
+          remediation: {
+            wranglerExample:
+              "[[dispatch_namespaces]]\\nbinding = 'dispatcher'\\nnamespace = 'atlasit-dispatcher-namespace'",
+            docs: "https://developers.cloudflare.com/workers/platform/dispatch/",
+          },
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -501,8 +543,17 @@ async function handleFetch(request, env, ctx) {
       // Attempt auto-remediation: try to deploy a default sub-worker (not possible at runtime)
       // Instead, return a clear error and remediation hint.
       return new Response(
-        `Sub-worker "${subWorkerName}" not found in dispatcher. To auto-remediate: deploy the sub-worker to the dispatcher namespace.`,
-        { status: 502 },
+        JSON.stringify({
+          error: "SUBWORKER_NOT_FOUND",
+          subWorker: subWorkerName,
+          message: "Sub-worker not found in dispatcher namespace.",
+          remediation: {
+            action:
+              "Deploy or register the sub-worker in the dispatch namespace",
+            commandExample: "wrangler deploy --name=" + subWorkerName,
+          },
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
       );
     }
     const trace = ctx?.trace;

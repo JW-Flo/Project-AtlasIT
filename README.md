@@ -1,5 +1,85 @@
 # AtlasIT
 
+Cloudflare Workers based automation substrate for onboarding, orchestration, docs, and future compliance modules.
+
+## Cloudflare Binding Configuration (Diagnostics Reference)
+
+If you encounter responses indicating missing bindings (e.g. `DISPATCHER_BINDING_MISSING` or console warnings `[bindings] Missing Cloudflare bindings detected`), ensure the following are present in `wrangler.toml` for the target environment (e.g. `[env.core]`, `[env.production]`, or `[env.ai]`).
+
+### Required (current code references)
+
+- KV: `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`, `MCP_STORE`
+- D1: `ATLAS_CORE_DB`, `ATLAS_AUDIT_DB`, `ATLAS_COMPLIANCE_DB`, `ATLAS_AUDIT_SHADOW`
+- R2: `atlas_policies`, `atlas_evidence`, `atlas_artifacts`
+- Optional Dispatch Namespace: `dispatcher` (only if using sub-worker routing segments)
+
+### Example snippet for a new environment
+
+```toml
+[env.core]
+name = "atlasit-core"
+main = "index.js"
+compatibility_date = "2025-05-16"
+workers_dev = true
+
+[[env.core.kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "KV_CACHE"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "MCP_STORE"
+id = "<kv id>"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "<uuid>"
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "<uuid>"
+
+[[env.core.r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+[[env.core.r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+[[env.core.r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+# Optional (requires eligible plan)
+# [[env.core.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "atlasit-dispatcher-namespace"
+```
+
+### Local Secret Setup
+
+Secrets such as `SLACK_WEBHOOK_URL` or `AI_GATEWAY_TOKEN` must be set via Wrangler:
+
+```bash
+wrangler secret put SLACK_WEBHOOK_URL --env core
+wrangler secret put AI_GATEWAY_TOKEN --env ai
+```
+
+### Troubleshooting Steps
+
+1. Run `wrangler whoami` to confirm account.
+2. Run `wrangler deploy --env core` (or relevant env) and inspect output for binding mismatches.
+3. Use `wrangler kv namespace list`, `wrangler d1 list`, and `wrangler r2 bucket list` to verify resource existence.
+4. If dispatch errors occur and you do not need dispatch, remove the routing logic referencing `env.dispatcher` in `index.js`.
+
+### Runtime Diagnostics
+
+At startup, the worker emits a one-time console warning listing any missing expected bindings. This does not break the request lifecycle but should be addressed before production promotion.
+
 > Reality Snapshot (Sept 2025): The production codebase currently ships **three Cloudflare Workers (onboarding, orchestrator, docs)** plus a shared utility package. The broader UI vision (compliance center, policy engine, risk matrix, marketplace, API manager) **is NOT implemented yet**. This README makes that distinction explicit and outlines the incremental path forward.
 
 AtlasIT is an edge‑native automation substrate. The present deployed scope is intentionally slim: provision onboarding flows, run internal automation tasks, and publish operational documentation. All higher‑level governance & compliance modules remain roadmap items.
