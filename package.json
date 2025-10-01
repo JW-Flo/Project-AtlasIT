@@ -70,7 +70,7 @@
     "docs:artifacts": "npm run docs:changelog && npm run docs:links && npm run docs:runmeta",
     "build:console:report": "npm run build:console && node scripts/bundle-report.mjs console-app/dist",
     "bundle:report": "node scripts/bundle-report.mjs",
-    "deploy:console": "cd console-app && npx wrangler deploy .svelte-kit/cloudflare/_worker.js",
+    "deploy:console": "cd console-app && npx wrangler deploy",
     "qa:console": "node scripts/qa-console.mjs",
     "test:pw": "playwright test --reporter=line",
     "smoke:local": "node scripts/run-playwright-smoke.mjs",
