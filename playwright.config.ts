@@ -4,7 +4,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:8787";
 
 export default defineConfig({
   timeout: 30_000,
-  testDir: "./tests",
+  testDir: "./tests/smoke",
   retries: process.env.CI ? 2 : 0,
   use: {
     baseURL,
