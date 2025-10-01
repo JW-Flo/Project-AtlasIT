@@ -71,7 +71,8 @@
     "bundle:report": "node scripts/bundle-report.mjs",
     "deploy:console": "cd console-app && npx wrangler deploy .svelte-kit/cloudflare/_worker.js",
     "qa:console": "node scripts/qa-console.mjs",
-    "test:pw": "playwright test --reporter=line"
+    "test:pw": "playwright test --reporter=line",
+    "smoke:local": "node scripts/run-playwright-smoke.mjs"
   },
   "keywords": [
     "it-management",
@@ -104,7 +105,8 @@
     "vite": "^7.1.7",
     "vitest": "^2.1.9",
     "wrangler": "^4.40.2",
-    "@playwright/test": "^1.48.2"
+    "@playwright/test": "^1.48.2",
+    "@axe-core/playwright": "^4.9.1"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250927.0",
