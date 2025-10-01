@@ -27,8 +27,9 @@ Keys/
 # Ignore Prometheus local env
 Prometheus/.env
 
-# Ignore VS Code settings
-.vscode/
+# VS Code: allow committed shared settings but still ignore local state files
+.vscode/launch.json
+.vscode/extensions.json
 
 # Ignore Terraform state files
 terraform.tfstate
@@ -85,3 +86,14 @@ console-app/.svelte-kit/
 # Large local audit artifacts (regenerate on demand)
 audit-full.json
 audit-prod.json
+
+# Third-party Cloudflare dashboard dump / legacy plugin code (exclude heavy static assets & vendor PHP deps)
+docs/cloudflare/vendor/
+docs/cloudflare/assets/
+docs/cloudflare/fonts/
+docs/cloudflare/*.php
+docs/cloudflare/*.log
+docs/cloudflare/*.map
+docs/cloudflare/compiled.js
+docs/cloudflare/compiled.js.map
+docs/cloudflare/output.log
