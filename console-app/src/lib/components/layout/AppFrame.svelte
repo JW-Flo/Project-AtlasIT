@@ -6,16 +6,26 @@
   import ToastContainer from '../feedback/ToastContainer.svelte';
   import { push as pushToast } from '../feedback/toastStore';
 
+  import { getRuntimeConfig } from '../../config';
   interface NavItem { href: string; label: string; }
   export let nav: NavItem[] = [
     { href: '/console', label: 'Console' },
-    { href: '/api/mock/compliance/snapshot', label: 'Raw JSON' }
   ];
 
   let current: string = '';
-  onMount(() => {
+  onMount(async () => {
     current = location.pathname;
     initUx();
+    try {
+      const cfg = await getRuntimeConfig();
+      const base = cfg.complianceBase.replace(/\/$/, '');
+      nav = [
+        { href: '/console', label: 'Console' },
+        { href: `${base}/snapshot`, label: 'Raw JSON' }
+      ];
+    } catch {
+      // silent fallback keeps existing nav
+    }
   });
   let t: 'light' | 'dark' = 'dark';
   const unsub = theme.subscribe(v => t = v);

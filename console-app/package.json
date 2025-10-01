@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "^4.8.0",
-    "wrangler": "^3.114.14",
+    "wrangler": "^4.40.2",
     "miniflare": "^3.20240904.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",

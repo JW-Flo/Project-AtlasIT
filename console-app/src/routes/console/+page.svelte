@@ -35,15 +35,19 @@
   let loading = true;
   let error: string | null = null;
 
+  import { getRuntimeConfig } from "$lib/config";
+
   async function load() {
     loading = true;
     error = null;
     try {
-      const res = await fetch("/api/mock/compliance/snapshot");
-      if (!res.ok) throw new Error("fetch failed");
+      const cfg = await getRuntimeConfig();
+      const base = cfg.complianceBase.replace(/\/$/, "");
+      const res = await fetch(`${base}/snapshot`);
+      if (!res.ok) throw new Error(`fetch failed (${res.status})`);
       snapshot = await res.json();
     } catch (e: any) {
-      error = e.message || "unknown error";
+      error = e?.message || "unknown error";
     } finally {
       loading = false;
     }
@@ -56,9 +60,7 @@
   <div class="flex items-center justify-between mb-4">
     <div>
       <h1 class="text-3xl font-semibold mb-1">AtlasIT Console</h1>
-      <p class="text-sm text-white/60">
-        Mocked preview of compliance & risk view.
-      </p>
+  <p class="text-sm text-white/60">Compliance & risk snapshot view.</p>
     </div>
     <button
       on:click={load}
