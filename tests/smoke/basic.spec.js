@@ -1,5 +1,6 @@
 // Basic Playwright smoke tests (JS to avoid TS project parser conflicts)
-const { test, expect } = require("@playwright/test");
+// Basic Playwright smoke tests (ESM)
+import { test, expect } from "@playwright/test";
 
 test.describe("Smoke", () => {
   test("root responds", async ({ page }) => {
