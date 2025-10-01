@@ -43,6 +43,7 @@
     "documentation-worker/src/**/*.ts",
     "documentation-worker/test/**/*.ts",
     "scripts/**/*.ts",
+    "compliance-worker/src/**/*.ts",
     "src/**/*.ts"
   ],
   "exclude": [

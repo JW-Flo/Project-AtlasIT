@@ -87,6 +87,7 @@ export default [
           path.join(rootDir, "packages/shared/tsconfig.json"),
           path.join(rootDir, "documentation-worker/tsconfig.json"),
           path.join(rootDir, "console-app/tsconfig.json"),
+          path.join(rootDir, "compliance-worker/tsconfig.json"),
           path.join(rootDir, "demo-app/tsconfig.json"),
         ],
       },

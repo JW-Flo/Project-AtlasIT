@@ -1,0 +1,15 @@
+name = "atlasit-compliance-worker"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+workers_dev = true
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
+routes = ["atlasit.pro/api/compliance/*"]
+
+[vars]
+# Future environment variables (COMPLIANCE_FEATURE_FLAGS, etc.)
+
+[[d1_databases]]
+binding = "D1_COMPLIANCE"
+database_name = "atlasit_compliance"
+database_id = "__TO_BE_FILLED_IN__" # Replace with actual D1 database id in production account

@@ -31,6 +31,14 @@ paths:
                   service: { type: string, example: compliance-worker }
                   timestamp: { type: number, format: int64 }
                   version: { type: string }
+                  snapshotAgeSeconds:
+                    type: integer
+                    minimum: 0
+                    nullable: true
+                    description: Age in seconds of most recent persisted snapshot if available
+                  d1:
+                    type: boolean
+                    description: Indicates whether D1 binding is configured
   /api/compliance/snapshot:
     get:
       summary: Get compliance snapshot
