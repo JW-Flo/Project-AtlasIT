@@ -18,8 +18,8 @@
     "svelte": "^5.0.0"
   },
   "devDependencies": {
-    "@sveltejs/adapter-cloudflare": "^4.8.0",
-    "wrangler": "^4.40.2",
+    "@sveltejs/adapter-cloudflare": "^7.2.3",
+    "wrangler": "^4.40.3",
     "miniflare": "^3.20240904.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
