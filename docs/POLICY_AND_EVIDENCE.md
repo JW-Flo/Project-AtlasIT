@@ -2,7 +2,7 @@
 
 Status: Draft
 Owner: AtlasIT Platform
-Last Updated: 2025-09-17
+Last Updated: 2025-09-30
 
 ## Purpose
 
@@ -20,7 +20,7 @@ Define how policies are authored, evaluated, and how resulting evidence is produ
 
 ## Evaluation Contract
 
-- Input: `subject` (tenant, user, posture, context), `policyPackRef`, `timestamp`.
+- Input: `tenantId` (explicit), `subject` (tenant, user, posture, context), `policyPackRef`, `timestamp`.
 - Output: `result` (decisions, entitlement deltas, violations[]) and `evidenceEnvelope`.
 - Determinism: functions limited to pure ops; no wall-clock beyond provided `timestamp`.
 
@@ -29,24 +29,62 @@ Define how policies are authored, evaluated, and how resulting evidence is produ
 ```json
 {
   "id": "uuid",
-  "tenantId": "t_...",
+  "tenantId": "t_...", // mandatory for *all* envelopes (multi-tenant isolation)
   "policyPack": {
     "name": "baseline-mfa",
     "version": "1.2.0",
     "checksum": "sha256:..."
   },
-  "subject": { "userId": "u_...", "attributes": {"department":"Sales"} },
+  "subject": { "userId": "u_...", "attributes": { "department": "Sales" } },
   "result": { "allow": true, "requirements": ["mfa"] },
   "artifacts": [
-    { "kind": "ruleset", "hash": "sha256:...", "path": "packs/baseline-mfa/rules/main.json" },
+    {
+      "kind": "ruleset",
+      "hash": "sha256:...",
+      "path": "packs/baseline-mfa/rules/main.json"
+    },
     { "kind": "input", "hash": "sha256:..." }
   ],
-  "hash": "sha256:...", // of canonicalized envelope without storage fields
+  "hash": "sha256:...", // of canonicalized envelope without storage fields (stable key order)
   "createdAt": "2025-09-17T23:00:00Z"
 }
 ```
 
 - Canonicalization: stable JSON serialization (sorted keys, UTF-8); hash using `sha256`.
+- Re-computation of hash MUST yield identical value for identical semantic content; any deviation triggers integrity alert.
+
+### Risk Model (Added 2025-09-30)
+
+Risk objects produced or aggregated into snapshots include:
+
+```json
+{
+  "id": "R1",
+  "title": "Example risk",
+  "likelihood": 4,
+  "impact": 3,
+  "score": 12,
+  "severity": "high"
+}
+```
+
+Derivations:
+
+- `score = likelihood * impact` (1–25)
+- Suggested severity mapping: 1–5 low, 6–10 medium, 11–16 high, 17–25 critical.
+- Manual severity override allowed but stored alongside derived score for transparency.
+
+Validation Rules:
+
+1. `likelihood` and `impact` integers in range [1,5].
+2. `score` must equal `likelihood * impact` or evaluation rejected.
+3. `severity` must match mapping unless override flag present (`severityOverride=true`).
+
+### Versioning & Schema Evolution
+
+- All policy & evidence JSON structures are append‑only; field removal requires a major version bump.
+- OpenAPI specification (`docs/api/openapi.yaml`) is source of truth for public response shapes.
+- Breaking change process: propose → review → CHANGELOG entry → gated merge via contract workflow.
 
 ## Storage Model
 
@@ -89,7 +127,7 @@ npm run render:compliance
 ```
 
 Outputs:
+
 - `docs/COMPLIANCE_SNAPSHOT.md` for human review
 - `artifacts/policy/snapshot.md` (identical copy)
 - `artifacts/policy/RUN.json` with metadata about the render (timestamp, controls)
-

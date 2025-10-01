@@ -142,12 +142,25 @@ MIT License. See `LICENSE` if provided by the repository owner.
 
 ## UI Console (SvelteKit – Experimental)
 
-An internal compliance & risk prototype now lives under `console-app/` (SvelteKit + Tailwind). It exposes a mock endpoint at `/api/mock/compliance/snapshot` and a dashboard view at `/console` visualizing framework coverage, a risk matrix, and policy cards.
+An internal compliance & risk prototype now lives under `console-app/` (SvelteKit + Tailwind). It exposes a runtime config endpoint at `/api/config` used by the UI to discover the compliance API base (`complianceBase`). By default this falls back to the local mock implementation at `/api/mock/compliance/snapshot` and a dashboard view at `/console` visualizing framework coverage, a risk matrix, and policy cards.
 
 Run locally:
 
 ```bash
 npm run dev:console
+```
+
+Runtime config validation (optional):
+
+```bash
+curl -s http://localhost:5173/api/config | jq
+curl -s "http://localhost:5173$(curl -s http://localhost:5173/api/config | jq -r .complianceBase)/snapshot" | jq '.frameworkSummary[0]'
+```
+
+To point the UI at a deployed compliance worker set `COMPLIANCE_BASE` (copy `console-app/.env.example` → `.env`):
+
+```bash
+COMPLIANCE_BASE=https://your-compliance-worker.example.com/api/compliance
 ```
 
 The prior temporary React `demo-app/` has been removed after migration to a unified SvelteKit approach.

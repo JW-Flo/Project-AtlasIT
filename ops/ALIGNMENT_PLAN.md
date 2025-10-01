@@ -396,8 +396,8 @@ Status: SCAFFOLDED (awaiting deployment & handler enrichment)
 
 Enhancement Completed:
 - Implemented concrete job execution in `scheduler-worker/index.js` with:
-	- `daily_etl` (mapped from cron `0 2 * * *`) hitting orchestrator `/internal/etl/run` (placeholder endpoint pending server implementation).
-	- `quarter_hour_monitor` (mapped from cron `15 * * * *`) calling orchestrator `/status` for lightweight health/ratelimit signal.
+ - `daily_etl` (mapped from cron `0 2 * * *`) hitting orchestrator `/internal/etl/run` (placeholder endpoint pending server implementation).
+ - `quarter_hour_monitor` (mapped from cron `15 * * * *`) calling orchestrator `/status` for lightweight health/ratelimit signal.
 - Added retry/backoff wrapper (`fetchWithRetry`) and structured JSON logging for job start/success/failure.
 - Added guarded manual trigger endpoint `/internal/run?jobs=job1,job2` protected via `x-debug-key` header (`SCHEDULER_DEBUG_KEY`).
 - Added `ORCHESTRATOR_URL` + `SCHEDULER_DEBUG_KEY` placeholders to `.env.example` and vars stanza in `scheduler-worker/wrangler.toml`.

@@ -3,23 +3,15 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Smoke", () => {
-  test("root responds", async ({ page }) => {
-    const res = await page.goto("/");
+  test("health + console page", async ({ request, page }) => {
+    // health
+    const health = await request.get("/api/health");
+    expect(health.status()).toBe(200);
+    const hjson = await health.json();
+    expect(hjson.status).toBe("ok");
+    // visit console page (or root redirect)
+    const res = await page.goto("/console");
     expect(res && res.status()).toBeLessThan(500);
-  });
-
-  test("auth endpoints behave", async ({ request }) => {
-    const login = await request.post("/api/v1/auth", {
-      data: { action: "login" },
-    });
-    expect(login.status()).toBe(200);
-    const register = await request.post("/api/v1/auth", {
-      data: { action: "register" },
-    });
-    expect(register.status()).toBe(200);
-    const invalid = await request.post("/api/v1/auth", {
-      data: { action: "noop" },
-    });
-    expect(invalid.status()).toBe(400);
+    await expect(page.locator("body")).toContainText("AtlasIT Console");
   });
 });

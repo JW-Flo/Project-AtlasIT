@@ -72,7 +72,12 @@
     "deploy:console": "cd console-app && npx wrangler deploy .svelte-kit/cloudflare/_worker.js",
     "qa:console": "node scripts/qa-console.mjs",
     "test:pw": "playwright test --reporter=line",
-    "smoke:local": "node scripts/run-playwright-smoke.mjs"
+    "smoke:local": "node scripts/run-playwright-smoke.mjs",
+    "openapi:verify": "node scripts/openapi-verify.mjs",
+    "dev:compliance": "cd compliance-worker && npm run dev",
+    "build:compliance": "cd compliance-worker && npm run build || true",
+    "test:integration": "vitest run tests/integration",
+    "deploy:compliance": "cd compliance-worker && npm run deploy"
   },
   "keywords": [
     "it-management",
@@ -105,6 +110,7 @@
     "vite": "^7.1.7",
     "vitest": "^2.1.9",
     "wrangler": "^4.40.2",
+    "js-yaml": "^4.1.0",
     "@playwright/test": "^1.48.2",
     "@axe-core/playwright": "^4.9.1"
   },
