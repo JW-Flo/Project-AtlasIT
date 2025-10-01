@@ -34,6 +34,7 @@ export default [
       "**/build/**",
       "**/*.d.ts",
       "playwright.config.ts",
+      "apex-redirect-worker/src/index.ts",
     ],
   },
   {

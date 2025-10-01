@@ -1,35 +1,35 @@
 name: Integration Tests
 
 on:
-  pull_request:
-    paths:
-      - 'compliance-worker/**'
-      - 'ai-orchestrator/**'
-      - 'tests/integration/**'
-      - 'src/lib/canonical-json.ts'
-      - 'package.json'
-      - '.github/workflows/integration-tests.yml'
+    pull_request:
+        paths:
+            - "compliance-worker/**"
+            - "ai-orchestrator/**"
+            - "tests/integration/**"
+            - "src/lib/canonical-json.ts"
+            - "package.json"
+            - ".github/workflows/integration-tests.yml"
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Run integration tests
-        run: npm run test:integration
-      - name: Upload test artifacts (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-logs
-          path: |
-            vitest-report.*
-            **/vitest.output.log
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: "npm"
+            - name: Install dependencies
+              run: npm ci --no-audit --no-fund
+            - name: Run integration tests
+              run: npm run test:integration
+            - name: Upload test artifacts (on failure)
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: integration-logs
+                  path: |
+                      vitest-report.*
+                      **/vitest.output.log

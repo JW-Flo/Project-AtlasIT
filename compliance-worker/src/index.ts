@@ -1,4 +1,16 @@
 import { hashCanonicalJson } from "../../src/lib/canonical-json";
+import { executeWorkflow, getExecution } from "./modules/automation/service";
+import type { WorkflowType } from "./modules/automation/templates";
+import type { WorkflowExecutionRecord } from "./modules/automation/store";
+import { requireTenant, AuthError } from "./modules/auth";
+import {
+  ensurePolicyInfrastructure,
+  listTemplates as listPolicyTemplates,
+  generatePolicyDocument,
+  evaluatePolicyInput,
+  coverageSummary,
+  recordEvidenceControlLink,
+} from "./modules/policies/service";
 import {
   ComplianceSnapshot,
   EvidenceIngestRequest,
@@ -13,6 +25,9 @@ interface Env {
   EVIDENCE_BUCKET?: R2Bucket;
   atlasit_evidence?: R2Bucket;
   BUILD_VERSION?: string;
+  API_TOKENS?: KVNamespace;
+  api_tokens?: KVNamespace;
+  apiTokens?: KVNamespace;
 }
 
 const SNAPSHOT_TTL_SECONDS = 300;
@@ -26,6 +41,505 @@ const SECURITY_HEADERS: Record<string, string> = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
+
+const WORKFLOW_TYPES: WorkflowType[] = ["joiner", "mover", "leaver"];
+
+interface AutomationResponseStep {
+  stepId: string;
+  action: string;
+  status: string;
+  attempts: number;
+  output?: unknown;
+  error?: string | null;
+  startedAt: string;
+  completedAt?: string;
+  durationMs: number;
+}
+
+interface AutomationResponseBody {
+  execution: {
+    id: string;
+    tenantId: string;
+    type: WorkflowType;
+    subjectRef: string | null;
+    status: string;
+    createdAt: string;
+    completedAt?: string | null;
+    durationMs: number;
+    steps: AutomationResponseStep[];
+  };
+  meta: {
+    idempotentHit: boolean;
+  };
+}
+
+function mapExecutionToResponse(
+  execution: WorkflowExecutionRecord,
+  idempotentHit: boolean,
+): AutomationResponseBody {
+  const steps: AutomationResponseStep[] = execution.steps.map((step) => ({
+    stepId: step.stepId,
+    action: step.action,
+    status: step.status,
+    attempts: step.attempts,
+    output: step.output,
+    error: step.error ?? null,
+    startedAt: step.startedAt,
+    completedAt: step.completedAt,
+    durationMs: step.durationMs,
+  }));
+
+  return {
+    execution: {
+      id: execution.id,
+      tenantId: execution.tenantId,
+      type: execution.workflowType,
+      subjectRef: execution.subjectRef ?? null,
+      status: execution.status,
+      createdAt: execution.createdAt,
+      completedAt: execution.completedAt ?? null,
+      durationMs: execution.durationMs,
+      steps,
+    },
+    meta: {
+      idempotentHit,
+    },
+  };
+}
+
+async function handlePolicyTemplates(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+      ["policies:manage"],
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(503, requestId, headers, "Policy store unavailable");
+  }
+
+  try {
+    await ensurePolicyInfrastructure(db);
+    const templates = await listPolicyTemplates(db);
+    const body = {
+      templates: templates.map((tpl) => ({
+        key: tpl.key,
+        name: tpl.name,
+        format: tpl.format,
+      })),
+    };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: mergeHeaders(headers, { "content-type": "application/json" }),
+    });
+  } catch (err) {
+    log("error", "policy.templates.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(
+      500,
+      requestId,
+      headers,
+      "Failed to list policy templates",
+    );
+  }
+}
+
+async function persistPolicyToR2(
+  bucket: R2Bucket,
+  record: {
+    hash: string;
+    content: string;
+    tenantId: string;
+    templateKey: string;
+    contextHash: string;
+    reused: boolean;
+  },
+) {
+  const key = `policies/${record.hash}.md`;
+  if (record.reused) {
+    const head = await bucket.head(key);
+    if (head) return key;
+  }
+  await bucket.put(key, record.content, {
+    httpMetadata: { contentType: "text/markdown; charset=utf-8" },
+    customMetadata: {
+      tenantId: record.tenantId,
+      templateKey: record.templateKey,
+      contextHash: record.contextHash,
+    },
+  });
+  return key;
+}
+
+async function handlePolicyGenerate(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+      ["policies:manage"],
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const bucket = resolveR2(env);
+  if (!bucket) {
+    return errorResponse(501, requestId, headers, "Policy storage unavailable");
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(503, requestId, headers, "Policy store unavailable");
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(400, requestId, headers, "Invalid JSON payload");
+  }
+
+  const templateKey =
+    typeof body?.templateKey === "string" ? body.templateKey : undefined;
+  if (!templateKey) {
+    return errorResponse(400, requestId, headers, "templateKey is required");
+  }
+  const input = body?.input && typeof body.input === "object" ? body.input : {};
+
+  try {
+    const result = await generatePolicyDocument({
+      db,
+      tenantId: tenant.tenantId,
+      templateKey,
+      input,
+    });
+
+    await persistPolicyToR2(bucket, {
+      hash: result.hash,
+      content: result.content,
+      tenantId: tenant.tenantId,
+      templateKey,
+      contextHash: result.contextHash,
+      reused: result.reused,
+    });
+
+    const responseBody = {
+      hash: result.hash,
+      contextHash: result.contextHash,
+      content: result.content,
+      templateKey,
+      reused: result.reused,
+      createdAt: result.createdAt,
+      sizeBytes: result.sizeBytes,
+    };
+
+    log("info", "policy.generate", {
+      requestId,
+      tenantId: tenant.tenantId,
+      templateKey,
+      hash: result.hash,
+      reused: result.reused,
+    });
+
+    return new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: mergeHeaders(headers, { "content-type": "application/json" }),
+    });
+  } catch (err) {
+    log("error", "policy.generate.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      templateKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to generate policy");
+  }
+}
+
+async function handlePolicyEvaluate(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+      ["policies:manage"],
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(503, requestId, headers, "Policy store unavailable");
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(400, requestId, headers, "Invalid JSON payload");
+  }
+
+  const policyKey =
+    typeof body?.policyKey === "string" ? body.policyKey : undefined;
+  if (!policyKey) {
+    return errorResponse(400, requestId, headers, "policyKey is required");
+  }
+  const input = body?.input && typeof body.input === "object" ? body.input : {};
+
+  try {
+    const result = await evaluatePolicyInput({
+      db,
+      tenantId: tenant.tenantId,
+      policyKey,
+      input,
+    });
+    return new Response(
+      JSON.stringify({
+        hash: result.hash,
+        result: result.result,
+        meta: { deterministic: true },
+      }),
+      {
+        status: 200,
+        headers: mergeHeaders(headers, { "content-type": "application/json" }),
+      },
+    );
+  } catch (err) {
+    log("error", "policy.evaluate.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      policyKey,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to evaluate policy");
+  }
+}
+
+async function handlePolicyCoverage(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+      ["policies:manage"],
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(503, requestId, headers, "Policy store unavailable");
+  }
+
+  const url = new URL(request.url);
+  const framework = url.searchParams.get("framework") || "SOC2";
+
+  try {
+    const summary = await coverageSummary(db, framework, tenant.tenantId);
+    return new Response(JSON.stringify({ framework, ...summary }), {
+      status: 200,
+      headers: mergeHeaders(headers, { "content-type": "application/json" }),
+    });
+  } catch (err) {
+    log("error", "policy.coverage.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      framework,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(
+      500,
+      requestId,
+      headers,
+      "Failed to load policy coverage",
+    );
+  }
+}
+
+async function handleWorkflowExecute(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+      ["automation:execute"],
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(
+      503,
+      requestId,
+      headers,
+      "Automation store unavailable",
+    );
+  }
+
+  let payload: any;
+  try {
+    payload = await request.json();
+  } catch {
+    return errorResponse(400, requestId, headers, "Invalid JSON payload");
+  }
+
+  const workflowType = payload?.type as WorkflowType | undefined;
+  if (!workflowType || !WORKFLOW_TYPES.includes(workflowType)) {
+    return errorResponse(400, requestId, headers, "Unsupported workflow type");
+  }
+
+  const subjectRef =
+    typeof payload?.subjectRef === "string" && payload.subjectRef.trim()
+      ? payload.subjectRef.trim()
+      : undefined;
+  if (!subjectRef) {
+    return errorResponse(400, requestId, headers, "subjectRef is required");
+  }
+
+  const headerIdempotency = request.headers.get("Idempotency-Key") || undefined;
+  const bodyIdempotency =
+    typeof payload.idempotencyKey === "string"
+      ? payload.idempotencyKey
+      : undefined;
+  const idempotencyKey = headerIdempotency || bodyIdempotency;
+
+  try {
+    const { execution, idempotentHit } = await executeWorkflow({
+      db,
+      tenantId: tenant.tenantId,
+      workflowType,
+      subjectRef,
+      idempotencyKey,
+      overrides: payload?.overrides,
+    });
+
+    log("info", "automation.execution.completed", {
+      requestId,
+      tenantId: tenant.tenantId,
+      workflowType,
+      executionId: execution.id,
+      idempotent: idempotentHit,
+    });
+
+    const responseBody = mapExecutionToResponse(execution, idempotentHit);
+    return new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: mergeHeaders(headers, { "content-type": "application/json" }),
+    });
+  } catch (err) {
+    log("error", "automation.execution.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      workflowType,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to execute workflow");
+  }
+}
+
+async function handleWorkflowGet(
+  request: Request,
+  env: Env,
+  executionId: string,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(
+      request,
+      env as unknown as Record<string, unknown>,
+    );
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const db = resolveD1(env);
+  if (!db) {
+    return errorResponse(
+      503,
+      requestId,
+      headers,
+      "Automation store unavailable",
+    );
+  }
+
+  try {
+    const execution = await getExecution(db, tenant.tenantId, executionId);
+    if (!execution) {
+      return errorResponse(404, requestId, headers, "Execution not found");
+    }
+    const body = mapExecutionToResponse(execution, false);
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: mergeHeaders(headers, { "content-type": "application/json" }),
+    });
+  } catch (err) {
+    log("error", "automation.execution.read_error", {
+      requestId,
+      executionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to load execution");
+  }
+}
 
 function resolveD1(env: Env): D1Database | undefined {
   return env.D1_COMPLIANCE || env.atlasit_compliance;
@@ -449,12 +963,23 @@ async function handleEvidenceIngest(
     return errorResponse(400, requestId, headers, "Invalid evidence payload");
   }
   const { serialized } = serializedInfo;
-  if (new TextEncoder().encode(serialized).byteLength > maxBytes) {
-    return errorResponse(
-      413,
+  const payloadSize = new TextEncoder().encode(serialized).byteLength;
+  if (payloadSize > maxBytes) {
+    log("warn", "evidence.payload.too_large", {
       requestId,
-      headers,
-      `Evidence payload exceeds max ${maxBytes} bytes`,
+      bytes: payloadSize,
+      maxBytes,
+    });
+    return new Response(
+      JSON.stringify({
+        error: "evidence_too_large",
+        maxBytes,
+        requestId,
+      }),
+      {
+        status: 413,
+        headers: mergeHeaders(headers, { "content-type": "application/json" }),
+      },
     );
   }
 
@@ -498,6 +1023,17 @@ async function handleEvidenceIngest(
       error: (e as Error).message,
     });
     return errorResponse(500, requestId, headers, "Failed to index evidence");
+  }
+
+  try {
+    await recordEvidenceControlLink(db, pack, hash, tenantId);
+  } catch (e) {
+    log("warn", "evidence.control_link.error", {
+      requestId,
+      hash,
+      pack,
+      error: (e as Error).message,
+    });
   }
 
   const isNew = stored || indexed;
@@ -684,6 +1220,42 @@ export default {
 
     if (url.pathname === "/health" && method === "GET") {
       return handleHealth(env, requestId, headers);
+    }
+
+    if (url.pathname === "/api/v1/workflows/execute" && method === "POST") {
+      return handleWorkflowExecute(request, env, requestId, headers);
+    }
+
+    if (
+      url.pathname.startsWith("/api/v1/workflows/executions/") &&
+      method === "GET"
+    ) {
+      const executionId = url.pathname.split("/").pop();
+      if (!executionId) {
+        return errorResponse(
+          400,
+          requestId,
+          headers,
+          "Missing execution identifier",
+        );
+      }
+      return handleWorkflowGet(request, env, executionId, requestId, headers);
+    }
+
+    if (url.pathname === "/api/v1/policies/templates" && method === "GET") {
+      return handlePolicyTemplates(request, env, requestId, headers);
+    }
+
+    if (url.pathname === "/api/v1/policies/generate" && method === "POST") {
+      return handlePolicyGenerate(request, env, requestId, headers);
+    }
+
+    if (url.pathname === "/api/v1/policy/evaluate" && method === "POST") {
+      return handlePolicyEvaluate(request, env, requestId, headers);
+    }
+
+    if (url.pathname === "/api/v1/policies/coverage" && method === "GET") {
+      return handlePolicyCoverage(request, env, requestId, headers);
     }
 
     if (

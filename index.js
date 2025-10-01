@@ -18,7 +18,7 @@ function isFeatureEnabled(env, flag) {
   return false;
 }
 
-const STEP_DEFINITIONS = {
+export const STEP_DEFINITIONS = {
   joiner: [
     {
       id: "validate-profile",
@@ -99,7 +99,7 @@ const STEP_DEFINITIONS = {
   ],
 };
 
-const STEP_HANDLERS = {
+export const STEP_HANDLERS = {
   async validateProfile({ run }) {
     const { user } = run.context;
     if (!user || !user.email) {

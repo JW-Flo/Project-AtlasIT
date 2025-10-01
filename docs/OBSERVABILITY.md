@@ -70,10 +70,6 @@ Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Wo
 | `evidence_ingest_failures` | Counter | R2/D1 write failures                       | `evidence.*.error` logs |
 | `request_duration_ms`      | Sample  | Latency SLO tracking                       | Structured logs         |
 | `bundle_total_bytes`       | Gauge   | Frontend bundle size guardrail             | CI `bundle-report` step |
-| `ai_quota_used`            | Gauge   | AI request consumption vs. limit           | Orchestrator `/health`  |
-| `ai_quota_remaining`       | Gauge   | Remaining free-plan capacity               | Orchestrator `/health`  |
-| `ai_rate_limited_total`    | Counter | Soft-abuse detections per IP window        | `ai.rate_limit` logs    |
-| `ai_rate_config_seconds`   | Gauge   | Exposed burst/window configuration         | Orchestrator `/health`  |
 
 ## Performance Budgets
 
@@ -101,9 +97,7 @@ Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Wo
   "snapshotAgeSeconds": 42,
   "d1": true,
   "r2": true,
-  "evidenceCount": 12,
-  "aiQuotaUsed": null,
-  "aiQuotaRemaining": null
+  "evidenceCount": 12
 }
 ```
 
@@ -112,10 +106,9 @@ Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Wo
 ```json
 {
   "status": "healthy",
-  "service": "ai-orchestrator",
+  "service": "orchestrator",
   "quota": { "date": "2025-10-01", "used": 5, "limit": 500, "remaining": 495 },
-  "rateLimitWindowSeconds": 60,
-  "rateLimitBurst": 10
+  "rateLimit": { "windowSeconds": 60, "burst": 10 }
 }
 ```
 

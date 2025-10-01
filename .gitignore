@@ -66,8 +66,9 @@ mcp/_remote.log
 # Build outputs (JS, maps, type declarations)
 dist/
 **/dist/
-packages/shared/dist/
 onboarding/dist/
+# Exception: commit shared dist (used by workers without build step in certain deployments)
+!packages/shared/dist/
 
 # Example env file tracked separately; real env files ignored above
 .env.example

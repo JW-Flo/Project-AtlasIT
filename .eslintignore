@@ -1,0 +1,5 @@
+# Ignore generated bundles and vendor
+**/dist/
+console-app/.svelte-kit/
+# Ignore apex redirect JS file from TS project parsing
+apex-redirect-worker/src/index.ts

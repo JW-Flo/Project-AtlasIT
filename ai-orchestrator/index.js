@@ -826,24 +826,30 @@ async function collectR2Metrics(env) {
 }
 
 app.get("/health", async (c) => {
-  const env = c.env || {};
-  const r2 = await collectR2Metrics(env);
-  const limit = parseInt(env.AI_MAX_REQUESTS_PER_DAY || "0", 10) || 0;
-  const quotaSnapshot = await readQuotaSnapshot(env, limit);
-  const windowSeconds =
-    parseInt(env.AI_RATE_WINDOW_SECONDS || "", 10) ||
-    DEFAULT_AI_RATE_WINDOW_SECONDS;
-  const burst = parseInt(env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
-
+  const r2 = await collectR2Metrics(c.env || {});
+  const quotaLimit = parseInt(c.env.AI_MAX_REQUESTS_PER_DAY || "500", 10);
+  const persisted = await readPersistedQuota(c.env || {});
+  const remaining =
+    quotaLimit > 0 ? Math.max(0, quotaLimit - persisted.count) : null;
   return c.json({
     status: "healthy",
-    service: "ai-orchestrator",
+    service: "orchestrator",
     timestamp: new Date().toISOString(),
     requestId: c.get("requestId"),
     actor: c.get("actor"),
-    quota: quotaSnapshot,
-    rateLimitWindowSeconds: windowSeconds,
-    rateLimitBurst: burst,
+    quota: {
+      date: persisted.date,
+      used: persisted.count,
+      limit: quotaLimit,
+      remaining,
+    },
+    rateLimit: {
+      windowSeconds: parseInt(c.env.AI_RATE_WINDOW_SECONDS || "60", 10),
+      burst: parseInt(
+        c.env.AI_RATE_BURST || c.env.AI_RATE_LIMIT_BURST || "10",
+        10,
+      ),
+    },
     r2,
   });
 });
@@ -890,12 +896,6 @@ app.get("/workflow/:id", (c) => {
 });
 
 // Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
-
-export function __resetAiStateForTests() {
-  aiDaily = { day: null, count: 0 };
-  rateLimits.clear();
-  aiIpRateBuckets.clear();
-}
 
 export async function handleRequest(req, env, ctx) {
   resolveCfApiToken(env);
