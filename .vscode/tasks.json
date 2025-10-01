@@ -47,7 +47,7 @@
         "sonarqube-local",
         "-p",
         "9000:9000",
-        "sonarqube:lts"
+        "sonarqube:2025.1-community"
       ],
       "problemMatcher": [],
       "detail": "Start local SonarQube (Eclipse Temurin JRE bundled in image)"

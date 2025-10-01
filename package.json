@@ -80,7 +80,8 @@
     "deploy:compliance": "cd compliance-worker && npm run deploy",
     "migrate:compliance": "wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml",
     "codex:guard": "node scripts/guard-codex-boundaries.mjs",
-    "sonar:scan": "node scripts/sonar-scan.mjs"
+    "sonar:scan": "node scripts/sonar-scan.mjs",
+    "sonar:upgrade": "bash scripts/sonar-upgrade.sh"
   },
   "keywords": [
     "it-management",
