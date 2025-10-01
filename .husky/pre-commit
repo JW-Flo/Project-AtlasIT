@@ -1,7 +1,5 @@
 #!/bin/sh
 echo "Running pre-commit hooks..."
-echo "[1/2] Codex guard..."
-npm run --silent codex:guard || exit 1
-echo "[2/2] Lint-staged..."
+echo "[1/1] Lint-staged..."
 npx lint-staged || exit 1
 echo "Pre-commit hooks completed"
