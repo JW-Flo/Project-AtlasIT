@@ -10,10 +10,13 @@
     "test": "vitest run || echo 'No orchestrator tests defined'"
   },
   "dependencies": {
+    "@sveltejs/adapter-cloudflare": "^7.2.3",
+    "@sveltejs/kit": "^2.43.7",
+    "esbuild": "^0.25.10",
     "hono": "^4.3.0"
   },
   "devDependencies": {
-    "vitest": "^2.1.9",
-    "wrangler": "^4.40.2"
+    "vitest": "^3.2.4",
+    "wrangler": "^4.40.3"
   }
 }
