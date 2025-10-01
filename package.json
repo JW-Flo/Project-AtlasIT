@@ -78,7 +78,8 @@
     "build:compliance": "cd compliance-worker && npm run build || true",
     "test:integration": "vitest run tests/integration",
     "deploy:compliance": "cd compliance-worker && npm run deploy",
-    "migrate:compliance": "wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml"
+    "migrate:compliance": "wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml",
+    "codex:guard": "node scripts/guard-codex-boundaries.mjs"
   },
   "keywords": [
     "it-management",
