@@ -3,7 +3,18 @@ import { ComplianceSnapshot, deriveRiskScore, deriveSeverity } from "./types";
 export const __complianceWorker = true;
 
 interface Env {
-  D1_COMPLIANCE?: D1Database;
+  D1_COMPLIANCE?: D1Database; // preferred binding name
+  atlasit_compliance?: D1Database; // actual auto-added name
+  EVIDENCE_BUCKET?: R2Bucket;
+  atlasit_evidence?: R2Bucket;
+}
+
+function resolveD1(env: Env): D1Database | undefined {
+  return env.D1_COMPLIANCE || env.atlasit_compliance;
+}
+
+function resolveR2(env: Env): R2Bucket | undefined {
+  return env.EVIDENCE_BUCKET || env.atlasit_evidence;
 }
 
 function log(level: string, event: string, data: Record<string, unknown> = {}) {
@@ -82,11 +93,14 @@ async function getPersistedSnapshot(
   tenantId: string,
   maxAgeSeconds: number,
 ): Promise<ComplianceSnapshot | null> {
-  if (!env.D1_COMPLIANCE) return null;
+  const db = resolveD1(env);
+  if (!db) return null;
   try {
-    const stmt = env.D1_COMPLIANCE.prepare(
-      "SELECT data, generated_at FROM snapshots WHERE tenant_id = ? LIMIT 1",
-    ).bind(tenantId);
+    const stmt = db
+      .prepare(
+        "SELECT data, generated_at FROM snapshots WHERE tenant_id = ? LIMIT 1",
+      )
+      .bind(tenantId);
     const row: any = await stmt.first();
     if (!row) return null;
     const parsed: ComplianceSnapshot = JSON.parse(row.data);
@@ -106,11 +120,13 @@ async function persistSnapshot(
   tenantId: string,
   snapshot: ComplianceSnapshot,
 ) {
-  if (!env.D1_COMPLIANCE) return;
+  const db = resolveD1(env);
+  if (!db) return;
   try {
-    await env.D1_COMPLIANCE.prepare(
-      "INSERT OR REPLACE INTO snapshots (tenant_id, generated_at, data) VALUES (?, ?, ?)",
-    )
+    await db
+      .prepare(
+        "INSERT OR REPLACE INTO snapshots (tenant_id, generated_at, data) VALUES (?, ?, ?)",
+      )
       .bind(tenantId, snapshot.generatedAt, JSON.stringify(snapshot))
       .run();
   } catch (e) {
@@ -119,10 +135,11 @@ async function persistSnapshot(
 }
 
 async function ensureSchema(env: Env) {
-  if (!env.D1_COMPLIANCE) return;
+  const db = resolveD1(env);
+  if (!db) return;
   // Simple lazy schema init (idempotent)
   try {
-    await env.D1_COMPLIANCE.exec(`CREATE TABLE IF NOT EXISTS snapshots (
+    await db.exec(`CREATE TABLE IF NOT EXISTS snapshots (
       tenant_id TEXT PRIMARY KEY,
       generated_at TEXT NOT NULL,
       data TEXT NOT NULL
@@ -146,11 +163,14 @@ async function handleHealth(
   cors: Record<string, string>,
 ) {
   let latestAge: number | undefined;
-  if (env.D1_COMPLIANCE) {
+  const db = resolveD1(env);
+  if (db) {
     try {
-      const row: any = await env.D1_COMPLIANCE.prepare(
-        "SELECT generated_at FROM snapshots ORDER BY generated_at DESC LIMIT 1",
-      ).first();
+      const row: any = await db
+        .prepare(
+          "SELECT generated_at FROM snapshots ORDER BY generated_at DESC LIMIT 1",
+        )
+        .first();
       if (row?.generated_at) {
         latestAge = Math.floor(
           (Date.now() - new Date(row.generated_at).getTime()) / 1000,
@@ -167,7 +187,8 @@ async function handleHealth(
       timestamp: Date.now(),
       version: "1.0.1",
       snapshotAgeSeconds: latestAge,
-      d1: !!env.D1_COMPLIANCE,
+      d1: !!db,
+      r2: !!resolveR2(env),
     }),
     {
       status: 200,

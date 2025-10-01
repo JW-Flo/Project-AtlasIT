@@ -39,6 +39,9 @@ paths:
                   d1:
                     type: boolean
                     description: Indicates whether D1 binding is configured
+                  r2:
+                    type: boolean
+                    description: Indicates whether evidence R2 bucket binding is configured
   /api/compliance/snapshot:
     get:
       summary: Get compliance snapshot
