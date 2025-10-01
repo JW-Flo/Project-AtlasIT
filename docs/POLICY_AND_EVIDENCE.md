@@ -2,7 +2,7 @@
 
 Status: Draft
 Owner: AtlasIT Platform
-Last Updated: 2025-09-30
+Last Updated: 2025-10-01
 
 ## Purpose
 
@@ -53,6 +53,24 @@ Define how policies are authored, evaluated, and how resulting evidence is produ
 - Canonicalization: stable JSON serialization (sorted keys, UTF-8); hash using `sha256`.
 - Re-computation of hash MUST yield identical value for identical semantic content; any deviation triggers integrity alert.
 
+#### Canonical JSON Example
+
+```json
+// source payload (unordered)
+{
+  "policyPack": { "version": "1.0.0", "name": "baseline" },
+  "tenantId": "demo",
+  "subject": { "userId": "u-1", "attributes": { "role": "admin", "region": "US" } },
+  "result": { "allow": true, "violations": [] }
+}
+
+// canonical string (produced by hashCanonicalJson)
+{"policyPack":{"name":"baseline","version":"1.0.0"},"result":{"allow":true,"violations":[]},"subject":{"attributes":{"region":"US","role":"admin"},"userId":"u-1"},"tenantId":"demo"}
+```
+
+- The canonical string above is the exact payload written to R2. The SHA-256 digest of this string becomes the evidence key.
+- Any client submitting evidence through `/api/evidence/ingest` may send keys in arbitrary order; the worker performs canonicalization prior to hashing.
+
 ### Risk Model (Added 2025-09-30)
 
 Risk objects produced or aggregated into snapshots include:
@@ -91,20 +109,21 @@ Validation Rules:
 - Evidence blobs stored in R2 with object key = `<sha256>` (no prefix), content-type `application/json; charset=utf-8`.
 - Write path: `PUT r2://evidence/<sha256>` with `If-None-Match: *` for immutability.
 - Index in D1 table `evidence_index`:
-  - `(hash PRIMARY KEY, tenant_id, pack_name, pack_version, subject_ref, created_at)`
+  - `(id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE, tenant_id, pack, subject_ref, created_at, payload TEXT)`
 - Optional mirror: AWS S3 bucket with same object key for dual-verify.
 
 ## API Endpoints (MVP)
 
 - `POST /api/policy/evaluate` → returns `{ result, evidence: { hash } }`; stores envelope to R2 + D1 index.
-- `GET /api/evidence/:hash` → presigned URL or 302 to R2 object (respect tenant auth).
+- `POST /api/evidence/ingest` → canonicalises payload, writes to R2/D1; responds with `{ hash, stored }`.
+- `GET /api/evidence/:hash` → returns canonical envelope (JSON) by hash.
 - `GET /api/evidence/search?tenant=...&pack=...&subject=...` → paginated D1 query.
 
 ## Snapshots
 
 - Nightly snapshot per tenant: materialize `compliance_snapshot/<tenant>/<YYYY-MM-DD>.json` into R2.
 - Snapshot includes counts by decision, violations by rule, top changes vs. prior day.
-- Idempotent: `INSERT OR IGNORE` into D1 `snapshots` table and `If-None-Match` on R2 object.
+- Idempotent: `INSERT INTO snapshots ... ON CONFLICT(tenant_id)` and `If-None-Match` on R2 object.
 
 ## Integrity & Verification
 

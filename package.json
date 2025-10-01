@@ -77,7 +77,8 @@
     "dev:compliance": "cd compliance-worker && npm run dev",
     "build:compliance": "cd compliance-worker && npm run build || true",
     "test:integration": "vitest run tests/integration",
-    "deploy:compliance": "cd compliance-worker && npm run deploy"
+    "deploy:compliance": "cd compliance-worker && npm run deploy",
+    "migrate:compliance": "wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml"
   },
   "keywords": [
     "it-management",

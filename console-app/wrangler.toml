@@ -8,9 +8,9 @@ workers_dev = true
 # Production routing (AtlasIT.pro). Keep workers_dev for staging; routes activate prod exposure.
 zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
 routes = [
-	"atlasit.pro/console*",
-	"atlasit.pro/api/config",
-	"atlasit.pro/api/mock/*"
+	"www.atlasit.pro/console*",
+	"www.atlasit.pro/api/config",
+	"www.atlasit.pro/api/mock/*"
 ]
 
 [build]
@@ -18,7 +18,7 @@ command = "npm run build"
 
 [vars]
 APP_NAME = "AtlasIT Console"
-COMPLIANCE_BASE = "https://atlasit.pro/api/compliance"
+COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
 
 [observability]
 enabled = true
@@ -37,7 +37,7 @@ database_id = "00000000-0000-0000-0000-000000000001"
 
 [[d1_databases]]
 binding = "D1_COMPLIANCE"
-database_name = "atlas_compliance"
+database_name = "atlasit_compliance"
 database_id = "00000000-0000-0000-0000-000000000010"
 
 [[d1_databases]]

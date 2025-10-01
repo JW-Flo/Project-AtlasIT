@@ -2,7 +2,7 @@
 
 Status: Draft
 Owner: Platform Engineering
-Last Updated: 2025-09-30
+Last Updated: 2025-10-01
 
 ## Objectives
 
@@ -12,21 +12,28 @@ Last Updated: 2025-09-30
 
 ## Core Signals
 
-| Signal                        | Source                     | Granularity  | Usage                        |
-| ----------------------------- | -------------------------- | ------------ | ---------------------------- |
-| Request Latency (p50/p95/p99) | Structured log aggregation | Per endpoint | SLO enforcement              |
-| Error Rate (5xx %)            | Structured logs            | Per endpoint | Alert triggers               |
-| Snapshot Age                  | Compliance worker          | Gauge        | Freshness monitoring         |
-| Evidence Write Failures       | Compliance + R2 ops        | Counter      | Integrity risk detection     |
-| Bundle Size Delta             | Build script               | Per build    | Prevent frontend regressions |
+| Signal                             | Source                     | Granularity  | Usage                               |
+| ---------------------------------- | -------------------------- | ------------ | ----------------------------------- |
+| Request Latency (p50/p95/p99)      | Structured log aggregation | Per endpoint | SLO enforcement                     |
+| Error Rate (5xx %)                 | Structured logs            | Per endpoint | Alert triggers                      |
+| Snapshot Age                       | Compliance worker          | Gauge        | Freshness monitoring                |
+| Evidence Ingest Count              | Compliance worker          | Counter      | Volume tracking / anomaly detection |
+| Evidence Write Failures            | Compliance + R2 ops        | Counter      | Integrity risk detection            |
+| Bundle Size Delta                  | Build script               | Per build    | Prevent frontend regressions        |
+| AI Daily Quota Used                | Orchestrator /health       | Daily        | Capacity planning & quota guard     |
+| AI Daily Quota Remaining           | Orchestrator /health       | Daily        | Proactive throttling UI             |
+| AI IP Burst Rejections             | Orchestrator logs          | Event        | Abuse detection / tuning            |
+| AI Rate Limit Config               | Orchestrator /health       | Config       | Observability of window/burst       |
+| AI Quota Placeholders (compliance) | Compliance /health         | Gauge        | Backward compatible placeholders    |
 
 ## SLO Targets (Initial)
 
 | Endpoint                      | p95 Latency    | Error Rate (rolling 15m) |
 | ----------------------------- | -------------- | ------------------------ |
 | /api/compliance/snapshot      | < 150ms (edge) | < 1%                     |
-| /api/policy/evaluate (future) | < 90ms         | < 1%                     |
+| /api/evidence/search          | < 150ms        | < 1%                     |
 | /health                       | < 50ms         | < 0.1%                   |
+| /api/policy/evaluate (future) | < 90ms         | < 1%                     |
 
 Breaches trigger: log event `slo.violation` + CI perf gate on subsequent build if reproducible.
 
@@ -47,15 +54,32 @@ Breaches trigger: log event `slo.violation` + CI perf gate on subsequent build i
 }
 ```
 
+Evidence ingest emits `evidence.ingest` (with `stored` boolean) and counters flush via `metrics.flush` log entries.
+
 ## Metrics Extraction (Phase 1)
 
 Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Workers Analytics Engine histograms.
+
+## Metrics Inventory
+
+| Metric                     | Type    | Purpose                                    | Emission Source         |
+| -------------------------- | ------- | ------------------------------------------ | ----------------------- |
+| `snapshot_age_seconds`     | Gauge   | Freshness of persisted compliance snapshot | `/health` query         |
+| `evidence_count`           | Gauge   | Indexed evidence total                     | `/health` query         |
+| `evidence_ingest_total`    | Counter | Evidence ingest volume trend               | `evidence.ingest` logs  |
+| `evidence_ingest_failures` | Counter | R2/D1 write failures                       | `evidence.*.error` logs |
+| `request_duration_ms`      | Sample  | Latency SLO tracking                       | Structured logs         |
+| `bundle_total_bytes`       | Gauge   | Frontend bundle size guardrail             | CI `bundle-report` step |
+| `ai_quota_used`            | Gauge   | AI request consumption vs. limit           | Orchestrator `/health`  |
+| `ai_quota_remaining`       | Gauge   | Remaining free-plan capacity               | Orchestrator `/health`  |
+| `ai_rate_limited_total`    | Counter | Soft-abuse detections per IP window        | `ai.rate_limit` logs    |
+| `ai_rate_config_seconds`   | Gauge   | Exposed burst/window configuration         | Orchestrator `/health`  |
 
 ## Performance Budgets
 
 | Category                   | Budget   | Gate                    |
 | -------------------------- | -------- | ----------------------- |
-| Console main bundle (gzip) | <= 250KB | CI fail if > +15% delta |
+| Console main bundle (gzip) | <= 250KB | CI fail if > baseline   |
 | Snapshot p95 (uncached)    | <= 150ms | Performance test script |
 | Policy evaluate p95        | <= 90ms  | Perf script (Phase 4)   |
 
@@ -63,22 +87,47 @@ Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Wo
 
 - Threshold-based (latency/error) exported to external monitoring (placeholder).
 - Snapshot age > 6h logs `snapshot.stale` warning.
+- Evidence ingest failure spike (>5 in 5m) emits `evidence.alert` log row.
 
-## Health Endpoint Extension (Planned Fields)
+## Health Endpoint Extension (Current Fields)
 
-| Field                     | Type   | Description                        |
-| ------------------------- | ------ | ---------------------------------- |
-| snapshot.ageSeconds       | number | Age of latest persisted snapshot   |
-| evidence.count (optional) | number | Total evidence envelopes indexed   |
-| perf.snapshot.p95         | number | Derived latency sample (synthetic) |
+```json
+{
+  "status": "ok",
+  "service": "compliance-worker",
+  "version": "dev",
+  "buildVersion": "2025.10.01+sha",
+  "timestamp": 1700000000000,
+  "snapshotAgeSeconds": 42,
+  "d1": true,
+  "r2": true,
+  "evidenceCount": 12,
+  "aiQuotaUsed": null,
+  "aiQuotaRemaining": null
+}
+```
+
+### Orchestrator Health (AI)
+
+```json
+{
+  "status": "healthy",
+  "service": "ai-orchestrator",
+  "quota": { "date": "2025-10-01", "used": 5, "limit": 500, "remaining": 495 },
+  "rateLimitWindowSeconds": 60,
+  "rateLimitBurst": 10
+}
+```
 
 ## Synthetic Checks
 
 - Script will hit `/api/compliance/snapshot` 25 times sequentially at deploy and record distribution.
 - Outlier detection (basic): flag if p95 > budget \* 1.25.
+- Post-deploy smoke workflow curls `/health`, `/api/compliance/snapshot`, `/api/evidence/search` across workers.dev + www.
 
 ## Change Log
 
-| Date       | Change                     |
-| ---------- | -------------------------- |
-| 2025-09-30 | Initial observability plan |
+| Date       | Change                                      |
+| ---------- | ------------------------------------------- |
+| 2025-10-01 | Added evidence metrics + post-deploy smoke. |
+| 2025-09-30 | Initial observability plan                  |

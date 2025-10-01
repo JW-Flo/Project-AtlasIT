@@ -10,10 +10,164 @@ import {
   resolveCfApiToken,
 } from "@atlasit/shared";
 
+// Env references: AI_MAX_REQUESTS_PER_DAY, AI_MAX_PROMPT_CHARS, AI_ALLOWED_MODELS,
+// AI_RATE_BURST, AI_RATE_WINDOW_SECONDS, AI_MAX_REQUESTS_PER_DAY, AI_TEST_MODE (tests), AI_QUOTA (KV binding)
+const DEFAULT_AI_RATE_BURST = 10;
+const DEFAULT_AI_RATE_WINDOW_SECONDS = 60;
+const RATE_MEMORY_MAX_ENTRIES = 500;
+const QUOTA_KV_PREFIX = "ai_quota:";
+const QUOTA_TTL_SECONDS = 172800; // 48h to allow delayed reads
+
 const app = new Hono();
 let envValidated = false;
 // In-memory rate limit tracker (per isolate, best-effort)
 const rateLimits = new Map();
+const aiIpRateBuckets = new Map();
+let aiDaily = { day: null, count: 0 };
+
+function getTodayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getClientIp(c) {
+  const raw = c.req.raw;
+  const headerIp =
+    c.req.header("cf-connecting-ip") ||
+    (c.req.header("x-forwarded-for") || "").split(",")[0].trim();
+  return raw?.cf?.connectingIP || headerIp || "unknown";
+}
+
+function pruneRateBuckets(now) {
+  if (aiIpRateBuckets.size <= RATE_MEMORY_MAX_ENTRIES) return;
+  for (const [key, entry] of aiIpRateBuckets) {
+    if (!entry || typeof entry.windowMs !== "number") continue;
+    if (now - entry.lastAccess > entry.windowMs * 4) {
+      aiIpRateBuckets.delete(key);
+    }
+  }
+}
+
+async function enforceDailyQuota(c, limit) {
+  const today = getTodayUtc();
+  const kv = c.env?.AI_QUOTA;
+
+  if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
+    if (aiDaily.day !== today) {
+      aiDaily = { day: today, count: 0 };
+    }
+    if (limit > 0 && aiDaily.count >= limit) {
+      return {
+        allowed: false,
+        date: today,
+        used: aiDaily.count,
+        remaining: 0,
+        source: "memory",
+      };
+    }
+    aiDaily.count += 1;
+    return {
+      allowed: true,
+      date: today,
+      used: aiDaily.count,
+      remaining: limit > 0 ? Math.max(0, limit - aiDaily.count) : null,
+      source: "memory",
+    };
+  }
+
+  const key = `${QUOTA_KV_PREFIX}${today}`;
+  let lastCount = 0;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let data = await kv.get(key, { type: "json" }).catch(() => null);
+    if (!data || data.date !== today || typeof data.count !== "number") {
+      data = { date: today, count: 0 };
+    }
+
+    if (limit > 0 && data.count >= limit) {
+      aiDaily = { day: today, count: data.count };
+      return {
+        allowed: false,
+        date: today,
+        used: data.count,
+        remaining: 0,
+        source: "kv",
+      };
+    }
+
+    const newCount = data.count + 1;
+    lastCount = newCount;
+    await kv.put(key, JSON.stringify({ date: today, count: newCount }), {
+      expirationTtl: QUOTA_TTL_SECONDS,
+    });
+    const confirm = await kv.get(key, { type: "json" }).catch(() => null);
+    if (
+      confirm &&
+      confirm.date === today &&
+      typeof confirm.count === "number"
+    ) {
+      const used = confirm.count;
+      aiDaily = { day: today, count: used };
+      return {
+        allowed: true,
+        date: today,
+        used,
+        remaining: limit > 0 ? Math.max(0, limit - used) : null,
+        source: "kv",
+      };
+    }
+
+    await sleep(Math.floor(Math.random() * 25) + 5);
+  }
+
+  aiDaily = { day: today, count: lastCount };
+  return {
+    allowed: true,
+    date: today,
+    used: lastCount,
+    remaining: limit > 0 ? Math.max(0, limit - lastCount) : null,
+    source: "kv",
+  };
+}
+
+async function readQuotaSnapshot(env, limit) {
+  const today = getTodayUtc();
+  const kv = env?.AI_QUOTA;
+  if (kv && typeof kv.get === "function") {
+    try {
+      const data = await kv.get(`${QUOTA_KV_PREFIX}${today}`, { type: "json" });
+      if (data && data.date === today && typeof data.count === "number") {
+        return {
+          date: today,
+          used: data.count,
+          limit,
+          remaining: limit > 0 ? Math.max(0, limit - data.count) : null,
+        };
+      }
+    } catch (e) {
+      sharedLogger.warn("ai.quota_snapshot_error", { error: String(e) });
+    }
+  }
+
+  if (aiDaily.day === today) {
+    return {
+      date: today,
+      used: aiDaily.count,
+      limit,
+      remaining: limit > 0 ? Math.max(0, limit - aiDaily.count) : null,
+    };
+  }
+
+  return {
+    date: today,
+    used: 0,
+    limit,
+    remaining: limit > 0 ? limit : null,
+  };
+}
 
 // Middleware
 app.use("*", honoLogger());
@@ -500,6 +654,133 @@ app.post("/terminal", async (c) => {
   });
 });
 
+// Simple AI inference endpoint (POST /ai/infer) { prompt, model? }
+app.post("/ai/infer", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) || {};
+  const prompt = body.prompt;
+  if (!prompt || typeof prompt !== "string") {
+    return c.json({ error: "Missing prompt" }, 400);
+  }
+  const maxPrompt = parseInt(c.env.AI_MAX_PROMPT_CHARS || "8000", 10);
+  if (prompt.length > maxPrompt) {
+    return c.json({ error: "Prompt too large", max: maxPrompt }, 413);
+  }
+
+  const windowSeconds =
+    parseInt(c.env.AI_RATE_WINDOW_SECONDS || "", 10) ||
+    DEFAULT_AI_RATE_WINDOW_SECONDS;
+  const burst =
+    parseInt(c.env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
+
+  if (burst > 0 && windowSeconds > 0) {
+    const ip = getClientIp(c);
+    const bucketKey = `${ip}:infer`;
+    const now = Date.now();
+    pruneRateBuckets(now);
+    const windowMs = windowSeconds * 1000;
+    let bucket = aiIpRateBuckets.get(bucketKey);
+    if (!bucket || now - bucket.windowStart >= windowMs) {
+      bucket = { windowStart: now, count: 0, windowMs, lastAccess: now };
+    }
+    bucket.count += 1;
+    bucket.lastAccess = now;
+    aiIpRateBuckets.set(bucketKey, bucket);
+    if (bucket.count > burst) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((bucket.windowMs - (now - bucket.windowStart)) / 1000),
+      );
+      sharedLogger.warn("ai.rate_limit", {
+        ip,
+        used: bucket.count,
+        windowSeconds,
+        requestId: c.get("requestId"),
+      });
+      return c.json(
+        {
+          error: "rate_limited",
+          retryAfterSeconds: retryAfter,
+          requestId: c.get("requestId"),
+        },
+        429,
+        {
+          "Retry-After": String(retryAfter),
+        },
+      );
+    }
+  }
+
+  const limit = parseInt(c.env.AI_MAX_REQUESTS_PER_DAY || "0", 10) || 0;
+  const quotaResult = await enforceDailyQuota(c, limit);
+  const quotaInfo = {
+    date: quotaResult.date,
+    used: quotaResult.used,
+    limit,
+    remaining: quotaResult.remaining,
+  };
+
+  if (!quotaResult.allowed) {
+    sharedLogger.info("ai.quota_exceeded", {
+      date: quotaResult.date,
+      used: quotaResult.used,
+      limit,
+      requestId: c.get("requestId"),
+    });
+    return c.json(
+      {
+        error: "quota_exceeded",
+        quota: quotaInfo,
+        requestId: c.get("requestId"),
+      },
+      429,
+    );
+  }
+
+  const allow = (
+    c.env.AI_ALLOWED_MODELS ||
+    "@cf/meta/llama-3.1-8b-instruct,@cf/meta/llama-3.3-70b-instruct"
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const model = body.model || allow[0];
+  if (!allow.includes(model)) {
+    return c.json({ error: "Unsupported model", model, allowed: allow }, 400);
+  }
+
+  try {
+    let durationMs = 0;
+    let outputText;
+    if (c.env.AI_TEST_MODE === "1") {
+      outputText = c.env.AI_TEST_RESPONSE || "test-output";
+    } else {
+      const started = Date.now();
+      outputText = await callAI(prompt, c.env || {}, { model });
+      durationMs = Date.now() - started;
+    }
+
+    return c.json({
+      success: true,
+      model,
+      durationMs,
+      output: { text: outputText },
+      quota: quotaInfo,
+      requestId: c.get("requestId"),
+      actor: c.get("actor"),
+    });
+  } catch (e) {
+    sharedLogger.error("ai.infer.error", { error: String(e) });
+    return c.json(
+      {
+        error: "AI inference failed",
+        quota: quotaInfo,
+        requestId: c.get("requestId"),
+      },
+      500,
+    );
+  }
+});
+
 // Health check
 app.get("/healthz", (c) => c.text("OK"));
 // Lightweight in-memory cache for R2 metrics (per isolate)
@@ -545,13 +826,24 @@ async function collectR2Metrics(env) {
 }
 
 app.get("/health", async (c) => {
-  const r2 = await collectR2Metrics(c.env || {});
+  const env = c.env || {};
+  const r2 = await collectR2Metrics(env);
+  const limit = parseInt(env.AI_MAX_REQUESTS_PER_DAY || "0", 10) || 0;
+  const quotaSnapshot = await readQuotaSnapshot(env, limit);
+  const windowSeconds =
+    parseInt(env.AI_RATE_WINDOW_SECONDS || "", 10) ||
+    DEFAULT_AI_RATE_WINDOW_SECONDS;
+  const burst = parseInt(env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
+
   return c.json({
     status: "healthy",
-    service: "orchestrator",
+    service: "ai-orchestrator",
     timestamp: new Date().toISOString(),
     requestId: c.get("requestId"),
     actor: c.get("actor"),
+    quota: quotaSnapshot,
+    rateLimitWindowSeconds: windowSeconds,
+    rateLimitBurst: burst,
     r2,
   });
 });
@@ -598,6 +890,12 @@ app.get("/workflow/:id", (c) => {
 });
 
 // Cloudflare scheduled trigger will call monitorProjectState every 5 minutes
+
+export function __resetAiStateForTests() {
+  aiDaily = { day: null, count: 0 };
+  rateLimits.clear();
+  aiIpRateBuckets.clear();
+}
 
 export async function handleRequest(req, env, ctx) {
   resolveCfApiToken(env);

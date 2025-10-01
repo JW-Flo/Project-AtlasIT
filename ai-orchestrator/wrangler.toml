@@ -10,6 +10,12 @@ binding = "TASKS"
 id = "fa174a1795c94a48b47c22d6a138de29"
 preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 
+# Persistent AI quota counter (set real IDs per environment before deploy)
+[[kv_namespaces]]
+binding = "AI_QUOTA"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
 [env.production]
 # New canonical route (legacy: ai.project-ignite.workers.dev)
 route = "orchestrator.atlasit.workers.dev/*"

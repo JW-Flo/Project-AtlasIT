@@ -1,30 +1,31 @@
 name: Post Deploy Smoke
 
 on:
-  workflow_dispatch:
-  deployment_status:
-    types: [success]
+    workflow_dispatch:
 
 jobs:
-  smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Curl Compliance Health
-        run: |
-          set -euo pipefail
-          BASE="https://atlasit.pro"
-          echo "Health:"; curl -sS "$BASE/health" | jq '.'
-          echo "Snapshot (fresh)"; curl -sS "$BASE/api/compliance/snapshot?tenantId=ci_smoke" | jq '.' > snapshot1.json
-          sleep 2
-          echo "Snapshot (cached)"; curl -sS "$BASE/api/compliance/snapshot?tenantId=ci_smoke" | jq '.' > snapshot2.json
-          diff <(jq '.generatedAt' snapshot1.json) <(jq '.generatedAt' snapshot2.json) >/dev/null || echo "GeneratedAt differs (expected if cache expired)"
-          AGE=$(jq '.ageSeconds // 0' snapshot2.json)
-          if [ "$AGE" -lt 0 ]; then echo "ageSeconds invalid"; exit 1; fi
-      - name: Summary
-        run: |
-          echo "## Smoke Results" >> $GITHUB_STEP_SUMMARY
-          echo "Validated health and snapshot endpoints." >> $GITHUB_STEP_SUMMARY
+    smoke:
+        name: Smoke ${{ matrix.target.name }}
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                target:
+                    - name: workers-dev
+                      base: https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev
+                    - name: production
+                      base: https://www.atlasit.pro
+        steps:
+            - name: Hit health endpoint
+              run: |
+                  BASE="${{ matrix.target.base }}"
+                  echo "Testing $BASE"
+                  curl -fsS "$BASE/health" | jq '.status'
+            - name: Snapshot GET + HEAD
+              run: |
+                  BASE="${{ matrix.target.base }}"
+                  curl -fsS "$BASE/api/compliance/snapshot?tenantId=smoke"
+                  curl -fsSI "$BASE/api/compliance/snapshot" | grep -i "strict-transport-security"
+            - name: Evidence search probe
+              run: |
+                  BASE="${{ matrix.target.base }}"
+                  curl -fsS "$BASE/api/evidence/search?tenantId=demo&limit=1"

@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
-import orchestrator, { handleRequest } from "../ai-orchestrator/index.js";
+import { beforeEach, describe, it, expect } from "vitest";
+import orchestrator, {
+  handleRequest,
+  __resetAiStateForTests,
+} from "../ai-orchestrator/index.js";
 
 // Minimal env mock
 const mockEnv: any = {};
+
+beforeEach(() => {
+  __resetAiStateForTests();
+});
 
 async function call(method: string, path: string, body?: any) {
   const init: RequestInit = {
@@ -28,7 +35,7 @@ describe("Orchestrator worker basic endpoints", () => {
     const res = await call("GET", "/health");
     expect(res.status).toBe(200);
     expect(res.json.status).toBe("healthy");
-    expect(res.json.service).toBe("orchestrator");
+    expect(res.json.service).toBe("ai-orchestrator");
     // New R2 metrics appended (non-breaking). Validate shape minimally.
     expect(res.json).toHaveProperty("r2");
     if (res.json.r2) {

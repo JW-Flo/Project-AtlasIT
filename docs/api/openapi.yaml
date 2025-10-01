@@ -1,15 +1,15 @@
 openapi: 3.1.0
 info:
   title: AtlasIT Platform API
-  version: 1.0.0
+  version: 1.1.0
   description: >-
-    Core public-facing endpoints for compliance snapshots and (future) policy evaluation.
+    Core public-facing endpoints for compliance snapshots, evidence retrieval, and health.
     Contract-first; additive evolution. All responses include `tenantId` when scoped.
 servers:
-  - url: https://atlasit-compliance-worker.example.workers.dev
-    description: Compliance Worker (Production)
-  - url: https://atlasit-compliance-staging.example.workers.dev
-    description: Compliance Worker (Staging)
+  - url: https://www.atlasit.pro
+    description: Production (www)
+  - url: https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev
+    description: Staging (workers.dev)
 paths:
   /health:
     get:
@@ -24,24 +24,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [status, service, timestamp, version]
-                properties:
-                  status: { type: string, example: ok }
-                  service: { type: string, example: compliance-worker }
-                  timestamp: { type: number, format: int64 }
-                  version: { type: string }
-                  snapshotAgeSeconds:
-                    type: integer
-                    minimum: 0
-                    nullable: true
-                    description: Age in seconds of most recent persisted snapshot if available
-                  d1:
-                    type: boolean
-                    description: Indicates whether D1 binding is configured
-                  r2:
-                    type: boolean
-                    description: Indicates whether evidence R2 bucket binding is configured
+                $ref: '#/components/schemas/Health'
   /api/compliance/snapshot:
     get:
       summary: Get compliance snapshot
@@ -70,23 +53,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/policy/evaluate:
+  /api/evidence/ingest:
     post:
-      summary: Evaluate policy pack (MVP placeholder)
-      description: Deterministic evaluation returning decision and evidence hash. Future implementation.
+      summary: Ingest evidence envelope
+      description: Persist immutable evidence payload into R2 and index metadata in D1.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PolicyEvaluationRequest'
+              $ref: '#/components/schemas/EvidenceIngestRequest'
       responses:
         '200':
-          description: Evaluation completed
+          description: Evidence was accepted
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PolicyEvaluationResponse'
+                $ref: '#/components/schemas/EvidenceIngestResponse'
         '400':
           description: Validation error
           content:
@@ -94,13 +77,169 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          description: Server error
+          description: Storage error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/evidence/{hash}:
+    get:
+      summary: Retrieve evidence envelope by hash
+      parameters:
+        - in: path
+          name: hash
+          schema: { type: string, pattern: '^[a-f0-9]{64}$' }
+          required: true
+          description: Evidence SHA-256 hash key
+      responses:
+        '200':
+          description: Envelope found
+          headers:
+            X-Evidence-Hash:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Canonical evidence payload (schema varies per pack)
+        '404':
+          description: Evidence not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Retrieval failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/evidence/search:
+    get:
+      summary: Search evidence index
+      parameters:
+        - in: query
+          name: tenantId
+          schema: { type: string }
+          required: false
+          description: Filter by tenant identifier (defaults to demo tenant)
+        - in: query
+          name: pack
+          schema: { type: string }
+          required: false
+          description: Filter by policy pack identifier (e.g. baseline@1.0.0)
+        - in: query
+          name: subject
+          schema: { type: string }
+          required: false
+          description: Filter by subject reference (opaque string)
+        - in: query
+          name: cursor
+          schema: { type: string }
+          required: false
+          description: Pagination cursor (opaque id returned as `nextCursor`)
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+          required: false
+          description: Maximum rows to return
+      responses:
+        '200':
+          description: Evidence index page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceSearchResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Index query failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/orchestrator/ai/infer:
+    post:
+      summary: AI inference (orchestrator)
+      description: Invoke configured model with a prompt. Subject to daily quota and per-IP burst limits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string, maxLength: 8000 }
+                model: { type: string, description: Optional allowed model override }
+      responses:
+        '200':
+          description: Inference succeeded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, model, output, quota]
+                properties:
+                  success: { type: boolean }
+                  model: { type: string }
+                  durationMs: { type: integer }
+                  output:
+                    type: object
+                    properties:
+                      text: { type: string }
+                  quota:
+                    $ref: '#/components/schemas/AiQuota'
+        '400':
+          description: Validation error (missing prompt or unsupported model)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413':
+          description: Prompt too large
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Quota or rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Inference failure
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 components:
   schemas:
+    Health:
+      type: object
+      required: [status, service, timestamp, version, buildVersion, d1, r2, evidenceCount]
+      properties:
+        status: { type: string, example: ok }
+        service: { type: string, example: compliance-worker }
+        timestamp: { type: number, format: int64 }
+        version: { type: string, description: Legacy version field retained for compatibility }
+        buildVersion: { type: string, description: Build identifier reported by deployment }
+        snapshotAgeSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Age in seconds of most recent persisted snapshot if available
+        d1:
+          type: boolean
+          description: Indicates whether D1 binding is configured
+        r2:
+          type: boolean
+          description: Indicates whether evidence R2 bucket binding is configured
+        evidenceCount:
+          type: integer
+          minimum: 0
+          description: Number of indexed evidence envelopes
     ComplianceSnapshot:
       type: object
       required: [tenantId, generatedAt, frameworkSummary, risks, policies]
@@ -155,6 +294,62 @@ components:
         name: { type: string }
         status: { type: string, enum: [draft, approved, outdated] }
         updated: { type: string, format: date-time }
+    EvidenceIngestRequest:
+      type: object
+      required: [payload]
+      properties:
+        tenantId:
+          type: string
+          description: Tenant identifier (defaults to demo when omitted)
+        pack:
+          type: string
+          description: Policy pack identifier (e.g. baseline@1.0.0)
+        subject:
+          type: string
+          description: Subject reference string (user/device identifier)
+        payload:
+          type: object
+          additionalProperties: true
+          description: Evidence envelope payload (canonical JSON hashed server-side)
+    EvidenceIngestResponse:
+      type: object
+      required: [hash, stored]
+      properties:
+        hash:
+          type: string
+          description: SHA-256 hash of canonical evidence payload
+        stored:
+          type: boolean
+          description: Indicates whether a new record was stored (false implies duplicate)
+    EvidenceIndexItem:
+      type: object
+      required: [id, hash, tenantId, pack, createdAt]
+      properties:
+        id: { type: integer, description: Monotonic row identifier }
+        hash: { type: string }
+        tenantId: { type: string }
+        pack: { type: string }
+        subject:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    EvidenceSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceIndexItem'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to request the next page (null when no more rows)
+        count:
+          type: integer
+          description: Number of records in the current page
     PolicyEvaluationRequest:
       type: object
       required: [tenantId, subject, policyPackRef, timestamp]
@@ -184,3 +379,11 @@ components:
       properties:
         error: { type: string }
         requestId: { type: string }
+    AiQuota:
+      type: object
+      required: [used, limit]
+      properties:
+        date: { type: string, format: date, description: UTC date key }
+        used: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 0 }
+        remaining: { type: integer, minimum: 0, nullable: true }

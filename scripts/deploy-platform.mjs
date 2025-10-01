@@ -16,13 +16,13 @@
  *  - CONSOLE_DEPLOY_CMD (override, e.g. "wrangler deploy")
  *  - CONSOLE_PUBLIC_URL (base URL for post-deploy smoke)
  */
-import { execSync } from 'node:child_process';
-import path from 'node:path';
-import fs from 'node:fs';
+import { execSync } from "node:child_process";
+import path from "node:path";
+import fs from "node:fs";
 
 function run(cmd, opts = {}) {
   console.log(`\n› ${cmd}`);
-  execSync(cmd, { stdio: 'inherit', ...opts });
+  execSync(cmd, { stdio: "inherit", ...opts });
 }
 
 function ensure(p, desc) {
@@ -32,44 +32,51 @@ function ensure(p, desc) {
 async function main() {
   const root = process.cwd();
   // 1. OpenAPI verify
-  if (fs.existsSync(path.join(root, 'scripts', 'openapi-verify.mjs'))) {
-    run('node scripts/openapi-verify.mjs');
+  if (fs.existsSync(path.join(root, "scripts", "openapi-verify.mjs"))) {
+    run("node scripts/openapi-verify.mjs");
   } else {
-    console.warn('openapi-verify script not found, skipping');
+    console.warn("openapi-verify script not found, skipping");
   }
 
   // 2. Build shared (optional)
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  if (pkg.scripts && pkg.scripts['build:shared']) {
-    run('npm run build:shared');
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(root, "package.json"), "utf8")
+  );
+  if (pkg.scripts && pkg.scripts["build:shared"]) {
+    run("npm run build:shared");
   }
 
   // 3. Compliance worker deploy
-  const complianceDir = process.env.COMPLIANCE_WORKER_DIR || path.join(root, 'compliance-worker');
+  const complianceDir =
+    process.env.COMPLIANCE_WORKER_DIR || path.join(root, "compliance-worker");
   if (fs.existsSync(complianceDir)) {
-    if (fs.existsSync(path.join(complianceDir, 'wrangler.toml'))) {
-      const cmd = process.env.COMPLIANCE_DEPLOY_CMD || 'npx wrangler deploy';
+    if (fs.existsSync(path.join(complianceDir, "wrangler.toml"))) {
+      const cmd = process.env.COMPLIANCE_DEPLOY_CMD || "npx wrangler deploy";
       run(cmd, { cwd: complianceDir });
     } else {
-      console.warn('wrangler.toml not found in compliance worker dir, skipping deploy');
+      console.warn(
+        "wrangler.toml not found in compliance worker dir, skipping deploy"
+      );
     }
   } else {
-    console.warn('Compliance worker directory not found; skipping');
+    console.warn("Compliance worker directory not found; skipping");
   }
 
   // 4. Console build + deploy (expects wrangler for Cloudflare Pages/Workers binding)
-  const consoleDir = process.env.CONSOLE_DIR || path.join(root, 'console-app');
-  ensure(consoleDir, 'console app dir');
-  if (fs.existsSync(path.join(consoleDir, 'package.json'))) {
-    run('npm install --no-fund --no-audit', { cwd: consoleDir });
-    if (fs.existsSync(path.join(consoleDir, 'vite.config.ts'))) {
-      run('npm run build', { cwd: consoleDir });
+  const consoleDir = process.env.CONSOLE_DIR || path.join(root, "console-app");
+  ensure(consoleDir, "console app dir");
+  if (fs.existsSync(path.join(consoleDir, "package.json"))) {
+    run("npm install --no-fund --no-audit", { cwd: consoleDir });
+    if (fs.existsSync(path.join(consoleDir, "vite.config.ts"))) {
+      run("npm run build", { cwd: consoleDir });
     }
     const consoleDeploy = process.env.CONSOLE_DEPLOY_CMD;
     if (consoleDeploy) {
       run(consoleDeploy, { cwd: consoleDir });
     } else {
-      console.log('No CONSOLE_DEPLOY_CMD provided; build artifact ready for manual deploy.');
+      console.log(
+        "No CONSOLE_DEPLOY_CMD provided; build artifact ready for manual deploy."
+      );
     }
   }
 
@@ -79,15 +86,20 @@ async function main() {
     try {
       run(`curl -sf ${smokeUrl}/api/config | jq -r .complianceBase`);
       run(`curl -sf ${smokeUrl}/api/config`);
-      run(`curl -sf "${smokeUrl}$(curl -sf ${smokeUrl}/api/config | jq -r .complianceBase)/snapshot" | head -c 200`);
+      run(
+        `curl -sf "${smokeUrl}$(curl -sf ${smokeUrl}/api/config | jq -r .complianceBase)/snapshot" | head -c 200`
+      );
     } catch (e) {
-      console.warn('Smoke checks failed (non-fatal)', e.message);
+      console.warn("Smoke checks failed (non-fatal)", e.message);
     }
   } else {
-    console.log('CONSOLE_PUBLIC_URL not set; skipping smoke checks');
+    console.log("CONSOLE_PUBLIC_URL not set; skipping smoke checks");
   }
 
-  console.log('\nDeployment orchestrator complete.');
+  console.log("\nDeployment orchestrator complete.");
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
