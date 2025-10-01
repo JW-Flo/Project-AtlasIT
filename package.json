@@ -44,6 +44,7 @@
     "test:applications": "cd applications && npm test",
     "test:core": "npm-run-all --parallel test:onboarding test:orchestrator",
     "lint": "eslint .",
+    "lint:console": "eslint console-app/src/lib/api console-app/src/routes/access-requests console-app/src/routes/incidents",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "npm run validate:env && npm run typecheck",

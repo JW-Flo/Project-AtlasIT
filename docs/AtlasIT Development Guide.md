@@ -6,14 +6,13 @@ Comprehensive blueprint for developing AtlasIT, a modular, cloud-first IT manage
 
 ## 1. Project Overview & Goals
 
-* **Purpose**: Deliver a turnkey IT backbone for SMBs lacking full IT teams.
-* **Scope**: User provisioning, SaaS account management, identity management, infrastructure access, device enrollment, communications orchestration, EDR/SIEM integration, reporting, and cost monitoring.
-* **Success Criteria**:
-
-  * 99.9% uptime across all MCP modules
-  * Automated onboarding/offboarding in <60s per user
-  * Compliance reporting for GDPR/CCPA
-  * Monthly cloud spend alerts and cost dashboards
+- **Purpose**: Deliver a turnkey IT backbone for SMBs lacking full IT teams.
+- **Scope**: User provisioning, SaaS account management, identity management, infrastructure access, device enrollment, communications orchestration, EDR/SIEM integration, reporting, and cost monitoring.
+- **Success Criteria**:
+  - 99.9% uptime across all MCP modules
+  - Automated onboarding/offboarding in <60s per user
+  - Compliance reporting for GDPR/CCPA
+  - Monthly cloud spend alerts and cost dashboards
 
 ---
 
@@ -120,25 +119,25 @@ atlasit/
 
 ### 5.1 docs/security.md
 
-* Threat model diagram
-* OWASP, CIS Benchmarks
-* Secrets management via Vault/GCP Secret Manager
-* Least privilege IAM policies
-* Network segmentation (VPC, Firewalls)
+- Threat model diagram
+- OWASP, CIS Benchmarks
+- Secrets management via Vault/GCP Secret Manager
+- Least privilege IAM policies
+- Network segmentation (VPC, Firewalls)
 
 ### 5.2 docs/observability.md
 
-* Logging: structure, correlation IDs
-* Metrics: Prometheus schemas, Grafana dashboards
-* SLO definitions and alert rules
-* Runbook templates
+- Logging: structure, correlation IDs
+- Metrics: Prometheus schemas, Grafana dashboards
+- SLO definitions and alert rules
+- Runbook templates
 
 ### 5.3 docs/roadmap.md
 
-* Q1: Core & provisioning MVP
-* Q2: All MCP modules + reporting
-* Q3: Local self-host option + IdP
-* Q4: Advanced analytics & AI suggestions
+- Q1: Core & provisioning MVP
+- Q2: All MCP modules + reporting
+- Q3: Local self-host option + IdP
+- Q4: Advanced analytics & AI suggestions
 
 ---
 
@@ -147,35 +146,33 @@ atlasit/
 ### 6.1 Codex GPT (Code Generation)
 
 1. **Generate MCP Module Template**
+   - Prompt: "Create a new MCP module scaffold named `<module-name>` in TypeScript, including `handler.ts`, `api.ts`, `schema.json`, `Dockerfile`, and unit test stub."
 
-   * Prompt: "Create a new MCP module scaffold named `<module-name>` in TypeScript, including `handler.ts`, `api.ts`, `schema.json`, `Dockerfile`, and unit test stub."
 2. **Write Connector Code**
+   - Prompt: "Implement the `createUser` function for the User Provisioning MCP using the Google Admin SDK, handling pagination and errors."
 
-   * Prompt: "Implement the `createUser` function for the User Provisioning MCP using the Google Admin SDK, handling pagination and errors."
 3. **Terraform Module**
+   - Prompt: "Generate a Terraform module for AWS WorkSpaces that creates a directory, security groups, and a parameterized WorkSpace resource."
 
-   * Prompt: "Generate a Terraform module for AWS WorkSpaces that creates a directory, security groups, and a parameterized WorkSpace resource."
 4. **CI Workflow YAML**
-
-   * Prompt: "Produce a GitHub Actions YAML for `ci-mcp-build.yml` that lints, type-checks, and validates JSON schemas."
+   - Prompt: "Produce a GitHub Actions YAML for `ci-mcp-build.yml` that lints, type-checks, and validates JSON schemas."
 
 ### 6.2 Operator GPT (Orchestration & Ops)
 
 1. **Run Connectivity Checks**
+   - Task: invoke `check-okta-connection.sh`, parse output, and create a Jira ticket if failures detected.
 
-   * Task: invoke `check-okta-connection.sh`, parse output, and create a Jira ticket if failures detected.
 2. **Deploy MCP Module**
+   - Task: on code merge, trigger `ci-mcp-deploy.yml` and report status in Slack channel.
 
-   * Task: on code merge, trigger `ci-mcp-deploy.yml` and report status in Slack channel.
 3. **Smoke Testing**
+   - Task: execute `smoke_test.sh`, collect metrics, and update health dashboard.
 
-   * Task: execute `smoke_test.sh`, collect metrics, and update health dashboard.
 4. **Cost Alerting**
+   - Task: daily ingest AWS/GCP cost data, compare against thresholds, and send email/SMS on overrun.
 
-   * Task: daily ingest AWS/GCP cost data, compare against thresholds, and send email/SMS on overrun.
 5. **Documentation Sweep**
-
-   * Task: weekly check for out-of-date docs via Confluence API and open PRs for stale files.
+   - Task: weekly check for out-of-date docs via Confluence API and open PRs for stale files.
 
 ---
 
@@ -186,4 +183,8 @@ atlasit/
 3. Assign Codex GPT tasks to generate initial scaffolding code.
 4. Setup Operator GPT runbooks for environment validation and deploy checks.
 
-*End of AtlasIT Development Guide.*
+_End of AtlasIT Development Guide._
+
+---
+
+Reference: See `docs/RECOMMENDED_UPDATES.md` for the active compliance/policy engine implementation gap list, planned endpoints (integrity verification, retention purge, coverage path variant), and observability instrumentation roadmap.

@@ -1,50 +1,50 @@
 name: sonar
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [ main ]
-  workflow_dispatch:
+    push:
+        branches: [main]
+    pull_request:
+        types: [opened, synchronize, reopened]
+        branches: [main]
+    workflow_dispatch:
 
 jobs:
-  sonar:
-    name: SonarCloud Scan
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      # Required for Sonar to comment PR quality gate
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm install --ignore-scripts
-      - name: Build shared packages (optional)
-        run: npm run build:shared || true
-      - name: Run unit tests with coverage
-        run: |
-          npm run test:coverage || echo "tests failed or not present"
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
-        with:
-          args: >-
-            -Dsonar.organization=atlasit
-            -Dsonar.projectKey=Project-AtlasIT
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.python.coverage.reportPaths=coverage/coverage.xml
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.svelte-kit/**,**/vendor/**,**/tests/**,**/coverage/**,**/*.spec.ts,**/*.test.ts,**/*.test.js,**/docs/cloudflare/**
-      - name: Quality Gate (wait)
-        uses: SonarSource/sonarcloud-github-action@v2
-        with:
-          args: -Dsonar.qualitygate.wait=true
+    sonar:
+        name: SonarCloud Scan
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+            # Required for Sonar to comment PR quality gate
+        env:
+            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+            - name: Install dependencies
+              run: npm install --ignore-scripts
+            - name: Build shared packages (optional)
+              run: npm run build:shared || true
+            - name: Run unit tests with coverage
+              run: |
+                  npm run test:coverage || echo "tests failed or not present"
+            - name: SonarCloud Scan
+              uses: SonarSource/sonarcloud-github-action@v2
+              with:
+                  args: >-
+                      -Dsonar.organization=atlasit
+                      -Dsonar.projectKey=Project-AtlasIT
+                      -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                      -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+                      -Dsonar.python.coverage.reportPaths=coverage/coverage.xml
+                      -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.svelte-kit/**,**/vendor/**,**/tests/**,**/coverage/**,**/*.spec.ts,**/*.test.ts,**/*.test.js,**/docs/cloudflare/**
+            - name: Quality Gate (wait)
+              uses: SonarSource/sonarcloud-github-action@v2
+              with:
+                  args: -Dsonar.qualitygate.wait=true

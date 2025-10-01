@@ -23,6 +23,11 @@ Define retention durations, purge strategies, and rationale for all key data art
 | Error Events                      | Log stream / D1 (future)                      | event id            | 60 days                | TTL or purge job                    | Postmortem & regression tracking     | PII scrubbing enforced                                       |
 | Policy Evaluation Traces (future) | R2 `traces/`                                  | eval id             | 30 days                | Rolling purge job                   | Debugging + tuning                   | Optional feature flag                                        |
 | Temporary Cache Entries           | KV                                            | cache key           | <= 24h                 | TTL                                 | Performance optimization             | No PII stored                                                |
+| Generated Policy Content          | D1 `generated_policies`                       | hash                | Indefinite (review 1y) | Future archival job                 | Deterministic cache + audit record   | Re-generation reuses existing hash                           |
+| Policy Evaluations (result rows)  | D1 `policy_evaluations`                       | id (auto)           | 1 year planned         | Future prune job                    | Historical decision transparency     | Hash links to evidence                                       |
+| Internal Controls                 | D1 `internal_controls`                        | control_key         | Indefinite             | Update-in-place                     | Authoritative control catalog        | Adds new rows; no deletions                                  |
+| Control Mappings                  | D1 `control_mappings`                         | (control, policy)   | Indefinite             | Update-in-place                     | Stable mapping for coverage          | Idempotent inserts                                           |
+| Control Evidence Links            | D1 `control_evidence_links`                   | (control, evidence) | Indefinite             | None (manual)                       | Audit trail of evidentiary support   | Low volume growth                                            |
 
 ## Purge Execution
 

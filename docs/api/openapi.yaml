@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: AtlasIT Platform API
-  version: 1.1.0
+  version: 1.3.0
   description: >-
-    Core public-facing endpoints for compliance snapshots, evidence retrieval, and health.
-    Contract-first; additive evolution. All responses include `tenantId` when scoped.
+    Core public-facing endpoints for compliance snapshots, evidence retrieval, health, policies,
+    and control coverage. Contract-first; additive evolution. All responses include `tenantId` when scoped.
 servers:
   - url: https://www.atlasit.pro
     description: Production (www)
@@ -25,6 +25,369 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+  /api/policies/templates:
+    get:
+      summary: List available policy templates
+      responses:
+        '200':
+          description: Policy templates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PolicyTemplate'
+  /api/policies/generate:
+    post:
+      summary: Generate (or fetch cached) policy content from a template context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneratePolicyRequest'
+      responses:
+        '200':
+          description: Policy content (cached or newly generated)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratePolicyResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/policies/coverage:
+    get:
+      summary: Control coverage summary (query variant)
+      description: Deprecated query-based variant; prefer `/api/policies/coverage/{framework}`.
+      deprecated: true
+      parameters:
+        - in: query
+          name: framework
+          schema: { type: string }
+          description: Framework identifier (defaults to SOC2)
+      responses:
+        '200':
+          description: Coverage summary
+          headers:
+            Deprecation:
+              schema: { type: string }
+              description: Always `true` for this operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageSummary'
+        '404':
+          description: Framework not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/policies/coverage/{framework}:
+    get:
+      summary: Control coverage summary for a framework
+      parameters:
+        - in: path
+          name: framework
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Coverage summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageSummary'
+        '404':
+          description: Framework not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/controls/{controlKey}/evidence-link:
+    post:
+      summary: Link evidence hash to a control
+      parameters:
+        - in: path
+          name: controlKey
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [evidenceHash]
+              properties:
+                evidenceHash:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                  description: Hex-encoded SHA-256 hash returned from evidence ingest
+      responses:
+        '201':
+          description: Link created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceLinkResult'
+        '200':
+          description: Link already existed (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceLinkResult'
+        '404':
+          description: Control or evidence not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/security/incidents:
+    get:
+      summary: List security incidents
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, resolved] }
+          required: false
+        - in: query
+          name: severity
+          schema: { type: string, enum: [critical, high, medium, low] }
+          required: false
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+          required: false
+        - in: query
+          name: cursor
+          schema: { type: integer, minimum: 1 }
+          required: false
+      responses:
+        '200':
+          description: Paged incidents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityIncidentList'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a security incident
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                severity:
+                  type: string
+                  enum: [critical, high, medium, low]
+                  default: medium
+                source:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Incident created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityIncident'
+        '200':
+          description: Incident already existed (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityIncident'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/security/incidents/{id}/resolve:
+    post:
+      summary: Resolve a security incident
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Incident resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityIncident'
+        '404':
+          description: Incident not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/security/status:
+    get:
+      summary: Security posture summary
+      responses:
+        '200':
+          description: Summary metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityStatus'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/notifications:
+    get:
+      summary: High-priority notifications
+      description: Returns critical incidents and escalated high severity incidents.
+      responses:
+        '200':
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/access/requests:
+    post:
+      summary: Create an access request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subjectRef, resource]
+              properties:
+                subjectRef: { type: string }
+                resource: { type: string }
+                justification: { type: string }
+      responses:
+        '201':
+          description: Access request created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessRequest' }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      summary: List access requests
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, approved, denied, fulfilled] }
+          required: false
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+          required: false
+        - in: query
+          name: cursor
+          schema: { type: integer, minimum: 1 }
+          required: false
+      responses:
+        '200':
+          description: Paged access requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessRequestList'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/access/requests/{id}/approve:
+    post:
+      summary: Approve an access request
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Access request approved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessRequest' }
+        '404':
+          description: Access request not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /api/v1/access/requests/{id}/deny:
+    post:
+      summary: Deny an access request
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Access request denied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessRequest' }
+        '404': { description: Access request not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: Invalid state transition, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/access/requests/{id}/fulfill:
+    post:
+      summary: Mark an approved access request as fulfilled
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Access request fulfilled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccessRequest' }
+        '404': { description: Access request not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: Invalid state transition, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
   /api/compliance/snapshot:
     get:
       summary: Get compliance snapshot
@@ -240,6 +603,52 @@ components:
           type: integer
           minimum: 0
           description: Number of indexed evidence envelopes
+        policyTemplateCount:
+          type: integer
+          minimum: 0
+          description: Number of policy templates available
+        generatedPolicyCount:
+          type: integer
+          minimum: 0
+          description: Number of generated policies stored
+        controlCount:
+          type: integer
+          minimum: 0
+          description: Number of internal controls defined
+        controlEvidenceLinks:
+          type: integer
+          minimum: 0
+          description: Total evidence links across all controls
+        security:
+          type: object
+          required: [openIncidents, threatLevel]
+          properties:
+            openIncidents: { type: integer, minimum: 0 }
+            threatLevel: { type: string, enum: [normal, elevated, critical, unknown] }
+        access:
+          type: object
+          required: [pendingRequests]
+          properties:
+            pendingRequests: { type: integer, minimum: 0 }
+        activity:
+          type: object
+          required: [lastEventTs]
+          properties:
+            lastEventTs:
+              type: string
+              format: date-time
+              nullable: true
+        latency:
+          type: object
+          description: Latency histograms for selected operations.
+          additionalProperties:
+            type: object
+            nullable: true
+            properties:
+              count: { type: integer, minimum: 0 }
+              avg: { type: number, minimum: 0 }
+              p50: { type: number, minimum: 0 }
+              p95: { type: number, minimum: 0 }
     ComplianceSnapshot:
       type: object
       required: [tenantId, generatedAt, frameworkSummary, risks, policies]
@@ -347,6 +756,93 @@ components:
           type: string
           nullable: true
           description: Cursor to request the next page (null when no more rows)
+    EvidenceLinkResult:
+      type: object
+      required: [controlKey, evidenceHash, linked, createdAt]
+      properties:
+        controlKey: { type: string }
+        evidenceHash: { type: string }
+        linked: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    SecurityIncident:
+      type: object
+      required: [id, tenantId, title, severity, status, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: string }
+        title: { type: string }
+        severity: { type: string, enum: [critical, high, medium, low] }
+        status: { type: string, enum: [open, resolved] }
+        source: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        responseMs:
+          type: integer
+          nullable: true
+          description: Time to resolve in milliseconds when available
+    SecurityIncidentList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SecurityIncident' }
+        nextCursor:
+          type: integer
+          nullable: true
+    SecurityStatus:
+      type: object
+      required: [threatLevel, threatBasis, openIncidents, resolvedIncidents]
+      properties:
+        threatLevel: { type: string, enum: [normal, elevated, critical] }
+        threatBasis: { type: string }
+        basis: { type: string, description: Alias for threatBasis }
+        openIncidents: { type: integer, minimum: 0 }
+        resolvedIncidents: { type: integer, minimum: 0 }
+        avgResponseMs:
+          type: integer
+          nullable: true
+    NotificationItem:
+      type: object
+      required: [id, title, severity, status, createdAt, ageSeconds, escalation]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        severity: { type: string, enum: [critical, high, medium, low] }
+        status: { type: string, enum: [open, resolved] }
+        createdAt: { type: string, format: date-time }
+        ageSeconds: { type: integer, minimum: 0 }
+        escalation: { type: boolean }
+    NotificationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationItem' }
+    AccessRequest:
+      type: object
+      required: [id, tenantId, subjectRef, resource, status, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: string }
+        subjectRef: { type: string }
+        resource: { type: string }
+        justification: { type: string, nullable: true }
+        status: { type: string, enum: [pending, approved, denied, fulfilled] }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time, nullable: true }
+        decidedBy: { type: string, nullable: true }
+    AccessRequestList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AccessRequest' }
+        nextCursor:
+          type: integer
+          nullable: true
         count:
           type: integer
           description: Number of records in the current page
@@ -373,6 +869,49 @@ components:
           required: [hash]
           properties:
             hash: { type: string }
+    PolicyTemplate:
+      type: object
+      required: [key, name, format]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        format: { type: string, enum: [markdown] }
+    GeneratePolicyRequest:
+      type: object
+      required: [tenantId, templateKey, context]
+      properties:
+        tenantId: { type: string }
+        templateKey: { type: string }
+        context:
+          type: object
+          additionalProperties: true
+          description: Arbitrary template context object (hashed canonically for cache key)
+    GeneratePolicyResponse:
+      type: object
+      required: [hash, templateKey, content, contextHash, createdAt, sizeBytes, cached]
+      properties:
+        hash: { type: string, description: SHA-256 content hash }
+        templateKey: { type: string }
+        content: { type: string }
+        contextHash: { type: string, description: Canonical SHA-256 hash of input context }
+        createdAt: { type: string, format: date-time }
+        sizeBytes: { type: integer, minimum: 0 }
+        cached: { type: boolean, description: Indicates whether content was reused }
+    CoverageSummary:
+      type: object
+      required: [framework, coveragePercent, controls]
+      properties:
+        framework: { type: string }
+        coveragePercent: { type: number, minimum: 0, maximum: 100 }
+        controls:
+          type: array
+          items:
+            type: object
+            required: [key, title, evidenceCount]
+            properties:
+              key: { type: string }
+              title: { type: string }
+              evidenceCount: { type: integer, minimum: 0 }
     Error:
       type: object
       required: [error]

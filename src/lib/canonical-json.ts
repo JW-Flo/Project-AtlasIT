@@ -1,4 +1,4 @@
-export type Canonicalizable = unknown;
+// Using unknown allows widest accepted JSON-like inputs
 
 function normalise(value: unknown): any {
   if (value === null) return null;
@@ -11,7 +11,7 @@ function normalise(value: unknown): any {
     return value;
   }
   if (valueType === "bigint") {
-    return value.toString();
+    return (value as bigint).toString();
   }
   if (Array.isArray(value)) {
     return value.map((item) => {
@@ -37,7 +37,7 @@ function normalise(value: unknown): any {
   return undefined; // drop non-JSON values like functions/symbols
 }
 
-export function canonicalize(value: Canonicalizable): string {
+export function canonicalize(value: unknown): string {
   const normalised = normalise(value);
   return JSON.stringify(normalised);
 }
@@ -54,25 +54,44 @@ async function getSubtle(): Promise<SubtleCrypto> {
     return globalThis.crypto.subtle;
   }
   const { webcrypto } = await import("node:crypto");
-  return webcrypto.subtle;
+  const subtle = webcrypto.subtle;
+  if (
+    subtle &&
+    typeof subtle.digest === "function" &&
+    typeof subtle.encrypt === "function" &&
+    typeof subtle.decrypt === "function"
+  ) {
+    return subtle as SubtleCrypto;
+  }
+  throw new Error("webcrypto.subtle is not compatible with SubtleCrypto");
 }
 
 function toHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let hex = "";
   for (const byte of bytes) {
-    hex += byte.toString(16).padStart(2, "0");
+    const digest = await subtle.digest(
+      "SHA-256",
+      bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+        ? bytes.buffer
+        : bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ),
+    );
   }
   return hex;
 }
 
 export async function sha256Hex(data: string | Uint8Array): Promise<string> {
   const subtle = await getSubtle();
-  const digest = await subtle.digest("SHA-256", toUint8(data));
+  const bytes = toUint8(data);
+  // Ensure we pass an ArrayBuffer (not SharedArrayBuffer) reference
+  const digest = await subtle.digest("SHA-256", bytes.slice().buffer);
   return toHex(digest);
 }
 
-export async function hashCanonicalJson(value: Canonicalizable) {
+export async function hashCanonicalJson(value: unknown) {
   const canonical = canonicalize(value);
   const hash = await sha256Hex(canonical);
   return { canonical, hash };

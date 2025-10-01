@@ -32,9 +32,22 @@ export default [
       "**/.venv/**",
       "**/dist/**",
       "**/build/**",
+      "**/.svelte-kit/**",
       "**/*.d.ts",
       "playwright.config.ts",
       "apex-redirect-worker/src/index.ts",
+      // Large context data / generated artifacts excluded for performance
+      "**/context/**",
+      "**/.generated/**",
+      "**/.cache/**",
+      // Explicit ignore for dummy root check file that is not part of a TS project
+      "DUMMY_CHECK.ts",
+      // Broad code areas not part of active linted projects
+      "adapters/**",
+      "auth/**",
+      "customer-worker-1/**",
+      "docs/chat-mcp-main/**",
+      "docs/servers-main/**",
     ],
   },
   {
@@ -65,6 +78,7 @@ export default [
       "./vitest.config.ts",
       // Exclude generated build output (but allow source including worker-entry for type parsing)
       "./console-app/.svelte-kit/**",
+      "./apps/atlasit-web/.svelte-kit/**",
       // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
       "./ai-orchestrator/*.test.ts",
       // Exclude IdP packages and idp routes from project-aware parsing; they use lightweight override below
@@ -75,6 +89,12 @@ export default [
       // Exclude demo-app standalone non-imported utility TS not covered by its tsconfig include
       "./demo-app/mock-api-server.ts",
       "./demo-app/tailwind.config.ts",
+      // Broad exclusions for docs & adapter example code not in any tsconfig project
+      "./adapters/**",
+      "./auth/**",
+      "./customer-worker-1/**",
+      "./docs/chat-mcp-main/**",
+      "./docs/servers-main/**",
     ],
     languageOptions: {
       parser: tsParser,
@@ -90,6 +110,8 @@ export default [
           path.join(rootDir, "console-app/tsconfig.json"),
           path.join(rootDir, "compliance-worker/tsconfig.json"),
           path.join(rootDir, "demo-app/tsconfig.json"),
+          // Add atlasit-web app tsconfig for type-aware linting; keep minimal includes
+          path.join(rootDir, "apps/atlasit-web/tsconfig.app.json"),
         ],
       },
     },

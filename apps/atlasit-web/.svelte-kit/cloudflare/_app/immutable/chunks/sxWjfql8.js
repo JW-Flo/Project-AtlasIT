@@ -1,0 +1,42 @@
+import { h as c, q as f, b as d, L as i, N as u } from "./DLjC2_M2.js";
+const v = Symbol("is custom element"),
+  h = Symbol("is html");
+function t(r) {
+  if (c) {
+    var s = !1,
+      a = () => {
+        if (!s) {
+          if (((s = !0), r.hasAttribute("value"))) {
+            var e = r.value;
+            (o(r, "value", null), (r.value = e));
+          }
+          if (r.hasAttribute("checked")) {
+            var _ = r.checked;
+            (o(r, "checked", null), (r.checked = _));
+          }
+        }
+      };
+    ((r.__on_r = a), f(a), d());
+  }
+}
+function o(r, s, a, e) {
+  var _ = l(r);
+  (c &&
+    ((_[s] = r.getAttribute(s)),
+    s === "src" ||
+      s === "srcset" ||
+      (s === "href" && r.nodeName === "LINK"))) ||
+    (_[s] !== (_[s] = a) &&
+      (s === "loading" && (r[i] = a), r.removeAttribute(s)));
+}
+function l(r) {
+  return (
+    r.__attributes ??
+    (r.__attributes = {
+      [v]: r.nodeName.includes("-"),
+      [h]: r.namespaceURI === u,
+    })
+  );
+}
+export { t as r };
+//# sourceMappingURL=sxWjfql8.js.map

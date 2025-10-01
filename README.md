@@ -110,6 +110,7 @@ See `ops/DEPLOYMENT_SUCCESS_REPORT.md` for last deployment snapshot and `ops/ALI
 - `AtlasIT Development Guide.md` – Architecture & dev practices.
 - `LEGACY.md` – Archived Ignite/MCP context retained for provenance.
 - `ops/ALIGNMENT_PLAN.md` – Branding + migration phases.
+- `docs/RECOMMENDED_UPDATES.md` – Consolidated audit of backend feature gaps, planned endpoints, observability & retention roadmap (keep in sync during compliance build-out).
 
 ## Roadmap Phases (Planned – Not Implemented)
 
@@ -164,3 +165,7 @@ COMPLIANCE_BASE=https://your-compliance-worker.example.com/api/compliance
 ```
 
 The prior temporary React `demo-app/` has been removed after migration to a unified SvelteKit approach.
+
+### New Security Operations Surfaces (In Progress)
+
+An early Access Requests management page (`/access-requests`) has been added (create + approve/deny/fulfill with optimistic UI, pagination & filtering) alongside backend endpoints (`/api/v1/access-requests`). This is a stepping stone toward a broader security & compliance console; expect path/name consolidation once the full compliance center is integrated.

@@ -60,6 +60,34 @@ Evidence ingest emits `evidence.ingest` (with `stored` boolean) and counters flu
 
 Lightweight: derive metrics from logs (no duplicate instrumentation). Future: Workers Analytics Engine histograms.
 
+## Additions (Version 1.2.0)
+
+New /health fields (see OpenAPI 1.2.0):
+
+| Field                | Type    | Description                               |
+| -------------------- | ------- | ----------------------------------------- |
+| policyTemplateCount  | integer | Count of rows in `policy_templates`       |
+| generatedPolicyCount | integer | Count of rows in `generated_policies`     |
+| controlCount         | integer | Count of rows in `internal_controls`      |
+| controlEvidenceLinks | integer | Count of rows in `control_evidence_links` |
+
+New log events:
+
+- `policy.generate` (templateKey, cached, contextHash, durationMs)
+- `control.link` (controlKey, evidenceHash, linked)
+- `policy.coverage.query` (framework, durationMs)
+
+Alerting Guidance:
+
+- Sudden drop in `policyTemplateCount` ( >1 template removed ) → investigate seed logic regression.
+- Rapid growth in `generatedPolicyCount` without corresponding tenant increases → potential context hash instability.
+- `controlEvidenceLinks` stagnation over time may indicate adoption friction (inform product team).
+
+Planned (Not Yet Implemented):
+
+- Histogram for policy generation latency.
+- Coverage trend export via scheduled job.
+
 ## Metrics Inventory
 
 | Metric                     | Type    | Purpose                                    | Emission Source         |

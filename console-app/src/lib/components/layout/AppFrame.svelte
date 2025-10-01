@@ -36,6 +36,8 @@
       );
       nav = [
         { href: "/console", label: "Console" },
+        { href: "/access-requests", label: "Access Requests" },
+        { href: "/incidents", label: "Incidents" },
         { href: `${base}/snapshot`, label: "Raw JSON" },
       ];
     } catch {

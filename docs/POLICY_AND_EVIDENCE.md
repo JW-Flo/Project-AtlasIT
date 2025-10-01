@@ -119,6 +119,64 @@ Validation Rules:
 - `GET /api/evidence/:hash` → returns canonical envelope (JSON) by hash.
 - `GET /api/evidence/search?tenant=...&pack=...&subject=...` → paginated D1 query.
 
+## Policy Templates & Generation (Added 1.2.0)
+
+Templates are stored in D1 table `policy_templates` keyed by `key` (e.g. `soc2.demo`). Generation is deterministic:
+
+1. Client calls `POST /api/policies/generate` with `{ tenantId, templateKey, context }`.
+2. Server canonicalizes `context` → produces `contextHash` (sha256 of canonical JSON string).
+3. Lookup existing row in `generated_policies` by `(tenant_id, template_key, context_hash)`.
+4. If found, return cached record (`cached=true`). Otherwise render template with context (must be pure / side‑effect free), compute `hash` of content, store row, return with `cached=false`.
+
+Constraints:
+
+- Template rendering must not perform network I/O.
+- Maximum rendered size enforced via environment `MAX_POLICY_SIZE_BYTES` (future – placeholder for guard rails).
+- New templates introduced only via migration or seed logic; existing keys stable.
+
+## Control Coverage & Evidence Linking (Added 1.2.0)
+
+Internal controls are defined in `internal_controls` with many-to-many relationship to policies (`control_mappings`). Evidence linking allows associating previously ingested evidence hashes to a control for audit readiness.
+
+Endpoint Flow:
+
+- `GET /api/policies/coverage/{framework}` returns coverage percentage and per-control evidence counts.
+- `POST /api/controls/{controlKey}/evidence-link` with `{ tenantId, evidenceHash }` creates idempotent link in `control_evidence_links` (unique composite index prevents duplicates).
+
+Coverage Calculation:
+
+```text
+coveragePercent = (number_of_controls_with_at_least_one_evidence / total_controls) * 100
+```
+
+## Health Metrics Extensions (Added 1.2.0)
+
+Health response now includes:
+
+- `policyTemplateCount`
+- `generatedPolicyCount`
+- `controlCount`
+- `controlEvidenceLinks`
+
+These are additive and optional for clients; absence should be treated as `unknown`.
+
+## Caching & Idempotency
+
+Policy generation caching relies on context hashing. Clients repeating identical semantic contexts (regardless of object key order) will receive identical `contextHash` and reuse stored content, eliminating duplicate entries and enabling deterministic auditing.
+
+Evidence link creation is idempotent: duplicate submissions return `linked=true` with no additional side-effects.
+
+## Retention Updates (1.2.0)
+
+- `generated_policies`: retained indefinitely until explicit archival process (future) – counts exposed in health.
+- `control_evidence_links`: retained indefinitely; removal only through administrative tooling (future) to preserve audit trail.
+
+## Future Considerations
+
+- Multi-framework coverage aggregation.
+- Template version pinning and historical regeneration with new formats (will require `template_version` column addition via migration).
+- Attestation signing of generated policies with tenant-specific key pairs.
+
 ## Snapshots
 
 - Nightly snapshot per tenant: materialize `compliance_snapshot/<tenant>/<YYYY-MM-DD>.json` into R2.
