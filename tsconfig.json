@@ -34,6 +34,7 @@
     }
   },
   "include": [
+    "playwright.config.ts",
     "onboarding/src/**/*.ts",
     "onboarding/src/**/*.tsx",
     "ai-orchestrator/**/*.ts",

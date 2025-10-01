@@ -29,7 +29,7 @@
     "miniflare": "^3.20250718.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.9",
-    "vite": "^5.4.8",
+    "vite": "^7.1.7",
     "vitest-environment-miniflare": "^2.14.4",
     "esbuild": "^0.23.0",
     "wrangler": "^3.95.0"

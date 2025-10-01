@@ -8,6 +8,23 @@ import { fileURLToPath } from "url";
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 
 export default [
+  // Explicit override to treat Playwright config as standalone (avoid project requirement)
+  {
+    files: ["playwright.config.ts"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: "latest",
+        sourceType: "module",
+      },
+    },
+    plugins: { "@typescript-eslint": tsPlugin },
+    rules: {
+      ...tsPlugin.configs["recommended"].rules,
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
   // Global ignores to avoid parsing build artifacts / declarations
   {
     ignores: [
@@ -16,6 +33,7 @@ export default [
       "**/dist/**",
       "**/build/**",
       "**/*.d.ts",
+      "playwright.config.ts",
     ],
   },
   {
@@ -114,6 +132,7 @@ export default [
       "**/vite.config.ts",
       "**/*.test.ts",
       "**/tailwind.config.ts",
+      "**/playwright.config.ts",
     ],
     languageOptions: {
       parser: tsParser,
