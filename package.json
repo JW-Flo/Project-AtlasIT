@@ -38,7 +38,7 @@
     "build:console": "cd console-app && npm run build",
     "preview:console": "cd console-app && npm run preview",
     "build:shared": "cd packages/shared && npm run build",
-    "test": "npm-run-all --parallel test:onboarding test:orchestrator",
+    "test": "node --loader ts-node/esm tests/run-tests.mjs",
     "test:onboarding": "cd onboarding && npm test",
     "test:marketplace": "cd marketplace && npm test",
     "test:auth": "cd auth && npm test",

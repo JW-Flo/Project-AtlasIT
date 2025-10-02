@@ -4,7 +4,10 @@ compatibility_date = "2025-09-30"
 workers_dev = true
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
-routes = ["www.atlasit.pro/api/compliance/*"]
+routes = [
+	"www.atlasit.pro/api/compliance/*",
+	"compliance.atlasit.pro/*"
+]
 
 [vars]
 # Future environment variables (COMPLIANCE_FEATURE_FLAGS, etc.)

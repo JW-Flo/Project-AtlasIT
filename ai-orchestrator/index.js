@@ -3,12 +3,20 @@ import { resolveMcpEndpoint } from "./config.js";
 import { logger as honoLogger } from "hono/logger";
 import { cors } from "hono/cors";
 import {
-  logger as sharedLogger,
   validateEnv,
   commonEnvSpec,
   generateAI,
   resolveCfApiToken,
 } from "@atlasit/shared";
+import log, {
+  correlationMiddleware,
+  logRequestMiddleware,
+} from "../shared/log.js";
+// Circuit breaker (shared)
+import { getBreaker } from "../shared/circuit-breaker.ts";
+import { listIntegrations } from "../shared/integrations/registry.js";
+import { probeIntegrations } from "../shared/integrations/health.js";
+import { recordBreakerTrip } from "../shared/breaker-metrics.js";
 
 // Env references: AI_MAX_REQUESTS_PER_DAY, AI_MAX_PROMPT_CHARS, AI_ALLOWED_MODELS,
 // AI_RATE_BURST, AI_RATE_WINDOW_SECONDS, AI_MAX_REQUESTS_PER_DAY, AI_TEST_MODE (tests), AI_QUOTA (KV binding)
@@ -53,42 +61,33 @@ function pruneRateBuckets(now) {
   }
 }
 
-async function enforceDailyQuota(c, limit) {
-  const today = getTodayUtc();
-  const kv = c.env?.AI_QUOTA;
-
-  if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
-    if (aiDaily.day !== today) {
-      aiDaily = { day: today, count: 0 };
-    }
-    if (limit > 0 && aiDaily.count >= limit) {
-      return {
-        allowed: false,
-        date: today,
-        used: aiDaily.count,
-        remaining: 0,
-        source: "memory",
-      };
-    }
-    aiDaily.count += 1;
+function memoryQuotaUpdate(today, limit) {
+  if (aiDaily.day !== today) aiDaily = { day: today, count: 0 };
+  if (limit > 0 && aiDaily.count >= limit) {
     return {
-      allowed: true,
+      allowed: false,
       date: today,
       used: aiDaily.count,
-      remaining: limit > 0 ? Math.max(0, limit - aiDaily.count) : null,
+      remaining: 0,
       source: "memory",
     };
   }
+  aiDaily.count += 1;
+  return {
+    allowed: true,
+    date: today,
+    used: aiDaily.count,
+    remaining: limit > 0 ? Math.max(0, limit - aiDaily.count) : null,
+    source: "memory",
+  };
+}
 
-  const key = `${QUOTA_KV_PREFIX}${today}`;
+async function kvQuotaUpdate(kv, key, today, limit) {
   let lastCount = 0;
-
   for (let attempt = 0; attempt < 3; attempt += 1) {
     let data = await kv.get(key, { type: "json" }).catch(() => null);
-    if (!data || data.date !== today || typeof data.count !== "number") {
+    if (!data || data.date !== today || typeof data.count !== "number")
       data = { date: today, count: 0 };
-    }
-
     if (limit > 0 && data.count >= limit) {
       aiDaily = { day: today, count: data.count };
       return {
@@ -99,7 +98,6 @@ async function enforceDailyQuota(c, limit) {
         source: "kv",
       };
     }
-
     const newCount = data.count + 1;
     lastCount = newCount;
     await kv.put(key, JSON.stringify({ date: today, count: newCount }), {
@@ -121,10 +119,8 @@ async function enforceDailyQuota(c, limit) {
         source: "kv",
       };
     }
-
     await sleep(Math.floor(Math.random() * 25) + 5);
   }
-
   aiDaily = { day: today, count: lastCount };
   return {
     allowed: true,
@@ -133,6 +129,16 @@ async function enforceDailyQuota(c, limit) {
     remaining: limit > 0 ? Math.max(0, limit - lastCount) : null,
     source: "kv",
   };
+}
+
+async function enforceDailyQuota(c, limit) {
+  const today = getTodayUtc();
+  const kv = c.env?.AI_QUOTA;
+  if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
+    return memoryQuotaUpdate(today, limit);
+  }
+  const key = `${QUOTA_KV_PREFIX}${today}`;
+  return kvQuotaUpdate(kv, key, today, limit);
 }
 
 async function readQuotaSnapshot(env, limit) {
@@ -150,7 +156,8 @@ async function readQuotaSnapshot(env, limit) {
         };
       }
     } catch (e) {
-      sharedLogger.warn("ai.quota_snapshot_error", { error: String(e) });
+      // Replaced undefined sharedLogger usage with shared log helper
+      log("warn", "ai.quota_snapshot_error", { error: String(e) });
     }
   }
 
@@ -182,7 +189,7 @@ export async function readPersistedQuota(env) {
         return { date: today, count: data.count, source: "kv" };
       }
     } catch (e) {
-      sharedLogger.warn("ai.quota_persist_read_error", { error: String(e) });
+      log("warn", "ai.quota_persist_read_error", { error: String(e) });
     }
   }
   // Fallback to in-memory daily counter
@@ -194,13 +201,14 @@ export async function readPersistedQuota(env) {
 
 // Middleware
 app.use("*", honoLogger());
+app.use("*", correlationMiddleware());
+app.use("*", logRequestMiddleware());
 app.use("*", cors());
 
 // Correlation ID middleware
 app.use("*", async (c, next) => {
   const requestId = crypto.randomUUID();
   c.set("requestId", requestId);
-  // Provide in response header after downstream handlers
   await next();
   c.res.headers.set("x-request-id", requestId);
 });
@@ -402,7 +410,8 @@ async function checkWithMCP(action, context) {
       (typeof process !== "undefined" &&
         process?.env?.DEBUG_MCP_LOGS === "true");
     if (debugMcpLogs) {
-      sharedLogger.error("MCP approval check failed", { error: String(error) });
+      // Consolidated logging; sharedLogger undefined before
+      log("error", "mcp.approval_failed", { error: String(error) });
     }
     return false;
   }
@@ -530,9 +539,7 @@ async function requestAIAssistance(tasks) {
 
     return { success: true, response };
   } catch (error) {
-    sharedLogger.error("AI assistance request failed", {
-      error: String(error),
-    });
+    log("error", "ai.assistance_request_failed", { error: String(error) });
     return { success: false, error };
   }
 }
@@ -566,6 +573,23 @@ async function processAIResponse(response) {
 }
 
 // API Endpoints
+app.get("/integrations", async (c) => {
+  const q = c.req.query();
+  const filter = { category: q.category, tier: q.tier, status: q.status };
+  const items = listIntegrations(filter);
+  const health = await probeIntegrations(c.env || {});
+  // Map health statuses to returned subset
+  const healthMap = new Map(health.map((h) => [h.id, h]));
+  const enriched = items.map((i) => ({
+    ...i,
+    health: healthMap.get(i.id) || { status: "unknown" },
+  }));
+  return c.json({
+    integrations: enriched,
+    count: enriched.length,
+    requestId: c.get("requestId"),
+  });
+});
 app.get("/status", async (c) => {
   const approved = await checkWithMCP("status_check", {
     timestamp: new Date(),
@@ -678,61 +702,65 @@ app.post("/terminal", async (c) => {
 });
 
 // Simple AI inference endpoint (POST /ai/infer) { prompt, model? }
-app.post("/ai/infer", async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) || {};
+// --- AI Inference Helpers -------------------------------------------------
+function validatePrompt(c, body) {
   const prompt = body.prompt;
-  if (!prompt || typeof prompt !== "string") {
-    return c.json({ error: "Missing prompt" }, 400);
-  }
+  if (!prompt || typeof prompt !== "string")
+    return { error: c.json({ error: "Missing prompt" }, 400) };
   const maxPrompt = parseInt(c.env.AI_MAX_PROMPT_CHARS || "8000", 10);
-  if (prompt.length > maxPrompt) {
-    return c.json({ error: "Prompt too large", max: maxPrompt }, 413);
-  }
+  if (prompt.length > maxPrompt)
+    return {
+      error: c.json({ error: "Prompt too large", max: maxPrompt }, 413),
+    };
+  return { prompt };
+}
 
+function applyRateLimit(c) {
   const windowSeconds =
     parseInt(c.env.AI_RATE_WINDOW_SECONDS || "", 10) ||
     DEFAULT_AI_RATE_WINDOW_SECONDS;
   const burst =
     parseInt(c.env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
-
-  if (burst > 0 && windowSeconds > 0) {
-    const ip = getClientIp(c);
-    const bucketKey = `${ip}:infer`;
-    const now = Date.now();
-    pruneRateBuckets(now);
-    const windowMs = windowSeconds * 1000;
-    let bucket = aiIpRateBuckets.get(bucketKey);
-    if (!bucket || now - bucket.windowStart >= windowMs) {
-      bucket = { windowStart: now, count: 0, windowMs, lastAccess: now };
-    }
-    bucket.count += 1;
-    bucket.lastAccess = now;
-    aiIpRateBuckets.set(bucketKey, bucket);
-    if (bucket.count > burst) {
-      const retryAfter = Math.max(
-        1,
-        Math.ceil((bucket.windowMs - (now - bucket.windowStart)) / 1000),
-      );
-      sharedLogger.warn("ai.rate_limit", {
-        ip,
-        used: bucket.count,
-        windowSeconds,
-        requestId: c.get("requestId"),
-      });
-      return c.json(
+  if (!(burst > 0 && windowSeconds > 0)) return { ok: true };
+  const ip = getClientIp(c);
+  const bucketKey = `${ip}:infer`;
+  const now = Date.now();
+  pruneRateBuckets(now);
+  const windowMs = windowSeconds * 1000;
+  let bucket = aiIpRateBuckets.get(bucketKey);
+  if (!bucket || now - bucket.windowStart >= windowMs)
+    bucket = { windowStart: now, count: 0, windowMs, lastAccess: now };
+  bucket.count += 1;
+  bucket.lastAccess = now;
+  aiIpRateBuckets.set(bucketKey, bucket);
+  if (bucket.count > burst) {
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((bucket.windowMs - (now - bucket.windowStart)) / 1000),
+    );
+    log("warn", "ai.rate_limit", {
+      ip,
+      used: bucket.count,
+      windowSeconds,
+      requestId: c.get("requestId"),
+    });
+    return {
+      ok: false,
+      error: c.json(
         {
           error: "rate_limited",
           retryAfterSeconds: retryAfter,
           requestId: c.get("requestId"),
         },
         429,
-        {
-          "Retry-After": String(retryAfter),
-        },
-      );
-    }
+        { "Retry-After": String(retryAfter) },
+      ),
+    };
   }
+  return { ok: true };
+}
 
+async function applyQuota(c) {
   const limit = parseInt(c.env.AI_MAX_REQUESTS_PER_DAY || "0", 10) || 0;
   const quotaResult = await enforceDailyQuota(c, limit);
   const quotaInfo = {
@@ -741,25 +769,30 @@ app.post("/ai/infer", async (c) => {
     limit,
     remaining: quotaResult.remaining,
   };
-
   if (!quotaResult.allowed) {
-    sharedLogger.info("ai.quota_exceeded", {
+    log("info", "ai.quota_exceeded", {
       date: quotaResult.date,
       used: quotaResult.used,
       limit,
       requestId: c.get("requestId"),
     });
-    return c.json(
-      {
-        // Align with test expectation list ("Daily AI request quota reached" or rate_limited)
-        error: "Daily AI request quota reached",
-        quota: quotaInfo,
-        requestId: c.get("requestId"),
-      },
-      429,
-    );
+    return {
+      ok: false,
+      quotaInfo,
+      error: c.json(
+        {
+          error: "Daily AI request quota reached",
+          quota: quotaInfo,
+          requestId: c.get("requestId"),
+        },
+        429,
+      ),
+    };
   }
+  return { ok: true, quotaInfo };
+}
 
+function selectModel(c, body) {
   const allow = (
     c.env.AI_ALLOWED_MODELS ||
     "@cf/meta/llama-3.1-8b-instruct,@cf/meta/llama-3.3-70b-instruct"
@@ -768,41 +801,101 @@ app.post("/ai/infer", async (c) => {
     .map((s) => s.trim())
     .filter(Boolean);
   const model = body.model || allow[0];
-  if (!allow.includes(model)) {
-    return c.json({ error: "Unsupported model", model, allowed: allow }, 400);
-  }
+  if (!allow.includes(model))
+    return {
+      error: c.json({ error: "Unsupported model", model, allowed: allow }, 400),
+    };
+  return { model };
+}
 
+async function runInference(c, prompt, model, quotaInfo) {
   try {
-    let durationMs = 0;
-    let outputText;
     if (c.env.AI_TEST_MODE === "1") {
-      outputText = c.env.AI_TEST_RESPONSE || "test-output";
-    } else {
-      const started = Date.now();
-      outputText = await callAI(prompt, c.env || {}, { model });
-      durationMs = Date.now() - started;
+      return {
+        response: c.json({
+          success: true,
+          model,
+          durationMs: 0,
+          output: { text: c.env.AI_TEST_RESPONSE || "test-output" },
+          quota: quotaInfo,
+          requestId: c.get("requestId"),
+          actor: c.get("actor"),
+        }),
+      };
     }
-
-    return c.json({
-      success: true,
-      model,
-      durationMs,
-      output: { text: outputText },
-      quota: quotaInfo,
-      requestId: c.get("requestId"),
-      actor: c.get("actor"),
+    const started = Date.now();
+    const breaker = getBreaker("ai-primary", {
+      failureThreshold: 3,
+      resetTimeoutMs: 20000,
     });
+    try {
+      let usedFallback = false;
+      const outputText = await breaker.exec(
+        () => callAI(prompt, c.env || {}, { model }),
+        async () => {
+          usedFallback = true;
+          return "[fallback-response] " + (prompt.slice(0, 120) || "");
+        },
+      );
+      if (usedFallback) await recordBreakerTrip(c.env || {}, "ai-primary");
+      const durationMs = Date.now() - started;
+      return {
+        response: c.json({
+          success: true,
+          model,
+          durationMs,
+          output: { text: outputText },
+          quota: quotaInfo,
+          requestId: c.get("requestId"),
+          actor: c.get("actor"),
+        }),
+      };
+    } catch (err) {
+      await recordBreakerTrip(c.env || {}, "ai-primary");
+      log("error", "ai.breaker.failure", { error: String(err) });
+      return {
+        response: c.json(
+          {
+            error: "AI service unavailable",
+            quota: quotaInfo,
+            breaker: { state: breaker.status() },
+            requestId: c.get("requestId"),
+          },
+          503,
+        ),
+      };
+    }
   } catch (e) {
-    sharedLogger.error("ai.infer.error", { error: String(e) });
-    return c.json(
-      {
-        error: "AI inference failed",
-        quota: quotaInfo,
-        requestId: c.get("requestId"),
-      },
-      500,
-    );
+    log("error", "ai.infer.error", { error: String(e) });
+    return {
+      response: c.json(
+        {
+          error: "AI inference failed",
+          quota: quotaInfo,
+          requestId: c.get("requestId"),
+        },
+        500,
+      ),
+    };
   }
+}
+
+// Simple AI inference endpoint (POST /ai/infer) { prompt, model? }
+app.post("/ai/infer", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) || {};
+  const v = validatePrompt(c, body);
+  if (v.error) return v.error;
+  const prompt = v.prompt;
+  const rl = applyRateLimit(c);
+  if (!rl.ok) return rl.error;
+  const quota = await applyQuota(c);
+  if (!quota.ok) return quota.error;
+  const quotaInfo = quota.quotaInfo;
+  const m = selectModel(c, body);
+  if (m.error) return m.error;
+  const model = m.model;
+  const { response } = await runInference(c, prompt, model, quotaInfo);
+  return response;
 });
 
 // Health check
@@ -927,9 +1020,7 @@ export async function handleRequest(req, env, ctx) {
     try {
       validateEnv(commonEnvSpec, env);
     } catch (e) {
-      sharedLogger.warn("Orchestrator env validation warning", {
-        error: String(e),
-      });
+      log("warn", "orchestrator.env_validation_warning", { error: String(e) });
     } finally {
       envValidated = true;
     }

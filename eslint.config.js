@@ -51,7 +51,8 @@ export default [
     ],
   },
   {
-    files: ["**/*.{js,ts,tsx}"],
+    // Base JS-only rules; exclude TS so TypeScript is always handled by TS parser below
+    files: ["**/*.js"],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: "latest",
@@ -75,6 +76,8 @@ export default [
       "**/jest.config.ts",
       "**/tests/**",
       "./tests/**",
+      // Skip standalone TS utility not included in any tsconfig project (avoids parserOptions.project error)
+      "shared/circuit-breaker.ts",
       // Exclude test files in auth package from project-aware parsing (handled by test override)
       "packages/auth/test/**",
       // Exclude tooling scripts not covered by tsconfig projects

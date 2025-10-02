@@ -103,6 +103,7 @@ name = "atlasit-core"
 main = "index.js"
 usage_model = "bundled"
 workers_dev = true
+routes = ["api.atlasit.pro/*"]
 
 [[env.core.kv_namespaces]]
 binding = "KV_SESSIONS"

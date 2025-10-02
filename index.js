@@ -1,574 +1,398 @@
 import registry from "./adapters/registry.json";
 import { traceFetch } from "./src/lib/trace.js";
+import { buildBaseHealth, finalizeHealth } from "./shared/health-schema.ts";
+import {
+  summarizeIntegrations,
+  listIntegrations,
+} from "./shared/integrations/registry.js";
+import { probeIntegrations } from "./shared/integrations/health.js";
+import log, { getRecentLogs, generateCorrelationId } from "./shared/log.js";
 
+// ---------- Utilities -------------------------------------------------------
 const adapterRegistry = Array.isArray(registry) ? registry : [];
 
 function isFeatureEnabled(env, flag) {
   if (!flag) return false;
   const raw = env?.[flag];
-  if (typeof raw === "string") {
+  if (typeof raw === "string")
     return raw === "1" || raw.toLowerCase() === "true";
-  }
-  if (typeof raw === "number") {
-    return raw === 1;
-  }
-  if (typeof raw === "boolean") {
-    return raw;
-  }
-  return false;
+  if (typeof raw === "number") return raw === 1;
+  return !!raw;
 }
 
-export const STEP_DEFINITIONS = {
-  joiner: [
-    {
-      id: "validate-profile",
-      action: "validateProfile",
-      description: "Ensure new hire profile is complete",
-      maxAttempts: 3,
-    },
-    {
-      id: "provision-primary-account",
-      action: "provisionPrimaryAccount",
-      description: "Create primary identity provider record",
-      maxAttempts: 3,
-    },
-    {
-      id: "synchronize-access",
-      action: "synchronizeAccess",
-      description: "Configure downstream systems for day-one access",
-      maxAttempts: 2,
-    },
-    {
-      id: "notify-stakeholders",
-      action: "notifyStakeholders",
-      description: "Send onboarding summary to stakeholders",
-      maxAttempts: 1,
-    },
-  ],
-  mover: [
-    {
-      id: "snapshot-access",
-      action: "snapshotCurrentAccess",
-      description: "Capture current access roster prior to change",
-      maxAttempts: 2,
-    },
-    {
-      id: "apply-role-change",
-      action: "applyRoleChange",
-      description: "Apply role/attribute updates to source systems",
-      maxAttempts: 3,
-    },
-    {
-      id: "reconcile-entitlements",
-      action: "reconcileAccessChanges",
-      description: "Align entitlements to the target state",
-      maxAttempts: 3,
-    },
-    {
-      id: "notify-stakeholders",
-      action: "notifyStakeholders",
-      description: "Notify stakeholders of move completion",
-      maxAttempts: 1,
-    },
-  ],
-  leaver: [
-    {
-      id: "disable-primary-account",
-      action: "disablePrimaryAccount",
-      description: "Disable the primary identity provider account",
-      maxAttempts: 3,
-    },
-    {
-      id: "revoke-entitlements",
-      action: "revokeAccess",
-      description: "Revoke downstream system access",
-      maxAttempts: 3,
-    },
-    {
-      id: "collect-artifacts",
-      action: "collectArtifacts",
-      description: "Collect equipment and generate audit artifacts",
-      maxAttempts: 2,
-    },
-    {
-      id: "finalize-offboarding",
-      action: "finalizeOffboarding",
-      description: "Finalize offboarding evidence package",
-      maxAttempts: 1,
-    },
-  ],
-};
-
-export const STEP_HANDLERS = {
-  async validateProfile({ run }) {
-    const { user } = run.context;
-    if (!user || !user.email) {
-      throw new Error("User profile missing required email field");
-    }
-    if (!user.displayName) {
-      throw new Error("User profile missing display name");
-    }
-    return { validated: true, email: user.email };
-  },
-  async provisionPrimaryAccount({ run }) {
-    const id = run.context.user?.id;
-    if (!id) {
-      throw new Error("User id required to provision primary account");
-    }
-    return { accountId: `okta:${id}` };
-  },
-  async synchronizeAccess({ run }) {
-    const entitlements = run.context.entitlements;
-    if (!Array.isArray(entitlements) || entitlements.length === 0) {
-      throw new Error("No entitlements supplied for synchronization");
-    }
-    return { connectors: entitlements };
-  },
-  async notifyStakeholders({ run }) {
-    const recipients = run.context.notifications?.recipients || [];
-    return { notified: recipients };
-  },
-  async snapshotCurrentAccess({ run }) {
-    const previous = run.context.entitlements?.previous || [];
-    return { captured: previous };
-  },
-  async applyRoleChange({ run }) {
-    if (!run.context.newRole) {
-      throw new Error("Missing new role details for mover flow");
-    }
-    return { newRole: run.context.newRole };
-  },
-  async reconcileAccessChanges({ run }) {
-    const target = run.context.entitlements?.target;
-    if (!Array.isArray(target) || target.length === 0) {
-      throw new Error("Target entitlements required to reconcile access");
-    }
-    return { applied: target };
-  },
-  async disablePrimaryAccount({ run }) {
-    const email = run.context.user?.email;
-    if (!email) {
-      throw new Error("Email required to disable primary account");
-    }
-    return { disabled: email };
-  },
-  async revokeAccess({ run }) {
-    const entitlements = Array.isArray(run.context.entitlements)
-      ? run.context.entitlements
-      : run.context.entitlements?.previous || [];
-    return { revoked: entitlements };
-  },
-  async collectArtifacts({ run }) {
-    const equipment = run.context.exit?.equipment || [];
-    if (equipment.length === 0) {
-      throw new Error("No equipment registered for collection");
-    }
-    return { equipment };
-  },
-  async finalizeOffboarding() {
-    return { status: "closed", archivedAt: new Date().toISOString() };
-  },
-};
-
-function clone(value) {
-  if (typeof structuredClone === "function") {
-    return structuredClone(value);
-  }
-  return JSON.parse(JSON.stringify(value));
+function makeHeaders(correlationId, extra = {}) {
+  return { "x-correlation-id": correlationId, ...extra };
 }
 
-function mapToArray(map) {
-  const items = [];
-  for (const [, value] of map) {
-    items.push(value);
-  }
-  return items;
+async function handleDiagnostics(env) {
+  if (env.__BINDING_DIAGNOSTICS_EMITTED) return;
+  const expected = [
+    "KV_SESSIONS",
+    "KV_CACHE",
+    "KV_FEATURE_FLAGS",
+    "MCP_STORE",
+    "ATLAS_CORE_DB",
+    "ATLAS_AUDIT_DB",
+    "ATLAS_COMPLIANCE_DB",
+    "ATLAS_AUDIT_SHADOW",
+    "atlas_policies",
+    "atlas_evidence",
+    "atlas_artifacts",
+  ];
+  const missing = expected.filter((k) => !(k in env));
+  if (missing.length)
+    console.warn("[bindings.missing]", JSON.stringify({ missing }));
+  env.__BINDING_DIAGNOSTICS_EMITTED = true;
 }
 
-export class JMLEngine {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
+// ---------- Endpoint Handlers (return Response or null) --------------------
+async function handleHealth(url, env, correlationId, baseHeaders) {
+  if (url.pathname !== "/health") return null;
+  const start = Date.now();
+  const h = buildBaseHealth({
+    version: "3.0.0",
+    service: "AtlasIT Core Worker",
+    startTime: start,
+  });
+  try {
+    h.resources.d1_database = env.ATLAS_CORE_DB ? "configured" : "missing";
+    if (!env.ATLAS_CORE_DB) {
+      h.status = "degraded";
+      h.warnings.push("ATLAS_CORE_DB missing");
+    }
+    if (env.KV_CACHE) h.resources.kv = "configured";
+    if (env.atlas_evidence) h.resources.r2_storage = "configured";
+    h.performance.responseTimeMs = Date.now() - start;
+  } catch {
+    /* degrade health silently */ h.warnings.push("Health probe error");
+    if (h.status === "ok") h.status = "degraded";
   }
+  const final = finalizeHealth(h);
+  final.integrations = { summary: summarizeIntegrations() };
+  log("info", "core.health", { status: final.status, correlationId });
+  return new Response(JSON.stringify(final), {
+    status: final.status === "unhealthy" ? 503 : 200,
+    headers: { "Content-Type": "application/json", ...baseHeaders },
+  });
+}
 
-  async fetch(request) {
-    const url = new URL(request.url);
-    const method = request.method;
-    const segments = url.pathname.split("/").filter(Boolean);
-    const endpoint = segments[segments.length - 1] || "";
-
-    if (method === "POST" && endpoint === "enqueue") {
-      const payload = await request.json();
-      return this.handleEnqueue(payload);
-    }
-
-    if (method === "GET" && endpoint === "status") {
-      return this.handleStatus();
-    }
-
-    if (method === "GET" && endpoint === "dlq") {
-      return this.handleDlq();
-    }
-
-    return new Response("Not Found", { status: 404 });
-  }
-
-  async handleEnqueue(data) {
-    const type = data?.type;
-    if (!type) {
-      return new Response(JSON.stringify({ error: "type is required" }), {
-        status: 400,
-      });
-    }
-
-    const steps = this.getStepsForType(type);
-    if (steps.length === 0) {
+function handleAdminLogs(url, request, env, correlationId, baseHeaders) {
+  if (url.pathname !== "/api/v1/admin/logs/recent") return null;
+  const adminToken = env.ADMIN_BEARER || env.ADMIN_TOKEN;
+  if (adminToken) {
+    const provided = request.headers.get("authorization") || "";
+    const token = provided.startsWith("Bearer ") ? provided.slice(7) : provided;
+    if (token !== adminToken) {
       return new Response(
-        JSON.stringify({ error: `Unsupported lifecycle type: ${type}` }),
+        JSON.stringify({ error: "unauthorized", correlationId }),
         {
-          status: 400,
+          status: 401,
+          headers: { "Content-Type": "application/json", ...baseHeaders },
         },
       );
     }
-
-    const runId = crypto.randomUUID();
-    const tenantId = data.tenantId || data.tenant?.id || "unknown";
-    const userId = data.user?.id || data.userId || "unknown";
-    const createdAt = new Date().toISOString();
-
-    const run = {
-      id: runId,
-      type,
-      tenantId,
-      userId,
-      status: "pending",
-      createdAt,
-      currentStep: 0,
-      steps,
-      history: [],
-      context: clone(data),
-    };
-
-    await this.state.storage.put(`run:${runId}`, run);
-    await this.processRun(runId);
-
-    return new Response(JSON.stringify({ runId }), { status: 200 });
   }
-
-  async handleStatus() {
-    const runs = await this.state.storage.list({ prefix: "run:" });
-    const runList = mapToArray(runs).sort((a, b) => {
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-    return new Response(JSON.stringify(runList), {
+  const limit = Math.min(
+    200,
+    parseInt(url.searchParams.get("limit") || "50", 10),
+  );
+  const level = url.searchParams.get("level") || undefined;
+  return new Response(
+    JSON.stringify({ logs: getRecentLogs(limit, level), limit, correlationId }),
+    {
       status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  async handleDlq() {
-    const dlqEntries = await this.state.storage.list({ prefix: "dlq:" });
-    const list = mapToArray(dlqEntries).sort((a, b) => {
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    });
-    return new Response(JSON.stringify(list), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  getStepsForType(type) {
-    const definitions = STEP_DEFINITIONS[type];
-    if (!definitions) {
-      return [];
-    }
-    return definitions.map((definition) => ({
-      ...definition,
-      status: "pending",
-      attempts: 0,
-    }));
-  }
-
-  async processRun(runId) {
-    const run = await this.state.storage.get(`run:${runId}`);
-    if (!run) return;
-
-    const step = run.steps[run.currentStep];
-    if (!step) {
-      if (run.status !== "completed") {
-        run.status = "completed";
-        run.completedAt = new Date().toISOString();
-        await this.state.storage.put(`run:${runId}`, run);
-      }
-      return;
-    }
-
-    const now = new Date().toISOString();
-    if (step.status === "pending" || step.status === "retrying") {
-      step.status = "running";
-      step.startedAt = step.startedAt || now;
-      run.status = "running";
-      await this.state.storage.put(`run:${runId}`, run);
-    }
-
-    try {
-      const result = await this.executeStep(step, run);
-      step.status = "completed";
-      step.completedAt = new Date().toISOString();
-      if (result !== undefined) {
-        step.output = result;
-      }
-
-      run.history.push({
-        stepId: step.id,
-        action: step.action,
-        status: "completed",
-        timestamp: step.completedAt,
-        output: result ?? null,
-      });
-      run.currentStep += 1;
-      await this.state.storage.put(`run:${runId}`, run);
-      await this.processRun(runId);
-    } catch (error) {
-      step.attempts = (step.attempts || 0) + 1;
-      step.error = error instanceof Error ? error.message : String(error);
-
-      run.history.push({
-        stepId: step.id,
-        action: step.action,
-        status: "failed",
-        attempt: step.attempts,
-        timestamp: new Date().toISOString(),
-        error: step.error,
-      });
-
-      if (step.attempts < step.maxAttempts) {
-        step.status = "retrying";
-        step.nextRetryAt = new Date().toISOString();
-        await this.state.storage.put(`run:${runId}`, run);
-        await this.processRun(runId);
-        return;
-      }
-
-      step.status = "failed";
-      run.status = "failed";
-      run.failedAt = new Date().toISOString();
-
-      await this.state.storage.put(`dlq:${runId}:${step.id}`, {
-        id: `${runId}:${step.id}`,
-        runId,
-        stepId: step.id,
-        type: run.type,
-        error: step.error,
-        attempts: step.attempts,
-        createdAt: run.failedAt,
-        context: run.context,
-      });
-
-      await this.state.storage.put(`run:${runId}`, run);
-    }
-  }
-
-  async executeStep(step, run) {
-    const control = run.context?.control || {};
-    if (control.failStep === step.id || control.failAction === step.action) {
-      throw new Error(`Simulated failure for step ${step.id}`);
-    }
-
-    const handler = STEP_HANDLERS[step.action];
-    if (!handler) {
-      throw new Error(`Unhandled action: ${step.action}`);
-    }
-
-    return handler({ run, step, env: this.env });
-  }
+      headers: { "Content-Type": "application/json", ...baseHeaders },
+    },
+  );
 }
 
-async function handleFetch(request, env, ctx) {
-  // Early runtime binding diagnostics (only once per instance)
-  try {
-    if (!env.__BINDING_DIAGNOSTICS_EMITTED) {
-      const expected = [
-        "KV_SESSIONS",
-        "KV_CACHE",
-        "KV_FEATURE_FLAGS",
-        "MCP_STORE",
-        // D1
-        "ATLAS_CORE_DB",
-        "ATLAS_AUDIT_DB",
-        "ATLAS_COMPLIANCE_DB",
-        "ATLAS_AUDIT_SHADOW",
-        // R2 buckets
-        "atlas_policies",
-        "atlas_evidence",
-        "atlas_artifacts",
-      ];
-      const missing = expected.filter((k) => !(k in env));
-      if (missing.length) {
-        console.warn(
-          "[bindings] Missing Cloudflare bindings detected",
-          JSON.stringify({
-            missing,
-            hint: "Ensure wrangler.toml env.<name> sections include these bindings and they exist in the Cloudflare dashboard.",
-          }),
-        );
-      }
-      env.__BINDING_DIAGNOSTICS_EMITTED = true; // marker (non-persisted)
-    }
-  } catch (e) {
-    // swallow – diagnostics should never break request handling
+// Apps sub-handlers to reduce complexity
+function ensureAppsState(env) {
+  if (!env.__APPS_STATE) {
+    env.__APPS_STATE = { connected: new Set(), lastSync: new Map() };
   }
-  // Health check endpoint
-  if (new URL(request.url).pathname === "/health") {
-    // Allow health to succeed even if dispatcher binding not present (free plan / parallel rename mode)
-    if (!env.dispatcher) {
-      return new Response("OK", { status: 200 });
-    }
-    return new Response("OK", { status: 200 });
-  }
+  return env.__APPS_STATE;
+}
 
-  if (new URL(request.url).pathname === "/api/connectors") {
-    const enabled = adapterRegistry
-      .filter((entry) => isFeatureEnabled(env, entry.featureFlag))
-      .map((entry) => ({
-        name: entry.name,
-        slug: entry.slug,
-        featureFlag: entry.featureFlag,
-      }));
-    return new Response(JSON.stringify({ adapters: enabled }), {
+const appsJson = (baseHeaders, obj, status = 200) => {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json", ...baseHeaders },
+  });
+};
+
+async function appsList(env, state, correlationId, baseHeaders) {
+  const health = await probeIntegrations(env);
+  const hmap = new Map(health.map((h) => [h.id, h]));
+  const applications = listIntegrations().map((i) => ({
+    id: i.id,
+    name: i.name,
+    category: i.category,
+    status: i.status,
+    connected: state.connected.has(i.id),
+    lastSync: state.lastSync.get(i.id) || null,
+    health: hmap.get(i.id) || { status: "unknown" },
+  }));
+  log("info", "apps.list", { count: applications.length, correlationId });
+  return appsJson(baseHeaders, {
+    applications,
+    count: applications.length,
+    correlationId,
+  });
+}
+
+async function appsConnect(request, state, correlationId, baseHeaders) {
+  const id = (await request.json().catch(() => ({}))).id;
+  if (!id)
+    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  state.connected.add(id);
+  log("info", "apps.connect", { id, correlationId });
+  return appsJson(baseHeaders, { connected: true, id, correlationId });
+}
+
+async function appsDisconnect(request, state, correlationId, baseHeaders) {
+  const id = (await request.json().catch(() => ({}))).id;
+  if (!id)
+    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  state.connected.delete(id);
+  log("info", "apps.disconnect", { id, correlationId });
+  return appsJson(baseHeaders, { connected: false, id, correlationId });
+}
+
+function appsStatus(state, correlationId, baseHeaders) {
+  const applications = listIntegrations().map((i) => ({
+    id: i.id,
+    connected: state.connected.has(i.id),
+    lastSync: state.lastSync.get(i.id) || null,
+  }));
+  return appsJson(baseHeaders, { applications, correlationId });
+}
+
+async function appsSync(request, state, correlationId, baseHeaders) {
+  const id = (await request.json().catch(() => ({}))).id;
+  if (!id)
+    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  if (!state.connected.has(id))
+    return appsJson(
+      baseHeaders,
+      { error: "not connected", id, correlationId },
+      400,
+    );
+  const syncId = "sync-" + Date.now();
+  state.lastSync.set(id, new Date().toISOString());
+  log("info", "apps.sync", { id, syncId, correlationId });
+  return appsJson(baseHeaders, { syncId, id, correlationId }, 202);
+}
+
+async function handleApps(url, request, env, correlationId, baseHeaders) {
+  if (!url.pathname.startsWith("/api/v1/apps")) {
+    return null;
+  }
+  const state = ensureAppsState(env);
+  const m = request.method;
+  if (url.pathname === "/api/v1/apps" && m === "GET")
+    return appsList(env, state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/connect" && m === "POST")
+    return appsConnect(request, state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/disconnect" && m === "POST")
+    return appsDisconnect(request, state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/status" && m === "GET")
+    return appsStatus(state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/sync" && m === "POST")
+    return appsSync(request, state, correlationId, baseHeaders);
+  return null;
+}
+
+function handleConnectors(url, env, correlationId) {
+  if (url.pathname !== "/api/connectors") return null;
+  const enabled = adapterRegistry
+    .filter((e) => isFeatureEnabled(env, e.featureFlag))
+    .map((e) => ({ name: e.name, slug: e.slug, featureFlag: e.featureFlag }));
+  log("info", "core.adapters", { count: enabled.length, correlationId });
+  return new Response(JSON.stringify({ adapters: enabled, correlationId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function handleTasks(url, correlationId) {
+  if (url.pathname !== "/tasks") return null;
+  const tasks = [
+    {
+      id: "task-1",
+      name: "Sync Okta Users",
+      status: "running",
+      owner: "agent-1",
+      startedAt: "2025-05-19T18:00:00Z",
+    },
+    {
+      id: "task-2",
+      name: "License Audit",
+      status: "pending",
+      owner: "agent-2",
+      startedAt: "2025-05-19T18:05:00Z",
+    },
+    {
+      id: "task-3",
+      name: "Ramp ETL",
+      status: "success",
+      owner: "agent-3",
+      startedAt: "2025-05-19T18:10:00Z",
+    },
+  ];
+  log("info", "core.tasks", { count: tasks.length, correlationId });
+  return new Response(JSON.stringify({ tasks, correlationId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function handleSimpleEndpoints(url, request, env, correlationId, baseHeaders) {
+  if (url.pathname === "/cicd") {
+    log("info", "core.cicd", { correlationId });
+    return new Response("pause", { status: 200, headers: baseHeaders });
+  }
+  if (url.pathname === "/api/pause" && request.method === "POST") {
+    log("info", "core.pause", { correlationId });
+    return new Response(JSON.stringify({ status: "paused", correlationId }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  // Add /tasks endpoint for progress reporting
-  if (new URL(request.url).pathname === "/tasks") {
-    // For now, return mock data; later, wire to KV or Durable Object
-    const tasks = [
-      {
-        id: "task-1",
-        name: "Sync Okta Users",
-        status: "running",
-        owner: "agent-1",
-        startedAt: "2025-05-19T18:00:00Z",
-      },
-      {
-        id: "task-2",
-        name: "License Audit",
-        status: "pending",
-        owner: "agent-2",
-        startedAt: "2025-05-19T18:05:00Z",
-      },
-      {
-        id: "task-3",
-        name: "Ramp ETL",
-        status: "success",
-        owner: "agent-3",
-        startedAt: "2025-05-19T18:10:00Z",
-      },
-    ];
-    return new Response(JSON.stringify(tasks), {
+  if (url.pathname === "/api/resume" && request.method === "POST") {
+    log("info", "core.resume", { correlationId });
+    return new Response(JSON.stringify({ status: "resumed", correlationId }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  // Add /cicd endpoint for smoke test health check
-  if (new URL(request.url).pathname === "/cicd") {
-    return new Response("pause", { status: 200 });
-  }
-
-  // Add /api/pause endpoint for smoke test
-  if (
-    new URL(request.url).pathname === "/api/pause" &&
-    request.method === "POST"
-  ) {
-    return new Response(JSON.stringify({ status: "paused" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  // Add /api/resume endpoint for smoke test
-  if (
-    new URL(request.url).pathname === "/api/resume" &&
-    request.method === "POST"
-  ) {
-    return new Response(JSON.stringify({ status: "resumed" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Add /api/last-slack-status endpoint for smoke test
-  if (new URL(request.url).pathname === "/api/last-slack-status") {
+  if (url.pathname === "/api/last-slack-status") {
     const slackUrl = env.SLACK_WEBHOOK_URL || "dummy";
-    return new Response(JSON.stringify({ slack: slackUrl }), {
+    return new Response(JSON.stringify({ slack: slackUrl, correlationId }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
+  return null;
+}
 
+async function handleDispatch(
+  url,
+  request,
+  env,
+  ctx,
+  correlationId,
+  baseHeaders,
+) {
+  const pathParts = url.pathname.split("/").filter(Boolean);
+  const subWorkerName = pathParts[0] || "customer-worker-1";
+  if (!env.dispatcher) {
+    return new Response(
+      JSON.stringify({
+        error: "DISPATCHER_BINDING_MISSING",
+        message:
+          "Dispatcher namespace not configured (env.dispatcher undefined).",
+        remediation: {
+          docs: "https://developers.cloudflare.com/workers/platform/dispatch/",
+        },
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const subWorker = await env.dispatcher.get(subWorkerName);
+  if (!subWorker) {
+    return new Response(
+      JSON.stringify({
+        error: "SUBWORKER_NOT_FOUND",
+        subWorker: subWorkerName,
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const trace = ctx?.trace;
+  trace?.log("dispatch.forward", { subWorkerName });
+  const response = await subWorker.fetch(request);
+  trace?.log("dispatch.return", { status: response.status });
+  return new Response(response.body, {
+    status: response.status,
+    headers: { ...Object.fromEntries(response.headers), ...baseHeaders },
+  });
+}
+
+// ---------- Main Fetch -----------------------------------------------------
+async function handleFetch(request, env, ctx) {
+  const correlationId =
+    request.headers.get("x-correlation-id") || generateCorrelationId();
+  const url = new URL(request.url);
+  const host = url.host;
+  const isLegacyHost = host.includes("project-ignite.workers.dev");
+  const deprecationHeaders = isLegacyHost
+    ? {
+        Deprecation: "true",
+        Link: '</health>; rel="successor-version"',
+        Sunset: new Date(Date.now() + 30 * 24 * 3600 * 1000).toUTCString(),
+      }
+    : {};
+  const baseHeaders = makeHeaders(correlationId, deprecationHeaders);
+  await handleDiagnostics(env);
+  const chain = [
+    () => handleHealth(url, env, correlationId, baseHeaders),
+    () => handleAdminLogs(url, request, env, correlationId, baseHeaders),
+    () => handleApps(url, request, env, correlationId, baseHeaders),
+    () => handleConnectors(url, env, correlationId),
+    () => handleTasks(url, correlationId),
+    () => handleSimpleEndpoints(url, request, env, correlationId, baseHeaders),
+  ];
+  for (const fn of chain) {
+    const res = await fn();
+    if (res) return res;
+  }
   try {
-    // Extract the sub-worker name from the URL path
-    const url = new URL(request.url);
-    const pathParts = url.pathname.split("/").filter(Boolean);
-    const subWorkerName = pathParts[0] || "customer-worker-1";
-
-    if (!subWorkerName) {
-      return new Response("No sub-worker specified", { status: 400 });
-    }
-
-    // Forward the request to the sub-worker in the dispatcher namespace
-    if (!env.dispatcher) {
-      // Attempt auto-remediation: try to create the dispatcher binding if possible
-      // NOTE: This is a placeholder. Cloudflare Workers cannot create bindings at runtime.
-      // Instead, return a clear error and remediation hint.
-      return new Response(
-        JSON.stringify({
-          error: "DISPATCHER_BINDING_MISSING",
-          message:
-            "Dispatcher namespace not configured (env.dispatcher undefined). Add a dispatch_namespaces entry to wrangler.toml or remove dispatch routing logic.",
-          remediation: {
-            wranglerExample:
-              "[[dispatch_namespaces]]\\nbinding = 'dispatcher'\\nnamespace = 'atlasit-dispatcher-namespace'",
-            docs: "https://developers.cloudflare.com/workers/platform/dispatch/",
-          },
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    let subWorker = await env.dispatcher.get(subWorkerName);
-    if (!subWorker) {
-      // Attempt auto-remediation: try to deploy a default sub-worker (not possible at runtime)
-      // Instead, return a clear error and remediation hint.
-      return new Response(
-        JSON.stringify({
-          error: "SUBWORKER_NOT_FOUND",
-          subWorker: subWorkerName,
-          message: "Sub-worker not found in dispatcher namespace.",
-          remediation: {
-            action:
-              "Deploy or register the sub-worker in the dispatch namespace",
-            commandExample: "wrangler deploy --name=" + subWorkerName,
-          },
-        }),
-        { status: 502, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    const trace = ctx?.trace;
-    trace?.log("dispatch.forward", { subWorkerName });
-    const response = await subWorker.fetch(request);
-    trace?.log("dispatch.return", { status: response.status });
-    return response;
+    return await handleDispatch(
+      url,
+      request,
+      env,
+      ctx,
+      correlationId,
+      baseHeaders,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    ctx?.trace?.log("dispatch.error", { message });
-    console.error("Error occurred:", err); // Log the error for debugging
-    return new Response("Bad Gateway", { status: 502 });
+    ctx?.trace?.log("dispatch.error", { message, correlationId });
+    log("error", "core.dispatch_error", { message, correlationId });
+    return new Response("Bad Gateway", { status: 502, headers: baseHeaders });
   }
 }
 
-export default {
-  fetch: traceFetch(handleFetch),
-};
+export default { fetch: traceFetch(handleFetch) };
+
+// --- Compatibility Shim ----------------------------------------------------
+// Some ancillary modules (e.g., compliance-worker executor) import { JMLEngine }
+// from the root index. The refactor removed the previous class; we provide a
+// minimal backward-compatible shim implementing the subset of behavior relied upon
+// (handleEnqueue returning a Response containing a runId and runState skeleton).
+export class JMLEngine {
+  constructor(state = {}, env = {}) {
+    this.state = state;
+    this.env = env;
+  }
+  async handleEnqueue(context = {}) {
+    const runId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const runState = {
+      id: runId,
+      type: context.type || "unknown",
+      status: "queued",
+      tenantId: context.tenantId || "unknown",
+      userId: context.user?.id || context.subjectRef || "user-unknown",
+      createdAt: now,
+      steps: [],
+      history: [],
+      context,
+    };
+    return new Response(JSON.stringify({ runId, runState }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
