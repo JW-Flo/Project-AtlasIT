@@ -1,15 +1,16 @@
 name = "atlasit-console"
-# IMPORTANT: replace with your real Cloudflare account ID before deploy
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-main = "src/worker-entry.ts" # wrapper entry that imports built SvelteKit worker
+main = "src/worker-entry.ts"
 compatibility_date = "2025-09-27"
 workers_dev = true
 
-# Production routing (AtlasIT.pro). Keep workers_dev for staging; routes activate prod exposure.
+# Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
 zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
 routes = [
 	"www.atlasit.pro/console*",
-	"www.atlasit.pro/api/config",
+	"www.atlasit.pro/access-requests*",
+	"www.atlasit.pro/incidents*",
+	"www.atlasit.pro/api/config*",
 	"www.atlasit.pro/api/mock/*"
 ]
 
@@ -23,75 +24,5 @@ COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
 [observability]
 enabled = true
 
-# --- Resource Bindings (placeholders; populate real IDs/names before deploy) ---
-
-[[d1_databases]]
-binding = "ATLAS_CORE_DB"        # Access via env.ATLAS_CORE_DB
-database_name = "atlas_core_db"  # Cloudflare D1 database name
-database_id = "00000000-0000-0000-0000-000000000000" # REPLACE: wrangler d1 list
-
-[[d1_databases]]
-binding = "ATLAS_AUDIT_DB"
-database_name = "atlas_audit_db"
-database_id = "00000000-0000-0000-0000-000000000001"
-
-[[d1_databases]]
-binding = "D1_COMPLIANCE"
-database_name = "atlasit_compliance"
-database_id = "00000000-0000-0000-0000-000000000010"
-
-[[d1_databases]]
-binding = "D1_AUDIT"
-database_name = "atlas_audit_shadow"
-database_id = "00000000-0000-0000-0000-000000000011"
-
-[[kv_namespaces]]
-binding = "KV_SESSIONS"
-id = "00000000000000000000000000000000" # REPLACE: wrangler kv:namespace create KV_SESSIONS
-
-[[kv_namespaces]]
-binding = "KV_CACHE"
-id = "00000000000000000000000000000001"
-
-[[kv_namespaces]]
-binding = "KV_FEATURE_FLAGS"
-id = "00000000000000000000000000000002"
-
-[[r2_buckets]]
-binding = "R2_POLICIES"
-bucket_name = "atlas-policies"
-
-[[r2_buckets]]
-binding = "R2_EVIDENCE"
-bucket_name = "atlas-evidence"
-
-[[r2_buckets]]
-binding = "R2_ARTIFACTS"
-bucket_name = "atlas-artifacts"
-
-[[analytics_engine_datasets]]
-binding = "ANALYTICS_EVENTS"
-dataset = "atlas_events"
-
-[[analytics_engine_datasets]]
-binding = "ANALYTICS_METRICS"
-dataset = "atlas_metrics"
-
-[[queues.producers]]
-binding = "WORKFLOW_QUEUE"
-queue = "atlas-workflow-queue"
-
-[[queues.producers]]
-binding = "Q_POLICY_REBUILD"
-queue = "policy-rebuild"
-
-[[queues.producers]]
-binding = "Q_RISK_RECALC"
-queue = "risk-recalc"
-
-# Optional: durable objects (example placeholder)
-#[[durable_objects.bindings]]
-#name = "SESSION_DO"
-#class_name = "SessionDurableObject"
-
-# -----------------------------------------------------------------------------
+# --- Resource bindings trimmed for initial UI deploy. Restore with real IDs later. ---
+# (All D1, KV, R2, Analytics, Queues removed to unblock deploy)

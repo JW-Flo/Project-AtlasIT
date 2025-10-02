@@ -1,15 +1,21 @@
 <script lang="ts">
-  import { ComplianceAPI } from '$lib/api/client';
-  let policyText = '';
+  import { ComplianceAPI } from "$lib/api/client";
+  let policyText = "";
   let evaluating = false;
   let result: any = null;
   let error: string | null = null;
   async function evaluate() {
     if (!policyText) return;
-    evaluating = true; error = null; result = null;
-    try { result = await ComplianceAPI.evaluatePolicy({ policy: policyText }); }
-    catch (e: any) { error = e?.body?.error || 'Evaluation failed'; }
-    finally { evaluating = false; }
+    evaluating = true;
+    error = null;
+    result = null;
+    try {
+      result = await ComplianceAPI.evaluatePolicy({ policy: policyText });
+    } catch (e: any) {
+      error = e?.body?.error || "Evaluation failed";
+    } finally {
+      evaluating = false;
+    }
   }
 </script>
 
@@ -25,9 +31,39 @@
 {/if}
 
 <style>
-  .form { display:flex; flex-direction:column; gap:.5rem; max-width:800px; }
-  textarea { min-height:160px; background:#111; border:1px solid #333; color:#eee; padding:.5rem; border-radius:4px; font-family:monospace; }
-  button { align-self:flex-start; background:#2563eb; color:#fff; border:none; padding:.45rem .9rem; border-radius:4px; cursor:pointer; }
-  .error { color:#dc2626; }
-  pre { background:#0f172a; padding:1rem; border-radius:6px; max-height:400px; overflow:auto; font-size:.7rem; }
+  .form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 800px;
+  }
+  textarea {
+    min-height: 160px;
+    background: #111;
+    border: 1px solid #333;
+    color: #eee;
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  button {
+    align-self: flex-start;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    padding: 0.45rem 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .error {
+    color: #dc2626;
+  }
+  pre {
+    background: #0f172a;
+    padding: 1rem;
+    border-radius: 6px;
+    max-height: 400px;
+    overflow: auto;
+    font-size: 0.7rem;
+  }
 </style>

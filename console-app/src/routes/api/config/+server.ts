@@ -7,7 +7,24 @@ import { json } from "@sveltejs/kit";
  *
  * Exposed shape is append-only; do not remove existing fields to avoid breaking clients.
  */
-export const GET: RequestHandler = async ({ platform }) => {
+// Allowed subpaths relative to /api/config (root = "")
+const ALLOWED_SUBPATHS = new Set(["", "features"]);
+
+export const GET: RequestHandler = async ({ platform, url }) => {
+  // Normalize subpath: everything after /api/config
+  // Example: /api/config -> ""; /api/config/features -> "features"
+  const parts = url.pathname.split("/api/config");
+  const suffix = parts.length > 1 ? parts[1].replace(/^\//, "") : "";
+  if (!ALLOWED_SUBPATHS.has(suffix)) {
+    return new Response(JSON.stringify({ error: "not_found", path: suffix }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (suffix === "features") {
+    // Placeholder future extension; keep lean to avoid breaking clients.
+    return json({ features: [], version: 1 });
+  }
   const env = (platform?.env as any) || {};
   // Fallback keeps local dev working if no env provided.
   const complianceBase: string = env.COMPLIANCE_BASE || "/api/mock/compliance";

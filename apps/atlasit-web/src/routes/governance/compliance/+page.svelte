@@ -1,13 +1,15 @@
-
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from "$app/environment";
   import type {
     ComplianceDashboardData,
     CoverageControl,
     ActivityEvent,
-  } from '$lib/api/types';
-  import type { NormalizedApiError } from '$lib/api/client';
-  import { relativeTime as shortRelativeTime, robustRelativeTime } from '$lib/utils/relativeTime';
+  } from "$lib/api/types";
+  import type { NormalizedApiError } from "$lib/api/client";
+  import {
+    relativeTime as shortRelativeTime,
+    robustRelativeTime,
+  } from "$lib/utils/relativeTime";
 
   export let data: ComplianceDashboardData;
 
@@ -21,15 +23,17 @@
   let filteredControls: CoverageControl[] = [];
   let controlsWithShare: Array<CoverageControl & { percent: number }> = [];
   let totalEvidence = 0;
-  let filterValue = '';
-  let debouncedFilter = '';
+  let filterValue = "";
+  let debouncedFilter = "";
 
-  const numberFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-  const integerFormatter = new Intl.NumberFormat('en-US');
+  const numberFormatter = new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 1,
+  });
+  const integerFormatter = new Intl.NumberFormat("en-US");
   const LATENCY_KEYS = [
-    { key: 'workflowExecute', label: 'Workflow Execute' },
-    { key: 'policyGenerate', label: 'Policy Generate' },
-    { key: 'policyEvaluate', label: 'Policy Evaluate' },
+    { key: "workflowExecute", label: "Workflow Execute" },
+    { key: "policyGenerate", label: "Policy Generate" },
+    { key: "policyEvaluate", label: "Policy Evaluate" },
   ] as const;
 
   const debounce = <T extends (...args: any[]) => void>(fn: T, wait = 150) => {
@@ -50,85 +54,117 @@
     applyFilter(filterValue);
   }
 
-  $: if (data.fetchedAt !== lastServerFetchedAt && data.fetchedAt !== lastClientFetchedAt) {
+  $: if (
+    data.fetchedAt !== lastServerFetchedAt &&
+    data.fetchedAt !== lastClientFetchedAt
+  ) {
     lastServerFetchedAt = data.fetchedAt;
     state = data;
   }
 
   $: coverageControls = state.coverage?.controls ?? [];
-  $: totalEvidence = coverageControls.reduce((total, control) => total + control.evidenceCount, 0);
+  $: totalEvidence = coverageControls.reduce(
+    (total, control) => total + control.evidenceCount,
+    0
+  );
   $: filteredControls = debouncedFilter
-    ? coverageControls.filter((control) => control.controlKey.toLowerCase().includes(debouncedFilter))
+    ? coverageControls.filter((control) =>
+        control.controlKey.toLowerCase().includes(debouncedFilter)
+      )
     : coverageControls;
   $: controlsWithShare = filteredControls.map((control) => ({
     ...control,
-    percent: totalEvidence > 0 ? (control.evidenceCount / totalEvidence) * 100 : 0,
+    percent:
+      totalEvidence > 0 ? (control.evidenceCount / totalEvidence) * 100 : 0,
   }));
 
   $: highPriorityNotifications = (state.notifications ?? []).filter((item) => {
     const severity = item.severity?.toLowerCase();
-    return severity === 'critical' || severity === 'high';
+    return severity === "critical" || severity === "high";
   }).length;
 
   $: latencyChips = LATENCY_KEYS.map(({ key, label }) => {
     const latencyMap = state.health?.latency ?? undefined;
-    const bucket = latencyMap ? (latencyMap as Record<string, any>)[key] : undefined;
+    const bucket = latencyMap
+      ? (latencyMap as Record<string, any>)[key]
+      : undefined;
     const display = formatLatency(bucket);
     return display ? { label, display } : null;
   }).filter(Boolean) as Array<{ label: string; display: string }>;
 
   function formatLatency(bucket: any): string | null {
-    if (!bucket || typeof bucket !== 'object') return null;
-    const p50 = typeof bucket.p50 === 'number' ? bucket.p50 : typeof bucket.avg === 'number' ? bucket.avg : null;
-    const p95 = typeof bucket.p95 === 'number' ? bucket.p95 : typeof bucket.p90 === 'number' ? bucket.p90 : null;
+    if (!bucket || typeof bucket !== "object") return null;
+    const p50 =
+      typeof bucket.p50 === "number"
+        ? bucket.p50
+        : typeof bucket.avg === "number"
+          ? bucket.avg
+          : null;
+    const p95 =
+      typeof bucket.p95 === "number"
+        ? bucket.p95
+        : typeof bucket.p90 === "number"
+          ? bucket.p90
+          : null;
     if (p50 === null && p95 === null) return null;
     const round = (value: number) => `${Math.round(value)}ms`;
     if (p50 !== null && p95 !== null) {
       return `${round(p50)} p50 / ${round(p95)} p95`;
     }
-    return round((p50 ?? p95) ?? 0);
+    return round(p50 ?? p95 ?? 0);
   }
 
   function formatPercent(value: number | null | undefined): string {
-    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value === null || value === undefined || Number.isNaN(value))
+      return "—";
     return `${numberFormatter.format(value)}%`;
   }
 
   function formatCount(value: number | null | undefined): string {
-    if (value === null || value === undefined || Number.isNaN(value)) return '—';
+    if (value === null || value === undefined || Number.isNaN(value))
+      return "—";
     return integerFormatter.format(value);
   }
 
   // Use shared utilities; robustRelativeTime handles future-safe phrasing, fallback to short for long spans.
   function relativeTime(value: string | null | undefined): string {
-    if(!value) return '—';
+    if (!value) return "—";
     const coarse = shortRelativeTime(value);
     // If coarse returns a calendar date (heuristic: contains '-') we keep it; else prefer robust variant for richer semantics.
-    return /\d{4}-\d{2}-\d{2}/.test(coarse) ? coarse : robustRelativeTime(value);
+    return /\d{4}-\d{2}-\d{2}/.test(coarse)
+      ? coarse
+      : robustRelativeTime(value);
   }
 
   function formatTimestamp(value: string | null | undefined): string {
-    if (!value) return '—';
+    if (!value) return "—";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleString();
   }
 
   function severityClass(severity?: string | null): string {
-    if (!severity) return 'severity-neutral';
+    if (!severity) return "severity-neutral";
     const normalized = severity.toLowerCase();
-    if (normalized === 'critical') return 'severity-critical';
-    if (normalized === 'high') return 'severity-high';
-    if (normalized === 'medium') return 'severity-medium';
-    if (normalized === 'low') return 'severity-low';
-    return 'severity-neutral';
+    if (normalized === "critical") return "severity-critical";
+    if (normalized === "high") return "severity-high";
+    if (normalized === "medium") return "severity-medium";
+    if (normalized === "low") return "severity-low";
+    return "severity-neutral";
   }
 
-  import { mapEventTypeToIcon } from '$lib/utils/iconMaps';
-  function activityIcon(event: ActivityEvent): string { return mapEventTypeToIcon(event.type); }
+  import { mapEventTypeToIcon } from "$lib/utils/iconMaps";
+  function activityIcon(event: ActivityEvent): string {
+    return mapEventTypeToIcon(event.type);
+  }
 
   function isNormalizedError(error: unknown): error is NormalizedApiError {
-    return !!error && typeof error === 'object' && 'code' in error && 'message' in error;
+    return (
+      !!error &&
+      typeof error === "object" &&
+      "code" in error &&
+      "message" in error
+    );
   }
 
   async function refresh() {
@@ -137,11 +173,13 @@
     refreshError = null;
     try {
       const res = await fetch(`${window.location.pathname}.json`, {
-        headers: { Accept: 'application/json' },
+        headers: { Accept: "application/json" },
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`);
+        throw new Error(
+          `HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`
+        );
       }
       const json = (await res.json()) as ComplianceDashboardData;
       state = json;
@@ -150,8 +188,8 @@
       refreshError = isNormalizedError(error)
         ? error.message
         : error instanceof Error
-        ? error.message
-        : 'Unable to refresh';
+          ? error.message
+          : "Unable to refresh";
     } finally {
       refreshing = false;
     }
@@ -173,9 +211,13 @@
       <p class="timestamp">Data captured {formatTimestamp(state.fetchedAt)}</p>
     </div>
     {#if state.notificationsUnreadCount && state.notificationsUnreadCount > 0}
-      <span class="notifications-badge">Unread: {state.notificationsUnreadCount}</span>
+      <span class="notifications-badge"
+        >Unread: {state.notificationsUnreadCount}</span
+      >
     {:else if highPriorityNotifications > 0}
-      <span class="notifications-badge">High priority: {highPriorityNotifications}</span>
+      <span class="notifications-badge"
+        >High priority: {highPriorityNotifications}</span
+      >
     {/if}
   </header>
 
@@ -192,13 +234,21 @@
     <div class="alert danger">
       <div>
         <strong>Health data unavailable</strong>
-        <p>We could not reach the compliance health endpoint. Retry to request a fresh snapshot.</p>
+        <p>
+          We could not reach the compliance health endpoint. Retry to request a
+          fresh snapshot.
+        </p>
         {#if refreshError}
           <p class="detail">{refreshError}</p>
         {/if}
       </div>
-      <button type="button" class="retry-btn" on:click={refresh} disabled={refreshing}>
-        {refreshing ? 'Retrying...' : 'Retry'}
+      <button
+        type="button"
+        class="retry-btn"
+        on:click={refresh}
+        disabled={refreshing}
+      >
+        {refreshing ? "Retrying..." : "Retry"}
       </button>
     </div>
   {/if}
@@ -207,7 +257,9 @@
     <div class="metric-card">
       <span class="metric-label">Coverage</span>
       {#if state.coverage}
-        <span class="metric-value">{formatPercent(state.coverage.coveragePercent)}</span>
+        <span class="metric-value"
+          >{formatPercent(state.coverage.coveragePercent)}</span
+        >
       {:else}
         <div class="skeleton skeleton-lg"></div>
       {/if}
@@ -225,7 +277,9 @@
     <div class="metric-card">
       <span class="metric-label">Evidence items</span>
       {#if state.health}
-        <span class="metric-value">{formatCount(state.health?.evidenceCount)}</span>
+        <span class="metric-value"
+          >{formatCount(state.health?.evidenceCount)}</span
+        >
       {:else}
         <div class="skeleton skeleton-lg"></div>
       {/if}
@@ -233,7 +287,9 @@
     <div class="metric-card">
       <span class="metric-label">Policy templates</span>
       {#if state.health?.policies}
-        <span class="metric-value">{formatCount(state.health?.policies?.templates ?? null)}</span>
+        <span class="metric-value"
+          >{formatCount(state.health?.policies?.templates ?? null)}</span
+        >
       {:else}
         <div class="skeleton skeleton-lg"></div>
       {/if}
@@ -257,7 +313,9 @@
         <div>
           <h2>Coverage Controls</h2>
           {#if state.coverage}
-            <p class="panel-subtitle">{formatCount(state.coverage.totalControls)} controls tracked</p>
+            <p class="panel-subtitle">
+              {formatCount(state.coverage.totalControls)} controls tracked
+            </p>
           {/if}
         </div>
         <input
@@ -278,7 +336,9 @@
           {/each}
         </div>
       {:else if !controlsWithShare.length}
-        <div class="panel-body empty">No controls match the current filter.</div>
+        <div class="panel-body empty">
+          No controls match the current filter.
+        </div>
       {:else}
         <div class="panel-body scrollable">
           <table class="coverage-table">
@@ -312,10 +372,16 @@
           <ul class="list">
             {#each state.incidents as incident (incident.id)}
               <li class="list-item incident">
-                <span class={`badge ${severityClass(incident.severity)}`}>{incident.severity ?? 'unknown'}</span>
+                <span class={`badge ${severityClass(incident.severity)}`}
+                  >{incident.severity ?? "unknown"}</span
+                >
                 <div class="item-body">
-                  <span class="item-title">{incident.title || `Incident ${incident.id}`}</span>
-                  <span class="item-meta">{relativeTime(incident.createdAt)}</span>
+                  <span class="item-title"
+                    >{incident.title || `Incident ${incident.id}`}</span
+                  >
+                  <span class="item-meta"
+                    >{relativeTime(incident.createdAt)}</span
+                  >
                 </div>
               </li>
             {/each}
@@ -701,10 +767,15 @@
   }
 
   .skeleton::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.12) 45%, rgba(255, 255, 255, 0) 100%);
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.12) 45%,
+      rgba(255, 255, 255, 0) 100%
+    );
     transform: translateX(-100%);
     animation: shimmer 1.4s infinite;
   }
