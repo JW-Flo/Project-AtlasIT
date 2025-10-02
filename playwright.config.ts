@@ -1,13 +1,11 @@
 import { defineConfig } from "@playwright/test";
 
 // Prefer explicit env override; fallback to common dev ports (worker:8787, vite:5173)
-const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL ||
-  (process.env.USE_VITE_DEV
-    ? "http://localhost:5173"
-    : "http://localhost:8787");
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
 
 export default defineConfig({
+  globalSetup: "./tests/global-setup.js",
+  globalTeardown: "./tests/global-teardown.js",
   reporter: [
     ["list"],
     ["html", { outputFolder: "playwright-report", open: "never" }],

@@ -34,6 +34,7 @@
     "build:applications": "cd applications && npm run build",
     "dev:console": "cd console-app && npm run dev",
     "build:console": "cd console-app && npm run build",
+    "preview:console": "cd console-app && npm run preview",
     "build:shared": "cd packages/shared && npm run build",
     "test": "npm-run-all --parallel test:onboarding test:orchestrator",
     "test:onboarding": "cd onboarding && npm test",
