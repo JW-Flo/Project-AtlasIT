@@ -313,10 +313,13 @@ This section will update once the subtree import completes.
 To prevent model context overflows during dynamic runtime hardening:
 
 1. Generate trimmed context bundle:
+
    ```bash
    npx ts-node tools/generate-codex-context.ts
    ```
+
    Outputs `codex-context.trimmed.txt` (concise summaries).
+
 2. Provide only that file plus the specific source being changed (e.g. `src/runtime/scans/service.ts`, `src/runtime/scans/metrics.ts`). Avoid pasting entire README.
 3. Update `docs/codex/minimal-runtime-context.md` when structural concepts change; do not expand prompts with large multi-file excerpts.
 4. Break large enhancements into phases:
@@ -361,6 +364,7 @@ Refer to `docs/codex/prompt-update-sheet.md` and specify only needed section num
 - Observability endpoints: `/api/_diagnostics` returns rolling timing stats (p50/p95/avg/timeout counts); `/api/admin/reload` rebuilds registry snapshots with 2s debounce and returns `{ ok, version, counts, enabledScanIds }`.
 - Health payloads now append `scanPerf` (total p95 + per-module lastMs) while preserving existing fields.
 - Example diagnostics payload:
+
   ```json
   {
     "diagnostics": {
@@ -399,9 +403,9 @@ New capabilities introduced in Phase 2 build upon the Phase 1 registry & config 
 - Each scan module (e.g. `headers.ts`, `ssl.ts`, `info.ts`, `threatIntel.ts`, `cve.ts`) self‑registers on import.
 - Helper exports: `getAvailableScanTypes(config?)`, `runScan(id, url, ctx, config?)`, `runFullScan(url, ctx, config?)`, `resolveEnabledScanIds(config, { includeFull })`.
 - Dynamic enable / disable precedence:
-  1.  `ENABLED_SCAN_TYPES` (comma list) – explicit allowlist.
-  2.  `DISABLED_SCAN_TYPES` (comma list) – exclusion list if no allowlist.
-  3.  Defaults (all core modules) if neither provided.
+  1. `ENABLED_SCAN_TYPES` (comma list) – explicit allowlist.
+  2. `DISABLED_SCAN_TYPES` (comma list) – exclusion list if no allowlist.
+  3. Defaults (all core modules) if neither provided.
 - Full scan aggregates per‑module findings, tagging duration + per module `findings` count.
 
 #### 2. Route Registry
@@ -429,6 +433,9 @@ New capabilities introduced in Phase 2 build upon the Phase 1 registry & config 
   "lastBuildTs": <unix_ms>
   }
   }
+
+  ```
+
   ```
 
 - Purpose: fast visibility into dynamic snapshot churn & module cardinality; safe for append‑only consumers.
@@ -442,9 +449,9 @@ New capabilities introduced in Phase 2 build upon the Phase 1 registry & config 
 #### 6. Guestbook Dynamic Mode Flag
 
 - Flag resolution precedence:
-  1.  `GUESTBOOK_DYNAMIC_MODE` env var (`true|false`).
-  2.  Dynamic config key `guestbook.dynamic.enabled` (boolean or string) if runtime config present.
-  3.  Legacy non‑production heuristic fallback (`GUESTBOOK_PRODUCTION !== 'true'`).
+  1. `GUESTBOOK_DYNAMIC_MODE` env var (`true|false`).
+  2. Dynamic config key `guestbook.dynamic.enabled` (boolean or string) if runtime config present.
+  3. Legacy non‑production heuristic fallback (`GUESTBOOK_PRODUCTION !== 'true'`).
 - When enabled in a non‑production context a deterministic test entry (id `999999`) is appended for automated validation; disabling the flag restores purely DB‑backed responses.
 - Implementation is lazy-import + try/catch guarded; absence of the dynamic layer = graceful fallback. - Code: `JW-Site/src/pages/api/guestbook.ts`. - Tests: `JW-Site/src/test/guestbook.dynamic-mode.test.ts`.
 
