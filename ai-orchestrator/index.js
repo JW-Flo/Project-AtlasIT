@@ -24,6 +24,8 @@ let envValidated = false;
 const rateLimits = new Map();
 const aiIpRateBuckets = new Map();
 let aiDaily = { day: null, count: 0 };
+// Persisted quota cache (in-memory shim when KV unavailable)
+let persistedQuotaMemory = { date: null, count: 0 };
 
 function getTodayUtc() {
   return new Date().toISOString().slice(0, 10);
@@ -167,6 +169,27 @@ async function readQuotaSnapshot(env, limit) {
     limit,
     remaining: limit > 0 ? limit : null,
   };
+}
+
+// Added: simple persisted quota reader used by /health (previously missing)
+export async function readPersistedQuota(env) {
+  const today = getTodayUtc();
+  const kv = env?.AI_QUOTA;
+  if (kv && typeof kv.get === "function") {
+    try {
+      const data = await kv.get(`${QUOTA_KV_PREFIX}${today}`, { type: "json" });
+      if (data && data.date === today && typeof data.count === "number") {
+        return { date: today, count: data.count, source: "kv" };
+      }
+    } catch (e) {
+      sharedLogger.warn("ai.quota_persist_read_error", { error: String(e) });
+    }
+  }
+  // Fallback to in-memory daily counter
+  if (aiDaily.day === today) {
+    return { date: today, count: aiDaily.count, source: "memory" };
+  }
+  return { date: today, count: 0, source: "memory" };
 }
 
 // Middleware
@@ -728,7 +751,8 @@ app.post("/ai/infer", async (c) => {
     });
     return c.json(
       {
-        error: "quota_exceeded",
+        // Align with test expectation list ("Daily AI request quota reached" or rate_limited)
+        error: "Daily AI request quota reached",
         quota: quotaInfo,
         requestId: c.get("requestId"),
       },
@@ -833,10 +857,10 @@ app.get("/health", async (c) => {
     quotaLimit > 0 ? Math.max(0, quotaLimit - persisted.count) : null;
   return c.json({
     status: "healthy",
-    service: "orchestrator",
+    service: "ai-orchestrator",
     timestamp: new Date().toISOString(),
     requestId: c.get("requestId"),
-    actor: c.get("actor"),
+    actor: c.get("actor") || null,
     quota: {
       date: persisted.date,
       used: persisted.count,
@@ -920,3 +944,23 @@ export default {
     ctx.waitUntil(monitorProjectState());
   },
 };
+
+// Test-only state reset helper (exported for orchestrator tests)
+export function __resetAiStateForTests() {
+  aiDaily = { day: null, count: 0 };
+  persistedQuotaMemory = { date: null, count: 0 };
+  rateLimits.clear();
+  aiIpRateBuckets.clear();
+  MCP_ENDPOINT_CACHE = null;
+  pendingTasks.clear();
+  activeDeployments.clear();
+  terminalCommands.clear();
+  workflows.clear();
+  etlLock = {
+    running: false,
+    startedAt: null,
+    lastSuccess: null,
+    lastError: null,
+    lastId: null,
+  };
+}

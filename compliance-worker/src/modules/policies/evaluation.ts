@@ -18,17 +18,13 @@ export interface PolicyEvaluationResult {
 export async function evaluatePolicy(
   options: PolicyEvaluationOptions,
 ): Promise<PolicyEvaluationResult> {
-  const payload = {
+  const stableContext = {
     tenantId: options.tenantId,
     policyKey: options.policyKey,
     input: options.input,
-    evaluatedAt: new Date().toISOString(),
   };
-  const { canonical } = await hashCanonicalJson(payload);
+  const { canonical } = await hashCanonicalJson(stableContext);
   const hash = await sha256Hex(canonical);
-  return {
-    result: payload,
-    hash,
-    canonical,
-  };
+  const result = { ...stableContext, evaluatedAt: new Date().toISOString() };
+  return { result, hash, canonical };
 }

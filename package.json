@@ -87,7 +87,10 @@
     "sonar:scan": "node scripts/sonar-scan.mjs",
     "sonar:upgrade": "bash scripts/sonar-upgrade.sh",
     "sync:jw-site:add": "git remote add jw-site-origin git@github.com:JW-Flo/JW-Site.git 2>/dev/null || true && git fetch jw-site-origin main && git subtree add --prefix=packages/jw-site jw-site-origin main",
-    "sync:jw-site:pull": "git fetch jw-site-origin main && git subtree pull --prefix=packages/jw-site jw-site-origin main"
+    "sync:jw-site:pull": "git fetch jw-site-origin main && git subtree pull --prefix=packages/jw-site jw-site-origin main",
+    "codex:context": "npx ts-node tools/generate-codex-context.ts",
+    "codex:context:ultra": "npx ts-node tools/generate-codex-context.ts --ultra --no-readme",
+    "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections"
   },
   "keywords": [
     "it-management",
@@ -121,6 +124,7 @@
     "prettier": "^3.0.0",
     "sonarqube-scanner": "^3.1.0",
     "typescript": "^5.7.2",
+    "ts-node": "^10.9.2",
     "vite": "^7.1.7",
     "vitest": "^3.2.4",
     "wrangler": "^4.40.3"

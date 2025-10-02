@@ -21,6 +21,8 @@ export function relativeTime(iso: string | number | Date): string {
   const diffSeconds = Math.floor((ts - now) / 1000); // negative when in past
   const abs = Math.abs(diffSeconds);
 
+  // Explicit early threshold for "just now" to satisfy tests and provide consistent UX
+  if (abs < 5) return "just now";
   if (!rtf) return fallbackRelative(abs, ts);
 
   const match = findInterval(abs, diffSeconds);

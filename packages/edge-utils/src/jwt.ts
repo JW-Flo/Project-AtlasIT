@@ -45,18 +45,7 @@ export async function createJWT(claims: CreateClaims, secret: string) {
   const encodedHeader = base64url(JSON.stringify(header));
   const encodedPayload = base64url(JSON.stringify(claims));
   const toSign = `${encodedHeader}.${encodedPayload}`;
-  function base64urlDecode(str: string) {
-    // Pad string for base64 decoding
-    str = str.replace(/-/g, "+").replace(/_/g, "/");
-    while (str.length % 4) str += "=";
-    const decoded = atob(str);
-    const bytes = new Uint8Array(decoded.length);
-    for (let i = 0; i < decoded.length; ++i) {
-      bytes[i] = decoded.charCodeAt(i);
-    }
-    return new TextDecoder().decode(bytes);
-  }
-  const json = JSON.parse(base64urlDecode(p));
+  const signature = await hmac(secret, toSign);
   return `${toSign}.${signature}`;
 }
 

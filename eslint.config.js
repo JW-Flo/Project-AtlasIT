@@ -75,6 +75,10 @@ export default [
       "**/jest.config.ts",
       "**/tests/**",
       "./tests/**",
+      // Exclude test files in auth package from project-aware parsing (handled by test override)
+      "packages/auth/test/**",
+      // Exclude tooling scripts not covered by tsconfig projects
+      "tools/**",
       "./vitest.config.ts",
       // Exclude generated build output (but allow source including worker-entry for type parsing)
       "./console-app/.svelte-kit/**",
@@ -104,6 +108,8 @@ export default [
         // Use project references only for source directories; exclude root loose test files to avoid parse errors
         tsconfigRootDir: rootDir,
         project: [
+          // Root tsconfig to cover src/runtime and other newly added source files
+          path.join(rootDir, "tsconfig.json"),
           path.join(rootDir, "onboarding/tsconfig.json"),
           path.join(rootDir, "packages/shared/tsconfig.json"),
           path.join(rootDir, "packages/auth/tsconfig.json"),
@@ -126,6 +132,8 @@ export default [
       "@typescript-eslint/no-unused-vars": "off",
       // Temporarily relax explicit any until types added
       "@typescript-eslint/no-explicit-any": "off",
+      // Allow transitional ts-ignore comments in legacy code until addressed
+      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
   // Lightweight parsing for IdP packages and idp routes (no project required)
@@ -157,8 +165,10 @@ export default [
       "**/vitest.config.ts",
       "**/vite.config.ts",
       "**/*.test.ts",
+      "**/*.spec.ts",
       "**/tailwind.config.ts",
       "**/playwright.config.ts",
+      "tools/**/*.ts",
     ],
     languageOptions: {
       parser: tsParser,

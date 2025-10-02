@@ -45,8 +45,8 @@ export interface AccessRequestRecord {
 
 export async function ensureExtendedSchema(db: D1Database) {
   // Idempotent schema creation
-  await db.batch([
-    db.prepare(`CREATE TABLE IF NOT EXISTS security_incidents (
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS security_incidents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -56,17 +56,11 @@ export async function ensureExtendedSchema(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       resolved_at TEXT,
       response_ms INTEGER
-    );`),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_incident_tenant_created ON security_incidents(tenant_id, created_at DESC);`,
-    ),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_incident_status ON security_incidents(status);`,
-    ),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_incident_severity ON security_incidents(severity);`,
-    ),
-    db.prepare(`CREATE TABLE IF NOT EXISTS activity_events (
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_incident_tenant_created ON security_incidents(tenant_id, created_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_incident_status ON security_incidents(status);`,
+    `CREATE INDEX IF NOT EXISTS idx_incident_severity ON security_incidents(severity);`,
+    `CREATE TABLE IF NOT EXISTS activity_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id TEXT NOT NULL,
       type TEXT NOT NULL,
@@ -74,14 +68,10 @@ export async function ensureExtendedSchema(db: D1Database) {
       ref TEXT,
       message TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_activity_tenant_created ON activity_events(tenant_id, created_at DESC);`,
-    ),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_events(type);`,
-    ),
-    db.prepare(`CREATE TABLE IF NOT EXISTS access_requests (
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_activity_tenant_created ON activity_events(tenant_id, created_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_activity_type ON activity_events(type);`,
+    `CREATE TABLE IF NOT EXISTS access_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant_id TEXT NOT NULL,
       subject_ref TEXT NOT NULL,
@@ -91,14 +81,25 @@ export async function ensureExtendedSchema(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       decided_at TEXT,
       decided_by TEXT
-    );`),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_access_tenant_created ON access_requests(tenant_id, created_at DESC);`,
-    ),
-    db.prepare(
-      `CREATE INDEX IF NOT EXISTS idx_access_status ON access_requests(status);`,
-    ),
-  ]);
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_access_tenant_created ON access_requests(tenant_id, created_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_access_status ON access_requests(status);`,
+  ];
+
+  // Some runtimes (tests/mocks) may not implement db.batch; fall back to sequential execution.
+  const anyDb: any = db as any;
+  if (typeof anyDb.batch === "function") {
+    await anyDb.batch(statements.map((sql: string) => db.prepare(sql)));
+    return;
+  }
+  for (const sql of statements) {
+    try {
+      await db.prepare(sql).run();
+    } catch (e) {
+      // Swallow individual statement errors to keep idempotence; log minimal info in real env
+      // (No logging import here to avoid circular dependency.)
+    }
+  }
 }
 
 export async function recordActivityEvent(

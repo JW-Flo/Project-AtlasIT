@@ -403,6 +403,25 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     return handleEvidenceGet(env, hash, requestId, headers);
   }
 
+  // Compatibility path expected by tests: /api/v1/evidence/{hash}/verify
+  if (
+    url.pathname.startsWith("/api/v1/evidence/") &&
+    url.pathname.endsWith("/verify") &&
+    method === "GET"
+  ) {
+    const parts = url.pathname.split("/").filter(Boolean); // [api,v1,evidence,{hash},verify]
+    if (parts.length === 5) {
+      const hash = parts[3];
+      return handleEvidenceVerify(env, hash, requestId, headers);
+    }
+    return errorResponse(
+      400,
+      requestId,
+      headers,
+      "Invalid evidence verify path",
+    );
+  }
+
   return null;
 }
 
@@ -1607,7 +1626,7 @@ async function handleWorkflowExecute(
       workflowType,
       subjectRef,
       idempotencyKey,
-      overrides: payload?.overrides,
+      overrides: { ...(payload?.overrides || {}), idempotencyKey },
     });
     recordLatency("workflowExecute", Date.now() - wfStart);
 
@@ -1873,7 +1892,7 @@ type HealthPayload = {
   timestamp: number;
   version: string;
   buildVersion: string;
-  snapshotAgeSeconds?: number;
+  snapshotAgeSeconds?: number | null;
   d1: boolean;
   r2: boolean;
   evidenceCount: number;
@@ -1883,6 +1902,7 @@ type HealthPayload = {
   access?: { pendingRequests: number };
   activity?: { lastEventTs: string | null };
   latency?: Record<string, ReturnType<typeof summarizeLatency>>;
+  automation?: { executions24h: number };
 };
 
 async function handleHealth(
@@ -1897,6 +1917,7 @@ async function handleHealth(
   let securityThreat = "unknown";
   let pendingRequests = 0;
   let lastActivityTs: string | null = null;
+  let executions24h = 0;
 
   if (db) {
     try {
@@ -1995,6 +2016,22 @@ async function handleHealth(
         error: (e as Error).message,
       });
     }
+
+    // Count automation executions in last 24h (rolling window)
+    try {
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`,
+        )
+        .bind(sinceIso)
+        .first<{ count: number }>();
+      executions24h = row?.count ?? 0;
+    } catch (e) {
+      log("error", "health.automation.executions24h.error", {
+        error: (e as Error).message,
+      });
+    }
   }
 
   if (hasCounters()) {
@@ -2011,7 +2048,7 @@ async function handleHealth(
     timestamp: Date.now(),
     version: buildVersion,
     buildVersion,
-    snapshotAgeSeconds: latestAge,
+    snapshotAgeSeconds: latestAge ?? null,
     d1: !!db,
     r2: !!resolveR2(env),
     evidenceCount,
@@ -2028,6 +2065,7 @@ async function handleHealth(
     activity: {
       lastEventTs: lastActivityTs,
     },
+    automation: { executions24h },
   };
 
   const workflowLat = summarizeLatency("workflowExecute");
@@ -2507,6 +2545,7 @@ async function handleEvidenceVerify(
         hash,
         recomputedHash: recomputed,
         integrity,
+        valid: integrity,
         tenantId: row?.tenant_id || null,
         pack: row?.pack || null,
         subject: row?.subject_ref || null,

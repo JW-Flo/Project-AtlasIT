@@ -92,15 +92,17 @@ export async function generatePolicy(
 ): Promise<GeneratedPolicyData> {
   const generatedAt = new Date().toISOString();
   const input = options.input ?? {};
-  const context = {
+  // Stable context for hashing/caching should exclude volatile timestamps
+  const stableContext = {
     tenantId: options.tenantId,
     templateKey: options.template.key,
-    generatedAt,
     input,
   };
-
-  const { canonical, hash: contextHash } = await hashCanonicalJson(context);
-  const content = renderTemplate(options.template.body, context);
+  const { canonical, hash: contextHash } =
+    await hashCanonicalJson(stableContext);
+  // Rendering context can include the actual generation time for human readability without affecting reuse hash
+  const renderContext = { ...stableContext, generatedAt };
+  const content = renderTemplate(options.template.body, renderContext);
   const hash = await sha256Hex(content);
   const sizeBytes = new TextEncoder().encode(content).byteLength;
 

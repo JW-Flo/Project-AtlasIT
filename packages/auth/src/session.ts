@@ -200,5 +200,43 @@ export function createSessionStore(env: StoreEnv) {
       await cachePut(session, Math.min(IDLE_DEFAULT_SECONDS, remaining));
       return session;
     },
+    isActive(session: SessionData | null): boolean {
+      if (!session) return false;
+      if (session.revokedAt) return false;
+      return Date.now() < session.expiresAt;
+    },
+    async revoke(id: string): Promise<boolean> {
+      const row = await db
+        .prepare(`SELECT id FROM sessions WHERE id = ?1`)
+        .bind(id)
+        .first();
+      if (!row) return false;
+      await db
+        .prepare(
+          `UPDATE sessions SET revoked_at = datetime('now') WHERE id = ?1`,
+        )
+        .bind(id)
+        .run();
+      await kv.delete(KV_PREFIX + id);
+      return true;
+    },
+    async rotateRefreshToken(
+      id: string,
+    ): Promise<{ refreshToken: string } | null> {
+      const row = await db
+        .prepare(`SELECT id FROM sessions WHERE id = ?1`)
+        .bind(id)
+        .first();
+      if (!row) return null;
+      const newRaw = generateRandomString(48);
+      const newHash = await sha256(newRaw);
+      await db
+        .prepare(`UPDATE sessions SET refresh_token_hash = ?1 WHERE id = ?2`)
+        .bind(newHash, id)
+        .run();
+      // Invalidate cached session so next get() rehydrates from DB
+      await kv.delete(KV_PREFIX + id);
+      return { refreshToken: newRaw };
+    },
   };
 }

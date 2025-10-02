@@ -69,16 +69,8 @@ async function getSubtle(): Promise<SubtleCrypto> {
 function toHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let hex = "";
-  for (const byte of bytes) {
-    const digest = await subtle.digest(
-      "SHA-256",
-      bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
-        ? bytes.buffer
-        : bytes.buffer.slice(
-            bytes.byteOffset,
-            bytes.byteOffset + bytes.byteLength,
-          ),
-    );
+  for (const b of bytes) {
+    hex += b.toString(16).padStart(2, "0");
   }
   return hex;
 }
