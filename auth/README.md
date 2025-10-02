@@ -1,4 +1,8 @@
-# AtlasIT Auth/IDP Service
+# DEPRECATED: Legacy AtlasIT Auth/IDP Service
+
+> This express-based service is superseded by the shared package `@atlasit/auth` (in `packages/auth`). New authentication/session logic should be added there. This directory remains temporarily for historical reference and will be removed once all consumers migrate.
+
+## Original AtlasIT Auth/IDP Service
 
 The Auth/IDP service provides authentication, authorization, and identity management for AtlasIT.
 

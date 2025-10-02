@@ -70,6 +70,12 @@ onboarding/dist/
 # Exception: commit shared dist (used by workers without build step in certain deployments)
 !packages/shared/dist/
 
+# Prevent committing compiled JS in source (TypeScript packages)
+packages/edge-utils/src/*.js
+packages/edge-utils/src/*.js.map
+packages/auth/src/*.js
+packages/auth/src/*.js.map
+
 # Example env file tracked separately; real env files ignored above
 .env.example
 

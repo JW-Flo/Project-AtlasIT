@@ -170,8 +170,8 @@
       class:active={isActive("/governance/evidence")}>Evidence</a
     >
     <div class="mobile-auth">
-      <a href="/login" class="btn blue block">Login</a>
-      <a href="/register" class="btn purple block">Register</a>
+      <a href="/login" class="block btn blue">Login</a>
+      <a href="/register" class="block btn purple">Register</a>
     </div>
   </div>
   <div class="demo-banner">
@@ -236,6 +236,7 @@
     font-size: 1rem;
     background: linear-gradient(90deg, #94a3b8, #cbd5e1);
     -webkit-background-clip: text;
+    background-clip: text;
     color: transparent;
   }
   .desktop-links {

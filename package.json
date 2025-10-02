@@ -29,6 +29,8 @@
     "build:onboarding": "cd onboarding && npm run build",
     "build:marketplace": "cd marketplace && npm run build",
     "build:auth": "cd auth && npm run build",
+    "build:auth:pkg": "cd packages/auth && npm run build",
+    "build:edge-utils": "cd packages/edge-utils && npm run build",
     "build:orchestrator": "cd ai-orchestrator && npm run build",
     "build:api-manager": "cd api-manager && npm run build",
     "build:applications": "cd applications && npm run build",
@@ -83,7 +85,9 @@
     "deploy:compliance": "cd compliance-worker && npm run deploy",
     "migrate:compliance": "wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml",
     "sonar:scan": "node scripts/sonar-scan.mjs",
-    "sonar:upgrade": "bash scripts/sonar-upgrade.sh"
+    "sonar:upgrade": "bash scripts/sonar-upgrade.sh",
+    "sync:jw-site:add": "git remote add jw-site-origin git@github.com:JW-Flo/JW-Site.git 2>/dev/null || true && git fetch jw-site-origin main && git subtree add --prefix=packages/jw-site jw-site-origin main",
+    "sync:jw-site:pull": "git fetch jw-site-origin main && git subtree pull --prefix=packages/jw-site jw-site-origin main"
   },
   "keywords": [
     "it-management",

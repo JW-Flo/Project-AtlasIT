@@ -249,3 +249,53 @@ The prior temporary React `demo-app/` has been removed after migration to a unif
 ### New Security Operations Surfaces (In Progress)
 
 An early Access Requests management page (`/access-requests`) has been added (create + approve/deny/fulfill with optimistic UI, pagination & filtering) alongside backend endpoints (`/api/v1/access-requests`). This is a stepping stone toward a broader security & compliance console; expect path/name consolidation once the full compliance center is integrated.
+
+## JW-Site Integration (Marketing / Public Site)
+
+The public site ("JW-Site") will be pulled into this monorepo via **git subtree** at `packages/jw-site`.
+
+### Status
+
+- Placeholder directory exists: `packages/jw-site/`.
+- Live code still in external repo `JW-Flo/JW-Site` until subtree import executed.
+
+### Import (Full History)
+
+```bash
+npm run sync:jw-site:add
+```
+
+Subsequent updates:
+
+```bash
+npm run sync:jw-site:pull
+```
+
+### Rationale (subtree vs submodule)
+
+- Single commit graph; simpler CI.
+- Easier developer onboarding (no submodule init step).
+- History retained (auditing, blame continuity).
+
+### Normalization Checklist After Import
+
+1. Ensure `package.json` name `@atlasit/jw-site` (private) & remove redundant dependencies.
+2. Add build script: `build:jw-site` (and deploy if needed) to root.
+3. Extract duplicate auth/session code into future `packages/auth` module.
+4. Add Playwright project for public site pages.
+5. Provide `.env.example` for site-specific runtime config.
+6. Align JWT/session secrets with console for shared auth surface if/when needed.
+
+### Rollback
+
+```bash
+git rm -r packages/jw-site && git commit -m "chore: remove jw-site subtree"
+```
+
+### Security
+
+List unique site secrets in `packages/jw-site/SECURITY.md`; link back to root security guidance. Do not duplicate full content.
+
+---
+
+This section will update once the subtree import completes.
