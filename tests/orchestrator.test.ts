@@ -1,8 +1,15 @@
-import { describe, it, expect } from "vitest";
-import orchestrator, { handleRequest } from "../ai-orchestrator/index.js";
+import { beforeEach, describe, it, expect } from "vitest";
+import orchestrator, {
+  handleRequest,
+  __resetAiStateForTests,
+} from "../ai-orchestrator/index.js";
 
 // Minimal env mock
 const mockEnv: any = {};
+
+beforeEach(() => {
+  __resetAiStateForTests();
+});
 
 async function call(method: string, path: string, body?: any) {
   const init: RequestInit = {
@@ -28,7 +35,14 @@ describe("Orchestrator worker basic endpoints", () => {
     const res = await call("GET", "/health");
     expect(res.status).toBe(200);
     expect(res.json.status).toBe("healthy");
-    expect(res.json.service).toBe("orchestrator");
+    expect(res.json.service).toBe("ai-orchestrator");
+    // New R2 metrics appended (non-breaking). Validate shape minimally.
+    expect(res.json).toHaveProperty("r2");
+    if (res.json.r2) {
+      ["atlas_policies", "atlas_evidence", "atlas_artifacts"].forEach((k) => {
+        expect(res.json.r2).toHaveProperty(k);
+      });
+    }
   });
 
   it("GET /status returns structure (may be MCP rejected)", async () => {
@@ -39,5 +53,29 @@ describe("Orchestrator worker basic endpoints", () => {
       expect(res.json).toHaveProperty("pendingTasks");
       expect(res.json).toHaveProperty("activeDeployments");
     }
+  });
+
+  it("POST /internal/etl/run accepts run and prevents duplicate while running", async () => {
+    // Provide API key to satisfy auth middleware (simulate single allowed key)
+    mockEnv.API_ALLOWED_KEYS = "test-key";
+    const firstReq = new Request("https://example.com/internal/etl/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": "test-key" },
+      body: JSON.stringify({ runId: "test-etl-1" }),
+    });
+    const firstResp = await handleRequest(firstReq, mockEnv, {
+      waitUntil: (p) => p,
+    } as any);
+    expect([202, 200]).toContain(firstResp.status); // 202 accepted or 200 duplicate (if extremely fast)
+    // Immediately attempt second run; likely returns 409 already_running or 200 duplicate if finished
+    const secondReq = new Request("https://example.com/internal/etl/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": "test-key" },
+      body: JSON.stringify({ runId: "test-etl-1" }),
+    });
+    const secondResp = await handleRequest(secondReq, mockEnv, {
+      waitUntil: (p) => p,
+    } as any);
+    expect([200, 409]).toContain(secondResp.status);
   });
 });

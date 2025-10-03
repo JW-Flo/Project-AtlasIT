@@ -1,0 +1,19 @@
+{
+  "name": "@atlasit/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist || rm -rf dist",
+    "prebuild": "npm run clean"
+  },
+  "dependencies": {
+    "@atlasit/edge-utils": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

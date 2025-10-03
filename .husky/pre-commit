@@ -1,4 +1,5 @@
 #!/bin/sh
 echo "Running pre-commit hooks..."
- npx lint-staged || exit 1
+echo "[1/1] Lint-staged..."
+npx lint-staged || exit 1
 echo "Pre-commit hooks completed"

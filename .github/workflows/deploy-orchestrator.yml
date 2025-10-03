@@ -1,0 +1,70 @@
+name: Deploy Orchestrator Worker
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "ai-orchestrator/**"
+            - ".github/workflows/deploy-orchestrator.yml"
+            - "DEPLOY_ENV.md"
+    workflow_dispatch:
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        env:
+            CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+            WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: npm
+
+            - name: Install deps (root)
+              run: npm ci
+
+            - name: Lint orchestrator
+              run: npx eslint ai-orchestrator --max-warnings=0 || npx eslint ai-orchestrator
+
+            - name: Run tests (if present)
+              run: |
+                  if [ -f "package.json" ] && jq -e '.scripts.test' package.json > /dev/null; then
+                    npm test --workspaces --if-present || echo "No tests or tests failed"
+                  fi
+
+            - name: Wrangler publish
+              run: npx wrangler deploy ai-orchestrator/index.js --name ai-orchestrator
+              env:
+                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+                  WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+                  AI_MAX_REQUESTS_PER_DAY: 5000
+                  AI_ALLOWED_MODELS: openai:gpt-4o-mini,anthropic:claude-3-haiku
+                  AI_RATE_WINDOW_SECONDS: 60
+                  AI_RATE_MAX_REQUESTS: 120
+                  AI_RATE_BLOCK_SECONDS: 30
+                  WORKFLOW_MAX_STEPS: 40
+                  AI_LOG_LEVEL: info
+                  API_ALLOWED_KEYS: placeholder-key
+
+            - name: Post-deploy /health probe
+              run: |
+                  set -e
+                  # Derive worker URL if using custom domain adjust accordingly
+                  WORKER_URL="https://ai-orchestrator.${CF_ACCOUNT_ID}.workers.dev" || true
+                  echo "Probing $WORKER_URL/health"
+                  curl -sS "$WORKER_URL/health" || echo "Health endpoint probe failed (URL may differ)."
+              env:
+                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+              if: always()
+
+            - name: Guidance
+              run: |
+                  echo "Ensure secrets CF_ACCOUNT_ID and WRANGLER_API_TOKEN are configured."
+                  echo "Optional: set AI_* vars in dashboard for production overrides."

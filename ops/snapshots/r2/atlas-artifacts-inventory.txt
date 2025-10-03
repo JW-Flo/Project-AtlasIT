@@ -1,0 +1,2 @@
+Bucket: atlas-artifacts
+objects: UNKNOWN (capture via dashboard)

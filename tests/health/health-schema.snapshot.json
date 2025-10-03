@@ -1,0 +1,25 @@
+{
+  "orchestrator": [
+    "status",
+    "service",
+    "timestamp",
+    "requestId",
+    "actor",
+    "quota",
+    "rateLimit",
+    "r2"
+  ],
+  "compliance-worker": [
+    "status",
+    "service",
+    "timestamp",
+    "version",
+    "buildVersion",
+    "snapshotAgeSeconds",
+    "d1",
+    "r2",
+    "evidenceCount",
+    "aiQuotaUsed",
+    "aiQuotaRemaining"
+  ]
+}

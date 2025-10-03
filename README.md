@@ -1,566 +1,552 @@
-## Onboarding Service Phase 1 Additions
-
-### Endpoints
-
-1. POST /api/onboarding
-   - Creates (or returns existing) onboarding configuration for a tenant.
-   - Idempotent: subsequent identical POSTs return 200 with `idempotent: true` and original config/template.
-2. GET /api/onboarding/questions?industry=tech&req=analytics&req=compliance
-   - Returns dynamic question set based on industry and requirement keywords.
-3. GET /api/onboarding/:tenantId
-   - Returns stored onboarding state (status, config, template) if exists.
-
-### Error Codes (taxonomy)
-
-| Code    | Meaning                                                |
-| ------- | ------------------------------------------------------ |
-| ONB-001 | Missing required fields (tenantId, name, industry)     |
-| ONB-002 | Unsupported industry (details includes allowed list)   |
-| ONB-003 | Invalid configuration (details list validation issues) |
-| ONB-004 | Onboarding already provisioned (idempotent path)       |
-| ONB-005 | Tenant ID required (status endpoint)                   |
-| ONB-006 | Onboarding not found (status endpoint)                 |
-| ONB-999 | Unknown error                                          |
-
-### Audit Events
-
-- On success an `audit_events` row is inserted: type `onboarding.completed` with payload `{ tenantId, industry }`.
-- Idempotent re-invocations do NOT create duplicate audit events.
-
-### Security & Observability (Phase 1 Hardening + Enhancements)
-
-- API Key Authentication: All onboarding endpoints optionally require an `x-api-key` when `API_ALLOWED_KEYS` is configured.
-- Actor Attribution: The provided API key is surfaced as `actor` in JSON responses and (for onboarding) embedded in `audit_events.payload` for provenance.
-- Correlation IDs: Each request has a `requestId` (UUID) in JSON and `x-request-id` header; joined with `actor` for consistent trace context.
-- Rate Limiting: Per-API-key sliding window controls (env: `RATE_LIMIT_MAX_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS`) return `429` with standard rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`).
-- Schema Drift Detection: `schema.hash` baseline + integrity test prevents unnoticed migration changes.
-
-### Questions Generation Inputs
-
-- Industry (default technology) influences specialized questions (e.g., healthcare adds PHI question).
-- Requirements keywords (compliance, analytics, etc.) add targeted questions.
-
-### AI Config Enhancements
-
-- Extended keyword mapping for monitoring/observability, logging, audit, sso, gdpr/privacy.
-
-### Testing Coverage
-
-- Unit: health, onboarding POST (create + idempotent), questions, status (found & not found).
-- Integration: full flow, status retrieval, idempotent POST, error taxonomy (ONB-001, ONB-002, conditional ONB-003 attempt).
-
-### Idempotency Behavior
-
-- KV key `onboarding:{tenantId}` as source of truth; presence triggers 200 path with `idempotent: true`.
-
-### Future Work (Phase 2 Ideas)
-
-- Enrich validation details, add partial progress states, expand question taxonomy.
-
 # AtlasIT
 
-AtlasIT is a modular, cloud-first IT management platform for SMBs that automates user provisioning, SaaS onboarding, identity/infrastructure access, device enrollment, communications, security, reporting, and cost management—with compliance and AI-powered onboarding built in.
+Cloudflare Workers based automation substrate for onboarding, orchestration, docs, and future compliance modules.
 
-## Key Features
+## Cloudflare Binding Configuration (Diagnostics Reference)
 
-- **🤖 AI-Guided Tenant Onboarding**: Dynamic template Q&A system for rapid, secure setup tailored to client needs
-- **🏪 App Marketplace**: Pluggable app/integration onboarding for SaaS, security, finance, and more
-- **🎯 Central Orchestrator (MCP)**: Event-driven microservices architecture with automated workflow management
-- **🔐 Multi-Tenant Authentication**: Support for OIDC/SAML/SCIM, Okta, Auth0, or AtlasIT's internal IdP
-- **🌐 API Manager**: Unified gateway for all internal/external API traffic with security enforcement
-- **☁️ Cloud-First, Serverless**: Powered by Cloudflare Workers with global edge distribution
-- **🛡️ Security & Compliance**: Built-in logging, audit trails, SIEM/EDR integrations, and compliance reporting
+If you encounter responses indicating missing bindings (e.g. `DISPATCHER_BINDING_MISSING` or console warnings `[bindings] Missing Cloudflare bindings detected`), ensure the following are present in `wrangler.toml` for the target environment (e.g. `[env.core]`, `[env.production]`, or `[env.ai]`).
 
-## Table of Contents
+### Required (current code references)
 
-- [Quick Start](#quick-start)
-- [Project Structure](#project-structure)
-- [Services Overview](#services-overview)
-- [Documentation](#documentation)
-- [Development](#development)
-- [Deployment](#deployment)
-- [Contributing](#contributing)
-- [License](#license)
+- KV: `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`, `MCP_STORE`
+- D1: `ATLAS_CORE_DB`, `ATLAS_AUDIT_DB`, `ATLAS_COMPLIANCE_DB`, `ATLAS_AUDIT_SHADOW`
+- R2: `atlas_policies`, `atlas_evidence`, `atlas_artifacts`
+- Optional Dispatch Namespace: `dispatcher` (only if using sub-worker routing segments)
+
+### Example snippet for a new environment
+
+```toml
+[env.core]
+name = "atlasit-core"
+main = "index.js"
+compatibility_date = "2025-05-16"
+workers_dev = true
+
+[[env.core.kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "KV_CACHE"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "<kv id>"
+[[env.core.kv_namespaces]]
+binding = "MCP_STORE"
+id = "<kv id>"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "<uuid>"
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "<uuid>"
+
+[[env.core.r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+[[env.core.r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+[[env.core.r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+# Optional (requires eligible plan)
+# [[env.core.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "atlasit-dispatcher-namespace"
+```
+
+### Local Secret Setup
+
+Secrets such as `SLACK_WEBHOOK_URL` or `AI_GATEWAY_TOKEN` must be set via Wrangler:
+
+```bash
+wrangler secret put SLACK_WEBHOOK_URL --env core
+wrangler secret put AI_GATEWAY_TOKEN --env ai
+```
+
+### Troubleshooting Steps
+
+1. Run `wrangler whoami` to confirm account.
+2. Run `wrangler deploy --env core` (or relevant env) and inspect output for binding mismatches.
+3. Use `wrangler kv namespace list`, `wrangler d1 list`, and `wrangler r2 bucket list` to verify resource existence.
+4. If dispatch errors occur and you do not need dispatch, remove the routing logic referencing `env.dispatcher` in `index.js`.
+
+### Runtime Diagnostics
+
+At startup, the worker emits a one-time console warning listing any missing expected bindings. This does not break the request lifecycle but should be addressed before production promotion.
+
+> Reality Snapshot (Sept 2025): The production codebase currently ships **three Cloudflare Workers (onboarding, orchestrator, docs)** plus a shared utility package. The broader UI vision (compliance center, policy engine, risk matrix, marketplace, API manager) **is NOT implemented yet**. This README makes that distinction explicit and outlines the incremental path forward.
+
+AtlasIT is an edge‑native automation substrate. The present deployed scope is intentionally slim: provision onboarding flows, run internal automation tasks, and publish operational documentation. All higher‑level governance & compliance modules remain roadmap items.
+
+## Active Components (Implemented Today)
+
+| Component            | Purpose                                          | Storage                     | Notes                                         |
+| -------------------- | ------------------------------------------------ | --------------------------- | --------------------------------------------- |
+| Onboarding Worker    | Initial tenant/user process + future IDP tie‑ins | KV / (planned D1)           | Auth via API key (temporary)                  |
+| Orchestrator Worker  | Task submission, scheduled cron execution        | KV (tasks)                  | Cron every 5m; to expand into workflow engine |
+| Documentation Worker | Mutable operational runbook JSON + health        | KV (`atlasit_docs` primary) | Dual‑read legacy key supported                |
+| Shared Library       | Logging, env validation, small utilities         | —                           | Consumed by all workers                       |
+
+Non‑production / legacy artifacts are isolated in `LEGACY.md`.
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
-- npm or yarn
-- Wrangler CLI (`npm install -g wrangler`)
-- Cloudflare account
+- npm (workspace-aware)
+- Cloudflare Wrangler CLI (`npm install -g wrangler`)
+- Cloudflare account with Workers access
 
-### Installation
-
-1. **Clone the repository:**
+### Bootstrap Local Env
 
 ```bash
-git clone https://github.com/yourusername/atlasit.git
-cd atlasit
-```
-
-1. **Install dependencies:**
-
-```bash
-# Preferred (installs root + all workspaces)
-npm run install:all
-
-# Or just root (then manually install per service)
+# Clone & install workspace dependencies
 npm install
-```
 
-1. **Set up environment:**
-
-```bash
+# Copy template env and fill required values
 cp .env.example .env
-# Edit .env with your configuration
+
+# Validate required vars (uses .env + process env)
+npm run validate:env
 ```
 
-1. **Authenticate with Cloudflare:**
+### Run Core Workers
 
 ```bash
-wrangler login
-```
-
-1. **Start core development services:**
-
-```bash
-npm run dev:core
-```
-
-Or start all declared dev targets (may include placeholders not yet implemented):
-
-```bash
-npm run dev
-```
-
-1. **Access the application:**
-
-- API: `http://localhost:8787`
-- Dashboard: `http://localhost:3000`
-
-## Project Structure
-
-```text
-atlasit/
-├── 📚 docs/                    # Comprehensive documentation
-│   ├── api-documentation.md    # Complete API reference
-│   ├── architecture.md         # System architecture
-│   ├── deployment-guide.md     # Production deployment
-│   └── developer-guide.md      # Development guidelines
-├── 🎯 onboarding/              # AI-guided tenant setup
-│   ├── src/handlers/           # Request handlers
-│   ├── src/services/           # Business logic
-│   ├── src/utils/              # Helper functions
-│   ├── migrations/             # Database migrations
-│   └── tests/                  # Test suites
-├── 🏪 marketplace/             # App store & integrations
-├── 🔐 auth/                    # Authentication service
-├── 🎭 orchestrator/            # Event orchestration (MCP)
-├── 🌐 api-manager/             # API gateway & routing
-├── 📱 applications/            # SaaS integrations
-├── 🏗️ terraform/               # Infrastructure as code
-├── 🎨 ui/                      # React dashboard
-├── 🔧 shared/                  # Shared utilities
-└── 📜 scripts/                 # Build & deployment scripts
-```
-
-## Services Overview
-
-### 🎯 Onboarding Service
-
-AI-powered tenant configuration with industry-specific templates, automated setup workflows, and integration validation.
-
-**Key Features:**
-
-- Dynamic questionnaire generation
-- Industry-specific configurations (Healthcare, Finance, Retail)
-- Automated template creation
-- Integration validation pipeline
-
-#### Current Orchestrator Endpoints
-
-| Method | Path                        | Description                                     |
-| ------ | --------------------------- | ----------------------------------------------- |
-| GET    | `/health`                   | Service health probe                            |
-| POST   | `/onboarding/start`         | Generate dynamic onboarding question set        |
-| POST   | `/onboarding/submit`        | Submit tenant data and generate config/template |
-| POST   | `/api/onboarding`           | Legacy alias of `/onboarding/submit`            |
-| GET    | `/api/onboarding/:tenantId` | Retrieve onboarding state & generated config    |
-| ANY    | (all above)                 | Require `x-api-key` if `API_ALLOWED_KEYS` set   |
-
-### 🏪 Marketplace Service
-
-Centralized app discovery and management platform for SaaS integrations and custom solutions.
-
-**Key Features:**
-
-- App discovery and installation
-- Version management
-- Dependency resolution
-- Usage analytics
-
-### 🔐 Authentication Service
-
-Multi-tenant authentication with support for various identity providers and protocols.
-
-**Key Features:**
-
-- JWT/OAuth/SAML support
-- Role-based access control (RBAC)
-- Multi-tenant isolation
-- SSO integration
-
-### 🎭 Orchestrator Service
-
-Event-driven workflow management using Model Context Protocol (MCP) for service coordination.
-
-**Key Features:**
-
-- Event processing and routing
-- Workflow automation
-- State management
-- Service coordination
-
-#### Current Endpoints (with Security Metadata)
-
-| Method | Path            | Auth            | Description                                      |
-| ------ | --------------- | --------------- | ------------------------------------------------ |
-| GET    | `/health`       | None            | Health probe (returns status + requestId header) |
-| GET    | `/status`       | x-api-key (401) | Returns deployment/task state (MCP may 403)      |
-| POST   | `/task`         | x-api-key (401) | Submit a new task (MCP may 403)                  |
-| POST   | `/terminal`     | x-api-key (401) | Execute terminal command (MCP approval)          |
-| POST   | `/workflow`     | x-api-key (401) | Create in-memory workflow (MVP)                  |
-| GET    | `/workflow/:id` | x-api-key (401) | Fetch workflow by id                             |
-
-All authenticated endpoints also include a `x-request-id` header and JSON `requestId` field for correlation.
-
-#### Testing Status
-
-Vitest suites cover:
-
-- Public `/health` availability (200 + `x-request-id`)
-- Unauthorized access to `/status` without API key (401)
-- Authorized `/status` path behavior (MCP may 403, ensures no 401 when key valid)
-- Per-key rate limiting (third `/status` call -> 429)
-- Workflow create & retrieval (`/workflow` + `/workflow/:id`)
-
-Planned expansions:
-
-- `/task` success + MCP rejection path coverage
-- `/terminal` execution & rejection paths
-- AI assistance decision logic (mock MCP + AI provider)
-- Workflow step mutation & progression lifecycle
-
-Security note: `/health` deliberately bypasses API key enforcement to support external uptime monitoring while still emitting a correlation ID.
-
-### 🌐 API Manager
-
-Unified API gateway providing routing, security, rate limiting, and monitoring.
-
-**Key Features:**
-
-- Request routing and load balancing
-- Authentication and authorization
-- Rate limiting and throttling
-- API analytics and monitoring
-
-### 📱 Applications Service
-
-Manages SaaS integrations and custom applications with health monitoring and performance tracking.
-
-**Key Features:**
-
-- SaaS integration management
-- Health monitoring
-- Performance analytics
-- Custom app deployment
-
-## 📚 Documentation
-
-| Document                                          | Description                                             |
-| ------------------------------------------------- | ------------------------------------------------------- |
-| [🏗️ Architecture Guide](docs/architecture.md)     | System design, components, and data flow                |
-| [📖 API Documentation](docs/api-documentation.md) | Complete REST API reference with examples               |
-| [🚀 Deployment Guide](docs/deployment-guide.md)   | Production deployment and infrastructure setup          |
-| [👨‍💻 Developer Guide](docs/developer-guide.md)     | Development setup, coding standards, and best practices |
-
-## 💻 Development
-
-### Local Development Setup
-
-1. **Install service dependencies:**
-
-```bash
-# Install all service dependencies
-npm run install:all
-
-# Or install individually
-cd onboarding && npm install
-cd marketplace && npm install
-# ... repeat for each service
-```
-
-1. **Set up databases (D1 for onboarding service):**
-
-```bash
-# Create (or ensure) local D1 database (name can differ)
-wrangler d1 create atlasit-local
-
-# Apply onboarding service migrations
-cd onboarding
-wrangler d1 migrations apply atlasit-local --local
-```
-
-1. **Start development servers:**
-
-```bash
-# Core services (onboarding + orchestrator)
+# Start onboarding + orchestrator in parallel
 npm run dev:core
 
-# All declared services (parallel)
-npm run dev
-
-# Individual
-cd onboarding && npm run dev
+# Or start an individual worker
+npm run dev:onboarding
 ```
 
-### Testing
+Refer to `ops/ENDPOINTS.md` for the live route inventory (only the three workers). A future `frontend/` app will surface a dashboard once APIs for compliance/policies exist.
 
-Current implemented suite uses Vitest unit tests.
+## Testing & Validation
 
-```bash
-# Run unit tests
-npm run test:unit
+| Command                | Purpose                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| `npm run validate:env` | Fails fast if required configuration or secrets are missing.                       |
+| `npm run typecheck`    | Strict TypeScript check scoped to active workers and packages.                     |
+| `npm run test:unit`    | Executes onboarding, orchestrator, shared, and documentation worker Vitest suites. |
+| `npm run predeploy`    | Runs `validate:env`, `typecheck`, and unit tests before deployment.                |
 
-# Run with coverage (thresholds enforced: lines 40%, funcs 40%, branches 30%, statements 40%)
-npm run test:coverage
-```
-
-Service-specific tests can be run within each service directory.
-
-### Code Quality
-
-```bash
-# Lint code
-npm run lint
-
-# Format code
-npm run format
-
-# Type check
-npm run typecheck
-```
-
-### Secret Scanning
-
-Secret scanning runs in CI (pre typecheck/lint) and can be invoked locally:
-
-```bash
-npm run scan:secrets
-```
-
-The script flags common credential patterns (API keys, private keys). Use mock-looking values that avoid real key patterns when adding fixtures.
-
-### Environment Validation
-
-Both onboarding and AI orchestrator perform a one-time environment validation on first request using a shared Zod schema. Warnings (not fatal) surface missing or invalid optional values early.
-
-## MVP Readiness Matrix
-
-| Component                          | Status                             | Included in MVP | Operational Criteria Met                                                    | Notes                                                    |
-| ---------------------------------- | ---------------------------------- | --------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Onboarding Worker                  | Implemented                        | Yes             | Health, start/submit/state endpoints, negative tests, D1 migration baseline | Further: add persistence logic using D1                  |
-| AI Orchestrator (ai-orchestrator/) | Endpoints + rate limit + workflows | Yes (expanded)  | /health, /status, rate limiting, workflow create/get, tests                 | Refactor AI calls; persist workflows (Durable Object)    |
-| Shared Utilities (@atlasit/shared) | Implemented                        | Yes             | Logger, env, AI abstraction, http helpers exported                          | Needs build step in CI before tests (pretest hook added) |
-| Auth Service                       | Placeholder                        | Deferred        | N/A                                                                         | Future: OIDC/SAML integration                            |
-| Marketplace                        | Placeholder                        | Deferred        | N/A                                                                         | Future: app registry & install flows                     |
-| API Manager                        | Placeholder                        | Deferred        | N/A                                                                         | Future: routing, rate limits                             |
-| Applications Service               | Placeholder                        | Deferred        | N/A                                                                         | Future: integration adapters                             |
-| Infrastructure (Terraform)         | Scaffold                           | Yes (baseline)  | Directory + plan docs                                                       | Apply once domains decided                               |
-| Security (Secret Scan)             | Implemented                        | Yes             | CI step + local script                                                      | Extend patterns incrementally                            |
-| Testing & Coverage                 | Partial                            | Yes             | Unit tests + coverage thresholds                                            | Increase thresholds over time                            |
-| Database (D1)                      | Initial migration                  | Yes             | tenants & onboarding_sessions tables                                        | Add queries & persistence code                           |
-| Observability                      | Planned                            | Optional        | —                                                                           | Future: metrics, tracing, dashboards                     |
-| UI Dashboard                       | Planned                            | Optional        | —                                                                           | React app not yet scaffolded                             |
-
-## Optional / Phase 2+ Components
-
-These are intentionally deferred to keep MVP lean while preserving clear upgrade paths:
-
-- Advanced AI workflow orchestration (multi-model strategies, tool selection)
-- Full Auth provider federation (Okta/Auth0/Entra) & SCIM provisioning
-- Marketplace publish/approval workflow & billing hooks
-- Comprehensive observability stack (Prometheus exporters, Grafana dashboards, tracing)
-- UI dashboard (tenant admin console & analytics)
-- Rate limiting & advanced API analytics (per-tenant quotas)
-- Fine-grained RBAC & policy engine (OPA/Rego or Cedar)
-- Automated compliance report generation (SOC2-style evidence collection)
-
-## Roadmap Next Steps (Short-Term Updated)
-
-1. Persist onboarding state fully in D1 (remove KV dependency) & add retrieval queries.
-2. Orchestrator: Refactor AI invocation to shared provider + mockable interface for tests.
-3. Durable Object (or R2) backed workflow engine (persist + status transitions, step logs).
-4. Expand orchestrator tests: `/task`, `/terminal`, AI assistance decision, negative paths.
-5. Add Auth service skeleton (health + /login + token issuance) & integrate with API gateway.
-6. Introduce centralized rate limit analytics (export metrics; prepare for Prometheus integration).
-7. CI: Per-workspace lint/typecheck/test matrix & coverage gating (raise thresholds gradually).
-8. Add SECURITY.md (threat model, key management, rate limiting strategy, future mTLS plan).
-
-## Script Reference (Updated)
-
-| Script                  | Description                                            |
-| ----------------------- | ------------------------------------------------------ |
-| `npm run install:all`   | Install root + all workspace dependencies              |
-| `npm run dev:core`      | Start core MVP services (onboarding + ai-orchestrator) |
-| `npm run test:unit`     | Run Vitest unit suite (shared + service tests)         |
-| `npm run test:coverage` | Run tests with coverage & threshold enforcement        |
-| `npm run scan:secrets`  | Execute local secret scanning script                   |
-| `npm run build:shared`  | Build shared utilities package                         |
-
-## Orchestrator Directory Note
-
-The active orchestrator worker source lives in `ai-orchestrator/` (Hono-based). A legacy `orchestrator/` directory remains for documentation drafts; future consolidation will either migrate or remove the legacy folder.
+Secret scanning and dependency audits (`npm run scan:secrets`, `npm audit --omit=dev`) complement predeploy checks.
 
 ## Deployment
 
-### Production Deployment
+1. **Pre-check**
 
-1. **Configure infrastructure:**
+   ```bash
+   npm run predeploy
+   ```
 
-```bash
-cd terraform/cloudflare
-terraform init
-terraform plan -var="domain=yourdomain.com"
-terraform apply
-```
+2. **Seed Secrets** (repeat per worker as needed)
 
-1. **Deploy services:**
+   ```bash
+   # Onboarding
+   cd onboarding
+   wrangler secret put ONBOARDING_API_KEY
+   wrangler secret put ORCHESTRATOR_API_KEY   # if orchestrator key shared
 
-```bash
-# Deploy all services
-npm run deploy
+   # Orchestrator
+   cd ../ai-orchestrator
+   wrangler secret put API_ALLOWED_KEYS
+   wrangler secret put AI_GATEWAY_TOKEN
 
-# Or deploy individually
-cd onboarding && npm run deploy
-```
+   # Documentation worker (optional today)
+   cd ../documentation-worker
+   wrangler secret put API_ALLOWED_KEYS
+   ```
 
-1. **Verify deployment:**
+3. **Deploy Workers**
 
-```bash
-# Check service health
-curl https://api.yourdomain.com/health
-```
+   ```bash
+   cd onboarding && wrangler deploy
+   cd ../ai-orchestrator && wrangler deploy
+   cd ../documentation-worker && wrangler deploy
+   ```
 
-For detailed deployment instructions, see the [Deployment Guide](docs/deployment-guide.md).
+4. **Post-Deploy Smoke Tests**
 
-### Environment Configuration
+   ```bash
+   curl -H "x-api-key: $ONBOARDING_API_KEY" https://<onboarding-domain>/onboarding/start -d '{"industry":"technology"}'
+   curl https://<orchestrator-domain>/health
+   curl https://<docs-domain>/docs
+   ```
 
-| Environment | Purpose                | URL                                  |
-| ----------- | ---------------------- | ------------------------------------ |
-| Development | Local development      | `http://localhost:8787`              |
-| Staging     | Pre-production testing | `https://staging-api.yourdomain.com` |
-| Production  | Live environment       | `https://api.yourdomain.com`         |
+See `ops/DEPLOYMENT_SUCCESS_REPORT.md` for last deployment snapshot and `ops/ALIGNMENT_PLAN.md` for branding & migration tasks.
+
+## Documentation
+
+- `ops/ENDPOINTS.md` – Current API catalog for the three workers (docs worker marked experimental).
+- `AtlasIT Development Guide.md` – Architecture & dev practices.
+- `LEGACY.md` – Archived Ignite/MCP context retained for provenance.
+- `ops/ALIGNMENT_PLAN.md` – Branding + migration phases.
+- `docs/RECOMMENDED_UPDATES.md` – Consolidated audit of backend feature gaps, planned endpoints, observability & retention roadmap (keep in sync during compliance build-out).
+
+## Roadmap Phases (Planned – Not Implemented)
+
+| Phase | Title                     | Key Deliverables                                                   | Exit Criteria                           |
+| ----- | ------------------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| 1     | UI & API Stubs            | Frontend scaffold, compliance score stub, policy stub endpoints    | Dashboard loads with stub data          |
+| 2     | Compliance Core           | D1 schema (framework status, audits, risks), real score calc cron  | Score persists & updates <15m interval  |
+| 3     | Policy Engine             | Template rendering, tenant profile, versioned policy storage       | Generate & retrieve 5 baseline policies |
+| 4     | Directory & JML           | Okta sync (users/groups), lifecycle metrics, orchestrator triggers | New user appears in <2 min              |
+| 5     | Reporting & Export        | Report generation (PDF/MD), signed export links, audit timeline    | Downloadable compliance report          |
+| 6     | Hardening & Observability | Rate limits, metrics, structured logs, security scan gating        | p95 latency <75ms, 0 high vulns         |
+
+Anything beyond Phase 6 (LLM refinement, marketplace, advanced analytics) will be chartered separately once core stability is proven.
+
+### Gap Clarification
+
+If a feature is visible in design mockups (e.g. Risk Assessment Matrix) but absent here, it is _not built_. Track its status through issues mapped to the phases above.
+
+## Legacy Notes
+
+Historic Ignite and MCP automation materials now reside in [`LEGACY.md`](LEGACY.md). They are excluded from sprint planning unless explicitly re-scoped into a roadmap phase.
 
 ## Contributing
 
-We welcome contributions! Please see our [Developer Guide](docs/developer-guide.md) for detailed information.
-
-### Quick Contribution Steps
-
-1. **Fork the repository**
-1. **Create a feature branch:**
-
-```bash
-git checkout -b feature/amazing-feature
-```
-
-1. **Make your changes and add tests**
-
-1. **Ensure all tests pass:**
-
-```bash
-npm test
-```
-
-1. **Commit your changes:**
-
-```bash
-git commit -m 'feat: add amazing feature'
-```
-
-1. **Push to your branch:**
-
-```bash
-git push origin feature/amazing-feature
-```
-
-1. **Open a Pull Request**
-
-### Development Guidelines
-
-- Follow TypeScript best practices
-- Write comprehensive tests
-- Update documentation
-- Follow conventional commit messages
-- Ensure code passes all quality checks
-
-## Technology Stack
-
-| Category           | Technology                       |
-| ------------------ | -------------------------------- |
-| **Runtime**        | Cloudflare Workers (V8 Isolates) |
-| **Language**       | TypeScript                       |
-| **Database**       | Cloudflare D1 (SQLite)           |
-| **Storage**        | Cloudflare KV                    |
-| **Frontend**       | React + TypeScript               |
-| **Testing**        | Vitest + Playwright              |
-| **Infrastructure** | Terraform                        |
-| **CI/CD**          | GitHub Actions                   |
-
-## Performance & Scalability
-
-- **Global Edge Distribution**: Deployed across 200+ Cloudflare data centers
-- **Sub-100ms Response Times**: Optimized for low latency
-- **Auto-scaling**: Serverless architecture scales automatically
-- **99.9% Uptime SLA**: Enterprise-grade reliability
-
-## Security Features
-
-- **Zero-Trust Architecture**: Every request is authenticated and authorized
-- **End-to-End Encryption**: Data encrypted in transit and at rest
-- **Compliance Ready**: GDPR, CCPA, SOC 2, HIPAA support
-- **Audit Logging**: Comprehensive audit trails for all operations
-- **Rate Limiting**: Protection against abuse and DDoS attacks
-
-## Monitoring & Observability
-
-- **Real-time Metrics**: Performance and usage analytics
-- **Error Tracking**: Comprehensive error monitoring and alerting
-- **Health Checks**: Automated service health monitoring
-- **Distributed Tracing**: Request tracing across services
-- **Custom Dashboards**: Grafana-based monitoring dashboards
-
-## Support
-
-- **📖 Documentation**: Comprehensive guides and API reference
-- **🐛 Issues**: [GitHub Issues](https://github.com/yourusername/atlasit/issues)
-- **💬 Discussions**: [GitHub Discussions](https://github.com/yourusername/atlasit/discussions)
-- **📧 Email**: [support@atlasit.com](mailto:support@atlasit.com)
-- **📊 Status Page**: [status.atlasit.com](https://status.atlasit.com)
+Please open issues or PRs for bug fixes and improvements. Run `npm run predeploy` before submitting changes.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License. See `LICENSE` if provided by the repository owner.
 
-## Acknowledgments
+## UI Console (SvelteKit – Experimental)
 
-- Cloudflare Workers team for the excellent serverless platform
-- The open-source community for the amazing tools and libraries
-- All contributors who help make AtlasIT better
+An internal compliance & risk prototype now lives under `console-app/` (SvelteKit + Tailwind). It exposes a runtime config endpoint at `/api/config` used by the UI to discover the compliance API base (`complianceBase`). By default this falls back to the local mock implementation at `/api/mock/compliance/snapshot` and a dashboard view at `/console` visualizing framework coverage, a risk matrix, and policy cards.
+
+Run locally:
+
+```bash
+npm run dev:console
+```
+
+Runtime config validation (optional):
+
+```bash
+curl -s http://localhost:5173/api/config | jq
+curl -s "http://localhost:5173$(curl -s http://localhost:5173/api/config | jq -r .complianceBase)/snapshot" | jq '.frameworkSummary[0]'
+```
+
+To point the UI at a deployed compliance worker set `COMPLIANCE_BASE` (copy `console-app/.env.example` → `.env`):
+
+```bash
+COMPLIANCE_BASE=https://your-compliance-worker.example.com/api/compliance
+```
+
+The prior temporary React `demo-app/` has been removed after migration to a unified SvelteKit approach.
+
+### New Security Operations Surfaces (In Progress)
+
+An early Access Requests management page (`/access-requests`) has been added (create + approve/deny/fulfill with optimistic UI, pagination & filtering) alongside backend endpoints (`/api/v1/access-requests`). This is a stepping stone toward a broader security & compliance console; expect path/name consolidation once the full compliance center is integrated.
+
+## JW-Site Integration (Marketing / Public Site)
+
+The public site ("JW-Site") will be pulled into this monorepo via **git subtree** at `packages/jw-site`.
+
+### Status
+
+- Placeholder directory exists: `packages/jw-site/`.
+- Live code still in external repo `JW-Flo/JW-Site` until subtree import executed.
+
+### Import (Full History)
+
+```bash
+npm run sync:jw-site:add
+```
+
+Subsequent updates:
+
+```bash
+npm run sync:jw-site:pull
+```
+
+### Rationale (subtree vs submodule)
+
+- Single commit graph; simpler CI.
+- Easier developer onboarding (no submodule init step).
+- History retained (auditing, blame continuity).
+
+### Normalization Checklist After Import
+
+1. Ensure `package.json` name `@atlasit/jw-site` (private) & remove redundant dependencies.
+2. Add build script: `build:jw-site` (and deploy if needed) to root.
+3. Extract duplicate auth/session code into future `packages/auth` module.
+4. Add Playwright project for public site pages.
+5. Provide `.env.example` for site-specific runtime config.
+6. Align JWT/session secrets with console for shared auth surface if/when needed.
+
+### Rollback
+
+```bash
+git rm -r packages/jw-site && git commit -m "chore: remove jw-site subtree"
+```
+
+### Security
+
+List unique site secrets in `packages/jw-site/SECURITY.md`; link back to root security guidance. Do not duplicate full content.
 
 ---
 
-### Built with ❤️ by the AtlasIT team
+This section will update once the subtree import completes.
+
+### Codex Container Workflow
+
+- Build the runtime image with `docker build -f docker/Dockerfile.codex -t codex:latest .`.
+- Run the container guard with `docker run --rm -v "$(pwd)":/workspace -w /workspace codex:latest bash docker/codex-exec.sh /workspace [PR_ID] [AGENT_ID]`.
+- `docker/codex-exec.sh` surfaces protected globs from `codex-work.json` and exits if a task (or you) modify guarded areas.
+- Dynamic scanner toggles: set `ENABLED_SCAN_TYPES` to a comma list (e.g. `full,threat-intel`) or use `DISABLED_SCAN_TYPES` to block specific scanners; unset values keep current defaults.
+- Keep contributions outside guarded policy/automation/auth paths unless an owner updates `codex-work.json` alongside the change.
+
+#### Codex Prompt Size Optimization
+
+To prevent model context overflows during dynamic runtime hardening:
+
+1. Generate trimmed context bundle:
+
+   ```bash
+   npx ts-node tools/generate-codex-context.ts
+   ```
+
+   Outputs `codex-context.trimmed.txt` (concise summaries).
+
+2. Provide only that file plus the specific source being changed (e.g. `src/runtime/scans/service.ts`, `src/runtime/scans/metrics.ts`). Avoid pasting entire README.
+3. Update `docs/codex/minimal-runtime-context.md` when structural concepts change; do not expand prompts with large multi-file excerpts.
+4. Break large enhancements into phases:
+   - Phase A: capability gating + timeout layer
+   - Phase B: telemetry ring buffer + metrics accessors
+   - Phase C: admin reload + diagnostics + health append
+5. Target <25k characters per prompt. The generation script truncates long sections automatically.
+6. Prefer references ("see ring buffer shape in minimal-runtime-context.md") over re-embedding identical JSON examples.
+
+Key env vars (hardening scope): `ENABLED_SCAN_TYPES`, `DISABLED_SCAN_TYPES`, future: `ENABLE_CAPABILITIES`, `DISABLE_CAPABILITIES`, `SCAN_TIMEOUT_MS`.
+
+This workflow cuts token usage, speeds iteration, and reduces stream disconnect errors.
+
+Helper scripts:
+
+```bash
+# Standard trimmed bundle
+npm run codex:context
+# Ultra (no README, core + sheet only)
+npm run codex:context:ultra
+# Select sections (comma list substrings of titles)
+npm run codex:context:sections -- --sections=prompt,protection
+```
+
+Refer to `docs/codex/prompt-update-sheet.md` and specify only needed section numbers in Codex prompts (e.g. "Use sections 1,5,7").
+
+### Dynamic Runtime (Phase 1)
+
+- Feature registry scaffolding lives in `src/runtime/registry`, enabling immutable snapshots without touching existing handlers yet.
+- Dynamic config loader (`src/runtime/config/dynamicConfig`) merges KV, environment, and defaults with TTL-based caching for opt-in consumers.
+- Utilities (`src/runtime/util/hash`, `src/runtime/log`) support consistent hashing and logging during future integrations.
+- No user-facing behaviour changes in Phase 1; follow-up phases will adopt the registry/config layers incrementally.
+- Phase 2 adds runtime-managed scan modules (`src/runtime/scans`) and exposes `/api/_routes` for introspection while keeping the existing scanner endpoint compatible.
+
+#### BaseFeature & Capability Tags (Phase A)
+
+- Use `registerFeature` (`src/runtime/features/registry.ts`) to declare any runtime capability (scan, job, data, etc.); scans must supply an async `run` handler.
+- Capabilities (`provides`, `requires`) are stored alongside metadata for future gating and surface in health telemetry under `dynamicRegistry.features`.
+- Snapshot access via `getFeatures(kind)` keeps the original immutable semantics while adding `features.version` / `features.countsByKind` to health responses.
+- Capability gating precedence: (1) `ENABLED_SCAN_TYPES`, (2) `ENABLE_CAPABILITIES`, (3) `DISABLED_SCAN_TYPES`, (4) `DISABLE_CAPABILITIES`.
+- Timeout and diagnostics controls: `SCAN_MODULE_TIMEOUT_DEFAULT` plus per-module overrides (`SCAN_MODULE_TIMEOUT_<UPPER_ID>`), synthetic findings (`MODULE_TIMEOUT`, `MODULE_FAILED`) appended to results, and runtime metrics accessible via `getScanTimings()` or `/api/_diagnostics`.
+- Observability endpoints: `/api/_diagnostics` returns rolling timing stats (p50/p95/avg/timeout counts); `/api/admin/reload` rebuilds registry snapshots with 2s debounce and returns `{ ok, version, counts, enabledScanIds }`.
+- Health payloads now append `scanPerf` (total p95 + per-module lastMs) while preserving existing fields.
+- Example diagnostics payload:
+
+  ```json
+  {
+    "diagnostics": {
+      "scanTimings": {
+        "total": {
+          "count": 8,
+          "p95": 72.5,
+          "p50": 41.2,
+          "avg": 39.6,
+          "lastMs": 36.1
+        },
+        "modules": {
+          "headers": {
+            "count": 8,
+            "p95": 22.8,
+            "p50": 12.2,
+            "avg": 13.0,
+            "lastMs": 11.4,
+            "timeoutCount": 0
+          }
+        }
+      }
+    }
+  }
+  ```
+
+### Dynamic Runtime (Phase 2 – In Progress)
+
+_Status: foundational modules merged; incremental adoption underway._
+
+New capabilities introduced in Phase 2 build upon the Phase 1 registry & config layers without breaking existing consumers:
+
+#### 1. Scan Module Runtime
+
+- Location: `src/runtime/scans/service.ts` (+ individual modules under `src/runtime/scans/modules/*`).
+- Each scan module (e.g. `headers.ts`, `ssl.ts`, `info.ts`, `threatIntel.ts`, `cve.ts`) self‑registers on import.
+- Helper exports: `getAvailableScanTypes(config?)`, `runScan(id, url, ctx, config?)`, `runFullScan(url, ctx, config?)`, `resolveEnabledScanIds(config, { includeFull })`.
+- Dynamic enable / disable precedence:
+  1. `ENABLED_SCAN_TYPES` (comma list) – explicit allowlist.
+  2. `DISABLED_SCAN_TYPES` (comma list) – exclusion list if no allowlist.
+  3. Defaults (all core modules) if neither provided.
+- Full scan aggregates per‑module findings, tagging duration + per module `findings` count.
+
+#### 2. Route Registry
+
+- Utility: `src/runtime/routes/registerRoute.ts` lets API handlers self‑register (method, path, description).
+- Introspection endpoint `/api/_routes` (mirrored in JW-Site immersive app) returns a snapshot for tooling / observability.
+
+#### 3. Enhanced Security Scan Endpoint Refactor
+
+- Both `apps/jw-immersive/src/pages/api/enhanced-security-scan.ts` and (public site) `JW-Site/src/pages/api/enhanced-security-scan.ts` now delegate to scan runtime.
+- Returns `NO_ACTIVE_SCANS` (HTTP 200, structured payload) if configuration gates all scanners off.
+- Emits per‑module completion logs (`[runtime:scan.module.completed]`) + aggregate log (`scan.full.completed`).
+
+#### 4. Health Endpoint Augmentation
+
+- Health responses now append (never overwrite existing keys):
+
+      ```jsonc
+
+  {
+  // ...existing fields,
+  "dynamicRegistry": {
+  "version": <number>,
+  "counts": { "scanModules": <n>, "routes": <n>, ... },
+  "lastBuildTs": <unix_ms>
+  }
+  }
+
+  ```
+
+  ```
+
+- Purpose: fast visibility into dynamic snapshot churn & module cardinality; safe for append‑only consumers.
+
+#### 5. Session Lifecycle Enhancements (package: `packages/auth`)
+
+- New methods: `isActive(session)`, `revoke(sessionId)`, `rotateRefreshToken(sessionId)`.
+- `revoke` sets `revoked_at` and invalidates cache; `rotateRefreshToken` generates cryptographically strong new token + hashed storage; both purge KV cache entry.
+- Tests: `packages/auth/test/session-extended.test.ts`.
+
+#### 6. Guestbook Dynamic Mode Flag
+
+- Flag resolution precedence:
+  1. `GUESTBOOK_DYNAMIC_MODE` env var (`true|false`).
+  2. Dynamic config key `guestbook.dynamic.enabled` (boolean or string) if runtime config present.
+  3. Legacy non‑production heuristic fallback (`GUESTBOOK_PRODUCTION !== 'true'`).
+- When enabled in a non‑production context a deterministic test entry (id `999999`) is appended for automated validation; disabling the flag restores purely DB‑backed responses.
+- Implementation is lazy-import + try/catch guarded; absence of the dynamic layer = graceful fallback. - Code: `JW-Site/src/pages/api/guestbook.ts`. - Tests: `JW-Site/src/test/guestbook.dynamic-mode.test.ts`.
+
+#### 7. Logging Additions
+
+- Registry build emits `[runtime:registry.snapshot] { version, countsHash }` once per snapshot rebuild.
+- Scan modules emit structured logs enabling lightweight performance + coverage telemetry without extra storage round‑trips.
+
+#### 8. Example Usage
+
+```ts
+import { getConfig } from "src/runtime/config/dynamicConfig";
+import { getAvailableScanTypes, runScan } from "src/runtime/scans/service";
+
+const config = await getConfig();
+const types = await getAvailableScanTypes(config);
+if (types.includes("headers")) {
+  const result = await runScan("headers", "https://example.com", {
+    env: process.env,
+  });
+  console.log(result.summary.securityScore);
+}
+```
+
+#### 9. Contract & Schema Safeguards
+
+- Append‑only approach enforced by health tests (e.g. `health-schema-append-only.test.ts`).
+- Dynamic registry presence is optional for older deployments; absence means `dynamicRegistry` key simply omitted.
+
+**10. Next (Phase 3 Preview)**
+
+- Expand registry to encompass policy adapters & compliance snapshot builders.
+- Introduce lightweight TTL cache table for expensive multi‑module aggregates (`api_cache` pattern).
+- Expose enriched health sub‑section for scan performance stats (p50/p95) once storage cost model finalized.
+
+### Environment & Config Reference (Addendum)
+
+| Variable / Key                    | Type    | Purpose                                             | Notes                        |
+| --------------------------------- | ------- | --------------------------------------------------- | ---------------------------- | ------------------------- |
+| `ENABLED_SCAN_TYPES`              | env     | Comma allowlist of scan ids                         | Overrides disabled list      |
+| `DISABLED_SCAN_TYPES`             | env     | Comma denylist of scan ids                          | Ignored if allowlist present |
+| `GUESTBOOK_DYNAMIC_MODE`          | env     | Force enable / disable dynamic guestbook test entry | `true                        | false` (case-insensitive) |
+| `guestbook.dynamic.enabled`       | dyn cfg | Same as above via dynamic config layer              | Lower precedence than env    |
+| `guestbook.dynamic.enabled` (cfg) | KV/env  | Accessed through `getConfig()` TTL cache            | TTL per dynamicConfig loader |
+
+---
+
+For deep architectural rationale see `docs/ADR-Dynamic-Architecture.md` (Phase 2/3 updates appended) and associated integration tests:
+
+- Scan runtime integration: `tests/runtime/scans.integration.test.ts`
+- Routes enumeration: `tests/api/routesMap.test.ts`
+- Session lifecycle: `packages/auth/test/session-extended.test.ts`
+- Guestbook dynamic flag: `JW-Site/src/test/guestbook.dynamic-mode.test.ts`
+
+If introducing additional dynamic flags, follow the precedence + lazy import safety pattern demonstrated above and extend health metadata in an append-only manner.
+
+### Dynamic Runtime (Phase B – Jobs & Data Providers)
+
+Status: Implemented (foundational). This phase introduces lightweight background job execution and on-demand data providers leveraging the existing feature registry. It deliberately avoids capability gating / telemetry internals currently owned by Codex (see active Codex task list) to prevent overlap.
+
+#### 1. Job Scheduler
+
+- Module: `src/runtime/jobs/scheduler.ts`
+- Behavior: Enumerates registered `job` features once on `startScheduler()`. Each job exposes `schedule.intervalMs` and an async `run()`.
+- Design Goals: Minimal overhead, no burst on cold start (first execution delayed until first interval), structured error logging (`job.run.error`).
+- Stats Tracked (in-memory, ephemeral): runs, errors, lastError, lastRunAt, avgMs, totalMs. Snapshot accessor: `schedulerSnapshot()`.
+- Metrics Snapshot Job: `metrics-snapshot` (every 30s) captures registry + scheduler snapshot into memory (`getLastMetricsSnapshot()`). Intended for future health/diagnostic surfacing without expensive recomputation.
+
+#### 2. Data Providers
+
+- Abstraction: `data` kind features with an async `fetch(params, ctx)` method.
+- Utilities: `src/runtime/data/providers.ts` exports `fetchProvider(id, opts)` and `listProviders()`.
+- Example Provider: `site-metadata` returns registry version, counts, and sourceHash (fast, no external IO).
+
+#### 3. Health & Append-Only Principles
+
+- Phase B does not mutate existing health response keys; new scheduled + provider introspection will append under a future `dynamicRegistry.jobs` / `dynamicRegistry.dataProviders` section when Codex telemetry gating lands. Current tests (`tests/runtime/health-augmentation.test.ts`) ensure registration does not regress snapshot integrity.
+
+#### 4. Testing
+
+- Scheduler basic execution: `tests/runtime/scheduler.test.ts` (interval registration & run occurrence).
+- Data providers: `tests/runtime/dataProviders.test.ts` (list + fetch contract).
+- Health augmentation scaffold: `tests/runtime/health-augmentation.test.ts` (ensures job/data features present).
+
+#### 5. Extension Guidelines
+
+When adding additional jobs or providers:
+
+1. Register via `registerFeature({ kind: 'job' | 'data', ... })` early in module scope.
+2. Keep intervals >= 30s unless a demonstrable low-cost need exists.
+3. Avoid persistent state writes inside jobs; prefer in-memory then expose via cached endpoints.
+4. Any new health fields must be appended only—never remove or rename existing keys.
+
+#### 6. Future Integration Points (Deferred to Codex Phase)
+
+- Capability gating (`ENABLE_*` / `DISABLE_*` for jobs & providers) will layer atop `provides`/`requires` arrays already stored.
+- Telemetry ring buffer will replace ad-hoc avgMs once standardized metrics emitters are added.
+- Admin reload endpoint can trigger a scheduler restart cycle to pick up newly registered jobs (present design keeps a single initialization pathway).

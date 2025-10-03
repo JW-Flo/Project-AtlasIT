@@ -1,0 +1,28 @@
+name = "atlasit-console"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "src/worker-entry.ts"
+compatibility_date = "2025-09-27"
+workers_dev = true
+
+# Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
+zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
+routes = [
+	"www.atlasit.pro/console*",
+	"www.atlasit.pro/access-requests*",
+	"www.atlasit.pro/incidents*",
+	"www.atlasit.pro/api/config*",
+	"www.atlasit.pro/api/mock/*"
+]
+
+[build]
+command = "npm run build"
+
+[vars]
+APP_NAME = "AtlasIT Console"
+COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
+
+[observability]
+enabled = true
+
+# --- Resource bindings trimmed for initial UI deploy. Restore with real IDs later. ---
+# (All D1, KV, R2, Analytics, Queues removed to unblock deploy)

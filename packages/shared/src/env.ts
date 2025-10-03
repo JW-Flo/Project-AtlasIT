@@ -25,3 +25,19 @@ export const commonEnvSpec = {
 };
 
 export type CommonEnv = z.infer<z.ZodObject<typeof commonEnvSpec>>;
+
+export function resolveCfApiToken<T extends Record<string, any>>(
+  raw?: T,
+): string | undefined {
+  const target: Record<string, any> | undefined = raw
+    ? (raw as Record<string, any>)
+    : typeof process !== "undefined"
+      ? process.env
+      : undefined;
+  if (!target) return undefined;
+  const preferred = target.CLOUDFLARE_API_TOKEN || target.CF_API_TOKEN;
+  if (preferred && !target.CF_API_TOKEN) {
+    target.CF_API_TOKEN = preferred;
+  }
+  return preferred;
+}

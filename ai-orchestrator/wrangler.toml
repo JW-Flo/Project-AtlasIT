@@ -1,4 +1,4 @@
-name = "ignite-ai-orchestrator"
+name = "atlasit-orchestrator" # previously ignite-ai-orchestrator
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -10,8 +10,18 @@ binding = "TASKS"
 id = "fa174a1795c94a48b47c22d6a138de29"
 preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 
+# Persistent AI quota counter (set real IDs per environment before deploy)
+[[kv_namespaces]]
+binding = "AI_QUOTA"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
 [env.production]
-route = "ai.project-ignite.workers.dev/*"
+# Dual routing: keep workers.dev for fallback, add custom orchestrator.atlasit.pro
+routes = [
+	"orchestrator.atlasit.workers.dev/*",
+	"orchestrator.atlasit.pro/*"
+]
 usage_model = "bundled"
 
 [env.production.vars]
@@ -20,5 +30,6 @@ ENVIRONMENT = "production"
 [env.production.logs]
 enabled = true
 
-[triggers]
-crons = ["*/5 * * * *"] 
+# Temporarily disable cron trigger to avoid exceeding free plan limit (5). Re-enable when consolidating other workers.
+# [triggers]
+# crons = ["*/5 * * * *"] 

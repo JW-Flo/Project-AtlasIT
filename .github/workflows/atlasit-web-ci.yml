@@ -14,12 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_DIR: apps/atlasit-web
+      ONBOARDING_API_KEY: dummy-onboarding-ci
+      ORCHESTRATOR_API_KEY: dummy-orchestrator-ci
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Validate environment
+        run: npm run validate:env
       - name: Install
         working-directory: ${{ env.APP_DIR }}
         run: npm ci || npm install

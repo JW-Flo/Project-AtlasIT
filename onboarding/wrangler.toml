@@ -22,3 +22,13 @@ vars = { ENVIRONMENT = "staging" }
 [env.production]
 name = "atlasit-onboarding-prod"
 vars = { ENVIRONMENT = "production" }
+
+[[env.production.kv_namespaces]]
+binding = "STATE"
+id = "test-state-id"
+preview_id = "test-state-preview-id"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "atlasit-prod"
+database_id = "test-db-id"

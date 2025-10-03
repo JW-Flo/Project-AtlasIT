@@ -8,4 +8,5 @@ export declare const commonEnvSpec: {
     AI_PROVIDER: z.ZodOptional<z.ZodEnum<["cloudflare", "together", "openai"]>>;
 };
 export type CommonEnv = z.infer<z.ZodObject<typeof commonEnvSpec>>;
+export declare function resolveCfApiToken<T extends Record<string, any>>(raw?: T): string | undefined;
 //# sourceMappingURL=env.d.ts.map

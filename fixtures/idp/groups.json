@@ -1,0 +1,14 @@
+[
+  {
+    "id": "okta-group-admin",
+    "name": "Okta Admins",
+    "members": ["okta-user-1"],
+    "description": "Administrative users"
+  },
+  {
+    "id": "okta-group-finance",
+    "name": "Finance Analysts",
+    "members": ["okta-user-2"],
+    "description": "Finance department"
+  }
+]

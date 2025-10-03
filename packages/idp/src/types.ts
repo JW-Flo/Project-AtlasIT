@@ -21,6 +21,7 @@ export interface IdpUser {
   email: string;
   displayName?: string;
   status?: "active" | "inactive" | "suspended" | string;
+  groups?: string[];
   attributes?: Record<string, string>;
 }
 
@@ -50,4 +51,55 @@ export interface IdpAdapter {
   listUsers(): Promise<IdpUser[]>;
   listGroups(): Promise<IdpGroup[]>;
   issueToken(options: IssueTokenOptions): Promise<IdpToken>;
+}
+
+export interface ProvisionRequest {
+  user: IdpUser;
+  groups: string[];
+}
+
+export interface ProvisionResult {
+  user: IdpUser;
+  created: boolean;
+}
+
+export interface MoveRequest {
+  userId: string;
+  addGroups?: string[];
+  removeGroups?: string[];
+}
+
+export interface MoveResult {
+  user: IdpUser;
+}
+
+export interface DeprovisionRequest {
+  userId: string;
+  reason?: string;
+}
+
+export interface DeprovisionResult {
+  user: IdpUser;
+}
+
+export interface IdpLifecycleOperations {
+  provision(request: ProvisionRequest): Promise<ProvisionResult>;
+  move(request: MoveRequest): Promise<MoveResult>;
+  deprovision(request: DeprovisionRequest): Promise<DeprovisionResult>;
+}
+
+export type LifecycleAwareIdpAdapter = IdpAdapter & IdpLifecycleOperations;
+
+export interface AdapterRegistrationOptions {
+  flagEnvVar: string;
+}
+
+export interface RegisteredAdapter {
+  id: string;
+  flagEnvVar: string;
+  impl: IdpAdapter;
+}
+
+export interface ListedAdapter extends RegisteredAdapter {
+  enabled: boolean;
 }
