@@ -103,3 +103,5 @@ CONSOLE_URL=http://localhost:4173 node scripts/qa-console.mjs
 
 - Ensure build (`npm run build`) executed before `wrangler deploy` so `src/worker-entry.ts` can import generated worker bundle.
 - Placeholder IDs in `wrangler.toml` must be replaced for production.
+- The root `wrangler.json` now includes an explicit `compatibility_date` and `compatibility_flags` to prevent CLI fallback warnings when running commands from subdirectories. Always prefer deploying the console with its own `wrangler.toml` (do not pass the worker script path directly unless debugging).
+- Temporary auth bypass: set `DISABLE_CONSOLE_AUTH="true"` in `[vars]` to disable login redirects. Remove or set to `false` for production.
