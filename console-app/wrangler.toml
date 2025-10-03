@@ -1,7 +1,8 @@
 name = "atlasit-console"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-main = "src/worker-entry.ts"
+main = ".svelte-kit/cloudflare/_worker.js"
 compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 # Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
@@ -11,7 +12,8 @@ routes = [
 	"www.atlasit.pro/access-requests*",
 	"www.atlasit.pro/incidents*",
 	"www.atlasit.pro/api/config*",
-	"www.atlasit.pro/api/mock/*"
+	"www.atlasit.pro/api/mock/*",
+	"www.atlasit.pro/" # root catch for redirect
 ]
 
 [build]
@@ -20,9 +22,23 @@ command = "npm run build"
 [vars]
 APP_NAME = "AtlasIT Console"
 COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
+CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
+DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
+ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
 
 [observability]
 enabled = true
 
-# --- Resource bindings trimmed for initial UI deploy. Restore with real IDs later. ---
-# (All D1, KV, R2, Analytics, Queues removed to unblock deploy)
+# --- Resource bindings ---
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
+
+[[kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"

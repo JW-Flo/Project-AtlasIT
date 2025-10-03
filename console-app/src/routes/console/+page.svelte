@@ -128,6 +128,12 @@
       </p>
     </div>
     <div class="header-actions">
+      <a
+        href="/console/platform-status"
+        class="text-sm bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded text-white"
+      >
+        Platform Status
+      </a>
       {#if usingFallback && resolvedBase}
         <span class="fallback-badge" title={`Primary base ${primaryBase}`}
           >Fallback endpoint active</span
