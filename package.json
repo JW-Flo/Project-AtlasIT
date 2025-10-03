@@ -141,7 +141,11 @@
   },
   "overrides": {
     "undici": "^6.19.8",
-    "devalue": "^5.0.0"
+    "devalue": "^5.0.0",
+    "cookie": "^0.7.2",
+    "form-data": "^4.0.1",
+    "axios": "^1.7.9",
+    "tar-fs": "^3.1.1"
   },
   "engines": {
     "node": ">=18.0.0"

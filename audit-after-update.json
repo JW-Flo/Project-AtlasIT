@@ -1,97 +1,69 @@
 {
   "auditReportVersion": 2,
   "vulnerabilities": {
-    "@cloudflare/vitest-pool-workers": {
-      "name": "@cloudflare/vitest-pool-workers",
-      "severity": "high",
-      "isDirect": true,
-      "via": ["devalue"],
-      "effects": [],
-      "range": "<=0.8.68",
-      "nodes": [
-        "documentation-worker/node_modules/@cloudflare/vitest-pool-workers"
-      ],
-      "fixAvailable": true
-    },
     "@miniflare/cache": {
       "name": "@miniflare/cache",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["@miniflare/core", "undici"],
-      "effects": ["@miniflare/shared-test-environment"],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/cache"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "effects": [],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/cache"],
+      "fixAvailable": true
     },
     "@miniflare/core": {
       "name": "@miniflare/core",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["undici"],
-      "effects": ["@miniflare/d1", "@miniflare/r2"],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/core"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "effects": ["@miniflare/d1", "@miniflare/shared-test-environment"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/core"],
+      "fixAvailable": true
     },
     "@miniflare/d1": {
       "name": "@miniflare/d1",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["@miniflare/core"],
       "effects": ["@miniflare/shared-test-environment"],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/d1"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/d1"],
+      "fixAvailable": true
     },
     "@miniflare/durable-objects": {
       "name": "@miniflare/durable-objects",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["@miniflare/core", "undici"],
       "effects": [],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/durable-objects"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/durable-objects"],
       "fixAvailable": true
     },
     "@miniflare/html-rewriter": {
       "name": "@miniflare/html-rewriter",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["@miniflare/core", "undici"],
       "effects": [],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/html-rewriter"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/html-rewriter"],
       "fixAvailable": true
     },
     "@miniflare/r2": {
       "name": "@miniflare/r2",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
-      "via": ["@miniflare/core", "undici"],
+      "via": ["undici"],
       "effects": ["@miniflare/shared-test-environment"],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/r2"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/r2"],
+      "fixAvailable": true
     },
     "@miniflare/shared-test-environment": {
       "name": "@miniflare/shared-test-environment",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": [
         "@miniflare/cache",
@@ -103,47 +75,18 @@
         "@miniflare/web-sockets"
       ],
       "effects": ["vitest-environment-miniflare"],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/shared-test-environment"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/shared-test-environment"],
+      "fixAvailable": true
     },
     "@miniflare/web-sockets": {
       "name": "@miniflare/web-sockets",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": false,
       "via": ["@miniflare/core", "undici"],
       "effects": [],
-      "range": "*",
-      "nodes": ["node_modules/@miniflare/web-sockets"],
-      "fixAvailable": true
-    },
-    "devalue": {
-      "name": "devalue",
-      "severity": "high",
-      "isDirect": false,
-      "via": [
-        {
-          "source": 1106997,
-          "name": "devalue",
-          "dependency": "devalue",
-          "title": "devalue prototype pollution vulnerability",
-          "url": "https://github.com/advisories/GHSA-vj54-72f3-p5jv",
-          "severity": "high",
-          "cwe": ["CWE-1321"],
-          "cvss": {
-            "score": 0,
-            "vectorString": null
-          },
-          "range": "<5.3.2"
-        }
-      ],
-      "effects": ["@cloudflare/vitest-pool-workers"],
-      "range": "<5.3.2",
-      "nodes": ["node_modules/devalue"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/web-sockets"],
       "fixAvailable": true
     },
     "esbuild": {
@@ -166,11 +109,9 @@
           "range": "<=0.24.2"
         }
       ],
-      "effects": ["vite", "wrangler"],
+      "effects": ["wrangler"],
       "range": "<=0.24.2",
       "nodes": [
-        "ai-orchestrator/node_modules/esbuild",
-        "node_modules/vite/node_modules/esbuild",
         "onboarding/node_modules/esbuild",
         "onboarding/node_modules/wrangler/node_modules/esbuild"
       ],
@@ -180,36 +121,81 @@
         "isSemVerMajor": true
       }
     },
-    "hono": {
-      "name": "hono",
-      "severity": "moderate",
-      "isDirect": true,
-      "via": [
-        {
-          "source": 1107532,
-          "name": "hono",
-          "dependency": "hono",
-          "title": "Hono has Body Limit Middleware Bypass",
-          "url": "https://github.com/advisories/GHSA-92vj-g62v-jqhh",
-          "severity": "moderate",
-          "cwe": ["CWE-400", "CWE-770"],
-          "cvss": {
-            "score": 5.3,
-            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
-          },
-          "range": "<4.9.7"
-        }
-      ],
-      "effects": [],
-      "range": "<4.9.7",
-      "nodes": ["node_modules/hono"],
-      "fixAvailable": true
-    },
     "undici": {
       "name": "undici",
-      "severity": "moderate",
+      "severity": "high",
       "isDirect": false,
       "via": [
+        {
+          "source": 1091088,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Regular Expression Denial of Service in Headers",
+          "url": "https://github.com/advisories/GHSA-r6ch-mqf9-qc9w",
+          "severity": "high",
+          "cwe": ["CWE-1333"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<5.19.1"
+        },
+        {
+          "source": 1091151,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "CRLF Injection in Nodejs ‘undici’ via host",
+          "url": "https://github.com/advisories/GHSA-5r9g-qh6m-jxff",
+          "severity": "moderate",
+          "cwe": ["CWE-74", "CWE-93"],
+          "cvss": {
+            "score": 4.6,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:L/A:N"
+          },
+          "range": ">=2.0.0 <5.19.1"
+        },
+        {
+          "source": 1096502,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's cookie header not cleared on cross-origin redirect in fetch",
+          "url": "https://github.com/advisories/GHSA-wqq4-5wpv-mx2g",
+          "severity": "low",
+          "cwe": ["CWE-200"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<5.26.2"
+        },
+        {
+          "source": 1097200,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's fetch with integrity option is too lax when algorithm is specified but hash value is in incorrect",
+          "url": "https://github.com/advisories/GHSA-9qxr-qj54-h672",
+          "severity": "low",
+          "cwe": ["CWE-284"],
+          "cvss": {
+            "score": 2.6,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:N"
+          },
+          "range": "<5.28.4"
+        },
+        {
+          "source": 1097221,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici proxy-authorization header not cleared on cross-origin redirect in fetch",
+          "url": "https://github.com/advisories/GHSA-3787-6prv-h9w3",
+          "severity": "low",
+          "cwe": ["CWE-200"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<=5.28.2"
+        },
         {
           "source": 1101610,
           "name": "undici",
@@ -223,6 +209,20 @@
             "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:N"
           },
           "range": ">=4.5.0 <5.28.5"
+        },
+        {
+          "source": 1102442,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's Proxy-Authorization header not cleared on cross-origin redirect for dispatch, request, stream, pipeline",
+          "url": "https://github.com/advisories/GHSA-m4v8-wqvr-p9f7",
+          "severity": "low",
+          "cwe": ["CWE-200", "CWE-285", "CWE-863"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<5.28.4"
         },
         {
           "source": 1104501,
@@ -245,78 +245,21 @@
         "@miniflare/durable-objects",
         "@miniflare/html-rewriter",
         "@miniflare/r2",
-        "@miniflare/web-sockets",
-        "vitest-environment-miniflare"
+        "@miniflare/web-sockets"
       ],
       "range": "<=5.28.5",
-      "nodes": [
-        "node_modules/@miniflare/cache/node_modules/undici",
-        "node_modules/@miniflare/core/node_modules/undici",
-        "node_modules/@miniflare/durable-objects/node_modules/undici",
-        "node_modules/@miniflare/html-rewriter/node_modules/undici",
-        "node_modules/@miniflare/r2/node_modules/undici",
-        "node_modules/@miniflare/web-sockets/node_modules/undici",
-        "node_modules/vitest-environment-miniflare/node_modules/undici"
-      ],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
-    },
-    "vite": {
-      "name": "vite",
-      "severity": "moderate",
-      "isDirect": true,
-      "via": [
-        {
-          "source": 1107323,
-          "name": "vite",
-          "dependency": "vite",
-          "title": "Vite middleware may serve files starting with the same name with the public directory",
-          "url": "https://github.com/advisories/GHSA-g4jq-h2w9-997c",
-          "severity": "low",
-          "cwe": ["CWE-22", "CWE-200", "CWE-284"],
-          "cvss": {
-            "score": 0,
-            "vectorString": null
-          },
-          "range": "<=5.4.19"
-        },
-        {
-          "source": 1107327,
-          "name": "vite",
-          "dependency": "vite",
-          "title": "Vite's `server.fs` settings were not applied to HTML files",
-          "url": "https://github.com/advisories/GHSA-jqfw-vq24-v9c3",
-          "severity": "low",
-          "cwe": ["CWE-23", "CWE-200", "CWE-284"],
-          "cvss": {
-            "score": 0,
-            "vectorString": null
-          },
-          "range": "<=5.4.19"
-        },
-        "esbuild"
-      ],
-      "effects": [],
-      "range": "<=6.1.6",
-      "nodes": ["node_modules/vite"],
+      "nodes": ["onboarding/node_modules/undici"],
       "fixAvailable": true
     },
     "vitest-environment-miniflare": {
       "name": "vitest-environment-miniflare",
-      "severity": "moderate",
+      "severity": "low",
       "isDirect": true,
-      "via": ["@miniflare/shared-test-environment", "undici"],
+      "via": ["@miniflare/shared-test-environment"],
       "effects": [],
-      "range": ">=2.8.0",
-      "nodes": ["node_modules/vitest-environment-miniflare"],
-      "fixAvailable": {
-        "name": "vitest-environment-miniflare",
-        "version": "2.12.0",
-        "isSemVerMajor": true
-      }
+      "range": "2.8.0 - 2.14.3",
+      "nodes": ["onboarding/node_modules/vitest-environment-miniflare"],
+      "fixAvailable": true
     },
     "wrangler": {
       "name": "wrangler",
@@ -325,33 +268,26 @@
       "via": ["esbuild"],
       "effects": [],
       "range": "<=4.10.0",
-      "nodes": [
-        "ai-orchestrator/node_modules/wrangler",
-        "onboarding/node_modules/wrangler"
-      ],
-      "fixAvailable": {
-        "name": "wrangler",
-        "version": "4.40.2",
-        "isSemVerMajor": true
-      }
+      "nodes": ["onboarding/node_modules/wrangler"],
+      "fixAvailable": true
     }
   },
   "metadata": {
     "vulnerabilities": {
       "info": 0,
-      "low": 0,
-      "moderate": 14,
-      "high": 2,
+      "low": 9,
+      "moderate": 2,
+      "high": 1,
       "critical": 0,
-      "total": 16
+      "total": 12
     },
     "dependencies": {
-      "prod": 130,
-      "dev": 665,
-      "optional": 173,
-      "peer": 0,
+      "prod": 233,
+      "dev": 589,
+      "optional": 189,
+      "peer": 4,
       "peerOptional": 0,
-      "total": 794
+      "total": 926
     }
   }
 }
