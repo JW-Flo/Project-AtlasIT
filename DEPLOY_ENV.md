@@ -6,10 +6,10 @@ Cloudflare Worker "ai-orchestrator" (entry: `ai-orchestrator/index.js`) provides
 
 ## Required Secrets (GitHub Actions)
 
-| Secret        | Purpose               | Minimum Cloudflare Scopes                                 |
-| ------------- | --------------------- | --------------------------------------------------------- |
-| CF_API_TOKEN  | Deploy Worker         | Account:Workers Scripts (Edit), Account:KV Storage (Edit) |
-| CF_ACCOUNT_ID | Cloudflare account id | N/A (static)                                              |
+| Secret                               | Purpose                                                          | Minimum Cloudflare Scopes                                 |
+| ------------------------------------ | ---------------------------------------------------------------- | --------------------------------------------------------- |
+| WRANGLER_API_TOKEN (or CF_API_TOKEN) | Deploy Worker (may reuse same token as Pages if scopes superset) | Account:Workers Scripts (Edit), Account:KV Storage (Edit) |
+| CF_ACCOUNT_ID                        | Cloudflare account id                                            | N/A (static)                                              |
 
 ## Runtime Environment Variables (Wrangler / Dashboard)
 
@@ -57,6 +57,8 @@ Key fields: `rateLimit.enabled`, `quota.remaining`, `models.allowed[]`.
 ## Rollback
 
 Re-deploy an earlier git commit SHA: checkout commit then rerun deploy. Worker versions can also be reverted in Cloudflare dashboard.
+
+Token Reuse: A single `WRANGLER_API_TOKEN` with both Workers Scripts:Edit, KV Storage:Edit, and Pages:Edit can be stored in each repo with different secret variable names (`WRANGLER_API_TOKEN` / `CF_API_TOKEN`) to simplify rotation. Rotate centrally in Cloudflare then update both repo secrets.
 
 ## Observability
 
