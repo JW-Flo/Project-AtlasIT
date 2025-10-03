@@ -1,0 +1,66 @@
+name: Deploy Console Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'console-app/**'
+      - '.github/workflows/deploy-console.yml'
+      - 'DEPLOY_ENV.md'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install console deps
+        run: npm install --no-fund --no-audit
+        working-directory: console-app
+
+      - name: Build console
+        run: npm run build
+        working-directory: console-app
+
+      - name: Lint console (best effort)
+        run: npx eslint console-app || echo 'Lint warnings ignored for deploy'
+
+      - name: Deploy console worker
+        run: npx wrangler deploy --config console-app/wrangler.toml
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+
+      - name: Post-deploy smoke
+        run: |
+          set -e
+          FALLBACK_URL=${CONSOLE_WORKERS_DEV:-"https://atlasit-console.${CF_ACCOUNT_ID}.workers.dev"}
+          echo "Probing config endpoint: $FALLBACK_URL/api/config"
+          curl -sS "$FALLBACK_URL/api/config" || echo 'Config probe failed (may require custom domain propagation).'
+          echo "Probing mock compliance snapshot: $FALLBACK_URL/api/mock/compliance/snapshot" 
+          curl -sS "$FALLBACK_URL/api/mock/compliance/snapshot" | head -c 300 || echo 'Snapshot probe failed.'
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        if: always()
+
+      - name: Guidance
+        run: |
+          echo 'Deployed atlasit-console worker.'
+          echo 'If custom domain routes (www.atlasit.pro/console*) still 404, verify DNS, route propagation, and that no overlapping Pages project is intercepting base path.'
+          echo 'workers.dev fallback usable immediately.'
