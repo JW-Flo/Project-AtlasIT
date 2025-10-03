@@ -1,33 +1,33 @@
 name: Security Audit
 
 on:
-  pull_request:
-    branches: [ main ]
-  push:
-    branches: [ main ]
-  schedule:
-    - cron: '0 5 * * *'
+    pull_request:
+        branches: [main]
+    push:
+        branches: [main]
+    schedule:
+        - cron: "0 5 * * *"
 
 jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-      - name: Install (production focus)
-        run: npm ci --omit=optional
-      - name: Run audit gate
-        run: npm run audit:ci
-      - name: Upload audit reports (optional)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: audit-reports
-          path: |
-            audit-*.json
-            docs/servers-main/audit-servers-after.json
+    audit:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+            - name: Install (production focus)
+              run: npm ci --omit=optional
+            - name: Run audit gate
+              run: npm run audit:ci
+            - name: Upload audit reports (optional)
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: audit-reports
+                  path: |
+                      audit-*.json
+                      docs/servers-main/audit-servers-after.json

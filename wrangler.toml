@@ -157,6 +157,11 @@ bucket_name = "atlas-artifacts"
 ENVIRONMENT = "production"
 RENAMING_PHASE = "core_parallel"
 
+# Workers for Platforms dispatch namespace binding
+[[env.core.dispatch_namespaces]]
+binding = "dispatcher"
+namespace = "ignite-dispatcher-namespace"
+
 # [env.production.durable_objects]
 # bindings = [
 #   { name = "MCP_OBJECT", class_name = "MyMCP" }

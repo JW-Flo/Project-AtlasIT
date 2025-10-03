@@ -1,40 +1,42 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
+  import { goto } from "$app/navigation";
+  import { onMount } from "svelte";
 
-  let email = '';
-  let password = '';
-  let error = '';
+  let email = "";
+  let password = "";
+  let error = "";
   let loading = false;
 
   async function login() {
     loading = true;
-    error = '';
+    error = "";
     try {
-      const resp = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const resp = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, password }),
       });
       if (resp.ok) {
-        goto('/console');
+        goto("/console");
       } else {
         const data = await resp.json();
-        error = data.error || 'Login failed';
+        error = data.error || "Login failed";
       }
     } catch (e) {
-      error = 'Network error';
+      error = "Network error";
     }
     loading = false;
   }
 
   onMount(() => {
     // Check if already logged in
-    fetch('/api/auth/session').then(r => r.json()).then(data => {
-      if (data.authenticated) {
-        goto('/console');
-      }
-    });
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) {
+          goto("/console");
+        }
+      });
   });
 </script>
 
@@ -83,7 +85,7 @@
           disabled={loading}
           class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
         >
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? "Signing in..." : "Sign in"}
         </button>
       </div>
     </form>

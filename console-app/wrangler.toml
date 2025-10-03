@@ -6,7 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 # Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
-zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
+# Removed deprecated/unsupported top-level zone_id to silence Wrangler warning.
+# Route-based deployment uses routes array below; see https://developers.cloudflare.com/workers/configuration/runtime-apis/routes/
 routes = [
 	"www.atlasit.pro/console*",
 	"www.atlasit.pro/access-requests*",
@@ -25,6 +26,7 @@ COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
 CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
 DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
 ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
+DISABLE_CONSOLE_AUTH = "true" # temporary bypass for login requirement
 
 [observability]
 enabled = true

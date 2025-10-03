@@ -45,7 +45,8 @@
     "documentation-worker/test/**/*.ts",
     "scripts/**/*.ts",
     "compliance-worker/src/**/*.ts",
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "dispatch-worker/src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
