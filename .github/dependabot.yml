@@ -4,13 +4,21 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "saturday"
+      time: "05:00"
+    open-pull-requests-limit: 10
+    groups:
+      minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      security-fixes:
+        applies-to: security-updates
+    ignore:
+      - dependency-name: "@modelcontextprotocol/server-filesystem"
+        # pinned until upstream fixes GHSA-hc55-p739-j48w / GHSA-q66q-fx2p-7w4m
+        versions: [">=0.6.3"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "daily"

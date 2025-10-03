@@ -90,7 +90,8 @@
     "sync:jw-site:pull": "git fetch jw-site-origin main && git subtree pull --prefix=packages/jw-site jw-site-origin main",
     "codex:context": "npx ts-node tools/generate-codex-context.ts",
     "codex:context:ultra": "npx ts-node tools/generate-codex-context.ts --ultra --no-readme",
-    "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections"
+    "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections",
+    "audit:ci": "node scripts/audit-ci.mjs"
   },
   "keywords": [
     "it-management",
