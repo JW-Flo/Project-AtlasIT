@@ -44,6 +44,7 @@ async function main() {
     console.error('Wrangler not authenticated. Run: wrangler login');
     process.exit(1);
   }
+  console.log('\nTip: If whoami fails or wrong account is selected, run the Auth Preflight in ops/hand-off.md first.');
 
   // Build shared (if applicable)
   if (exists(path.join(root, 'packages', 'shared'))) {

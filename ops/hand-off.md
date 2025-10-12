@@ -1,5 +1,44 @@
 # AtlasIT MVP Deploy Runbook
 
+## Auth Preflight
+
+```bash
+# AUTH PREFLIGHT — fix conflicting tokens & confirm account
+set -euo pipefail
+
+echo "== Clear conflicting CF env vars =="
+unset CLOUDFLARE_API_TOKEN || true
+unset CF_API_TOKEN || true
+unset CF_API_KEY || true
+unset CF_EMAIL || true
+unset CF_ACCOUNT_ID || true
+
+echo "== Wrangler login (OAuth) =="
+# Opens a browser; complete the login flow, then continue:
+wrangler login
+
+echo "== Verify identity and selected account =="
+wrangler whoami
+
+echo "== Show wrangler config path (debug) =="
+wrangler config path || true
+
+echo "== Confirm required resources exist in THIS account =="
+wrangler d1 database list | (grep -q 'atlasit-shared' && echo 'atlasit-shared OK') || true
+wrangler d1 database list | (grep -q 'atlasit_compliance' && echo 'atlasit_compliance OK') || true
+wrangler r2 bucket list   | (grep -q 'atlasit-evidence' && echo 'atlasit-evidence OK') || true
+
+echo "== If any are missing, they will be created in later steps =="
+```
+
+Add a Token fallback note (only if headless/no browser):
+If wrangler login is not possible, create a Scoped API Token with:
+Account:Read
+Workers Scripts:Edit, Workers Routes:Edit, Workers Tail:Read
+D1:Edit, R2:Edit, KV:Edit
+(Optional) Workers Dispatch Namespaces:Edit
+Then: export CLOUDFLARE_API_TOKEN='REDACTED_TOKEN' and run wrangler whoami.
+
 ## Pre-Reqs
 
 - Node 18+
@@ -16,6 +55,17 @@
 ## COMMAND PLAN
 
 ```bash
+# -1) AUTH PREFLIGHT — run first
+set -euo pipefail
+unset CLOUDFLARE_API_TOKEN || true
+unset CF_API_TOKEN || true
+unset CF_API_KEY || true
+unset CF_EMAIL || true
+unset CF_ACCOUNT_ID || true
+wrangler login
+wrangler whoami
+wrangler config path || true
+
 # 0) Verify Cloudflare context
 wrangler whoami
 

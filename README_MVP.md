@@ -14,6 +14,7 @@ This guide deploys a minimal, working demo stack:
 - Node 18+
 - Wrangler logged in (wrangler login)
 - Cloudflare account and required resources (D1, KV, R2) in wrangler.toml
+- Run Auth Preflight first: see `ops/hand-off.md` (clears conflicting env, re-auths Wrangler)
 
 ## One-shot deploy
 
@@ -36,7 +37,7 @@ node scripts/deploy-mvp.mjs
 - Console health API: /api/health
 - Runtime config: /api/config
 - Compliance worker: /api/compliance/health, /api/compliance/snapshot
-- Dispatch: /__health, /admin/usage/summary (requires x-admin-token)
+- Dispatch: /\_\_health, /admin/usage/summary (requires x-admin-token)
 - Orchestrator: /health
 
 ## Notes
@@ -46,4 +47,5 @@ node scripts/deploy-mvp.mjs
 - Demo disables console auth via wrangler vars; re-enable for prod.
 
 ---
+
 Append-only doc; keep concise.
