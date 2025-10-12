@@ -17,12 +17,12 @@ export function makeEvidenceRepo(bucket: BlobStore) {
   const day = new Date().toISOString().slice(0,10);
   const path = `evidence/${meta.tenant}/${meta.control_id}/${day}/${id}.json`;
   await bucket.put(path, bytes.buffer, { });
-      const ev: Evidence = {
-        id, control_id: meta.control_id, uri: `r2://${path}`, sha256: hash,
-        producer: meta.producer, tenant: meta.tenant, trace_id: meta.trace_id,
-        timestamp: new Date().toISOString(), meta: meta.meta
-      };
-      return ev;
+  const ev: Evidence = {
+    id, control_id: meta.control_id, uri: `r2://${path}`, sha256: hash,
+    producer: meta.producer, tenant: meta.tenant, trace_id: meta.trace_id,
+    timestamp: new Date().toISOString(), meta: meta.meta
+  };
+  return ev;
     }
   };
 }

@@ -11,7 +11,7 @@ export function makeControlRepo(ns: KVState<ControlState>) {
       const ver = await ns.put(key(cs.tenant, cs.control_id), cs, { ifMatch: cs.version });
       cs.version = ver;
       return cs;
-    }
+    },
     async upsert(tenant: string, controlId: string, mut: (current: ControlState | undefined) => ControlState) {
       const k = key(tenant, controlId);
       for (let attempt = 0; attempt < 5; attempt++) {

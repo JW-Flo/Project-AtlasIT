@@ -13,8 +13,8 @@ preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 # Persistent AI quota counter (set real IDs per environment before deploy)
 [[kv_namespaces]]
 binding = "AI_QUOTA"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+id = "d4380b3e24094a24907b83c95238a0af"
+preview_id = "d4380b3e24094a24907b83c95238a0af"
 
 [env.production]
 # Dual routing: keep workers.dev for fallback, add custom orchestrator.atlasit.pro

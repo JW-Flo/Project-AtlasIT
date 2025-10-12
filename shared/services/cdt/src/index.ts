@@ -76,7 +76,7 @@ export default {
       }
       telemetry.metric("cdt.eval.latency_ms", Date.now()-started, { evaluations: results.length.toString() });
       const payload = { ok: true, results, trace_id: ev.trace_id };
-  if (token && 'key' in token) await persistIdempotency(IDEMP_NS, token as any, payload);
+  if (token && 'key' in token) await persistIdempotency(IDEMP_NS, token, payload);
       return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" }, status: 202 });
     }
     if (url.pathname.startsWith("/twin/remediate/") && req.method === "POST") {

@@ -11,8 +11,13 @@ export const GET: RequestHandler = async ({ platform }) => {
     );
   }
   try {
+    // Dispatch admin endpoint expects header x-admin-token matching its env.DISPATCH_ADMIN_TOKEN
+    // Keep Authorization as optional backward-compat signal, but primary is x-admin-token.
     const resp = await dispatchFetch(env, "/admin/usage/summary", {
-      headers: { Authorization: `Bearer ${env.DISPATCH_ADMIN_TOKEN}` },
+      headers: {
+        "x-admin-token": String(env.DISPATCH_ADMIN_TOKEN),
+        Authorization: `Bearer ${env.DISPATCH_ADMIN_TOKEN}`,
+      },
     });
     const data = await resp.json();
     if (!resp.ok) {
