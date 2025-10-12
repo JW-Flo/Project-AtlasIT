@@ -1,0 +1,7 @@
+{
+  "app_stack_name": "AWS Free Tier Support Stack for Atlas IT_2m5qn5",
+  "iac_type": "Terraform",
+  "provider": "aws",
+  "multi_env": false,
+  "exporter": "terraform"
+}

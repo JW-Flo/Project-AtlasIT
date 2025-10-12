@@ -27,6 +27,9 @@ CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
 DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
 ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
 DISABLE_CONSOLE_AUTH = "true" # temporary bypass for login requirement
+SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
+USE_CF_ACCESS = "true" # When true, trusts Cloudflare Access headers for auth (CF-Access-Authenticated-User-Email)
+ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
 
 [observability]
 enabled = true

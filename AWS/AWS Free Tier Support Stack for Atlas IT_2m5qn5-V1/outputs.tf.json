@@ -1,0 +1,19 @@
+{
+  "output": {
+    "id": {
+      "description": "The unique identifier for the IAM policy document.",
+      "sensitive": false,
+      "value": "${data.aws_iam_policy_document.this.id}"
+    },
+    "json": {
+      "description": "The JSON formatted IAM policy document.",
+      "sensitive": false,
+      "value": "${data.aws_iam_policy_document.this.json}"
+    },
+    "minified_json": {
+      "description": "The compact JSON representation of the IAM policy document without unnecessary whitespace.",
+      "sensitive": false,
+      "value": "${data.aws_iam_policy_document.this.minified_json}"
+    }
+  }
+}

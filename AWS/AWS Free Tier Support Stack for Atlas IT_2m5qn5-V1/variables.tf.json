@@ -1,0 +1,46 @@
+{
+  "variable": {
+    "override_json": [
+      {
+        "description": "A string containing a JSON policy document that can override other settings.",
+        "nullable": true,
+        "type": "string"
+      }
+    ],
+    "override_policy_documents": [
+      {
+        "description": "A list of JSON policy documents that can override other policy documents.",
+        "nullable": true,
+        "type": "list(string)"
+      }
+    ],
+    "policy_id": [
+      {
+        "description": "An optional identifier for the policy document.",
+        "nullable": true,
+        "type": "string"
+      }
+    ],
+    "source_json": [
+      {
+        "description": "A string containing a JSON policy document that serves as the base policy.",
+        "nullable": true,
+        "type": "string"
+      }
+    ],
+    "source_policy_documents": [
+      {
+        "description": "A list of JSON policy documents that serve as the base policies.",
+        "nullable": true,
+        "type": "list(string)"
+      }
+    ],
+    "statement": [
+      {
+        "description": "A list of policy statements to include in the policy document.",
+        "nullable": true,
+        "type": "list(object({ actions : list(string), effect : string, not_actions : list(string), not_resources : list(string), resources : list(string), sid : string, condition : list(object({ test : string, values : list(string), variable : string })), not_principals : list(object({ identifiers : list(string), type : string })), principals : list(object({ identifiers : list(string), type : string })) }))"
+      }
+    ]
+  }
+}
