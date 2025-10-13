@@ -3,37 +3,35 @@
   "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "20"
-    },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/azure-cli:1": {},
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": false,
-      "upgradePackages": true
-    }
+    "ghcr.io/devcontainers/features/git:1": {}
   },
-  "postCreateCommand": "npm ci && npm install -g wrangler typescript && echo 'Codespace ready ✔️'",
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": { "label": "wrangler dev", "onAutoForward": "openBrowser" }
+  },
+  "updateContentCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
+  "postCreateCommand": "set -e; corepack enable || true; if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; elif [ -f package-lock.json ]; then npm ci; else npm install; fi; npm i -g wrangler@3 typescript && echo 'Codespace ready ✔️'",
+  "postStartCommand": "node -v && wrangler --version || true",
   "customizations": {
     "vscode": {
       "extensions": [
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
         "github.copilot",
-        "github.vscode-github-actions",
-        "cloudflare.wrangler",
-        "ms-vscode.vscode-typescript-tslint-plugin"
+        "github.vscode-github-actions"
       ],
       "settings": {
         "editor.formatOnSave": true,
-        "files.autoSave": "afterDelay",
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "files.autoSave": "afterDelay"
       }
     }
   },
   "remoteUser": "node",
-  "mounts": [
-    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-  ]
+  "containerEnv": {
+    "NODE_OPTIONS": "--max-old-space-size=1536"
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  }
 }
