@@ -1,27 +1,36 @@
 # Workspace Status (Sept 2025)
 
-| Repo              | Purpose                                       | Implemented Today                                   | Missing (Vision)                                            | Last Update |
-| ----------------- | --------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ----------- |
-| Project-AtlasIT   | Core Workers (onboarding, orchestrator, docs) | 3 workers deployed, alignment plan, roadmap added   | Compliance engine, policy gen, directory sync, UI dashboard | <!--DATE--> |
-| JW-Site           | Front-end prototype staging                   | README aligned, ready for future SvelteKit scaffold | Actual dashboard app, integration calls                     | <!--DATE--> |
-| AWhittleWandering | Tesla telemetry demo (independent)            | Realtime vehicle tracking infra                     | Not tied to AtlasIT (optional future ingestion bridge)      | <!--DATE--> |
+| Repo              | Purpose                                       | Implemented Today                                                                      | Missing (Vision)                                       | Last Update |
+| ----------------- | --------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------ | ----------- |
+| Project-AtlasIT   | Core Workers (onboarding, orchestrator, docs) | 3 workers + compliance worker deployed, console app (SvelteKit), comprehensive roadmap | Okta integration, PDF export, workflow persistence     | 2025-10-14  |
+| JW-Site           | Front-end prototype staging                   | README aligned, ready for future SvelteKit scaffold                                    | Actual dashboard app, integration calls                | <!--DATE--> |
+| AWhittleWandering | Tesla telemetry demo (independent)            | Realtime vehicle tracking infra                                                        | Not tied to AtlasIT (optional future ingestion bridge) | <!--DATE--> |
 
 ## Reality Gap Summary
 
-The production footprint is intentionally minimal (automation + docs). High-fidelity governance UI and compliance/policy modules are **not built**. Roadmap phases in `Project-AtlasIT/ROADMAP.md` define the implementation path.
+**UPDATED 2025-10-14:** Upon detailed analysis, the production footprint is more substantial than previously documented. Core compliance, policy, and UI features are operational. Significant progress (58% of roadmap phases complete). See `docs/ROADMAP_STATUS.md` for comprehensive tracking.
 
-## Next Priority Candidates
+## Next Priority Actions (Updated 2025-10-14)
 
-1. Phase 1 scaffold (frontend + compliance score stub)
-2. Compliance D1 schema & periodic score job
-3. Policy template engine + tenant profile model
+1. **HIGH**: Implement workflow persistence (KV-based, design complete)
+2. **HIGH**: Complete Okta integration for JML directory sync
+3. **MEDIUM**: Add PDF report export capability
+4. **MEDIUM**: Implement performance budget CI gates
+5. **MEDIUM**: Create changelog enforcement workflow
 
 ## Verification Checklist
 
 - [x] README reality disclaimer (Project-AtlasIT)
-- [x] Roadmap file created
+- [x] Roadmap file created and status matrix updated
 - [x] Legacy branding isolation (ALIGNMENT_PLAN / LEGACY.md)
-- [x] Phase 0 sprint backlog items completed (P0-1 through P0-11)
-- [x] Phase 1 in progress (UI exists, stub endpoints exist)
+- [x] Phase 0 sprint backlog completed (all P0-1 through P0-11 items)
+- [x] Phases 1-3 complete (UI, compliance core, policy engine operational)
+- [x] Comprehensive documentation suite created:
+  - [x] ROADMAP_STATUS.md (complete tracking)
+  - [x] SLO.md (performance baselines)
+  - [x] SECRETS_ROTATION.md (90-day procedures)
+  - [x] INCIDENT_RESPONSE.md (P0-P3 playbook)
+  - [x] WORKFLOW_PERSISTENCE.md (implementation design)
+- [x] Automated smoke tests (scripts/post-deploy-smoke.sh)
 
 Update this file whenever significant phase progress occurs.
