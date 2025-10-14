@@ -72,7 +72,7 @@ This roadmap enumerates _unimplemented_ phases required to reach the UI/feature 
 
 | Phase | State       | Notes                                              |
 | ----- | ----------- | -------------------------------------------------- |
-| 1     | NOT STARTED | Awaiting framework decision                        |
+| 1     | IN PROGRESS | Creating stub endpoints and planning UI framework  |
 | 2     | NOT STARTED | Depends on Phase 1 endpoints contract              |
 | 3     | NOT STARTED | Template authoring blocked until Phase 1 UI slots  |
 | 4     | NOT STARTED | Requires Okta app credentials & sync window design |

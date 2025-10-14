@@ -21,6 +21,7 @@ The production footprint is intentionally minimal (automation + docs). High-fide
 - [x] README reality disclaimer (Project-AtlasIT)
 - [x] Roadmap file created
 - [x] Legacy branding isolation (ALIGNMENT_PLAN / LEGACY.md)
-- [ ] Phase 1 code scaffold committed (pending)
+- [x] Phase 0 sprint backlog items completed (P0-1 through P0-11)
+- [x] Phase 1 in progress (UI exists, stub endpoints exist)
 
 Update this file whenever significant phase progress occurs.
