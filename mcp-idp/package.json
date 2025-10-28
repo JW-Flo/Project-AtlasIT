@@ -1,1 +1,17 @@
-{ "name": "ignite-mcp-idp", "version": "1.0.0", "description": "MCP Identity Provider", "main": "index.js", "type": "module", "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy" }, "dependencies": { "hono": "^4.10.3" }, "devDependencies": { "wrangler": "^4.15.2" } }
+{
+  "name": "ignite-mcp-idp",
+  "version": "1.0.0",
+  "description": "MCP Identity Provider",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.10.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.15.2"
+  }
+}
