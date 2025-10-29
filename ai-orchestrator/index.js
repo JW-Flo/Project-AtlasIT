@@ -394,9 +394,9 @@ async function checkWithMCP(action, context) {
     return true;
   if (typeof action === "string" && globalThis.MCP_APPROVE_ALL === "1")
     return true;
-  const endpoint = getMcpEndpoint(context?.env);
+  const mcpConfig = getMcpEndpoint(context?.env);
   // If MCP endpoint is not configured, deny by default (fail-safe)
-  if (!endpoint) {
+  if (!mcpConfig.configured) {
     const debugMcpLogs =
       context?.env?.DEBUG_MCP_LOGS === "true" ||
       (typeof process !== "undefined" &&
@@ -407,7 +407,7 @@ async function checkWithMCP(action, context) {
     return false;
   }
   try {
-    const response = await fetch(`${endpoint}/approve`, {
+    const response = await fetch(`${mcpConfig.endpoint}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, context }),

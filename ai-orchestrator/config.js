@@ -5,9 +5,9 @@
 export function resolveMcpEndpoint(env) {
   const fromEnv = env && (env.MCP_ENDPOINT || env.MCP_BASE_URL || env.MCP_URL);
   if (!fromEnv || !String(fromEnv).trim()) {
-    // Return null when not configured - callers should handle gracefully
+    // Return explicit result object when not configured
     // This allows tests and development without MCP integration
-    return null;
+    return { configured: false, endpoint: null };
   }
-  return String(fromEnv).trim();
+  return { configured: true, endpoint: String(fromEnv).trim() };
 }
