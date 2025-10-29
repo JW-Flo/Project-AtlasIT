@@ -9,7 +9,12 @@ const app = new Hono();
 // Security middleware
 app.use('*', logger());
 app.use('*', cors({
-  origin: (origin) => origin, // Allow all origins - configure via environment variables in production
+  origin: (origin) => {
+    const allowed = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
+    // If no allowed origins are set, default to deny all in production
+    if (!origin || allowed.length === 0) return false;
+    return allowed.includes(origin);
+  },
   allowMethods: ['GET', 'POST'],
   allowHeaders: ['Content-Type', 'Authorization'],
   exposeHeaders: ['Content-Length', 'X-Kuma-Revision'],

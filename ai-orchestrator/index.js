@@ -395,6 +395,17 @@ async function checkWithMCP(action, context) {
   if (typeof action === "string" && globalThis.MCP_APPROVE_ALL === "1")
     return true;
   const endpoint = getMcpEndpoint(context?.env);
+  // If MCP endpoint is not configured, deny by default (fail-safe)
+  if (!endpoint) {
+    const debugMcpLogs =
+      context?.env?.DEBUG_MCP_LOGS === "true" ||
+      (typeof process !== "undefined" &&
+        process?.env?.DEBUG_MCP_LOGS === "true");
+    if (debugMcpLogs) {
+      log("warn", "mcp.not_configured", { action });
+    }
+    return false;
+  }
   try {
     const response = await fetch(`${endpoint}/approve`, {
       method: "POST",
