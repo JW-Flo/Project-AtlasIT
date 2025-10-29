@@ -9,7 +9,7 @@ const app = new Hono();
 // Security middleware
 app.use('*', logger());
 app.use('*', cors({
-  origin: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev'],
+  origin: (origin) => origin, // Allow all origins - configure via environment variables in production
   allowMethods: ['GET', 'POST'],
   allowHeaders: ['Content-Type', 'Authorization'],
   exposeHeaders: ['Content-Length', 'X-Kuma-Revision'],
