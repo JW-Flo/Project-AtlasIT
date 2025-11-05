@@ -1,0 +1,36 @@
+{
+  "id": "ev-1762333078908-bmbbign37",
+  "tenantId": "tenant-test",
+  "producer": "codex",
+  "control_id": "ACCESS_MFA_ENFORCED",
+  "subject": {
+    "userId": "user-123",
+    "email": "test@example.com"
+  },
+  "actions": [
+    {
+      "action": "okta.create_user",
+      "timestamp": "2025-11-05T08:57:58.908Z",
+      "status": "success",
+      "metadata": {
+        "oktaId": "okta_user-123_mock"
+      }
+    },
+    {
+      "action": "emit_user_provisioned",
+      "timestamp": "2025-11-05T08:57:58.908Z",
+      "status": "success"
+    },
+    {
+      "action": "enforce_mfa",
+      "timestamp": "2025-11-05T08:57:58.908Z",
+      "status": "success",
+      "metadata": {
+        "mfaRequired": true
+      }
+    }
+  ],
+  "timestamp": "2025-11-05T08:57:58.908Z",
+  "hash": "sha256_stub_6df72d97",
+  "uri": "evidence/sha256_stub_6df72d97.json"
+}

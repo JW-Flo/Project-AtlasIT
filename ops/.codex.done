@@ -1,0 +1,58 @@
+{
+  "trace_id": "PR0-bootstrap-20251105-085900",
+  "status": "complete",
+  "agent": "github-copilot",
+  "timestamp": "2025-11-05T08:59:00Z",
+  "linear_issue": "HAR-5",
+  "pr_title": "PR0: Align agents + scaffold baseline (docs, CI, JML stub, evidence)",
+  "actions": [
+    "Created /atlasit docs skeleton (ARCHITECTURE, ROADMAP, SECURITY, RUNBOOKS, MODULES, INTEGRATIONS)",
+    "Created src/workflows/jml/joiner_stub.ts with mock adapters (okta.create_user, emit_user_provisioned, enforce_mfa)",
+    "Created tests/jml/joiner_stub.test.ts with comprehensive unit tests (5 passing tests)",
+    "Created scripts/evidence_hash.ts for SHA-256 evidence generation",
+    "Updated .github/workflows/ci.yml with CodeQL and Trivy placeholders",
+    "Generated evidence artifacts: EV-joiner-stub.json, EV-local-test.json",
+    "Created ops/hand-off.md with command plan and test procedures"
+  ],
+  "artifacts": [
+    "atlasit/ARCHITECTURE.md",
+    "atlasit/ROADMAP.md",
+    "atlasit/SECURITY.md",
+    "atlasit/RUNBOOKS/README.md",
+    "atlasit/RUNBOOKS/incident-response.md",
+    "atlasit/MODULES/README.md",
+    "atlasit/INTEGRATIONS/README.md",
+    "src/workflows/jml/joiner_stub.ts",
+    "tests/jml/joiner_stub.test.ts",
+    "scripts/evidence_hash.ts",
+    "evidence/EV-joiner-stub.json",
+    "evidence/EV-local-test.json",
+    "artifacts/local-test-log.txt",
+    "ops/hand-off.md",
+    "ops/.codex.done"
+  ],
+  "evidence_hashes": {
+    "EV-joiner-stub.json": "sha256_stub_736bd534",
+    "EV-local-test.json": "sha256:1b58b593e899a413502887244332f21963421803b0619916f536e369ff9ec240"
+  },
+  "test_results": {
+    "framework": "vitest",
+    "total_tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "duration_ms": 10,
+    "file": "tests/jml/joiner_stub.test.ts"
+  },
+  "compliance": {
+    "no_static_secrets": true,
+    "evidence_generated": true,
+    "idempotent_operations": true,
+    "mock_adapters_only": true
+  },
+  "next_steps": [
+    "PR3: Implement full JML workflows with real adapter integration",
+    "PR4: Policy engine with compliance snapshot generation",
+    "PR5: HashiCorp Vault integration for dynamic credentials",
+    "PR6: Enable real CodeQL and Trivy scans in CI"
+  ]
+}

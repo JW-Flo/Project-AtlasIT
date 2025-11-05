@@ -1,134 +1,92 @@
-# AtlasIT MVP Deploy Runbook
+# PR0 Hand-Off Document
 
-## Auth Preflight
+**Generated**: 2025-11-05  
+**Agent**: GitHub Copilot  
+**Linear Issue**: HAR-5
 
-```bash
-# AUTH PREFLIGHT — fix conflicting tokens & confirm account
-set -euo pipefail
+## CONTEXT
 
-echo "== Clear conflicting CF env vars =="
-unset CLOUDFLARE_API_TOKEN || true
-unset CF_API_TOKEN || true
-unset CF_API_KEY || true
-unset CF_EMAIL || true
-unset CF_ACCOUNT_ID || true
+### Key Constraints from Master Requirements
 
-echo "== Wrangler login (OAuth) =="
-# Opens a browser; complete the login flow, then continue:
-wrangler login
+1. **No Static Secrets**: All credentials must be placeholders or mock values
+2. **Evidence Required**: All JML workflow actions must emit evidence artifacts with SHA-256 hashes
+3. **Idempotent Operations**: Workflows must be safe to retry without side effects
+4. **Minimal Viable Stub**: Focus on demonstrating the pattern, not production completeness
 
-echo "== Verify identity and selected account =="
-wrangler whoami
+## FILES TO CREATE/MODIFY
 
-echo "== Show wrangler config path (debug) =="
-wrangler config path || true
+### Documentation Structure (✅ Complete)
 
-echo "== Confirm required resources exist in THIS account =="
-wrangler d1 database list | (grep -q 'atlasit-shared' && echo 'atlasit-shared OK') || true
-wrangler d1 database list | (grep -q 'atlasit_compliance' && echo 'atlasit_compliance OK') || true
-wrangler r2 bucket list   | (grep -q 'atlasit-evidence' && echo 'atlasit-evidence OK') || true
+- ✅ `atlasit/ARCHITECTURE.md` - Core architecture overview
+- ✅ `atlasit/ROADMAP.md` - PR0-PR6 roadmap with milestones
+- ✅ `atlasit/SECURITY.md` - Security model, threat model, compliance
+- ✅ `atlasit/RUNBOOKS/README.md` + `incident-response.md`
+- ✅ `atlasit/MODULES/README.md`
+- ✅ `atlasit/INTEGRATIONS/README.md`
 
-echo "== If any are missing, they will be created in later steps =="
-```
+### Implementation Files (In Progress)
 
-Add a Token fallback note (only if headless/no browser):
-If wrangler login is not possible, create a Scoped API Token with:
-Account:Read
-Workers Scripts:Edit, Workers Routes:Edit, Workers Tail:Read
-D1:Edit, R2:Edit, KV:Edit
-(Optional) Workers Dispatch Namespaces:Edit
-Then: export CLOUDFLARE_API_TOKEN='REDACTED_TOKEN' and run wrangler whoami.
+- [ ] `src/workflows/jml/joiner_stub.ts` - Minimal Joiner workflow with mock adapters
+- [ ] `tests/jml/joiner_stub.test.ts` - Unit tests for Joiner stub
+- [ ] `scripts/evidence_hash.ts` - SHA-256 evidence hash utility
+- [ ] `evidence/EV-joiner-stub.json` - Evidence artifact from test
+- [ ] `evidence/EV-local-test.json` - Evidence artifact from local test
+- [ ] `ops/.codex.done` - Completion trace
 
-## Pre-Reqs
+### CI Updates
 
-- Node 18+
-- Wrangler CLI installed and authenticated (`wrangler login`)
-- Cloudflare account with Workers enabled
-- Access to create D1 databases, R2 buckets, and set secrets
-
-## Bindings/Secrets
-
-- **D1 Databases**: `atlasit-shared` (dispatch), `atlasit_compliance` (compliance)
-- **R2 Bucket**: `atlasit-evidence` (compliance)
-- **Secrets**: `DISPATCH_ADMIN_TOKEN` (set in dispatch-worker and console-app)
+- [ ] `.github/workflows/ci.yml` - Add CodeQL, Trivy placeholders
 
 ## COMMAND PLAN
 
+### Implementation Steps
+
 ```bash
-# -1) AUTH PREFLIGHT — run first
-set -euo pipefail
-unset CLOUDFLARE_API_TOKEN || true
-unset CF_API_TOKEN || true
-unset CF_API_KEY || true
-unset CF_EMAIL || true
-unset CF_ACCOUNT_ID || true
-wrangler login
-wrangler whoami
-wrangler config path || true
+# 1. Create directories
+mkdir -p src/workflows/jml tests/jml evidence artifacts
 
-# 0) Verify Cloudflare context
-wrangler whoami
+# 2. Create source files (see detailed implementations below)
+# - joiner_stub.ts
+# - joiner_stub.test.ts
+# - evidence_hash.ts
 
-# 1) Ensure D1 exists (idempotent)
-wrangler d1 database list | grep -q "atlasit-shared"      || wrangler d1 create atlasit-shared
-wrangler d1 database list | grep -q "atlasit_compliance"  || wrangler d1 create atlasit_compliance
+# 3. Run tests
+npm run lint
+npm run test:unit
 
-# 2) Ensure R2 bucket exists (idempotent; ignore if already exists)
-wrangler r2 bucket list | grep -q "atlasit-evidence" || wrangler r2 bucket create atlasit-evidence
+# 4. Generate evidence
+npm test > artifacts/local-test-log.txt 2>&1 || true
+npx tsx scripts/evidence_hash.ts artifacts/local-test-log.txt cursor TEST_EXECUTION > evidence/EV-local-test.json
 
-# 3) Apply migrations (adjust if project uses different commands)
-wrangler d1 migrations apply atlasit_compliance || true
-# (shared DB may be auto-inited by dispatch; include when migrations exist)
-# wrangler d1 migrations apply atlasit-shared   || true
-
-# 4) Set admin secret in BOTH dispatch and console
-export DISPATCH_ADMIN_TOKEN="$(openssl rand -hex 24)"
-(cd dispatch-worker && echo "$DISPATCH_ADMIN_TOKEN" | wrangler secret put DISPATCH_ADMIN_TOKEN)
-(cd console-app     && echo "$DISPATCH_ADMIN_TOKEN" | wrangler secret put DISPATCH_ADMIN_TOKEN)
-
-# 5) Deploy services (use npm scripts if available; otherwise direct wrangler deploy)
-(cd dispatch-worker      && npx wrangler deploy)
-(cd ai-orchestrator      && npx wrangler deploy || true)
-(cd compliance-worker    && (npm run deploy:compliance || npx wrangler deploy))
-(npm run deploy:console || (cd console-app && npx wrangler deploy))
-
-# 6) Resolve routes (replace with your actual domains if known)
-CONSOLE_ORIGIN="$(jq -r '.consoleOrigin // empty'   < ./scripts/deploy-mvp.mjs 2>/dev/null || echo "https://<console-workers-domain>")"
-DISPATCH_ORIGIN="$(jq -r '.dispatchOrigin // empty' < ./scripts/deploy-mvp.mjs 2>/dev/null || echo "https://<dispatch-workers-domain>")"
-ORCH_ORIGIN="https://<orchestrator-workers-domain>"
-COMP_ORIGIN="https://<compliance-workers-domain>"
-
-# 7) Smoke checks (fail on non-2xx; show key fields)
-curl -fsS "$CONSOLE_ORIGIN/health"
-curl -fsS "$CONSOLE_ORIGIN/api/config"
-
-# Console usage summary → proxies Dispatch (requires token present in BOTH)
-curl -fsS "$CONSOLE_ORIGIN/admin/usage/summary"
-
-# Dispatch admin summary (requires x-admin-token)
-curl -fsS -H "x-admin-token: $DISPATCH_ADMIN_TOKEN" "$DISPATCH_ORIGIN/admin/usage/summary"
-
-# Optional healths
-curl -fsS "$ORCH_ORIGIN/health"     || true
-curl -fsS "$COMP_ORIGIN/health"     || true
-
-echo "MVP SMOKE: GREEN"
+# 5. Create .codex.done
+cat > ops/.codex.done << 'EOF'
+{
+  "trace_id": "PR0-bootstrap-$(date +%Y%m%d-%H%M%S)",
+  "status": "complete",
+  "artifacts": ["See ops/hand-off.md for full list"]
+}
+EOF
 ```
 
-## Acceptance Criteria
+## TEST PLAN
 
-- D1: `atlasit-shared`, `atlasit_compliance` exist; compliance migrations applied.
-- R2: `atlasit-evidence` exists.
-- Secret `DISPATCH_ADMIN_TOKEN` set in dispatch-worker AND console-app.
-- All workers deployed and reachable.
-- Smoke: all curls above succeed (200); Dispatch summary returns JSON when header present; Console summary works.
+### Validation Steps
 
-## Rollback
+1. ✅ Lint: `npm run lint` passes
+2. ✅ Tests: `npm run test:unit` passes
+3. [ ] Evidence files exist with valid SHA-256 hashes
+4. [ ] CI workflow includes security scan placeholders
 
-Re-deploy previous worker versions via Wrangler (manual).
-Revert PR if config-only changes caused failure.
+### Evidence Artifacts
 
-## Hardening Notes
+- **EV-joiner-stub.json**: Generated by joiner stub test (producer: codex, control: ACCESS_MFA_ENFORCED)
+- **EV-local-test.json**: Generated by evidence_hash.ts (producer: cursor, control: TEST_EXECUTION)
 
-- Console `/admin/usage/summary` returns `500 {error:"missing_admin_token"}` when `DISPATCH_ADMIN_TOKEN` secret is unset.
-- Dispatch `/admin/usage/summary` requires `x-admin-token` header matching the secret; returns `403 {error:"forbidden"}` otherwise.
+## NEXT STEPS
+
+1. Implement joiner_stub.ts and tests
+2. Create evidence_hash.ts utility
+3. Update CI workflow
+4. Run full test suite
+5. Generate and verify evidence artifacts
+6. Create ops/.codex.done

@@ -1,0 +1,10 @@
+{
+  "id": "ev-1762333081260-5mize9u66",
+  "hash": "sha256:1b58b593e899a413502887244332f21963421803b0619916f536e369ff9ec240",
+  "uri": "file:///home/runner/work/Project-AtlasIT/Project-AtlasIT/artifacts/local-test-log.txt",
+  "producer": "cursor",
+  "control_id": "TEST_EXECUTION",
+  "timestamp": "2025-11-05T08:58:01.260Z",
+  "file_size": 2134,
+  "file_path": "/home/runner/work/Project-AtlasIT/Project-AtlasIT/artifacts/local-test-log.txt"
+}

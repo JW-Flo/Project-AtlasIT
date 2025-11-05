@@ -30,3 +30,15 @@ jobs:
         with:
           name: ci-artifacts
           path: artifacts/ci
+      
+      - name: CodeQL Analysis (placeholder)
+        run: |
+          echo "CodeQL analysis would run here (deferred to PR3)"
+          echo "See: https://github.com/github/codeql-action"
+          echo "STATUS: PLACEHOLDER - Security scanning to be enabled in future PR"
+      
+      - name: Trivy Security Scan (placeholder)
+        run: |
+          echo "Trivy container/dependency scanning would run here (deferred to PR4)"
+          echo "See: https://github.com/aquasecurity/trivy-action"
+          echo "STATUS: PLACEHOLDER - Vulnerability scanning to be enabled in future PR"
