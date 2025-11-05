@@ -93,7 +93,7 @@ class LinearRouter implements AdapterRouter {
     // Process different event types
     switch (type) {
       case "Issue":
-        await this.processIssueEvent(action, data as LinearIssue);
+        await this.processIssueEvent(action, data as unknown as LinearIssue);
         break;
       case "Comment":
         await this.processCommentEvent(action, data);
