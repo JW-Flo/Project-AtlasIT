@@ -37,3 +37,5 @@ error TS2688: Cannot find type definition file for 'vitest'.
     Entry point of type library 'vitest' specified in compilerOptions
 TypeScript validation warnings present
 Evidence artifact created: artifacts/EV-codex-env.json
+Push skipped (non-interactive CI)
+=== CODEx ENVIRONMENT VALIDATION COMPLETE ===
