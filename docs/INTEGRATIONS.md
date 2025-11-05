@@ -106,7 +106,7 @@ Synchronize user directories and manage access lifecycle:
 
 ## Browse All Integrations
 
-AtlasIT's connector framework enables integration with 150+ available tools through a standardized adapter architecture:
+AtlasIT's connector framework enables integration with a wide range of tools through a standardized adapter architecture:
 
 ### Connector Architecture
 
