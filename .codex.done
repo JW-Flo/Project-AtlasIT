@@ -1,0 +1,69 @@
+{
+  "task": "PR-CI-001",
+  "title": "Activate GitHub Actions CI/CD Pipeline",
+  "status": "completed",
+  "completedAt": "2025-11-05T10:48:43.563Z",
+  "traceId": "14109b82ee8f6087",
+  "pr": {
+    "branch": "copilot/activate-ci-cd-pipeline",
+    "issue": "https://github.com/HarderWorkingCo/Project-AtlasIT/issues/51",
+    "linear": "HAR-7"
+  },
+  "deliverables": {
+    "workflows": [
+      ".github/workflows/ci.yml",
+      ".github/workflows/security.yml"
+    ],
+    "scripts": [
+      "scripts/evidence_emit.js"
+    ],
+    "documentation": [
+      "ops/hand-off.md"
+    ],
+    "configuration": [
+      "package.json"
+    ],
+    "artifacts": [
+      "artifacts/ci/sbom.json",
+      "artifacts/ci/RUN.json",
+      "artifacts/evidence/EV-ci-run.json"
+    ]
+  },
+  "checksums": {
+    ".github/workflows/ci.yml": "952943a896a965ae5432aab91bfcbec033e2ea38aa0f044e41083bef1101e6f5",
+    ".github/workflows/security.yml": "97688d82d17eb9590f5f3a1e34e8cd5465c9c5fa63318ee7fc1b0c3f231628b1",
+    "scripts/evidence_emit.js": "1aaedc6f9a3560606138d07df70a94dbfe48566dbcfc78cb541cce65fb0ccc45",
+    "ops/hand-off.md": "34f2097235e357b513ae383701a76935ee8146fb7cd520fcbfe4e42d50c1f58c",
+    "package.json": "627b38459680289db4be2a6c2412d9e96a3fa884f08ce05c183ac0755e18d2d9"
+  },
+  "capabilities": [
+    "ci-on-pr",
+    "ci-on-main-push",
+    "nightly-security-scan",
+    "codeql-analysis",
+    "trivy-vulnerability-scan",
+    "sbom-generation",
+    "evidence-artifacts",
+    "oidc-authentication",
+    "github-actions-artifacts-upload"
+  ],
+  "acceptanceCriteria": {
+    "ciTriggersOnPR": true,
+    "ciTriggersOnMainPush": true,
+    "securityScanRunsNightly": true,
+    "codeqlEnabled": true,
+    "trivyEnabled": true,
+    "sbomGeneration": true,
+    "evidenceGeneration": true,
+    "noStaticSecrets": true,
+    "artifactsUploaded": true
+  },
+  "notes": [
+    "CI workflow includes build, lint, test, CodeQL, Trivy, SBOM generation, and evidence artifacts",
+    "Security workflow runs nightly at 2 AM UTC plus on PR/push events",
+    "Evidence artifacts include SHA-256 hashes of all CI outputs",
+    "GitHub OIDC tokens used for authentication (no static secrets)",
+    "Future enhancement: R2 upload for evidence artifacts on main branch",
+    "Pre-existing TypeScript and lint errors not addressed (out of scope)"
+  ]
+}
