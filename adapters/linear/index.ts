@@ -9,18 +9,14 @@ export interface AdapterMetadata {
   createdAt: string;
 }
 
+// Import schema for proper typing
+import schemaJson from "./schema.json" with { type: "json" };
+
 export const metadata: AdapterMetadata = {
   name: "Linear",
   slug: "linear",
   featureFlag: "FEATURE_CONNECTOR_LINEAR",
-  schema: {
-    openapi: "3.1.0",
-    info: {
-      title: "Linear Integration API",
-      version: "2025-11-05",
-      description: "Linear webhook handler and data sync adapter for AtlasIT",
-    },
-  } as unknown,
+  schema: schemaJson,
   createdAt: "2025-11-05T08:13:39.333Z",
 };
 

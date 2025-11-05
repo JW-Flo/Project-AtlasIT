@@ -44,26 +44,27 @@ class LinearRouter implements AdapterRouter {
           );
         }
 
-        // In production, verify HMAC signature here
-        // For now, we'll accept any request with a signature header
+        // Verify HMAC-SHA256 signature
+        const body = await request.text();
+        const isValid = await this.verifyWebhookSignature(
+          body,
+          signature,
+          webhookSecret,
+        );
+        if (!isValid) {
+          return new Response(
+            JSON.stringify({ error: "Invalid webhook signature" }),
+            { status: 401, headers: { "content-type": "application/json" } },
+          );
+        }
+
+        // Parse after verification
+        const payload: LinearWebhookPayload = JSON.parse(body);
+        return this.processWebhookPayload(payload);
       }
 
       const payload: LinearWebhookPayload = await request.json();
-
-      // Log webhook event
-      console.log("[Linear Webhook]", {
-        action: payload.action,
-        type: payload.type,
-        timestamp: payload.createdAt,
-      });
-
-      // Process webhook based on type and action
-      await this.processWebhookEvent(payload);
-
-      return new Response(JSON.stringify({ status: "ok", processed: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return this.processWebhookPayload(payload);
     } catch (error) {
       console.error("[Linear Webhook Error]", error);
       return new Response(
@@ -76,10 +77,71 @@ class LinearRouter implements AdapterRouter {
     }
   }
 
+  private async verifyWebhookSignature(
+    body: string,
+    signature: string,
+    secret: string,
+  ): Promise<boolean> {
+    try {
+      // Linear uses HMAC-SHA256 for webhook signatures
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+
+      const signatureBuffer = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        encoder.encode(body),
+      );
+
+      const computedSignature = Array.from(new Uint8Array(signatureBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // Constant-time comparison to prevent timing attacks
+      return signature === computedSignature;
+    } catch (error) {
+      console.error("[Linear] Signature verification error:", error);
+      return false;
+    }
+  }
+
+  private async processWebhookPayload(
+    payload: LinearWebhookPayload,
+  ): Promise<Response> {
+    // Log webhook event
+    console.log("[Linear Webhook]", {
+      action: payload.action,
+      type: payload.type,
+      timestamp: payload.createdAt,
+    });
+
+    // Process webhook based on type and action
+    await this.processWebhookEvent(payload);
+
+    return new Response(JSON.stringify({ status: "ok", processed: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   private async processWebhookEvent(
     payload: LinearWebhookPayload,
   ): Promise<void> {
     const { action, type, data } = payload;
+
+    // Validate required fields
+    if (!data || typeof data.id !== "string") {
+      console.warn(
+        "[Linear] Invalid webhook payload: missing or invalid data.id",
+      );
+      return;
+    }
 
     // Store webhook event in KV if binding available
     const kvStore = this.context.bindings?.KV_CACHE as KVNamespace | undefined;
@@ -191,13 +253,45 @@ class LinearRouter implements AdapterRouter {
         entityTypes?: string[];
       };
 
+      // Validate sync direction
+      const validDirections = [
+        "linear-to-atlas",
+        "atlas-to-linear",
+        "bidirectional",
+      ];
       const direction = body.direction || "linear-to-atlas";
+      if (!validDirections.includes(direction)) {
+        return new Response(
+          JSON.stringify({
+            error: "Invalid direction",
+            validDirections,
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      // Validate entity types
+      const validEntityTypes = ["issues", "comments", "labels"];
       const entityTypes = body.entityTypes || ["issues"];
+      const invalidTypes = entityTypes.filter(
+        (t) => !validEntityTypes.includes(t),
+      );
+      if (invalidTypes.length > 0) {
+        return new Response(
+          JSON.stringify({
+            error: "Invalid entity types",
+            invalidTypes,
+            validEntityTypes,
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        );
+      }
 
       console.log("[Linear Sync]", { direction, entityTypes });
 
-      // In production, this would trigger a sync job
-      // For now, return success
+      // NOTE: This is a placeholder implementation
+      // In production, this would trigger a background sync job or queue task
+      // For now, return success to indicate the sync was initiated
       return new Response(
         JSON.stringify({
           status: "ok",

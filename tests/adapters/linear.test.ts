@@ -4,12 +4,38 @@ import type { AdapterContext } from "../../adapters/linear/types.js";
 
 describe("Linear Adapter", () => {
   let adapter: ReturnType<typeof createAdapter>;
+  let adapterWithoutSecret: ReturnType<typeof createAdapter>;
   let mockKV: {
     get: ReturnType<typeof vi.fn>;
     put: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
+
+  // Helper to generate valid HMAC signatures
+  async function generateSignature(
+    body: string,
+    secret: string,
+  ): Promise<string> {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(body),
+    );
+
+    return Array.from(new Uint8Array(signatureBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
 
   beforeEach(() => {
     // Mock KV store
@@ -30,7 +56,17 @@ describe("Linear Adapter", () => {
       },
     };
 
+    const contextWithoutSecret: AdapterContext = {
+      env: {
+        LINEAR_API_KEY: "test-api-key",
+      },
+      bindings: {
+        KV_CACHE: mockKV,
+      },
+    };
+
     adapter = createAdapter(context);
+    adapterWithoutSecret = createAdapter(contextWithoutSecret);
   });
 
   describe("Health Check", () => {
@@ -85,12 +121,11 @@ describe("Linear Adapter", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "linear-signature": "mock-signature",
         },
         body: JSON.stringify(webhookPayload),
       });
 
-      const response = await adapter.fetch(request);
+      const response = await adapterWithoutSecret.fetch(request);
 
       expect(response.status).toBe(200);
 
@@ -120,12 +155,11 @@ describe("Linear Adapter", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "linear-signature": "mock-signature",
         },
         body: JSON.stringify(webhookPayload),
       });
 
-      const response = await adapter.fetch(request);
+      const response = await adapterWithoutSecret.fetch(request);
 
       expect(response.status).toBe(200);
       expect(mockKV.put).toHaveBeenCalled();
@@ -145,12 +179,11 @@ describe("Linear Adapter", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "linear-signature": "mock-signature",
         },
         body: JSON.stringify(webhookPayload),
       });
 
-      const response = await adapter.fetch(request);
+      const response = await adapterWithoutSecret.fetch(request);
 
       expect(response.status).toBe(200);
       expect(mockKV.delete).toHaveBeenCalled();
@@ -196,12 +229,11 @@ describe("Linear Adapter", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "linear-signature": "mock-signature",
         },
         body: JSON.stringify(webhookPayload),
       });
 
-      const response = await adapter.fetch(request);
+      const response = await adapterWithoutSecret.fetch(request);
 
       expect(response.status).toBe(200);
       expect(mockKV.put).toHaveBeenCalled();
@@ -329,12 +361,11 @@ describe("Linear Adapter", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "linear-signature": "mock-signature",
         },
         body: "invalid json",
       });
 
-      const response = await adapter.fetch(request);
+      const response = await adapterWithoutSecret.fetch(request);
 
       expect(response.status).toBe(500);
 
