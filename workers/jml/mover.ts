@@ -238,24 +238,41 @@ export class MoverWorker {
 
   /**
    * Verify MFA compliance after role change
+   *
+   * Returns true if:
+   * - At least one connector with MFA verification capability confirms MFA is enabled
+   * - No connectors have MFA verification capability (assumes external verification)
+   *
+   * Returns false if:
+   * - Any connector with MFA verification reports MFA is disabled
+   * - Any connector's MFA verification fails (network/API errors)
+   *
+   * This ensures security-first behavior: fail closed on errors.
    */
   async verifyMFACompliance(
     user: { id: string },
     connectors: Connector[],
   ): Promise<boolean> {
+    let hasVerificationCapability = false;
+
     for (const connector of connectors) {
       if (connector.verifyMFA) {
+        hasVerificationCapability = true;
         try {
           const mfaEnabled = await connector.verifyMFA(user.id);
           if (!mfaEnabled) {
+            // Fail closed: if any connector reports MFA disabled, return false
             return false;
           }
         } catch (error) {
-          // If verification fails, treat as non-compliant
+          // Fail closed: if verification fails (network/API error), treat as non-compliant
           return false;
         }
       }
     }
+
+    // If no connectors have MFA verification, assume it's verified externally
+    // (e.g., IdP policy enforcement, SSO requirements)
     return true;
   }
 
