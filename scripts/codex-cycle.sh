@@ -19,7 +19,8 @@ echo "" >> ops/.codex.cycle
 
 # 2. Run environment validation
 echo "--- Environment Validation ---" >> ops/.codex.cycle
-bash scripts/codex-validate-env.sh >> ops/.codex.cycle 2>&1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/codex-validate-env.sh" >> ops/.codex.cycle 2>&1
 validation_result=$?
 echo "" >> ops/.codex.cycle
 
@@ -68,7 +69,7 @@ git add ops/.codex.cycle artifacts/EV-codex-cycle.json >> ops/.codex.cycle 2>&1
 if git diff --staged --quiet; then
   echo "No changes to commit" >> ops/.codex.cycle
 else
-  git commit -m "[AUTO] Codex continuous validation - CX-004" >> ops/.codex.cycle 2>&1 || echo "Commit skipped (no changes or error)" >> ops/.codex.cycle
+  git commit -m "[AUTO] Codex continuous validation - CX-004 ($trace_id)" >> ops/.codex.cycle 2>&1 || echo "Commit skipped (no changes or error)" >> ops/.codex.cycle
   
   # Push changes (may fail in PR context, that's okay)
   git push >> ops/.codex.cycle 2>&1 || echo "Push skipped (non-interactive CI or no permissions)" >> ops/.codex.cycle
