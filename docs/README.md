@@ -6,6 +6,15 @@ This directory serves as the single source of truth for all documentation, conte
 
 ## Structure
 
+### Core Documentation
+
+- `INTEGRATIONS.md`: **Comprehensive integration guide** for Slack, GitHub, GitLab, Okta, AI Agents, and custom connectors
+- `CONNECTORS.md`: Connector toolkit and adapter framework guide
+- `api-documentation.md`: API reference and endpoint documentation
+- `architecture.md`: System architecture and design patterns
+
+### Context & History
+
 - `project-truth.txt`: Master context and architectural log (append-only)
 - `agent-context.txt`: AI/automation agent context and actions (append-only)
 - `iterm-context.txt`: Terminal and operational context (append-only)

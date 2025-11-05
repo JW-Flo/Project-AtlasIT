@@ -186,6 +186,7 @@ See `ops/DEPLOYMENT_SUCCESS_REPORT.md` for last deployment snapshot and `ops/ALI
 
 ## Documentation
 
+- `docs/INTEGRATIONS.md` – **Comprehensive integration guide** covering Slack, GitHub, GitLab, Okta, AI Agents, connector framework, and AtlasIT API.
 - `ops/ENDPOINTS.md` – Current API catalog for the three workers (docs worker marked experimental).
 - `AtlasIT Development Guide.md` – Architecture & dev practices.
 - `LEGACY.md` – Archived Ignite/MCP context retained for provenance.
