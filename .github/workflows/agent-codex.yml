@@ -1,0 +1,128 @@
+name: Agent Codex Runner
+
+on:
+  push:
+    paths:
+      - 'ops/hand-off.md'
+
+jobs:
+  codex-runner:
+    # Only run if commit message contains "READY"
+    if: contains(github.event.head_commit.message, 'READY')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install Dependencies
+        run: npm ci
+      
+      - name: Run Codex Runner
+        run: node scripts/run-codex.mjs
+        continue-on-error: true
+      
+      - name: Check if .codex.done exists
+        id: check_done
+        run: |
+          if [ -f .codex.done ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ .codex.done file generated"
+            cat .codex.done
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️  .codex.done file not generated"
+          fi
+      
+      - name: Generate Evidence Artifacts
+        if: steps.check_done.outputs.exists == 'true'
+        run: |
+          # Create evidence directory if it doesn't exist
+          mkdir -p artifacts/policy
+          
+          # Generate evidence artifact for codex execution
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          HASH=$(sha256sum .codex.done | cut -d' ' -f1)
+          
+          cat > artifacts/policy/EV-codex-execution.json << EOF
+          {
+            "id": "EV-codex-${GITHUB_RUN_ID}",
+            "type": "automation_execution",
+            "control": "CODEX_RUNNER_EXECUTION",
+            "subject": "codex-runner",
+            "result": {
+              "status": "executed",
+              "run_id": "${GITHUB_RUN_ID}",
+              "commit": "${GITHUB_SHA}",
+              "branch": "${GITHUB_REF_NAME}",
+              "artifact_hash": "${HASH}"
+            },
+            "timestamp": "${TIMESTAMP}",
+            "metadata": {
+              "workflow": "agent-codex.yml",
+              "trigger": "push",
+              "actor": "${GITHUB_ACTOR}"
+            }
+          }
+          EOF
+          
+          echo "📝 Evidence artifact generated: artifacts/policy/EV-codex-execution.json"
+          cat artifacts/policy/EV-codex-execution.json
+      
+      - name: Commit and Push Results
+        if: steps.check_done.outputs.exists == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add .codex.done
+          git add artifacts/policy/EV-codex-execution.json || true
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: add codex execution results [skip ci]"
+            git push
+            echo "✅ Committed and pushed .codex.done"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload Execution Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-execution-logs
+          path: |
+            .codex.done
+            artifacts/policy/EV-*.json
+          retention-days: 30
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Codex Runner Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID**: $GITHUB_RUN_ID" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: $GITHUB_SHA" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: $GITHUB_REF_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: $GITHUB_ACTOR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f .codex.done ]; then
+            echo "### Execution Results" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat .codex.done >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No execution results available" >> $GITHUB_STEP_SUMMARY
+          fi
