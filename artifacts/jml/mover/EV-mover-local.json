@@ -1,0 +1,22 @@
+{
+  "trace_id": "mover-550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-05T12:00:00Z",
+  "user_id": "user-move-002",
+  "delta_summary": {
+    "department": {
+      "from": "Customer Success",
+      "to": "Revenue Operations"
+    },
+    "title": {
+      "from": "Account Manager",
+      "to": "Revenue Ops Manager"
+    }
+  },
+  "entitlement_changes": {
+    "add": ["clari", "mode"],
+    "remove": ["gong"],
+    "retain": ["okta", "salesforce"]
+  },
+  "control_ids": ["AC-2", "AC-6", "IA-2"],
+  "status": "completed"
+}

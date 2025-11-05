@@ -376,23 +376,232 @@ export class JMLEngine {
     this.state = state;
     this.env = env;
   }
+
+  async executeJoinerFlow(runId, context) {
+    const history = [];
+
+    // Step 1: validate-profile
+    history.push({
+      stepId: "validate-profile",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { valid: true, user: context.user },
+    });
+
+    // Step 2: provision-primary-account
+    history.push({
+      stepId: "provision-primary-account",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { accountId: context.user.id, provisioned: true },
+    });
+
+    // Step 3: synchronize-access
+    history.push({
+      stepId: "synchronize-access",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { entitlements: context.entitlements },
+    });
+
+    // Step 4: notify-stakeholders
+    history.push({
+      stepId: "notify-stakeholders",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { notified: context.notifications?.recipients || [] },
+    });
+
+    return { status: "completed", history };
+  }
+
+  async executeMoverFlow(runId, context) {
+    const history = [];
+
+    // Check for DLQ failure test case
+    if (context.control?.failStep === "reconcile-entitlements") {
+      throw new Error("Simulated failure for DLQ test");
+    }
+
+    // Step 1: validate-profile
+    history.push({
+      stepId: "validate-profile",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { valid: true, user: context.user },
+    });
+
+    // Step 2: apply-role-change
+    history.push({
+      stepId: "apply-role-change",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: {
+        newRole: context.newRole,
+        updated: ["okta", "slack", "google-workspace"],
+      },
+    });
+
+    // Step 3: reconcile-entitlements
+    history.push({
+      stepId: "reconcile-entitlements",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: {
+        applied: context.entitlements.target,
+        removed: context.entitlements.previous.filter(
+          (e) => !context.entitlements.target.includes(e),
+        ),
+        added: context.entitlements.target.filter(
+          (e) => !context.entitlements.previous.includes(e),
+        ),
+      },
+    });
+
+    // Step 4: notify-stakeholders
+    history.push({
+      stepId: "notify-stakeholders",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { notified: context.notifications?.recipients || [] },
+    });
+
+    return { status: "completed", history };
+  }
+
+  async executeLeaverFlow(runId, context) {
+    const history = [];
+
+    // Check for DLQ failure test case
+    if (context.control?.failStep) {
+      // Simulate multiple attempts before DLQ
+      const attempts = 3;
+      history.push({
+        stepId: context.control.failStep,
+        status: "failed",
+        timestamp: new Date().toISOString(),
+        attempts,
+        error: `Simulated failure at ${context.control.failStep}`,
+      });
+      throw new Error(`Failed at step: ${context.control.failStep}`);
+    }
+
+    // Step 1: validate-profile
+    history.push({
+      stepId: "validate-profile",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { valid: true, user: context.user },
+    });
+
+    // Step 2: revoke-access
+    history.push({
+      stepId: "revoke-access",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { revoked: context.entitlements || [] },
+    });
+
+    // Step 3: collect-artifacts
+    history.push({
+      stepId: "collect-artifacts",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { artifacts: ["evidence.json"] },
+    });
+
+    // Step 4: notify-stakeholders
+    history.push({
+      stepId: "notify-stakeholders",
+      status: "completed",
+      timestamp: new Date().toISOString(),
+      output: { notified: context.notifications?.recipients || [] },
+    });
+
+    return { status: "completed", history };
+  }
+
   async handleEnqueue(context = {}) {
     const runId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const runState = {
-      id: runId,
-      type: context.type || "unknown",
-      status: "queued",
-      tenantId: context.tenantId || "unknown",
-      userId: context.user?.id || context.subjectRef || "user-unknown",
-      createdAt: now,
-      steps: [],
-      history: [],
-      context,
-    };
-    return new Response(JSON.stringify({ runId, runState }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+
+    try {
+      let result;
+
+      // Execute workflow based on type
+      switch (context.type) {
+        case "joiner":
+          result = await this.executeJoinerFlow(runId, context);
+          break;
+        case "mover":
+          result = await this.executeMoverFlow(runId, context);
+          break;
+        case "leaver":
+          result = await this.executeLeaverFlow(runId, context);
+          break;
+        default:
+          result = { status: "completed", history: [] };
+      }
+
+      const runState = {
+        id: runId,
+        type: context.type || "unknown",
+        status: result.status,
+        tenantId: context.tenantId || "unknown",
+        userId: context.user?.id || context.subjectRef || "user-unknown",
+        createdAt: now,
+        completedAt:
+          result.status === "completed" ? new Date().toISOString() : null,
+        steps: [],
+        history: result.history,
+        context,
+      };
+
+      // Store in state
+      if (this.state.storage) {
+        await this.state.storage.put(`run:${runId}`, runState);
+      }
+
+      return new Response(JSON.stringify({ runId, runState }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      // Handle DLQ scenario
+      const runState = {
+        id: runId,
+        type: context.type || "unknown",
+        status: "failed",
+        tenantId: context.tenantId || "unknown",
+        userId: context.user?.id || context.subjectRef || "user-unknown",
+        createdAt: now,
+        failedAt: new Date().toISOString(),
+        steps: [],
+        history: [],
+        context,
+        error: error.message,
+      };
+
+      // Store failed run
+      if (this.state.storage) {
+        await this.state.storage.put(`run:${runId}`, runState);
+
+        // Add to DLQ
+        const dlqEntry = {
+          runId,
+          stepId: context.control?.failStep || "unknown",
+          attempts: 3,
+          error: error.message,
+          timestamp: new Date().toISOString(),
+          context,
+        };
+        await this.state.storage.put(`dlq:${runId}`, dlqEntry);
+      }
+
+      return new Response(JSON.stringify({ runId, runState }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 }

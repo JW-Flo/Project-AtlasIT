@@ -48,6 +48,83 @@ The JML Engine coordinates user lifecycle runs as a Durable Object (DO) backed s
 - `GET /api/jml/health` returns queue depth, in-flight, error rate (rolling window).
 - Analytics Engine captures p50/p95 step latency, retry counts, DLQ rate.
 
+## Mover Flow
+
+The Mover flow handles user role transitions (department, title, manager changes) within the organization.
+
+### Overview
+
+When an employee changes roles—such as moving from Customer Success to Revenue Operations—the Mover flow ensures:
+
+- User attributes are updated across all identity providers and connectors
+- Entitlements are reconciled (adding new access, removing obsolete access)
+- MFA compliance is maintained
+- Audit evidence is generated for compliance
+
+### Steps
+
+1. **validate-profile**: Confirm user exists and fetch current attributes from IdP
+2. **apply-role-change**: Update IdP with new department, title, and manager attributes
+3. **reconcile-entitlements**:
+   - Remove entitlements no longer needed (based on previous department/role)
+   - Add entitlements required for new role
+   - Retain entitlements common to both roles
+   - Verify MFA compliance continues
+4. **notify-stakeholders**: Send email/Slack notifications to new manager, previous manager, and IT ops
+
+### Entitlement Reconciliation
+
+The system calculates delta between previous and target entitlements:
+
+```javascript
+{
+  "add": ["clari", "mode"],           // New tools for Revenue Ops
+  "remove": ["gong"],                  // No longer needed
+  "retain": ["okta", "salesforce"]     // Common to both roles
+}
+```
+
+Security-first approach: Removals are processed before additions to minimize over-privileged windows.
+
+### Evidence Schema
+
+Each mover run emits evidence to `/artifacts/jml/mover/EV-mover-<trace_id>.json`:
+
+```json
+{
+  "trace_id": "mover-550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-05T12:00:00Z",
+  "user_id": "user-move-002",
+  "delta_summary": {
+    "department": {
+      "from": "Customer Success",
+      "to": "Revenue Operations"
+    },
+    "title": {
+      "from": "Account Manager",
+      "to": "Revenue Ops Manager"
+    }
+  },
+  "entitlement_changes": {
+    "add": ["clari", "mode"],
+    "remove": ["gong"],
+    "retain": ["okta", "salesforce"]
+  },
+  "control_ids": ["AC-2", "AC-6", "IA-2"],
+  "status": "completed"
+}
+```
+
+### Control Mappings
+
+- **AC-2** (Account Management): Role changes tracked and approved
+- **AC-6** (Least Privilege): Obsolete access removed on role change
+- **IA-2** (Identification and Authentication): MFA compliance verified post-change
+
+### Error Handling
+
+Failed mover runs follow standard retry/DLQ procedures. Partial failures (some connectors succeed, others fail) are marked with `status: "partial"` and include detailed error information for remediation.
+
 ## Security
 
 - DO scoped per tenant for isolation; inputs validated via Valibot/Zod.

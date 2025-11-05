@@ -47,7 +47,8 @@
     "compliance-worker/src/**/*.ts",
     "src/**/*.ts",
     "dispatch-worker/src/**/*.ts",
-    "shared/services/**/*.ts"
+    "shared/services/**/*.ts",
+    "workers/**/*.ts"
   ],
   "exclude": [
     "node_modules",
@@ -59,10 +60,6 @@
     "docs/servers-main",
     "marketplace",
     "documentation-worker/dist",
-    "packages/**/dist",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.spec.ts",
-    "**/*.spec.tsx"
+    "packages/**/dist"
   ]
 }
