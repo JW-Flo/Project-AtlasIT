@@ -70,7 +70,6 @@ class LinearRouter implements AdapterRouter {
       return new Response(
         JSON.stringify({
           error: "Failed to process webhook",
-          details: String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } },
       );
@@ -309,7 +308,6 @@ class LinearRouter implements AdapterRouter {
       return new Response(
         JSON.stringify({
           error: "Failed to initiate sync",
-          details: String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } },
       );
@@ -349,7 +347,6 @@ class LinearRouter implements AdapterRouter {
       return new Response(
         JSON.stringify({
           error: "Failed to list issues",
-          details: String(error),
         }),
         { status: 500, headers: { "content-type": "application/json" } },
       );
