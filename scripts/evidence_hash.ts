@@ -34,7 +34,7 @@ function generateEvidence(
 ): EvidenceMetadata {
   const hash = generateHash(filePath);
   const stats = fs.statSync(filePath);
-  const id = `ev-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const id = `ev-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
   return {
     id,

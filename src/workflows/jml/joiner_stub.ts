@@ -74,10 +74,14 @@ async function mockEnforceMFA(
 
 /**
  * Generate SHA-256 hash of content (stub implementation)
- * In production, use Node crypto or Web Crypto API
+ *
+ * WARNING: This is NOT a real SHA-256 hash. This is a simple stub implementation
+ * for demonstration purposes only. In production, use Node crypto or Web Crypto API
+ * with real SHA-256 hashing for compliance and security.
  */
 function sha256Hash(content: string): string {
-  // Simple hash for stub - use crypto in production
+  // Simple hash stub - NOT cryptographically secure
+  // Use crypto.createHash('sha256') in production
   let hash = 0;
   for (let i = 0; i < content.length; i++) {
     const char = content.charCodeAt(i);
@@ -94,7 +98,7 @@ export function generateEvidence(
   params: JoinerParams,
   actions: any[],
 ): EvidenceEnvelope {
-  const id = `ev-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const id = `ev-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   const timestamp = new Date().toISOString();
 
   const envelope: Omit<EvidenceEnvelope, "hash" | "uri"> = {
