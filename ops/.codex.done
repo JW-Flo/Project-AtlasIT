@@ -1,5 +1,5 @@
 === CODEx ENVIRONMENT VALIDATION START ===
-2025-11-05T16:59:19+00:00
+2025-11-05T17:03:00+00:00
 Node version:
 v20.19.5
 npm version:
@@ -8,8 +8,7 @@ TypeScript compiler version:
 Version 5.9.3
 Environment variables:
 CI=true
-WRANGLER variables: 0
-0 found
+WRANGLER variables: 0 found
 wrangler versions
 
 🫧 List, view, upload and deploy Versions of your Worker to Cloudflare
