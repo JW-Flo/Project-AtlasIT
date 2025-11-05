@@ -1,0 +1,86 @@
+name: Codex Agent Execution Layer
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  codex-setup:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: development
+      CI: true
+      WRANGLER_NON_INTERACTIVE: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify Codex environment config
+        run: |
+          if [ ! -f .codex/env.json ]; then
+            echo "Error: .codex/env.json not found"
+            exit 1
+          fi
+          echo "✓ Codex environment configuration found"
+          cat .codex/env.json
+
+      - name: Run Codex Environment Setup
+        run: bash ./scripts/setup-codex.sh
+
+      - name: Generate Codex completion marker
+        run: |
+          echo "codex_setup_complete=true" > .codex.done
+          echo "timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> .codex.done
+          echo "runner=${{ runner.os }}" >> .codex.done
+          echo "node_version=$(node -v)" >> .codex.done
+          echo "python_version=$(python3 --version)" >> .codex.done
+          cat .codex.done
+
+      - name: Generate Evidence JSON
+        run: |
+          mkdir -p artifacts/evidence
+          cat > artifacts/evidence/EV-codex-env.json <<EOF
+          {
+            "trace_id": "${{ github.run_id }}-${{ github.run_number }}",
+            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "event": "codex-environment-setup",
+            "status": "success",
+            "runner": "${{ runner.os }}",
+            "workflow": "${{ github.workflow }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "toolchain": {
+              "node": "$(node -v)",
+              "npm": "$(npm -v)",
+              "python": "$(python3 --version)"
+            },
+            "environment": {
+              "NODE_ENV": "$NODE_ENV",
+              "CI": "$CI",
+              "WRANGLER_NON_INTERACTIVE": "$WRANGLER_NON_INTERACTIVE"
+            }
+          }
+          EOF
+          cat artifacts/evidence/EV-codex-env.json
+
+      - name: Upload Codex artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-artifacts
+          path: |
+            .codex.done
+            artifacts/evidence/EV-codex-env.json
