@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "type": "ci-run-evidence",
+  "generatedAt": "2025-11-05T10:43:01.843Z",
+  "ci": {
+    "runId": "19099116039",
+    "sha": "1353bdbcf80f1b6f1a5425eb583ba809524b38cb",
+    "ref": "refs/heads/copilot/activate-ci-cd-pipeline",
+    "actor": "copilot-swe-agent[bot]",
+    "repository": "HarderWorkingCo/Project-AtlasIT"
+  },
+  "artifacts": [
+    {
+      "name": "RUN.json",
+      "path": "artifacts/ci/RUN.json",
+      "sha256": "f0a1a4b1f5a4fd3c8df0fb9880faf878fc501fe277806e35c48759cd5a0d6773",
+      "timestamp": "2025-11-05T10:43:01.848Z"
+    },
+    {
+      "name": "sbom.json",
+      "path": "artifacts/ci/sbom.json",
+      "sha256": "e2eb2a4263b73a9101db72db746eee3370939f5c1069ffb06b89505d15c9e719",
+      "timestamp": "2025-11-05T10:43:01.849Z"
+    }
+  ],
+  "checksums": {
+    "sbom": "e2eb2a4263b73a9101db72db746eee3370939f5c1069ffb06b89505d15c9e719",
+    "buildLog": null,
+    "testLog": null
+  },
+  "metadata": {
+    "nodeVersion": "v20.19.5",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "evidenceHash": "a8e4e4d45aa0316a4267441359d43a2e8ae2ff15471cb69bbe235ddc8815959a"
+}

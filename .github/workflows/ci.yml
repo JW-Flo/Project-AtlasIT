@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+
 jobs:
   build-test-sbom:
     runs-on: ubuntu-latest
@@ -14,19 +19,78 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
+      
       - name: Install dependencies
         run: npm install
+      
       - name: Validate environment
         run: npm run validate:env
+      
+      - name: Lint
+        run: npm run lint
+      
       - name: Build, test, sbom
         run: npm run ci:run
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Generate evidence artifacts
+        run: npm run evidence:emit
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_SHA: ${{ github.sha }}
+          CI_REF: ${{ github.ref }}
+      
       - name: Upload CI artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ci-artifacts
-          path: artifacts/ci
+          path: |
+            artifacts/ci
+            artifacts/evidence
+      
+      - name: Upload evidence to R2 (if main branch)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Evidence artifacts would be uploaded to R2 here"
+          echo "Files to upload:"
+          ls -la artifacts/evidence/ || echo "No evidence artifacts found"
+  
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,typescript
+          queries: security-and-quality
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
