@@ -1,5 +1,5 @@
 === CODEx ENVIRONMENT VALIDATION START ===
-2025-11-05T16:52:02+00:00
+2025-11-05T16:54:15+00:00
 Node version:
 v20.19.5
 npm version:
@@ -37,5 +37,3 @@ error TS2688: Cannot find type definition file for 'vitest'.
     Entry point of type library 'vitest' specified in compilerOptions
 TypeScript validation warnings present
 Evidence artifact created: artifacts/EV-codex-env.json
-Push skipped (non-interactive CI)
-=== CODEx ENVIRONMENT VALIDATION COMPLETE ===
