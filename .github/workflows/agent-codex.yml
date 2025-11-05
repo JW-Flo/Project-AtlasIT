@@ -28,8 +28,18 @@ jobs:
         run: npm ci
       
       - name: Run Codex Runner
+        id: codex_run
         run: node scripts/run-codex.mjs
         continue-on-error: true
+      
+      - name: Check Execution Status
+        if: steps.codex_run.outcome == 'failure'
+        run: |
+          echo "⚠️  Codex Runner execution failed"
+          echo "Check .codex.done for details"
+          if [ -f .codex.done ]; then
+            cat .codex.done
+          fi
       
       - name: Check if .codex.done exists
         id: check_done

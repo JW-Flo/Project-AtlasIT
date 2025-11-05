@@ -64,7 +64,7 @@ The `.codex.done` file contains a JSON report with:
     }
   ]
 }
-````
+```
 
 ## Evidence Artifacts
 
@@ -112,3 +112,4 @@ node scripts/run-codex.mjs
 ## Tags
 
 Applies to: `agent:copilot`, `area:infra`, `emits:evidence`, `automation`
+````

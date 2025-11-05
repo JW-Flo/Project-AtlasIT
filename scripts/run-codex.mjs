@@ -160,7 +160,7 @@ async function main() {
       results.push(result);
       
       // Stop on first failure (non-zero exit code)
-      if (result.exitCode !== 0 && result.exitCode !== null) {
+      if (result.exitCode !== 0) {
         console.log(`\n⚠️  Command failed with exit code ${result.exitCode}, stopping execution`);
         break;
       }
