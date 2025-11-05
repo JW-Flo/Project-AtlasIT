@@ -4,5 +4,11 @@
     "slug": "example-hr-suite",
     "featureFlag": "FEATURE_CONNECTOR_EXAMPLE_HR_SUITE",
     "createdAt": "2025-09-18T05:35:56.408Z"
+  },
+  {
+    "name": "Linear",
+    "slug": "linear",
+    "featureFlag": "FEATURE_CONNECTOR_LINEAR",
+    "createdAt": "2025-11-05T08:13:39.333Z"
   }
 ]

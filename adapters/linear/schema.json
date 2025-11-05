@@ -1,0 +1,221 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Linear Integration API",
+    "version": "2025-11-05",
+    "description": "Linear webhook handler and data sync adapter for AtlasIT"
+  },
+  "paths": {
+    "/webhook": {
+      "post": {
+        "operationId": "handleWebhook",
+        "summary": "Handle Linear webhook events",
+        "description": "Receives and processes webhook events from Linear for data synchronization",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookPayload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "processed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - invalid webhook signature"
+          },
+          "400": {
+            "description": "Bad request - invalid payload"
+          }
+        }
+      }
+    },
+    "/sync": {
+      "post": {
+        "operationId": "syncData",
+        "summary": "Manually trigger data sync",
+        "description": "Initiates a manual sync of data between Linear and AtlasIT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "linear-to-atlas",
+                      "atlas-to-linear",
+                      "bidirectional"
+                    ]
+                  },
+                  "entityTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["issues", "comments", "labels", "users"]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sync initiated successfully"
+          }
+        }
+      }
+    },
+    "/issues": {
+      "get": {
+        "operationId": "listIssues",
+        "summary": "List synchronized issues",
+        "description": "Retrieve issues that have been synchronized from Linear",
+        "responses": {
+          "200": {
+            "description": "Issues retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Issue"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "WebhookPayload": {
+        "type": "object",
+        "required": ["action", "type", "data", "createdAt"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "The webhook action (create, update, remove)"
+          },
+          "type": {
+            "type": "string",
+            "description": "The entity type (Issue, Comment, etc.)"
+          },
+          "data": {
+            "type": "object",
+            "description": "The entity data"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "webhookId": {
+            "type": "string"
+          }
+        }
+      },
+      "Issue": {
+        "type": "object",
+        "required": ["id", "title", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "state": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            }
+          },
+          "assignee": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "priority": {
+            "type": "number"
+          },
+          "estimate": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

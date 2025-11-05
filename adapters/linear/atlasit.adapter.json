@@ -1,0 +1,7 @@
+{
+  "name": "Linear",
+  "slug": "linear",
+  "featureFlag": "FEATURE_CONNECTOR_LINEAR",
+  "schemaPath": "schema.json",
+  "createdAt": "2025-11-05T08:13:39.333Z"
+}
