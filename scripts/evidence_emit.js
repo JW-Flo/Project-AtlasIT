@@ -96,8 +96,9 @@ async function main() {
     },
   };
 
-  // Calculate hash of the evidence record itself
-  evidence.evidenceHash = sha256String(evidence);
+  // Calculate hash of the evidence record (before adding the hash field to avoid circular reference)
+  const evidenceHash = sha256String(evidence);
+  evidence.evidenceHash = evidenceHash;
 
   // Ensure evidence directory exists
   const evidenceDir = "artifacts/evidence";
@@ -131,15 +132,20 @@ async function main() {
 }
 
 // Run if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main()
-    .then(() => {
-      process.exit(0);
-    })
-    .catch((error) => {
-      console.error("Error generating evidence:", error);
-      process.exit(1);
-    });
+// Check if this module is the main module being run
+if (import.meta.url.startsWith("file:")) {
+  const modulePath = import.meta.url.slice(7); // Remove 'file://' prefix
+  const scriptPath = process.argv[1];
+  if (modulePath === scriptPath || modulePath.endsWith(scriptPath)) {
+    main()
+      .then(() => {
+        process.exit(0);
+      })
+      .catch((error) => {
+        console.error("Error generating evidence:", error);
+        process.exit(1);
+      });
+  }
 }
 
 export { main as generateEvidence };
