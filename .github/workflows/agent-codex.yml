@@ -10,6 +10,9 @@ jobs:
     # Only run if commit message contains "READY"
     if: contains(github.event.head_commit.message, 'READY')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to commit .codex.done and push results
+      actions: read    # Required to access workflow artifacts
     
     steps:
       - name: Checkout Repository
