@@ -37,7 +37,8 @@ mkdir -p artifacts
 if command -v uuidgen &> /dev/null; then
   trace_id=$(uuidgen)
 else
-  trace_id="$(date +%s)-$(date +%N)"
+  # Portable fallback for systems without uuidgen (e.g., macOS)
+  trace_id="$(date +%s)-${RANDOM:-$$}"
 fi
 
 timestamp=$(date -Iseconds)
@@ -67,7 +68,7 @@ git add ops/.codex.cycle artifacts/EV-codex-cycle.json >> ops/.codex.cycle 2>&1
 if git diff --staged --quiet; then
   echo "No changes to commit" >> ops/.codex.cycle
 else
-  git commit -m "[AUTO] Codex continuous validation – CX-004" >> ops/.codex.cycle 2>&1 || echo "Commit skipped (no changes or error)" >> ops/.codex.cycle
+  git commit -m "[AUTO] Codex continuous validation - CX-004" >> ops/.codex.cycle 2>&1 || echo "Commit skipped (no changes or error)" >> ops/.codex.cycle
   
   # Push changes (may fail in PR context, that's okay)
   git push >> ops/.codex.cycle 2>&1 || echo "Push skipped (non-interactive CI or no permissions)" >> ops/.codex.cycle
