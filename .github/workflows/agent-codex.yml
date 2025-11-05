@@ -53,10 +53,14 @@ jobs:
       - name: Generate Evidence JSON
         run: |
           mkdir -p artifacts/evidence
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          NODE_VER=$(node -v)
+          NPM_VER=$(npm -v)
+          PYTHON_VER=$(python3 --version)
           cat > artifacts/evidence/EV-codex-env.json <<EOF
           {
             "trace_id": "${{ github.run_id }}-${{ github.run_number }}",
-            "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "timestamp": "${TIMESTAMP}",
             "event": "codex-environment-setup",
             "status": "success",
             "runner": "${{ runner.os }}",
@@ -64,14 +68,14 @@ jobs:
             "ref": "${{ github.ref }}",
             "sha": "${{ github.sha }}",
             "toolchain": {
-              "node": "$(node -v)",
-              "npm": "$(npm -v)",
-              "python": "$(python3 --version)"
+              "node": "${NODE_VER}",
+              "npm": "${NPM_VER}",
+              "python": "${PYTHON_VER}"
             },
             "environment": {
-              "NODE_ENV": "$NODE_ENV",
-              "CI": "$CI",
-              "WRANGLER_NON_INTERACTIVE": "$WRANGLER_NON_INTERACTIVE"
+              "NODE_ENV": "${NODE_ENV}",
+              "CI": "${CI}",
+              "WRANGLER_NON_INTERACTIVE": "${WRANGLER_NON_INTERACTIVE}"
             }
           }
           EOF
