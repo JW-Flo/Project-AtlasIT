@@ -1,0 +1,65 @@
+# AtlasIT GitHub Proxy Worker
+
+Secure Cloudflare Worker that enables Codex automation agents to access the AtlasIT GitHub repository without requiring direct internet access.
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Set secrets
+wrangler secret put PROXY_SECRET
+wrangler secret put GH_PAT
+
+# Deploy to Cloudflare
+wrangler deploy
+
+# Test deployment
+curl https://atlasit-github-proxy.<account>.workers.dev/health
+```
+
+## Documentation
+
+For complete usage and security documentation, see:
+- [docs/codex-github-access.md](../../docs/codex-github-access.md)
+
+## Local Development
+
+```bash
+# Start local development server
+npm run dev
+
+# Test health endpoint
+curl http://localhost:8787/health
+```
+
+## Structure
+
+```
+infra/github-proxy/
+├── src/
+│   └── index.ts        # TypeScript source (development)
+├── index.js            # Compiled worker (production)
+├── wrangler.toml       # Cloudflare configuration
+├── package.json        # Dependencies
+└── tsconfig.json       # TypeScript configuration
+```
+
+## Security
+
+This worker implements:
+- Token-based authentication
+- Path allowlisting (repository-scoped access)
+- Authorization header stripping
+- Request tracing with unique trace IDs
+- No credential logging
+
+See documentation for compliance mappings (NIST 800-53, SOC2, ISO27001).
+
+## Support
+
+For issues or questions:
+- Review logs: `wrangler tail`
+- Check GitHub API status: https://www.githubstatus.com/
+- Review documentation: [docs/codex-github-access.md](../../docs/codex-github-access.md)

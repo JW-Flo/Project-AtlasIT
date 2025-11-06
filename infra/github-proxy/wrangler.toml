@@ -1,0 +1,25 @@
+name = "atlasit-github-proxy"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+
+# Worker will be deployed to atlasit-github-proxy.<account>.workers.dev
+workers_dev = true
+
+# Secrets (set via wrangler secret put or GitHub Actions):
+# - PROXY_SECRET: Token for authenticating Codex requests
+# - GH_PAT: GitHub Personal Access Token for API access
+
+[env.production]
+name = "atlasit-github-proxy"
+workers_dev = true
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[env.production.observability.logs]
+enabled = true
+
+[observability.logs]
+enabled = true
