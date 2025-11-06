@@ -48,6 +48,8 @@ export default [
       "customer-worker-1/**",
       "docs/chat-mcp-main/**",
       "docs/servers-main/**",
+      // Worker with standalone TypeScript configuration
+      "infra/github-proxy/**",
     ],
   },
   {

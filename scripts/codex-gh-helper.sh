@@ -36,6 +36,14 @@ log_proxy() {
     echo "{\"timestamp\":\"$timestamp\",\"trace_id\":\"$trace_id\",\"action\":\"$action\",\"status\":\"$status\",\"details\":\"$details\"}" >> "$PROXY_LOG"
 }
 
+# Verify dependencies
+check_dependencies() {
+    if ! command -v jq &> /dev/null; then
+        echo "Error: jq is required but not installed. Install with: apt-get install jq or brew install jq" >&2
+        return 1
+    fi
+}
+
 # Verify proxy token is set
 check_proxy_token() {
     if [ -z "$PROXY_TOKEN" ]; then
@@ -84,6 +92,7 @@ codex_pull() {
 # Create or update file in GitHub
 codex_commit() {
     check_proxy_token || return 1
+    check_dependencies || return 1
     
     local message="$1"
     local file_path="$2"
