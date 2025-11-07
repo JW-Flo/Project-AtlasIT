@@ -18,6 +18,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      # Cloudflare platform credentials (dummy values for CI validation)
+      CF_ACCOUNT_ID: dummy-cf-account-id-ci
+      CLOUDFLARE_API_TOKEN: dummy-cloudflare-api-token-ci
+      D1_DATABASE: ATLAS_ONBOARDING_DB
+      KV_NAMESPACE: atlasit_kv
+      R2_BUCKET: atlasit-evidence
+      # Service API keys (dummy values for CI validation)
       ONBOARDING_API_KEY: dummy-onboarding-ci
       ORCHESTRATOR_API_KEY: dummy-orchestrator-ci
 
