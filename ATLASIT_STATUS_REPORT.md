@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-AtlasIT is a Cloudflare-native IT automation and security platform for SMBs, currently in **Phase 0** (Foundation) with three core workers deployed and operational. The platform is intentionally minimal, focusing on automation substrate and documentation while compliance, policy, and governance features remain in the roadmap.
+AtlasIT is a Cloudflare-native IT automation and security platform for Small and Medium Businesses (SMBs), currently in **Phase 0** (Foundation) with three core workers deployed and operational. The platform is intentionally minimal, focusing on automation substrate and documentation while compliance, policy, and governance features remain in the roadmap.
 
 **Current State:** ✅ Operational with limited scope  
 **Deployment Status:** 🚀 Three workers live in production  
@@ -136,7 +136,7 @@ Active packages in monorepo workspace:
 - **Startup Times:** 2-3ms (excellent)
 - **Response Times:** <5ms for health endpoints
 - **Total Deployment Time:** ~3 minutes
-- **Success Rate:** 50% smoke tests (3/6 - expected due to KV config)
+- **Success Rate:** 50% smoke tests (3/6 passing, 3/6 expected failures: documentation worker health endpoint not implemented by design, documentation worker KV binding missing is a known configuration issue, AI orchestrator auth properly returns 403 as expected)
 
 ### 4.2 Observability
 
@@ -257,6 +257,8 @@ Key Workflows:
 ## 8. Recent Changes & Events
 
 ### 8.1 Latest Changelog Entries (v1.2.0 - Oct 2025)
+
+*Note: These are the most recent changelog entries available. The report date of November 7, 2025 reflects when this status report was compiled; changelog entries reflect the last recorded version release.*
 
 **Added:**
 - Policy template listing endpoint
