@@ -4,6 +4,27 @@
 
 This runbook provides operational guidelines for agents (Copilot, Codegen, Cursor) working on AtlasIT issues, including credential management, CI/CD workflows, and Linear conventions.
 
+## Table of Contents
+
+1. [Ticket Intake](#1-ticket-intake)
+2. [Planning Discipline (Copilot)](#2-planning-discipline-copilot)
+3. [Execution (Codegen/Cursor)](#3-execution-codegenCursor)
+4. [PR & CI Etiquette (GitHub Copilot)](#4-pr--ci-etiquette-github-copilot)
+5. [Linear Conventions](#5-linear-conventions)
+6. [Security & Compliance Guardrails](#6-security--compliance-guardrails)
+7. [Runbooks to Keep Current](#7-runbooks-to-keep-current)
+8. [Credential Management Across Environments](#credential-management-across-environments)
+   - [Environment Types](#environment-types)
+   - [Required Credentials](#required-credentials)
+   - [Credential Sync Process](#credential-sync-process)
+   - [Validation](#validation)
+   - [Credential Generation](#credential-generation)
+   - [Security Best Practices](#security-best-practices)
+   - [Troubleshooting](#troubleshooting)
+   - [Related Documentation](#related-documentation)
+9. [Evidence Artifacts](#evidence-artifacts)
+10. [Rollback](#rollback)
+
 ## 1. Ticket Intake
 
 - If an issue is ambiguous, propose an "Issue Plan" comment with Objective, AC, Evidence, Tests, and Risks. Proceed when a human or Copilot acknowledges with ✅.
@@ -156,6 +177,13 @@ Generate secure API keys:
 openssl rand -hex 24  # Use for ONBOARDING_API_KEY
 openssl rand -hex 24  # Use for ORCHESTRATOR_API_KEY
 ```
+
+**Security Notes:**
+
+- Store generated keys immediately in 1Password or GitHub Secrets - never save to disk or commit
+- Clear terminal history after generation: `history -d $((HISTCMD-1))`
+- Use environment-specific keys (dev/staging/prod) - never reuse across environments
+- Pipe directly to clipboard if available: `openssl rand -hex 24 | pbcopy` (macOS) or `| xclip` (Linux)
 
 ### Security Best Practices
 
