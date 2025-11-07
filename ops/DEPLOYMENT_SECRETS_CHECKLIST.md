@@ -64,6 +64,7 @@ env:
 ```
 
 **Required GitHub Secrets for deployments:**
+
 - `CF_ACCOUNT_ID` - Cloudflare account ID
 - `CLOUDFLARE_API_TOKEN` or `WRANGLER_API_TOKEN` - Cloudflare API token with Workers + KV + D1 + R2 permissions
 

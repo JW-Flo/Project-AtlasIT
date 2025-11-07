@@ -6,43 +6,43 @@ This runbook provides operational guidelines for agents (Copilot, Codegen, Curso
 
 ## 1. Ticket Intake
 
-* If an issue is ambiguous, propose an "Issue Plan" comment with Objective, AC, Evidence, Tests, and Risks. Proceed when a human or Copilot acknowledges with ✅.
+- If an issue is ambiguous, propose an "Issue Plan" comment with Objective, AC, Evidence, Tests, and Risks. Proceed when a human or Copilot acknowledges with ✅.
 
 ## 2. Planning Discipline (Copilot)
 
-* Split work so each PR is < ~300 LOC changed where possible.
-* Add a `### COMMAND PLAN` section in the PR description the executors can follow.
-* Mark specific steps as **READY**; executors must only perform READY steps.
+- Split work so each PR is < ~300 LOC changed where possible.
+- Add a `### COMMAND PLAN` section in the PR description the executors can follow.
+- Mark specific steps as **READY**; executors must only perform READY steps.
 
 ## 3. Execution (Codegen/Cursor)
 
-* Implement only READY items. Create or extend tests first.
-* Wire **evidence emission** (hash + URI) where behavior is validated.
-* If a schema/OPA/policy is touched, add/update its test and documentation in the same PR.
-* Never commit credentials. Fetch via Vault/OIDC at runtime or in CI.
+- Implement only READY items. Create or extend tests first.
+- Wire **evidence emission** (hash + URI) where behavior is validated.
+- If a schema/OPA/policy is touched, add/update its test and documentation in the same PR.
+- Never commit credentials. Fetch via Vault/OIDC at runtime or in CI.
 
 ## 4. PR & CI Etiquette (GitHub Copilot)
 
-* Ensure CI includes: lint → unit → security scan (CodeQL/Trivy) → e2e (if present).
-* Block merge if schemas or OPA tests weren't updated alongside behavior changes.
-* Post PR checklists and nudge for missing artifacts or runbook updates.
+- Ensure CI includes: lint → unit → security scan (CodeQL/Trivy) → e2e (if present).
+- Block merge if schemas or OPA tests weren't updated alongside behavior changes.
+- Post PR checklists and nudge for missing artifacts or runbook updates.
 
 ## 5. Linear Conventions
 
-* Titles: `[{module}] short action phrase` (e.g., `[cdt] add OFFBOARDING_DEPROVISION_24H control`).
-* Labels: `module:*`, `risk:*` (`low|med|high`), `security`, `needs-decision`, `blocked`.
-* Each issue must declare its **Evidence** (filenames/paths) and **Owner/DRI**.
-* Move issues only after PR links are attached and summary comment is posted.
+- Titles: `[{module}] short action phrase` (e.g., `[cdt] add OFFBOARDING_DEPROVISION_24H control`).
+- Labels: `module:*`, `risk:*` (`low|med|high`), `security`, `needs-decision`, `blocked`.
+- Each issue must declare its **Evidence** (filenames/paths) and **Owner/DRI**.
+- Move issues only after PR links are attached and summary comment is posted.
 
 ## 6. Security & Compliance Guardrails
 
-* Enforce SoD: the same agent that writes a feature should not self-approve merging when policy files changed.
-* Emit structured logs for any side-effecting action (`trace_id`, `tenant_id`, `subject_id`).
-* Prefer deterministic runners and idempotent steps; use circuit breakers and jittered retries for external calls.
+- Enforce SoD: the same agent that writes a feature should not self-approve merging when policy files changed.
+- Emit structured logs for any side-effecting action (`trace_id`, `tenant_id`, `subject_id`).
+- Prefer deterministic runners and idempotent steps; use circuit breakers and jittered retries for external calls.
 
 ## 7. Runbooks to Keep Current
 
-* **Webhook backlog recovery**, **DO migration**, **Idempotency conflicts**, and **Edge failover**. When a PR affects any of these, update the corresponding runbook section before merge.
+- **Webhook backlog recovery**, **DO migration**, **Idempotency conflicts**, and **Edge failover**. When a PR affects any of these, update the corresponding runbook section before merge.
 
 ## Credential Management Across Environments
 
@@ -56,21 +56,21 @@ This runbook provides operational guidelines for agents (Copilot, Codegen, Curso
 
 #### Core Cloudflare Platform
 
-| Variable | Purpose | CI Value | Production Source |
-|----------|---------|----------|-------------------|
-| CF_ACCOUNT_ID | Cloudflare account identifier | dummy-cf-account-id-ci | GitHub Secrets or wrangler.toml |
-| CLOUDFLARE_API_TOKEN | API authentication (preferred) | dummy-cloudflare-api-token-ci | GitHub Secrets |
-| CF_API_TOKEN | Legacy API token (fallback) | dummy-cloudflare-api-token-ci | GitHub Secrets |
-| D1_DATABASE | D1 database binding name | ATLAS_ONBOARDING_DB | wrangler.toml bindings |
-| KV_NAMESPACE | KV namespace binding name | atlasit_kv | wrangler.toml bindings |
-| R2_BUCKET | R2 bucket name | atlasit-evidence | wrangler.toml bindings |
+| Variable             | Purpose                        | CI Value                      | Production Source               |
+| -------------------- | ------------------------------ | ----------------------------- | ------------------------------- |
+| CF_ACCOUNT_ID        | Cloudflare account identifier  | dummy-cf-account-id-ci        | GitHub Secrets or wrangler.toml |
+| CLOUDFLARE_API_TOKEN | API authentication (preferred) | dummy-cloudflare-api-token-ci | GitHub Secrets                  |
+| CF_API_TOKEN         | Legacy API token (fallback)    | dummy-cloudflare-api-token-ci | GitHub Secrets                  |
+| D1_DATABASE          | D1 database binding name       | ATLAS_ONBOARDING_DB           | wrangler.toml bindings          |
+| KV_NAMESPACE         | KV namespace binding name      | atlasit_kv                    | wrangler.toml bindings          |
+| R2_BUCKET            | R2 bucket name                 | atlasit-evidence              | wrangler.toml bindings          |
 
 #### Service API Keys
 
-| Variable | Purpose | CI Value | Production Source |
-|----------|---------|----------|-------------------|
-| ONBOARDING_API_KEY | Onboarding service auth | dummy-onboarding-ci | wrangler secrets |
-| ORCHESTRATOR_API_KEY | Orchestrator service auth | dummy-orchestrator-ci | wrangler secrets |
+| Variable             | Purpose                   | CI Value              | Production Source |
+| -------------------- | ------------------------- | --------------------- | ----------------- |
+| ONBOARDING_API_KEY   | Onboarding service auth   | dummy-onboarding-ci   | wrangler secrets  |
+| ORCHESTRATOR_API_KEY | Orchestrator service auth | dummy-orchestrator-ci | wrangler secrets  |
 
 ### Credential Sync Process
 
@@ -142,6 +142,7 @@ npm run validate:env
 ```
 
 This script checks for:
+
 - Core Cloudflare platform credentials
 - Service API keys
 - Optional features (e.g., Okta when FEATURE_IDP_OKTA=true)
@@ -167,12 +168,12 @@ openssl rand -hex 24  # Use for ORCHESTRATOR_API_KEY
 
 ### Troubleshooting
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| CI validation fails | Missing env vars in workflow | Add dummy values to workflow `env:` section |
-| Deployment fails with auth error | Missing or expired secrets | Regenerate and update GitHub Secrets |
-| Local dev can't access services | Missing .env file | Copy from .env.example and populate |
-| Wrangler deploy fails | Bindings misconfigured | Check wrangler.toml matches env var names |
+| Issue                            | Cause                        | Solution                                    |
+| -------------------------------- | ---------------------------- | ------------------------------------------- |
+| CI validation fails              | Missing env vars in workflow | Add dummy values to workflow `env:` section |
+| Deployment fails with auth error | Missing or expired secrets   | Regenerate and update GitHub Secrets        |
+| Local dev can't access services  | Missing .env file            | Copy from .env.example and populate         |
+| Wrangler deploy fails            | Bindings misconfigured       | Check wrangler.toml matches env var names   |
 
 ### Related Documentation
 
@@ -185,6 +186,7 @@ openssl rand -hex 24  # Use for ORCHESTRATOR_API_KEY
 ## Evidence Artifacts
 
 When syncing credentials:
+
 - Document in `artifacts/credential-sync/sync-{timestamp}.json`
 - Include: environments updated, credentials rotated, validation passed
 - Hash and store in R2 for audit trail
@@ -192,6 +194,7 @@ When syncing credentials:
 ## Rollback
 
 If credential changes break deployments:
+
 1. Revert to previous working values in GitHub Secrets
 2. Re-run failed deployments
 3. Document incident in `artifacts/incidents/`
