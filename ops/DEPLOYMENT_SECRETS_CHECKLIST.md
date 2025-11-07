@@ -8,6 +8,7 @@ Supporting files:
 - `ops/secrets/op-map.json` – 1Password field mapping
 - `ops/secrets/op-inject.sh` – local export helper
 - `ops/secrets/README.md` – usage & troubleshooting
+- `atlasit/RUNBOOKS/AGENT_OPS.md` – agent operational guidelines including credential sync
 
 ## Core Platform
 
@@ -35,6 +36,36 @@ Supporting files:
 
 - NPM_TOKEN (if private packages)
 - GH_TOKEN (release automation)
+
+### CI Environment Variables
+
+For validation-only CI workflows (lint, test, build without deploy), use dummy credentials:
+
+```yaml
+env:
+  # Cloudflare platform credentials (dummy values for CI validation)
+  CF_ACCOUNT_ID: dummy-cf-account-id-ci
+  CLOUDFLARE_API_TOKEN: dummy-cloudflare-api-token-ci
+  D1_DATABASE: ATLAS_ONBOARDING_DB
+  KV_NAMESPACE: atlasit_kv
+  R2_BUCKET: atlasit-evidence
+  # Service API keys (dummy values for CI validation)
+  ONBOARDING_API_KEY: dummy-onboarding-ci
+  ORCHESTRATOR_API_KEY: dummy-orchestrator-ci
+```
+
+For deployment workflows, use real GitHub Secrets:
+
+```yaml
+env:
+  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+```
+
+**Required GitHub Secrets for deployments:**
+- `CF_ACCOUNT_ID` - Cloudflare account ID
+- `CLOUDFLARE_API_TOKEN` or `WRANGLER_API_TOKEN` - Cloudflare API token with Workers + KV + D1 + R2 permissions
 
 ## AI / Orchestration (if applicable)
 

@@ -85,3 +85,8 @@ Both prefixes should match.
 
 - Add CI integration via OIDC + 1Password Connect.
 - Pre-commit secret scanning (already in security workflow).
+
+## See Also
+
+- `atlasit/RUNBOOKS/AGENT_OPS.md` – Agent operations including credential sync across environments
+- `ops/DEPLOYMENT_SECRETS_CHECKLIST.md` – Complete secret inventory and CI configuration
