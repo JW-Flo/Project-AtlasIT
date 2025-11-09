@@ -92,6 +92,8 @@ environment:
   auth:
     github:
       # Use GH_PAT for elevated admin operations beyond GITHUB_TOKEN
+      # For automation: Create PAT from a service account or machine user
+      # DO NOT enable SSO requirement on the PAT for automated operations
       token: ${{ secrets.GH_PAT }}
       scopes:
         - repo
@@ -108,6 +110,12 @@ environment:
         - project
         - security_events
       fallback-to-github-token: true
+      # Automation requirements:
+      # 1. Create PAT from dedicated service/machine user account
+      # 2. Do NOT enable "Authorize SSO" for automation PATs
+      # 3. Use IP allowlisting for additional security (optional)
+      # 4. Enable expiration and rotate every 90 days
+      # 5. Grant only required scopes (principle of least privilege)
   permissions:
     # Core write permissions for git operations
     contents: write
@@ -368,7 +376,14 @@ security:
     audit: All PAT operations logged in security-events
     expiration-enforcement: true
     ip-allowlist: optional
-    sso-required: true
+    sso-required: false  # Set to false for automated admin actions
+    # Note: For automation, PAT must be created without SSO requirement
+    # Enterprise orgs: Use a service account or machine user for PAT generation
+    # This allows automated operations while maintaining security through:
+    #   - Least-privilege scopes
+    #   - IP allowlisting (optional)
+    #   - Rotation policy enforcement
+    #   - Comprehensive audit logging
 
 # --- OBSERVABILITY / LOGGING ---
 logging:
