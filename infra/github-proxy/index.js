@@ -1,7 +1,8 @@
 /**
  * AtlasIT GitHub Proxy Worker
  * 
- * This file is compiled from src/index.ts
+ * This file is a hand-maintained JavaScript implementation for Cloudflare Workers.
+ * If a TypeScript version exists in src/index.ts, both are maintained separately for compatibility.
  * Deploy using: wrangler deploy
  */
 
