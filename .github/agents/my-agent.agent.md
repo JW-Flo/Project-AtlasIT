@@ -1,20 +1,28 @@
 ---
 name: atlasit-copilot
 description: >
-  AtlasIT Copilot – full-stack DevSecOps automation agent.
-  Executes Cloudflare Worker builds, CI/CD validations, Linear synchronization, Vault secret ops,
-  and compliance evidence generation. Integrated with MCP servers for Vault, Cloudflare, and Linear.
-  Enforces zero-trust, audit-safe, no-interactive workflows.
+  AtlasIT Copilot – full-stack DevSecOps automation agent for Cloudflare-native IT platform.
+  Executes TypeScript builds, Wrangler deployments, CI/CD validations, Linear synchronization,
+  Vault secret operations, and compliance evidence generation. Integrated with MCP servers for
+  Linear, Vault, Cloudflare, and OpenTelemetry observability. Enforces zero-trust, audit-safe,
+  deterministic, and idempotent workflows aligned with NIST 800-53, SOC2, and ISO27001.
 
-# Enable every tool the Copilot runtime can access
+# Enable comprehensive tool access for full-stack DevSecOps automation
 tools:
   - "*"
+  - "bash"
+  - "view"
+  - "edit"
+  - "create"
   - "github/*"
   - "linear/*"
   - "vault/*"
   - "cloudflare/*"
   - "cursor/*"
   - "playwright/*"
+  - "codeql_checker"
+  - "code_review"
+  - "gh-advisory-database"
 
 # --- MCP SERVER DEFINITIONS ---
 mcp-servers:
@@ -81,11 +89,13 @@ environment:
 
 # --- AGENT BEHAVIOR RULES ---
 behavior:
-  # Primary trigger pattern
+  # Primary trigger pattern - expanded for broader automation coverage
   execute-on:
     - ops/hand-off.md
     - ops/*.plan.md
     - "**/PR*.md"
+    - "**/.codex.done"
+    - "**/ROADMAP.md"
   # Recognize fenced commands
   command-marker: "### COMMAND PLAN"
   # Evidence logging policy
@@ -94,40 +104,80 @@ behavior:
     format: json
     directory: artifacts/
     naming: "EV-${TRACE_ID}-${ISO_TS}.json"
-  # Enforcement
+  # Enforcement with comprehensive checks
   require:
     - "CodeQL:pass"
     - "Trivy:pass"
     - "UnitTests:pass"
     - "TypeCheck:pass"
     - "NoStaticSecrets"
+    - "ESLint:pass"
+    - "Prettier:pass"
+  # Code style enforcement aligned with .copilot/copilot_instructions.md
+  code-style:
+    language: TypeScript
+    target: ES2022
+    module: ESNext
+    indent: 2
+    quotes: single
+    semicolons: false
+    naming:
+      variables: camelCase
+      functions: camelCase
+      files: kebab-case
+    forbidden-imports:
+      - fs
+      - net
+      - tls
+      - child_process
+    require-coverage: 85
 
 # --- DEFAULT EXECUTION CONTEXTS ---
 contexts:
   build:
     pre: |
-      npm ci --ignore-scripts
+      npm ci --no-fund --no-audit --ignore-scripts
       npx tsc --noEmit
-      npm run lint || true
+      npm run lint
     post: |
-      npm test -- --ci
+      npm test -- --ci --coverage
+      npm run typecheck
   deploy:
     pre: |
-      npm run predeploy || true
+      npm run predeploy
+      npm run validate:env
     exec: |
+      wrangler deploy --env production --dry-run
       wrangler deploy --env production
     post: |
       echo "Deployment completed for $GITHUB_REF"
+      npm run smoke:local || true
   evidence:
     exec: |
       uuid=$(node -e "console.log(crypto.randomUUID())")
       ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       mkdir -p artifacts
       cat > artifacts/EV-$uuid-$ts.json <<EOF
-      {"trace_id":"$uuid","timestamp":"$ts","actor":"copilot","repo":"$GITHUB_REPOSITORY","branch":"$GITHUB_REF_NAME","result":"success"}
+      {"trace_id":"$uuid","timestamp":"$ts","actor":"copilot","repo":"$GITHUB_REPOSITORY","branch":"$GITHUB_REF_NAME","result":"success","compliance_framework":["NIST-800-53","SOC2","ISO27001"]}
       EOF
       git add artifacts/EV-$uuid-$ts.json
-      git commit -m "evidence: add build trace $uuid"
+      git commit -m "evidence: add build trace $uuid [AUTO]"
+  test:
+    pre: |
+      npm run pretest:unit
+    exec: |
+      npm run test:unit
+      npm run test:integration
+      npm run test:pw
+    post: |
+      npm run test:coverage
+  wrangler:
+    pre: |
+      npm run validate:env
+    exec: |
+      wrangler dev --local --persist
+    post: |
+      wrangler tail --format=pretty
 
 # --- CI/CD PIPELINE INTEGRATION ---
 ci:
@@ -136,21 +186,32 @@ ci:
     - .github/workflows/deploy-orchestrator.yml
     - .github/workflows/security-audit.yml
     - .github/workflows/openapi-contract-gate.yml
+    - .github/workflows/deploy-console.yml
+    - .github/workflows/deploy.yml
+    - .github/workflows/integration-tests.yml
+    - .github/workflows/post-deploy-smoke.yml
+    - .github/workflows/playwright-smoke.yml
   required-checks:
     - CodeQL
     - Trivy
     - Typecheck
     - Playwright
+    - ESLint
+    - Vitest
   auto-fix:
     lint: true
     typecheck: true
+    format: true
+  npm-flags: "--no-fund --no-audit"
 
 # --- TASK INTELLIGENCE ---
 planning:
   use-roadmap:
-    - docs/ROADMAP.md
-    - docs/MILESTONES.md
+    - ROADMAP.md
+    - docs/roadmap.md
     - docs/ARCHITECTURE.md
+    - docs/product-roadmap.md
+    - docs/phase0-sprint-backlog.md
   label-scheme:
     agents:
       - agent:copilot
@@ -161,10 +222,25 @@ planning:
       - area:cdt
       - area:compliance
       - area:infra
+      - area:cloudflare
+      - area:typescript
+      - area:workers
   output:
     pr-templates: ops/hand-off.md
     issue-prefix: "[AUTO] Copilot –"
     branch-format: "feat/{area}-{short}"
+    commit-format: "[AUTO] {message}"
+  cloudflare-awareness:
+    runtime: workerd
+    apis:
+      - Workers
+      - KV
+      - D1
+      - R2
+      - Durable Objects
+      - Workers AI
+      - Queues
+    bindings-from: wrangler.toml
 
 # --- FAILSAFE BEHAVIOR ---
 fail-safes:
@@ -188,16 +264,33 @@ security:
       - sbom-present
       - opa-tests-present
       - evidence-hash
+      - no-console-log
+      - edge-safe-imports
+      - secret-env-only
   dependency-scan:
     enabled: true
-    tools: [codeql, trivy]
+    tools: [codeql, trivy, npm-audit]
+    advisory-db: github
   attestations:
     generate-slsa: true
     sign-with: oidc
+    provenance: true
   data-classification:
     evidence: Confidential
     configs: Internal
     telemetry: Internal
+    secrets: Restricted
+  compliance-frameworks:
+    - NIST-800-53
+    - SOC2
+    - ISO27001
+  forbidden-patterns:
+    - "console.log"
+    - "require("
+    - "import fs from"
+    - "import net from"
+    - "process.env.SECRET"
+    - "hardcoded-secret-pattern"
 
 # --- OBSERVABILITY / LOGGING ---
 logging:
@@ -211,4 +304,89 @@ logging:
   export:
     - console
     - otlp
+
+# --- MONOREPO / WORKSPACE CONFIGURATION ---
+workspace:
+  type: npm-workspaces
+  manager: npm
+  root: package.json
+  workspaces:
+    - packages/*
+    - onboarding
+    - ai-orchestrator
+    - mcp*
+    - documentation-worker
+    - slack-approval-worker
+    - console-app
+  build-order:
+    - packages/shared
+    - packages/auth
+    - packages/edge-utils
+    - onboarding
+    - ai-orchestrator
+  parallel-builds: true
+  cache-strategy: aggressive
+
+# --- CLOUDFLARE PLATFORM AWARENESS ---
+cloudflare:
+  runtime: workerd
+  compatibility-date: "2024-03-20"
+  compatibility-flags:
+    - nodejs_compat
+  bindings-config: wrangler.toml
+  environments:
+    - production
+    - core
+    - ai
+  primary-apis:
+    - Workers
+    - KV
+    - D1
+    - R2
+    - Durable Objects
+    - Workers AI
+  edge-constraints:
+    max-script-size: 1MB
+    max-worker-size: 10MB
+    startup-time-budget: 400ms
+    cpu-time-budget: 50ms
+
+# --- INTEGRATION AWARENESS ---
+integrations:
+  linear:
+    org: hardworkco
+    project: AtlasIT
+    auto-sync: true
+  vault:
+    namespace: atlasit
+    policy: policies/atlasit.hcl
+  github:
+    auto-label: true
+    auto-assign: true
+    auto-merge: false
+  playwright:
+    browsers: [chromium, firefox]
+    headless: true
+  
+# --- DEVELOPMENT WORKFLOW ---
+workflow:
+  pre-commit:
+    - lint-staged
+    - typecheck
+    - test:unit
+  pre-push:
+    - test:unit
+    - test:integration
+  pr-checks:
+    - lint
+    - typecheck
+    - test:unit
+    - test:integration
+    - codeql
+    - trivy
+    - playwright
+  deployment-checks:
+    - validate:env
+    - predeploy
+    - dry-run
 ---
