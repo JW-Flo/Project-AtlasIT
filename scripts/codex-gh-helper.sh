@@ -64,7 +64,7 @@ codex_pull() {
         return 1
     fi
     
-    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s)")
+    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s%N)-$$")
     local endpoint_path="/repos/$REPO_OWNER/$REPO_NAME/contents/$file_path"
     local url="$PROXY_ENDPOINT?path=${endpoint_path}&ref=${ref}"
     
@@ -104,7 +104,7 @@ codex_commit() {
         return 1
     fi
     
-    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s)")
+    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s%N)-$$")
     local endpoint_path="/repos/$REPO_OWNER/$REPO_NAME/contents/$file_path"
     local url="$PROXY_ENDPOINT?path=${endpoint_path}"
     
@@ -114,12 +114,14 @@ codex_commit() {
     # Get current file SHA (if exists)
     local sha=$(codex_pull "$file_path" "$branch" 2>/dev/null | jq -r '.sha // empty')
     
-    # Build JSON payload
-    local payload="{\"message\":\"$message\",\"content\":\"$encoded_content\",\"branch\":\"$branch\""
-    if [ -n "$sha" ]; then
-        payload="$payload,\"sha\":\"$sha\""
+    # Build JSON payload safely using jq
+    if [ -z "$sha" ]; then
+        local payload=$(jq -n --arg msg "$message" --arg content "$encoded_content" --arg branch "$branch" \
+            '{message: $msg, content: $content, branch: $branch}')
+    else
+        local payload=$(jq -n --arg msg "$message" --arg content "$encoded_content" --arg branch "$branch" --arg sha "$sha" \
+            '{message: $msg, content: $content, branch: $branch, sha: $sha}')
     fi
-    payload="$payload}"
     
     echo "Committing: $file_path" >&2
     
@@ -151,7 +153,7 @@ codex_push() {
     echo "codex_push: This is a placeholder for future git push proxy support" >&2
     echo "Currently, use codex_commit for individual file changes" >&2
     
-    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s)")
+    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s%N)-$$")
     log_proxy "$trace_id" "codex_push" "info" "placeholder_called"
     
     return 0
@@ -163,7 +165,7 @@ codex_test() {
     
     echo "Testing proxy connection..." >&2
     
-    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s)")
+    local trace_id=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "no-uuid-$(date +%s%N)-$$")
     local url="$PROXY_ENDPOINT/health"
     
     local response=$(curl -s -w "\n%{http_code}" \
