@@ -71,10 +71,43 @@ mcp-servers:
       OTEL_EXPORTER_OTLP_HEADERS: ${{ vars.OTEL_HEADERS }}
       OTEL_SERVICE_NAME: atlasit-copilot
 
+  github:
+    type: local
+    command: gh-mcp
+    args: []
+    tools: ["*"]
+    env:
+      # GitHub Personal Access Token for full admin capabilities
+      # Requires: repo, workflow, admin:org, admin:repo_hook, admin:org_hook, 
+      #           admin:public_key, admin:repo_hook, delete_repo, admin:gpg_key
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      GH_ENTERPRISE_TOKEN: ${{ secrets.GH_PAT }}
+      GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
 # --- ENVIRONMENT CONTRACT ---
 environment:
   runtime: nodejs
   os: ubuntu-latest
+  # Authentication for GitHub operations
+  auth:
+    github:
+      # Use GH_PAT for elevated admin operations beyond GITHUB_TOKEN
+      token: ${{ secrets.GH_PAT }}
+      scopes:
+        - repo
+        - workflow
+        - write:packages
+        - delete:packages
+        - admin:org
+        - admin:public_key
+        - admin:repo_hook
+        - admin:org_hook
+        - delete_repo
+        - admin:gpg_key
+        - admin:ssh_signing_key
+        - project
+        - security_events
+      fallback-to-github-token: true
   permissions:
     # Core write permissions for git operations
     contents: write
@@ -325,6 +358,17 @@ security:
     - "import net from"
     - "process.env.SECRET"
     - "hardcoded-secret-pattern"
+  # GitHub PAT security guidelines
+  github-pat:
+    rotation-policy: 90-days
+    minimum-scopes: [repo, workflow]
+    recommended-scopes: [repo, workflow, admin:org, admin:repo_hook, delete_repo]
+    storage: GitHub Secrets (encrypted at rest)
+    usage: Elevated operations beyond standard GITHUB_TOKEN permissions
+    audit: All PAT operations logged in security-events
+    expiration-enforcement: true
+    ip-allowlist: optional
+    sso-required: true
 
 # --- OBSERVABILITY / LOGGING ---
 logging:
