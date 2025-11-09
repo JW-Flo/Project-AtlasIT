@@ -76,16 +76,50 @@ environment:
   runtime: nodejs
   os: ubuntu-latest
   permissions:
+    # Core write permissions for git operations
     contents: write
     id-token: write
     pull-requests: write
     issues: write
     actions: write
+    # Additional admin-level permissions
+    checks: write
+    deployments: write
+    discussions: write
+    packages: write
+    pages: write
+    repository-projects: write
+    security-events: write
+    statuses: write
+    # Metadata read access
+    metadata: read
+  git-operations:
+    # Full git capabilities
+    allow-force-push: false  # Safety: prevent rewriting history
+    allow-delete-branch: true
+    allow-create-branch: true
+    allow-merge: true
+    allow-rebase: false  # Safety: deterministic workflows only
+    allow-cherry-pick: true
+    allow-tag: true
+    allow-release: true
+    # Commit operations
+    allow-commit: true
+    allow-amend: false  # Safety: immutable commits
+    allow-squash: true
+    auto-sign-commits: true
+    # PR/merge operations
+    allow-auto-merge: false  # Explicit approval required
+    allow-pr-create: true
+    allow-pr-update: true
+    allow-pr-close: true
+    allow-issue-ops: true
   safety:
     allow-shell: true
     allow-network: true
     block-secrets: true
     evidence-mode: strict
+    audit-all-git-ops: true
 
 # --- AGENT BEHAVIOR RULES ---
 behavior:
@@ -364,6 +398,38 @@ integrations:
     auto-label: true
     auto-assign: true
     auto-merge: false
+    # GitHub API capabilities for full automation
+    api-operations:
+      repos:
+        - create-branch
+        - delete-branch
+        - create-tag
+        - create-release
+        - merge-pr
+        - update-pr
+        - close-pr
+        - create-issue
+        - update-issue
+        - close-issue
+        - add-labels
+        - assign-users
+      actions:
+        - trigger-workflow
+        - cancel-workflow
+        - re-run-workflow
+      checks:
+        - create-check-run
+        - update-check-run
+      deployments:
+        - create-deployment
+        - create-deployment-status
+      git:
+        - create-commit
+        - create-tree
+        - create-blob
+        - update-ref
+        - create-ref
+        - delete-ref
   playwright:
     browsers: [chromium, firefox]
     headless: true
