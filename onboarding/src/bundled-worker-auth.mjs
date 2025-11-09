@@ -4080,14 +4080,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg) => ZodString.create({ ...arg, coerce: true }),
-  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
-  boolean: (arg) => ZodBoolean.create({
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  }),
-  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
-  date: (arg) => ZodDate.create({ ...arg, coerce: true })
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
 };
 var NEVER = INVALID;
 
@@ -4954,7 +4954,7 @@ function resolveCfApiToken(raw) {
 // dist/onboarding/src/index.js
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
-var src_default = {
+var index_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
     resolveCfApiToken(env);
@@ -5154,5 +5154,5 @@ function json2(obj, corsHeaders, status = 200) {
   });
 }
 export {
-  src_default as default
+  index_default as default
 };
