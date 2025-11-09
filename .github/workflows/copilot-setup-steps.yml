@@ -1,0 +1,108 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation,
+# and allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      # Clone the repository to install dependencies
+      contents: read
+    
+    # You can define any steps you want, and they will run before the agent starts.
+    # If you do not check out your code, Copilot will do this for you.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for git operations
+          fetch-depth: 0
+      
+      # Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      
+      # Install JavaScript/TypeScript dependencies for all workspaces
+      - name: Install JavaScript dependencies
+        run: |
+          npm ci --include-workspace-root
+          echo "✅ Node.js dependencies installed"
+      
+      # Set up Python environment for Python-based tools
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      
+      # Install Python dependencies
+      - name: Install Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+            echo "✅ Python dependencies installed"
+          fi
+      
+      # Install Wrangler CLI globally for Cloudflare Workers operations
+      - name: Install Wrangler CLI
+        run: |
+          npm install -g wrangler@latest
+          wrangler --version
+          echo "✅ Wrangler CLI installed"
+      
+      # Verify workspace setup
+      - name: Verify workspace setup
+        run: |
+          echo "📦 Verifying workspace setup..."
+          node --version
+          npm --version
+          python --version
+          wrangler --version
+          echo "✅ Workspace verified and ready"
+      
+      # Cache build outputs for faster subsequent runs
+      - name: Cache build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/node_modules
+            **/.svelte-kit
+            **/dist
+            **/.cache
+          key: ${{ runner.os }}-build-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-build-
+      
+      # Display workspace info for debugging
+      - name: Display workspace info
+        run: |
+          echo "🔍 Workspace Information:"
+          echo "Working directory: $(pwd)"
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Python version: $(python --version)"
+          echo "Wrangler version: $(wrangler --version)"
+          echo ""
+          echo "📂 Repository structure:"
+          ls -la
+          echo ""
+          echo "📦 Installed workspaces:"
+          npm ls --workspaces --depth=0 || true
+          echo ""
+          echo "✅ Setup complete - Copilot agent has full access to development environment"
