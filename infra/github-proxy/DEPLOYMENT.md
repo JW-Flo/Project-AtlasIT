@@ -14,6 +14,7 @@ Before deploying the GitHub Proxy Worker, ensure you have:
 
 2. **Cloudflare Account** with Workers enabled
    - Account ID: `620865722bd88ef0a77dbbb60c91392e` (configured in wrangler.toml)
+   - **Note**: If deploying to a different account, update the `account_id` in `wrangler.toml`
 
 3. **GitHub Personal Access Token (PAT)** with `repo` scope
    - Create at: https://github.com/settings/tokens

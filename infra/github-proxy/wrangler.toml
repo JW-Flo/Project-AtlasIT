@@ -2,7 +2,9 @@ name = "atlasit-github-proxy"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
-# Account ID matches root wrangler.toml for consistency
+# Account ID - update this value when deploying to a different Cloudflare account
+# This must match the account where the worker will be deployed
+# Note: Wrangler does not support environment variable interpolation in account_id
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 # Worker will be deployed to atlasit-github-proxy.<account>.workers.dev
