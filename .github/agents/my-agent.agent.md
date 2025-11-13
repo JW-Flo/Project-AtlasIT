@@ -1,20 +1,16 @@
 ---
 name: atlasit-copilot
 description: >
-  AtlasIT Copilot – full-stack DevSecOps automation agent.
-  Executes Cloudflare Worker builds, CI/CD validations, Linear synchronization, Vault secret ops,
-  and compliance evidence generation. Integrated with MCP servers for Vault, Cloudflare, and Linear.
-  Enforces zero-trust, audit-safe, no-interactive workflows.
+  AtlasIT Copilot – full-stack DevSecOps automation agent for Cloudflare-native IT platform.
+  Executes TypeScript builds, Wrangler deployments, CI/CD validations, Linear synchronization,
+  Vault secret operations, and compliance evidence generation. Integrated with MCP servers for
+  Linear, Vault, Cloudflare, and OpenTelemetry observability. Enforces zero-trust, audit-safe,
+  deterministic, and idempotent workflows aligned with NIST 800-53, SOC2, and ISO27001.
 
-# Enable every tool the Copilot runtime can access
+# Enable comprehensive tool access for full-stack DevSecOps automation
 tools:
   - "*"
-  - "github/*"
-  - "linear/*"
-  - "vault/*"
-  - "cloudflare/*"
-  - "cursor/*"
-  - "playwright/*"
+
 
 # --- MCP SERVER DEFINITIONS ---
 mcp-servers:
@@ -63,29 +59,111 @@ mcp-servers:
       OTEL_EXPORTER_OTLP_HEADERS: ${{ vars.OTEL_HEADERS }}
       OTEL_SERVICE_NAME: atlasit-copilot
 
+  github:
+    type: local
+    command: gh-mcp
+    args: []
+    tools: ["*"]
+    env:
+      # GitHub Personal Access Token for full admin capabilities
+      # Requires: repo, workflow, write:packages, delete:packages, admin:org, admin:public_key,
+      #           admin:repo_hook, admin:org_hook, delete_repo, admin:gpg_key, admin:ssh_signing_key,
+      #           project, security_events
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+
 # --- ENVIRONMENT CONTRACT ---
 environment:
   runtime: nodejs
   os: ubuntu-latest
+  # Authentication for GitHub operations
+  auth:
+    github:
+      # Use GH_PAT for elevated admin operations beyond GITHUB_TOKEN
+      # For automation: Create PAT from a service account or machine user
+      # DO NOT enable SSO requirement on the PAT for automated operations
+      token: ${{ secrets.GH_PAT }}
+      scopes:
+        - repo
+        - workflow
+        - write:packages
+        - delete:packages
+        - admin:org
+        - admin:public_key
+        - admin:repo_hook
+        - admin:org_hook
+        - delete_repo
+        - admin:gpg_key
+        - admin:ssh_signing_key
+        - project
+        - security_events
+      fallback-to-github-token: true
+      # Automation requirements:
+      # 1. Create PAT from dedicated service/machine user account
+      # 2. Do NOT enable "Authorize SSO" for automation PATs
+      # 3. Use IP allowlisting for additional security (optional)
+      # 4. Enable expiration and rotate every 90 days
+      # 5. Grant only required scopes (principle of least privilege)
   permissions:
+    # Core write permissions for git operations
     contents: write
     id-token: write
     pull-requests: write
     issues: write
     actions: write
+    # Additional admin-level permissions
+    checks: write
+    deployments: write
+    discussions: write
+    packages: write
+    pages: write
+    repository-projects: write
+    security-events: write
+    statuses: write
+    # Metadata read access
+    metadata: read
+  git-operations:
+    # Full git capabilities
+    allow-force-push: false  # Safety: prevent rewriting history
+    allow-delete-branch: true
+    allow-create-branch: true
+    allow-merge: true
+    allow-rebase: false  # Safety: deterministic workflows only
+    allow-cherry-pick: true
+    allow-tag: true
+    allow-release: true
+    # Commit operations
+    allow-commit: true
+    allow-amend: false  # Safety: immutable commits
+    allow-squash: true
+    auto-sign-commits: true
+    # PR/merge operations
+    allow-auto-merge: false  # Explicit approval required
+    allow-pr-create: true
+    allow-pr-update: true
+    allow-pr-close: true
+    allow-issue-ops: true
   safety:
+    # SECURITY NOTICE:
+    # - `allow-shell: true` and `allow-network: true` are required for full-stack automation.
+    # - All shell commands must be validated and sanitized before execution.
+    # - Only allowlisted commands are permitted (see: /policies/command-allowlist.md).
+    # - Network operations are restricted to approved endpoints (see: /policies/network-allowlist.md).
+    # - These controls enforce zero-trust and audit-safe requirements (NIST 800-53, SOC2, ISO27001).
     allow-shell: true
     allow-network: true
     block-secrets: true
     evidence-mode: strict
+    audit-all-git-ops: true
 
 # --- AGENT BEHAVIOR RULES ---
 behavior:
-  # Primary trigger pattern
+  # Primary trigger pattern - expanded for broader automation coverage
   execute-on:
     - ops/hand-off.md
     - ops/*.plan.md
     - "**/PR*.md"
+    - "**/.codex.done"
+    - "**/ROADMAP.md"
   # Recognize fenced commands
   command-marker: "### COMMAND PLAN"
   # Evidence logging policy
@@ -94,40 +172,79 @@ behavior:
     format: json
     directory: artifacts/
     naming: "EV-${TRACE_ID}-${ISO_TS}.json"
-  # Enforcement
+  # Enforcement with comprehensive checks
   require:
     - "CodeQL:pass"
     - "Trivy:pass"
     - "UnitTests:pass"
     - "TypeCheck:pass"
     - "NoStaticSecrets"
+    - "ESLint:pass"
+    - "Prettier:pass"
+  # Code style enforcement aligned with .copilot/copilot_instructions.md
+  code-style:
+    language: TypeScript
+    target: ES2022
+    module: ESNext
+    indent: 2
+    quotes: single
+    semicolons: true
+    naming:
+      variables: camelCase
+      functions: camelCase
+      files: kebab-case
+    forbidden-imports:
+      - fs
+      - net
+      - tls
+      - child_process
+    require-coverage: 85
 
 # --- DEFAULT EXECUTION CONTEXTS ---
 contexts:
   build:
     pre: |
-      npm ci --ignore-scripts
+      npm ci --no-fund --no-audit --ignore-scripts
       npx tsc --noEmit
-      npm run lint || true
+      npm run lint
     post: |
-      npm test -- --ci
+      npm test -- --ci --coverage
+      npm run typecheck
   deploy:
     pre: |
-      npm run predeploy || true
+      npm run predeploy
+      npm run validate:env
     exec: |
-      wrangler deploy --env production
+      wrangler deploy --env production --dry-run && wrangler deploy --env production
     post: |
       echo "Deployment completed for $GITHUB_REF"
+      npm run smoke:local
   evidence:
     exec: |
-      uuid=$(node -e "console.log(crypto.randomUUID())")
+      uuid=$(node -p "crypto.randomUUID()")
       ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       mkdir -p artifacts
       cat > artifacts/EV-$uuid-$ts.json <<EOF
-      {"trace_id":"$uuid","timestamp":"$ts","actor":"copilot","repo":"$GITHUB_REPOSITORY","branch":"$GITHUB_REF_NAME","result":"success"}
+      {"trace_id":"$uuid","timestamp":"$ts","actor":"copilot","repo":"$GITHUB_REPOSITORY","branch":"$GITHUB_REF_NAME","result":"success","compliance_framework":["NIST-800-53","SOC2","ISO27001"]}
       EOF
       git add artifacts/EV-$uuid-$ts.json
-      git commit -m "evidence: add build trace $uuid"
+      git commit -m "evidence: add build trace $uuid [AUTO]"
+  test:
+    pre: |
+      npm run pretest:unit
+    exec: |
+      npm run test:unit
+      npm run test:integration
+      npm run test:pw
+    post: |
+      npm run test:coverage
+  wrangler:
+    pre: |
+      npm run validate:env
+    exec: |
+      wrangler dev --local --persist
+    post: |
+      wrangler tail --format=pretty
 
 # --- CI/CD PIPELINE INTEGRATION ---
 ci:
@@ -136,21 +253,32 @@ ci:
     - .github/workflows/deploy-orchestrator.yml
     - .github/workflows/security-audit.yml
     - .github/workflows/openapi-contract-gate.yml
+    - .github/workflows/deploy-console.yml
+    - .github/workflows/deploy.yml
+    - .github/workflows/integration-tests.yml
+    - .github/workflows/post-deploy-smoke.yml
+    - .github/workflows/playwright-smoke.yml
   required-checks:
     - CodeQL
     - Trivy
     - Typecheck
     - Playwright
+    - ESLint
+    - Vitest
   auto-fix:
     lint: true
     typecheck: true
+    format: true
+  npm-flags: "--no-fund --no-audit"
 
 # --- TASK INTELLIGENCE ---
 planning:
   use-roadmap:
-    - docs/ROADMAP.md
-    - docs/MILESTONES.md
-    - docs/ARCHITECTURE.md
+    - ROADMAP.md
+    - docs/roadmap.md
+    - docs/architecture.md
+    - docs/product-roadmap.md
+    - docs/phase0-sprint-backlog.md
   label-scheme:
     agents:
       - agent:copilot
@@ -161,10 +289,25 @@ planning:
       - area:cdt
       - area:compliance
       - area:infra
+      - area:cloudflare
+      - area:typescript
+      - area:workers
   output:
     pr-templates: ops/hand-off.md
     issue-prefix: "[AUTO] Copilot –"
     branch-format: "feat/{area}-{short}"
+    commit-format: "[AUTO] {message}"
+  cloudflare-awareness:
+    runtime: workerd
+    apis:
+      - Workers
+      - KV
+      - D1
+      - R2
+      - Durable Objects
+      - Workers AI
+      - Queues
+    bindings-from: wrangler.toml
 
 # --- FAILSAFE BEHAVIOR ---
 fail-safes:
@@ -188,16 +331,53 @@ security:
       - sbom-present
       - opa-tests-present
       - evidence-hash
+      - no-console-log
+      - edge-safe-imports
+      - secret-env-only
   dependency-scan:
     enabled: true
-    tools: [codeql, trivy]
+    tools: [codeql, trivy, npm-audit]
+    advisory-db: github
   attestations:
     generate-slsa: true
     sign-with: oidc
+    provenance: true
   data-classification:
     evidence: Confidential
     configs: Internal
     telemetry: Internal
+    secrets: Restricted
+  compliance-frameworks:
+    - NIST-800-53
+    - SOC2
+    - ISO27001
+  forbidden-patterns:
+    - "console.log"
+    - "require\\(\""
+    - "import.*from ['\"]fs['\"]"
+    - "require\\(['\"]fs['\"]\\)"
+    - "import.*from ['\"]net['\"]"
+    - "require\\(['\"]net['\"]\\)"
+    - "process.env.SECRET"
+    - "hardcoded-secret-pattern"
+  # GitHub PAT security guidelines
+  github-pat:
+    rotation-policy: 90-days
+    minimum-scopes: [repo, workflow]
+    recommended-scopes: [repo, workflow, admin:org, admin:repo_hook, delete_repo]
+    storage: GitHub Secrets (encrypted at rest)
+    usage: Elevated operations beyond standard GITHUB_TOKEN permissions
+    audit: All PAT operations logged in security-events
+    expiration-enforcement: true
+    ip-allowlist: optional
+    sso-required: false  # Set to false for automated admin actions
+    # Note: For automation, PAT must be created without SSO requirement
+    # Enterprise orgs: Use a service account or machine user for PAT generation
+    # This allows automated operations while maintaining security through:
+    #   - Least-privilege scopes
+    #   - IP allowlisting (optional)
+    #   - Rotation policy enforcement
+    #   - Comprehensive audit logging
 
 # --- OBSERVABILITY / LOGGING ---
 logging:
@@ -211,16 +391,121 @@ logging:
   export:
     - console
     - otlp
+
+# --- MONOREPO / WORKSPACE CONFIGURATION ---
+workspace:
+  type: npm-workspaces
+  manager: npm
+  root: package.json
+  workspaces:
+    - packages/*
+    - onboarding
+    - ai-orchestrator
+    - mcp*
+    - documentation-worker
+    - slack-approval-worker
+    - console-app
+  build-order:
+    - packages/shared
+    - packages/auth
+    - packages/edge-utils
+    - onboarding
+    - ai-orchestrator
+  parallel-builds: true
+  cache-strategy: aggressive
+
+# --- CLOUDFLARE PLATFORM AWARENESS ---
+cloudflare:
+  runtime: workerd
+  compatibility-date: "2025-11-01"
+  compatibility-flags:
+    - nodejs_compat
+  bindings-config: wrangler.toml
+  environments:
+    - production
+    - core
+    - ai
+  primary-apis:
+    - Workers
+    - KV
+    - D1
+    - R2
+    - Durable Objects
+    - Workers AI
+  edge-constraints:
+    max-script-size: 1MB
+    max-worker-size: 10MB
+    startup-time-budget: 400ms
+    cpu-time-budget: 50ms
+
+# --- INTEGRATION AWARENESS ---
+integrations:
+  linear:
+    org: hardworkco
+    project: AtlasIT
+    auto-sync: true
+  vault:
+    namespace: atlasit
+    policy: policies/atlasit.hcl
+  github:
+    auto-label: true
+    auto-assign: true
+    auto-merge: false
+    # GitHub API capabilities for full automation
+    api-operations:
+      repos:
+        - create-branch
+        - delete-branch
+        - create-tag
+        - create-release
+        - merge-pr
+        - update-pr
+        - close-pr
+        - create-issue
+        - update-issue
+        - close-issue
+        - add-labels
+        - assign-users
+      actions:
+        - trigger-workflow
+        - cancel-workflow
+        - re-run-workflow
+      checks:
+        - create-check-run
+        - update-check-run
+      deployments:
+        - create-deployment
+        - create-deployment-status
+      git:
+        - create-commit
+        - create-tree
+        - create-blob
+        - update-ref
+        - create-ref
+        - delete-ref
+  playwright:
+    browsers: [chromium, firefox]
+    headless: true
+
+# --- DEVELOPMENT WORKFLOW ---
+workflow:
+  pre-commit:
+    - lint-staged
+    - typecheck
+    - test:unit
+  pre-push:
+    - test:unit
+    - test:integration
+  pr-checks:
+    - lint
+    - typecheck
+    - test:unit
+    - test:integration
+    - codeql
+    - trivy
+    - playwright
+  deployment-checks:
+    - validate:env
+    - predeploy
+    - dry-run
 ---
-# Fill in the fields below to create a basic custom agent for your repository.
-# The Copilot CLI can be used for local testing: https://gh.io/customagents/cli
-# To make this agent available, merge this file into the default repository branch.
-# For format details, see: https://gh.io/customagents/config
-
-name:
-description:
----
-
-# My Agent
-
-Describe what your agent does here...
