@@ -104,3 +104,4 @@ docs/cloudflare/*.map
 docs/cloudflare/compiled.js
 docs/cloudflare/compiled.js.map
 docs/cloudflare/output.log
+.env
