@@ -68,10 +68,7 @@ mcp-servers:
       # GitHub Personal Access Token for full admin capabilities
       # Requires: repo, workflow, admin:org, admin:repo_hook, admin:org_hook, 
       #           admin:public_key, delete_repo, admin:gpg_key
-      # Multiple env vars set to GH_PAT for compatibility across different GitHub tooling
       GH_TOKEN: ${{ secrets.GH_PAT }}
-      GH_ENTERPRISE_TOKEN: ${{ secrets.GH_PAT }}
-      GITHUB_TOKEN: ${{ secrets.GH_PAT }}
 
 # --- ENVIRONMENT CONTRACT ---
 environment:
