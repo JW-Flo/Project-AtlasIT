@@ -1,6 +1,6 @@
 name = "atlasit-github-proxy"
 main = "index.js"
-compatibility_date = "2024-03-20"
+compatibility_date = "2025-11-01"
 compatibility_flags = ["nodejs_compat"]
 # Account ID is read from CLOUDFLARE_ACCOUNT_ID or CF_ACCOUNT_ID environment variable
 # Set in GitHub Actions secrets or export locally before running wrangler commands
