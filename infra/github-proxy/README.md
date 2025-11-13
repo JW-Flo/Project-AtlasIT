@@ -5,6 +5,9 @@ Secure Cloudflare Worker that enables Codex automation agents to access the Atla
 ## Quick Start
 
 ```bash
+# Set Cloudflare account ID (if not already set in environment)
+export CLOUDFLARE_ACCOUNT_ID="your-account-id"
+
 # Install dependencies
 npm install
 
@@ -18,6 +21,8 @@ wrangler deploy
 # Test deployment
 curl https://atlasit-github-proxy.<account>.workers.dev/health
 ```
+
+**Note**: In GitHub Actions, `CLOUDFLARE_ACCOUNT_ID` is automatically available from repository secrets.
 
 ## Documentation
 

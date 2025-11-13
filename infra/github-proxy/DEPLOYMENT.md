@@ -13,8 +13,10 @@ Before deploying the GitHub Proxy Worker, ensure you have:
    ```
 
 2. **Cloudflare Account** with Workers enabled
-   - Account ID: `620865722bd88ef0a77dbbb60c91392e` (configured in wrangler.toml)
-   - **Note**: If deploying to a different account, update the `account_id` in `wrangler.toml`
+   - Set `CLOUDFLARE_ACCOUNT_ID` or `CF_ACCOUNT_ID` environment variable
+   - In GitHub Actions, this is automatically available from repository secrets
+   - For local deployment: `export CLOUDFLARE_ACCOUNT_ID="your-account-id"`
+   - Alternatively, uncomment and set `account_id` in `wrangler.toml`
 
 3. **GitHub Personal Access Token (PAT)** with `repo` scope
    - Create at: https://github.com/settings/tokens
@@ -66,7 +68,7 @@ cat wrangler.toml
 
 Verify:
 
-- `account_id` matches your Cloudflare account
+- `CLOUDFLARE_ACCOUNT_ID` or `CF_ACCOUNT_ID` environment variable is set (or `account_id` is uncommented in wrangler.toml)
 - `name` is set to `atlasit-github-proxy`
 - `compatibility_date` is current
 
