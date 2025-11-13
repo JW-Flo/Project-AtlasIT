@@ -177,7 +177,7 @@ codex_test() {
     
     if [ "$http_code" = "200" ]; then
         log_proxy "$trace_id" "codex_test" "success" "health_check"
-        echo "✓ Proxy connection successful"
+        echo "✓ Proxy connection successful" >&2
         echo "$body"
         return 0
     else
