@@ -66,8 +66,9 @@ mcp-servers:
     tools: ["*"]
     env:
       # GitHub Personal Access Token for full admin capabilities
-      # Requires: repo, workflow, admin:org, admin:repo_hook, admin:org_hook, 
-      #           admin:public_key, delete_repo, admin:gpg_key
+      # Requires: repo, workflow, write:packages, delete:packages, admin:org, admin:public_key,
+      #           admin:repo_hook, admin:org_hook, delete_repo, admin:gpg_key, admin:ssh_signing_key,
+      #           project, security_events
       GH_TOKEN: ${{ secrets.GH_PAT }}
 
 # --- ENVIRONMENT CONTRACT ---
@@ -275,7 +276,7 @@ planning:
   use-roadmap:
     - ROADMAP.md
     - docs/roadmap.md
-    - docs/ARCHITECTURE.md
+    - docs/architecture.md
     - docs/product-roadmap.md
     - docs/phase0-sprint-backlog.md
   label-scheme:
