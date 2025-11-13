@@ -114,7 +114,7 @@ codex_commit() {
     local url="$PROXY_ENDPOINT?path=${endpoint_path}"
     
     # Base64 encode content
-    local encoded_content=$(echo -n "$content" | base64 | tr -d '\n')
+    local encoded_content=$(printf '%s' "$content" | base64 | tr -d '\n')
     
     # Get current file SHA (if exists)
     local sha=$(codex_pull "$file_path" "$branch" 2>/dev/null | jq -r '.sha // empty')
