@@ -1,5 +1,7 @@
 {
   "trace_id": "53ea2ed6-15a3-4239-9983-87ec131ae98b",
+  "tenant_id": "atlasit-platform",
+  "subject_id": "repo-submodule-cleanup",
   "control_id": "submodule_cleanup",
   "timestamp": "2025-11-13T06:40:26+00:00",
   "action": "remove_broken_submodule",
