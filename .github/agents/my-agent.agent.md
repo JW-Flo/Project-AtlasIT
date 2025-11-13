@@ -195,7 +195,7 @@ behavior:
     module: ESNext
     indent: 2
     quotes: single
-    semicolons: false
+    semicolons: true
     naming:
       variables: camelCase
       functions: camelCase
