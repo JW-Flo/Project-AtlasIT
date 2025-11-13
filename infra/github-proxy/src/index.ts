@@ -11,6 +11,12 @@
  * - Trace ID logging for audit trail
  */
 
+interface Env {
+  PROXY_SECRET: string;
+  GH_PAT: string;
+  ENVIRONMENT?: string;
+}
+
 function json(data: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   if (!headers.has("content-type"))
@@ -73,7 +79,7 @@ export default {
     }
 
     // Validate path is within allowed repository
-    if (!targetPath.startsWith("/repos/HarderWorkingCo/Project-AtlasIT")) {
+    if (!targetPath.match(/^\/repos\/HarderWorkingCo\/Project-AtlasIT(\/|$)/)) {
       console.log(
         `[${traceId}] Blocked request to unauthorized path: ${targetPath}`,
       );

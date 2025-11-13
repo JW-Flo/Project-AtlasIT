@@ -52,7 +52,7 @@ https://atlasit-github-proxy.<account>.workers.dev
 
 ```bash
 curl -H "X-Proxy-Token: $PROXY_TOKEN" \
-  https://atlasit-github-proxy.workers.dev/health
+  https://atlasit-github-proxy.<account>.workers.dev/health
 ```
 
 **Response:**

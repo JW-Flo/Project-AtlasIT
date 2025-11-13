@@ -56,7 +56,7 @@ export default {
 		}
 
 		// Validate path is within allowed repository
-		if (!targetPath.startsWith('/repos/HarderWorkingCo/Project-AtlasIT')) {
+		if (!targetPath.match(/^\/repos\/HarderWorkingCo\/Project-AtlasIT(\/|$)/)) {
 			console.log(`[${traceId}] Blocked request to unauthorized path: ${targetPath}`);
 			return jsonResponse({ 
 				error: 'Forbidden', 
