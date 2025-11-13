@@ -10,19 +10,7 @@ description: >
 # Enable comprehensive tool access for full-stack DevSecOps automation
 tools:
   - "*"
-  - "bash"
-  - "view"
-  - "edit"
-  - "create"
-  - "github/*"
-  - "linear/*"
-  - "vault/*"
-  - "cloudflare/*"
-  - "cursor/*"
-  - "playwright/*"
-  - "codeql_checker"
-  - "code_review"
-  - "gh-advisory-database"
+
 
 # --- MCP SERVER DEFINITIONS ---
 mcp-servers:
@@ -157,6 +145,12 @@ environment:
     allow-pr-close: true
     allow-issue-ops: true
   safety:
+    # SECURITY NOTICE:
+    # - `allow-shell: true` and `allow-network: true` are required for full-stack automation.
+    # - All shell commands must be validated and sanitized before execution.
+    # - Only allowlisted commands are permitted (see: /policies/command-allowlist.md).
+    # - Network operations are restricted to approved endpoints (see: /policies/network-allowlist.md).
+    # - These controls enforce zero-trust and audit-safe requirements (NIST 800-53, SOC2, ISO27001).
     allow-shell: true
     allow-network: true
     block-secrets: true
@@ -226,7 +220,7 @@ contexts:
       wrangler deploy --env production --dry-run && wrangler deploy --env production
     post: |
       echo "Deployment completed for $GITHUB_REF"
-      npm run smoke:local || true
+      npm run smoke:local
   evidence:
     exec: |
       uuid=$(node -p "crypto.randomUUID()")
@@ -362,8 +356,10 @@ security:
   forbidden-patterns:
     - "console.log"
     - "require\\(\""
-    - "import fs from"
-    - "import net from"
+    - "import.*from ['\"]fs['\"]"
+    - "require\\(['\"]fs['\"]\\)"
+    - "import.*from ['\"]net['\"]"
+    - "require\\(['\"]net['\"]\\)"
     - "process.env.SECRET"
     - "hardcoded-secret-pattern"
   # GitHub PAT security guidelines
