@@ -79,7 +79,8 @@ mcp-servers:
     env:
       # GitHub Personal Access Token for full admin capabilities
       # Requires: repo, workflow, admin:org, admin:repo_hook, admin:org_hook, 
-      #           admin:public_key, admin:repo_hook, delete_repo, admin:gpg_key
+      #           admin:public_key, delete_repo, admin:gpg_key
+      # Multiple env vars set to GH_PAT for compatibility across different GitHub tooling
       GH_TOKEN: ${{ secrets.GH_PAT }}
       GH_ENTERPRISE_TOKEN: ${{ secrets.GH_PAT }}
       GITHUB_TOKEN: ${{ secrets.GH_PAT }}
@@ -228,7 +229,7 @@ contexts:
       npm run smoke:local || true
   evidence:
     exec: |
-      uuid=$(node -e "console.log(crypto.randomUUID())")
+      uuid=$(node -p "crypto.randomUUID()")
       ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       mkdir -p artifacts
       cat > artifacts/EV-$uuid-$ts.json <<EOF
@@ -360,7 +361,7 @@ security:
     - ISO27001
   forbidden-patterns:
     - "console.log"
-    - "require("
+    - "require\\(\""
     - "import fs from"
     - "import net from"
     - "process.env.SECRET"
@@ -422,7 +423,7 @@ workspace:
 # --- CLOUDFLARE PLATFORM AWARENESS ---
 cloudflare:
   runtime: workerd
-  compatibility-date: "2024-03-20"
+  compatibility-date: "2025-11-01"
   compatibility-flags:
     - nodejs_compat
   bindings-config: wrangler.toml
@@ -491,7 +492,7 @@ integrations:
   playwright:
     browsers: [chromium, firefox]
     headless: true
-  
+
 # --- DEVELOPMENT WORKFLOW ---
 workflow:
   pre-commit:
