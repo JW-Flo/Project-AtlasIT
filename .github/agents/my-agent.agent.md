@@ -222,8 +222,7 @@ contexts:
       npm run predeploy
       npm run validate:env
     exec: |
-      wrangler deploy --env production --dry-run
-      wrangler deploy --env production
+      wrangler deploy --env production --dry-run && wrangler deploy --env production
     post: |
       echo "Deployment completed for $GITHUB_REF"
       npm run smoke:local || true
