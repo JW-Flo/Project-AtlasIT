@@ -1,6 +1,14 @@
 {
-  "trace_id": "3a91c870-c25a-4105-baa1-c52b2bed9c3b",
+  "trace_id": "b50e2c4b-2b55-4745-8d72-934328fa943c",
   "control_id": "CX-001",
-  "timestamp": "2025-11-08T22:55:08+00:00",
-  "result": "ENV_VALIDATED"
+  "timestamp": "2025-11-13T07:36:30+00:00",
+  "result": "ENV_VALIDATED",
+  "validation_script": "inline-bash-commands",
+  "git_commit": "83d30247e763ef92a92373d08c1db607848346d3",
+  "git_branch": "copilot/verify-codex-environment-another-one",
+  "environment": {
+    "node_version": "v20.19.5",
+    "npm_version": "10.8.2",
+    "wrangler_version": "4.47.0"
+  }
 }
