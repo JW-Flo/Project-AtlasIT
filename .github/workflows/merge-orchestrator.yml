@@ -1,7 +1,7 @@
 name: Merge Orchestrator
 
 on:
-  pull_request_target:
+  pull_request:
     types: [labeled, ready_for_review, synchronize]
 
 permissions:
@@ -13,10 +13,10 @@ jobs:
   orchestrate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout base branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.base_ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -29,11 +29,13 @@ jobs:
 
       - name: Check drift PRs
         id: drift_check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Check if any open drift PRs exist with high severity
           # Block merge if high-severity drift PRs are open
           echo "Checking for open drift PRs..."
-          # TODO: Implement GitHub API call to check for open drift/* PRs
+          # TODO: Implement GitHub CLI call to check for open drift/* PRs with severity:high label
           echo "drift_blocking=false" >> $GITHUB_OUTPUT
 
       - name: Validate evidence integrity
@@ -51,11 +53,13 @@ jobs:
 
       - name: Check schema file changes
         id: schema_check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           # Check if EVIDENCE_SCHEMA.json or DRIFT_DETECTION_SPEC.md changed
           echo "Checking for schema file changes..."
-          git fetch origin ${{ github.base_ref }}
-          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          # Use GitHub CLI to get changed files from PR
+          changed_files=$(gh pr view ${{ github.event.pull_request.number }} --json files -q '.files[].path')
 
           if echo "$changed_files" | grep -qE "(EVIDENCE_SCHEMA\.json|DRIFT_DETECTION_SPEC\.md)"; then
             echo "schema_changed=true" >> $GITHUB_OUTPUT
