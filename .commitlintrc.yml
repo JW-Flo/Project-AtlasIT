@@ -1,0 +1,50 @@
+extends:
+  - '@commitlint/config-conventional'
+
+rules:
+  type-enum:
+    - 2
+    - always
+    - - feat
+      - fix
+      - ops
+      - docs
+      - test
+      - refactor
+      - chore
+      - ci
+      - perf
+      - style
+  
+  type-case:
+    - 2
+    - always
+    - lowercase
+  
+  type-empty:
+    - 2
+    - never
+  
+  subject-empty:
+    - 2
+    - never
+  
+  subject-case:
+    - 0
+  
+  header-max-length:
+    - 2
+    - always
+    - 100
+  
+  body-max-line-length:
+    - 0
+
+# Allow evidence tags in format: (EV-####)
+parserPreset:
+  parserOpts:
+    headerPattern: '^(\w+)(?:\(([^)]*)\))?: (.+?)(?:\s+\(EV-\d{4}\))?$'
+    headerCorrespondence:
+      - type
+      - scope
+      - subject

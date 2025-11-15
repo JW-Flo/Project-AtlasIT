@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "framework_id": "atlasit-autonomous-framework",
+  "description": "Manifest of required files and directories for autonomous development framework",
+  "required_files": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/merge-orchestrator.yml",
+    ".github/workflows/agent-events.yml",
+    ".github/workflows/codeql.yml",
+    ".github/pull_request_template.md",
+    "ops/agent-router-worker/worker.ts",
+    "ops/agent-router-worker/wrangler.toml",
+    "ops/agent-router-worker/rules.json",
+    "ops/agent-router-worker/README.md",
+    "scripts/emit-evidence.ts",
+    "scripts/nist-verify.ts",
+    "scripts/run-opa.sh",
+    "scripts/simulate-routing.ts",
+    "scripts/drift-scan.ts",
+    "scripts/aggregate-evidence.ts",
+    "policies/grammar.rego",
+    "policies/evidence.rego",
+    "DRIFT_DETECTION_SPEC.md",
+    "COPILOT_GRAMMAR.md",
+    "AGENT_MODEL.md",
+    "AGENT_HANDBOOK.md",
+    "ROADMAP_AGENT_AUTONOMY.md",
+    "SECURITY_AUTOMATION_PLAN.md",
+    "EVIDENCE_SCHEMA.json",
+    "DECISION_SCHEMA.json",
+    "FRAMEWORK_MANIFEST.json",
+    "package.json",
+    "tsconfig.json"
+  ],
+  "required_directories": [
+    ".github/workflows",
+    "ops/agent-router-worker",
+    "scripts",
+    "policies",
+    "artifacts"
+  ],
+  "optional_files": [
+    ".prettierrc",
+    ".commitlintrc.yml",
+    "artifacts/INDEX.json",
+    ".evidence/README.md"
+  ],
+  "validation_rules": {
+    "evidence_schema_version": "1.0.0",
+    "decision_schema_version": "1.0.0",
+    "min_node_version": "18.0.0"
+  }
+}

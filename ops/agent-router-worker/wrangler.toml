@@ -1,0 +1,12 @@
+name = "agent-router-worker"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+
+[observability]
+enabled = true
+
+[build]
+command = "npm install && npm run build"
+
+[build.upload]
+format = "service-worker"

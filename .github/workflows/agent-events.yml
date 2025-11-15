@@ -1,0 +1,32 @@
+name: Agent Events
+
+on:
+  pull_request:
+    types: [opened, closed, labeled, unlabeled]
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  track-event:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Emit event evidence
+        run: |
+          npm run emit:evidence -- "AGENT-EVENT" "pass" '{"event_type": "${{ github.event_name }}", "action": "${{ github.event.action }}"}'
+
+      - name: Upload event artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-event-artifacts
+          path: artifacts/

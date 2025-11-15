@@ -1,0 +1,71 @@
+name: Merge Orchestrator
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  route-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Extract PR metadata
+        id: pr-metadata
+        run: |
+          cat > /tmp/pr-metadata.json <<EOF
+          {
+            "pr_number": ${{ github.event.pull_request.number }},
+            "title": "${{ github.event.pull_request.title }}",
+            "files_changed": [],
+            "labels": [],
+            "author": "${{ github.event.pull_request.user.login }}"
+          }
+          EOF
+          echo "metadata_path=/tmp/pr-metadata.json" >> $GITHUB_OUTPUT
+
+      - name: Simulate routing decision
+        id: routing
+        run: |
+          npm run simulate:routing -- /tmp/pr-metadata.json "pr-${{ github.event.pull_request.number }}" > /tmp/decision.json
+          cat /tmp/decision.json
+          echo "decision_path=/tmp/decision.json" >> $GITHUB_OUTPUT
+
+      - name: Apply labels based on routing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SEVERITY=$(jq -r '.severity' /tmp/decision.json)
+          ASSIGNEE=$(jq -r '.assignee' /tmp/decision.json)
+          
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "severity:${SEVERITY}"
+          
+          if [ "$ASSIGNEE" = "codex" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "agent:codex-approved"
+          elif [ "$ASSIGNEE" = "copilot" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "agent:copilot-approved"
+          fi
+
+      - name: Comment routing decision
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DECISION=$(cat /tmp/decision.json)
+          gh pr comment ${{ github.event.pull_request.number }} --body "## Routing Decision
+
+          \`\`\`json
+          ${DECISION}
+          \`\`\`
+          "

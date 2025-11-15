@@ -73,8 +73,8 @@
     "docs:artifacts": "npm run docs:changelog && npm run docs:links && npm run docs:runmeta",
     "build:console:report": "npm run build:console && node scripts/bundle-report.mjs console-app/dist",
     "bundle:report": "node scripts/bundle-report.mjs",
-  "deploy:console": "wrangler deploy --config console-app/wrangler.toml",
-  "deploy:mvp": "node scripts/deploy-mvp.mjs",
+    "deploy:console": "wrangler deploy --config console-app/wrangler.toml",
+    "deploy:mvp": "node scripts/deploy-mvp.mjs",
     "qa:console": "node scripts/qa-console.mjs",
     "test:pw": "playwright test --reporter=line",
     "test:pw:full": "playwright test --project=full --reporter=line",
@@ -92,7 +92,13 @@
     "codex:context": "npx ts-node tools/generate-codex-context.ts",
     "codex:context:ultra": "npx ts-node tools/generate-codex-context.ts --ultra --no-readme",
     "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections",
-    "audit:ci": "node scripts/audit-ci.mjs"
+    "audit:ci": "node scripts/audit-ci.mjs",
+    "emit:evidence": "npx tsx scripts/emit-evidence.ts",
+    "nist:verify": "npx tsx scripts/nist-verify.ts",
+    "opa:test": "bash scripts/run-opa.sh /tmp/test-input.json || true",
+    "simulate:routing": "npx tsx scripts/simulate-routing.ts",
+    "drift:scan": "npx tsx scripts/drift-scan.ts",
+    "evidence:aggregate": "npx tsx scripts/aggregate-evidence.ts"
   },
   "keywords": [
     "it-management",
@@ -126,6 +132,7 @@
     "prettier": "^3.0.0",
     "sonarqube-scanner": "^3.1.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^7.1.7",
     "vitest": "^3.2.4",

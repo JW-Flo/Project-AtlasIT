@@ -1,0 +1,55 @@
+{
+  "version": "1.0.0",
+  "description": "Routing rules for autonomous agent assignment",
+  "high_priority_paths": [
+    ".github/workflows/",
+    "ops/",
+    "policies/",
+    "infra/",
+    "terraform/"
+  ],
+  "medium_priority_paths": [
+    "scripts/",
+    "src/",
+    "packages/",
+    "workers/",
+    "compliance-worker/"
+  ],
+  "critical_keywords": [
+    "security",
+    "auth",
+    "secret",
+    "credential",
+    "vulnerability",
+    "cve"
+  ],
+  "prohibited_patterns": [
+    "password",
+    "apikey",
+    "private_key",
+    "access_token"
+  ],
+  "auto_escalate_on": [
+    "security",
+    "compliance",
+    "production"
+  ],
+  "severity_thresholds": {
+    "low": {
+      "description": "Simple changes, documentation, minor fixes",
+      "assignee": "copilot"
+    },
+    "medium": {
+      "description": "Infrastructure changes, workflow updates, script modifications",
+      "assignee": "codex"
+    },
+    "high": {
+      "description": "Security-related changes, critical path modifications",
+      "assignee": "codex"
+    },
+    "critical": {
+      "description": "Prohibited patterns detected, requires human review",
+      "assignee": "human"
+    }
+  }
+}
