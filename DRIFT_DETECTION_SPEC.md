@@ -16,15 +16,22 @@ const REQUIRED_STRUCTURE = {
   "ops/agent-router-worker/": ["worker.ts", "wrangler.toml", "rules.json", "README.md"],
   "scripts/": ["emit-evidence.ts", "nist-verify.ts", "run-opa.sh", "simulate-routing.ts"],
   "docs/": ["NIST_AUTOMATION.md", "AUTONOMY_DIAGRAMS.md"],
-  "": ["AGENT_MODEL.md", "AGENT_HANDBOOK.md", "ROADMAP_AGENT_AUTONOMY.md", 
-       "DRIFT_DETECTION_SPEC.md", "COPILOT_GRAMMAR.md", "EVIDENCE_SCHEMA.json"],
-  ".evidence/": [".keep"]
+  "": [
+    "AGENT_MODEL.md",
+    "AGENT_HANDBOOK.md",
+    "ROADMAP_AGENT_AUTONOMY.md",
+    "DRIFT_DETECTION_SPEC.md",
+    "COPILOT_GRAMMAR.md",
+    "EVIDENCE_SCHEMA.json",
+  ],
+  ".evidence/": [".keep"],
 };
 ```
 
 ### 2. Detection Process
 
 **Step 1: Scan Repository**
+
 ```typescript
 async function scanRepository(basePath: string): Promise<string[]> {
   const files: string[] = [];
@@ -35,6 +42,7 @@ async function scanRepository(basePath: string): Promise<string[]> {
 ```
 
 **Step 2: Compare Against Required**
+
 ```typescript
 interface DriftItem {
   path: string;
@@ -48,7 +56,7 @@ async function detectDrift(
   actual: string[]
 ): Promise<DriftItem[]> {
   const drift: DriftItem[] = [];
-  
+
   for (const [dir, files] of Object.entries(required)) {
     for (const file of files) {
       const fullPath = `${dir}${file}`;
@@ -57,12 +65,12 @@ async function detectDrift(
           path: fullPath,
           status: "missing",
           category: categorizeFile(fullPath),
-          severity: computeSeverity(fullPath)
+          severity: computeSeverity(fullPath),
         });
       }
     }
   }
-  
+
   return drift;
 }
 ```
@@ -70,29 +78,32 @@ async function detectDrift(
 ### 3. Categorization Rules
 
 **Structure Drift**:
+
 - Missing workflow files
 - Missing documentation
 - Missing directory structure
 
 **Security Drift**:
+
 - Missing `EVIDENCE_SCHEMA.json`
 - Missing `.evidence/` directory
 - Missing security validation scripts
 
 **Roadmap Drift**:
+
 - Missing `ROADMAP_AGENT_AUTONOMY.md`
 - Missing agent model definitions
 - Missing handbook documentation
 
 ### 4. Severity Computation
 
-| File Pattern | Severity | Rationale |
-|-------------|----------|-----------|
-| `.github/workflows/*.yml` | high | Breaks CI/CD |
-| `EVIDENCE_SCHEMA.json` | high | Compliance requirement |
-| `scripts/nist-verify.ts` | medium | Validation tooling |
-| `docs/*.md` | low | Documentation only |
-| `*GRAMMAR.md`, `*HANDBOOK.md` | medium | Operational guidance |
+| File Pattern                  | Severity | Rationale              |
+| ----------------------------- | -------- | ---------------------- |
+| `.github/workflows/*.yml`     | high     | Breaks CI/CD           |
+| `EVIDENCE_SCHEMA.json`        | high     | Compliance requirement |
+| `scripts/nist-verify.ts`      | medium   | Validation tooling     |
+| `docs/*.md`                   | low      | Documentation only     |
+| `*GRAMMAR.md`, `*HANDBOOK.md` | medium   | Operational guidance   |
 
 ## Auto-Fix PR Creation
 
@@ -134,22 +145,19 @@ Detection Run: {workflow_run_url}
 ### Implementation
 
 ```typescript
-async function createDriftPR(
-  drift: DriftItem[],
-  category: string
-): Promise<string> {
+async function createDriftPR(drift: DriftItem[], category: string): Promise<string> {
   const branch = `drift/${category}-fix-${Date.now()}`;
   const traceId = randomUUID();
-  
+
   // Create branch
   await git.createBranch(branch);
-  
+
   // Generate missing files with templates
   for (const item of drift) {
     const template = await loadTemplate(item.path);
     await writeFile(item.path, template);
   }
-  
+
   // Emit evidence
   const evidence = {
     trace_id: traceId,
@@ -158,18 +166,18 @@ async function createDriftPR(
     agent: "drift-detector",
     action: "auto_fix",
     result: "pass",
-    metadata: { drift_count: drift.length, category }
+    metadata: { drift_count: drift.length, category },
   };
   await writeFile(`.evidence/${traceId}.json`, JSON.stringify(evidence, null, 2));
-  
+
   // Create PR
   const pr = await github.createPullRequest({
     title: `[AUTO] Drift fix: ${category}`,
     body: generatePRBody(drift, traceId),
     head: branch,
-    base: "main"
+    base: "main",
   });
-  
+
   return pr.url;
 }
 ```
@@ -227,6 +235,7 @@ Every drift detection run emits evidence:
 ## Workflow Integration
 
 Drift detection runs:
+
 1. **On Schedule**: Weekly via cron trigger
 2. **On Demand**: Manual workflow dispatch
 3. **Post-Merge**: After main branch updates

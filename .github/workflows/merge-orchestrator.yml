@@ -56,7 +56,7 @@ jobs:
           echo "Checking for schema file changes..."
           git fetch origin ${{ github.base_ref }}
           changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-          
+
           if echo "$changed_files" | grep -qE "(EVIDENCE_SCHEMA\.json|DRIFT_DETECTION_SPEC\.md)"; then
             echo "schema_changed=true" >> $GITHUB_OUTPUT
             echo "Schema files changed - requires Codex approval"
@@ -69,7 +69,7 @@ jobs:
         run: |
           # Check if PR has required approvals based on severity
           pr_labels="${{ join(github.event.pull_request.labels.*.name, ',') }}"
-          
+
           if echo "$pr_labels" | grep -q "severity:medium"; then
             echo "requires_approval=true" >> $GITHUB_OUTPUT
             echo "Medium severity PR requires approval"

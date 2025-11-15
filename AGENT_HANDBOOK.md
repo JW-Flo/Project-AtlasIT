@@ -15,6 +15,7 @@ This handbook provides operational guidance for autonomous agents working within
 ## Workflow Patterns
 
 ### PR Creation Flow
+
 1. Agent creates branch: `feature/<scope>` or `drift/<type>`
 2. Commits include `[AUTO]` prefix in title
 3. Emit evidence artifact to `.evidence/`
@@ -26,6 +27,7 @@ This handbook provides operational guidance for autonomous agents working within
 9. Auto-merge on approval or manual merge
 
 ### Evidence Emission Pattern
+
 ```typescript
 import { randomUUID } from "crypto";
 
@@ -36,7 +38,7 @@ const evidence = {
   agent: "router-worker",
   action: "pr_routing",
   result: "pass",
-  metadata: { pr_number: 123, severity: "medium" }
+  metadata: { pr_number: 123, severity: "medium" },
 };
 
 // Write to .evidence/
@@ -83,16 +85,17 @@ Types: `feat`, `fix`, `ops`, `docs`, `test`, `refactor`
 
 ## Approval Requirements
 
-| Severity | Auto-Merge | Approval Required |
-|----------|-----------|-------------------|
-| low      | ✅        | ❌                |
-| medium   | ❌        | ✅ (Codex or maintainer) |
-| high     | ❌        | ✅ (2 maintainers) |
-| critical | ❌        | ✅ (Manual security review) |
+| Severity | Auto-Merge | Approval Required           |
+| -------- | ---------- | --------------------------- |
+| low      | ✅         | ❌                          |
+| medium   | ❌         | ✅ (Codex or maintainer)    |
+| high     | ❌         | ✅ (2 maintainers)          |
+| critical | ❌         | ✅ (Manual security review) |
 
 ## Compliance Mapping
 
 All evidence artifacts map to:
+
 - **NIST 800-53**: Control families (AU, AC, CM, etc.)
 - **SOC2**: Trust service criteria
 - **ISO27001**: Information security controls

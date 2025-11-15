@@ -21,7 +21,7 @@ interface Evidence {
 // Generate evidence artifact
 async function emitEvidence(evidence: Partial<Evidence>): Promise<string> {
   const traceId = evidence.trace_id || randomUUID();
-  
+
   const fullEvidence: Evidence = {
     trace_id: traceId,
     control_id: evidence.control_id || "CI-001",
@@ -56,7 +56,7 @@ async function emitEvidence(evidence: Partial<Evidence>): Promise<string> {
 // Main execution
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  
+
   // Parse command-line arguments
   const evidence: Partial<Evidence> = {
     agent: process.env.GITHUB_WORKFLOW || "ci-workflow",

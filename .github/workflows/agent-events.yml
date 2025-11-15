@@ -33,7 +33,7 @@ jobs:
             --title="${{ github.event.pull_request.title }}" \
             --author="${{ github.event.pull_request.user.login }}" \
             > routing-decision.json
-          
+
           cat routing-decision.json
         continue-on-error: true
 
@@ -71,26 +71,26 @@ jobs:
         with:
           script: |
             const decision = ${{ steps.decision.outputs.decision || '{}' }};
-            
+
             const comment = `## 🤖 Agent Routing Decision
-            
+
             **Severity**: \`${decision.severity || 'low'}\`
             **Decision ID**: \`${decision.decision_id || 'N/A'}\`
-            
+
             ### Assigned Agents
             - **Primary**: ${decision.agents?.primary || 'none'}
             ${decision.agents?.secondary ? `- **Secondary**: ${decision.agents.secondary}` : ''}
-            
+
             ### Evidence Required
             ${decision.evidence_required?.length > 0 ? decision.evidence_required.map(e => `- \`${e}\``).join('\n') : 'None'}
-            
+
             ### Prohibited Patterns
             ${decision.prohibited_hits?.length > 0 ? '⚠️ **Warning**: Prohibited patterns detected:\n' + decision.prohibited_hits.map(p => `- \`${p}\``).join('\n') : '✅ No prohibited patterns detected'}
-            
+
             ---
             *Timestamp*: ${decision.timestamp || new Date().toISOString()}
             `;
-            
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

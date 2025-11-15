@@ -13,6 +13,7 @@ The Copilot Grammar defines strict coding standards for all autonomous agents an
 ## TypeScript Configuration
 
 ### Required compiler options:
+
 ```json
 {
   "strict": true,
@@ -25,18 +26,17 @@ The Copilot Grammar defines strict coding standards for all autonomous agents an
 ```
 
 ### Type Annotations
+
 - All function parameters must have explicit types
 - All function return types must be explicit (no inference for exports)
 - No usage of `any` type (use `unknown` if type truly unknown)
 - Prefer interfaces over type aliases for object shapes
 
 **Example**:
+
 ```typescript
 // ✅ Correct
-export async function processRequest(
-  request: Request,
-  env: Env
-): Promise<Response> {
+export async function processRequest(request: Request, env: Env): Promise<Response> {
   // Implementation
 }
 
@@ -49,11 +49,13 @@ export async function processRequest(request: Request, env: Env) {
 ## Code Organization
 
 ### Exports
+
 - **Named exports only** - no default exports
 - Export functions, interfaces, types, and constants explicitly
 - Organize exports at the end of the file or inline
 
 **Example**:
+
 ```typescript
 // ✅ Correct
 export interface Config {
@@ -71,6 +73,7 @@ export default function loadConfig(): Config {
 ```
 
 ### File Structure
+
 ```
 1. Imports (external, then internal)
 2. Type definitions (interfaces, types, enums)
@@ -82,37 +85,43 @@ export default function loadConfig(): Config {
 
 ## Naming Conventions
 
-| Element | Convention | Example |
-|---------|-----------|---------|
-| Types/Interfaces | PascalCase | `RouterConfig`, `EvidenceItem` |
-| Functions | camelCase | `emitEvidence`, `computeSeverity` |
-| Variables | camelCase | `traceId`, `prNumber` |
-| Constants | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_TIMEOUT` |
-| Environment vars | UPPER_SNAKE_CASE | `GITHUB_TOKEN`, `WORKER_ENV` |
-| Workflow files | kebab-case | `merge-orchestrator.yml`, `agent-events.yml` |
-| Private helpers | _camelCase | `_parseMetadata`, `_validateInput` |
+| Element          | Convention       | Example                                      |
+| ---------------- | ---------------- | -------------------------------------------- |
+| Types/Interfaces | PascalCase       | `RouterConfig`, `EvidenceItem`               |
+| Functions        | camelCase        | `emitEvidence`, `computeSeverity`            |
+| Variables        | camelCase        | `traceId`, `prNumber`                        |
+| Constants        | UPPER_SNAKE_CASE | `MAX_RETRIES`, `DEFAULT_TIMEOUT`             |
+| Environment vars | UPPER_SNAKE_CASE | `GITHUB_TOKEN`, `WORKER_ENV`                 |
+| Workflow files   | kebab-case       | `merge-orchestrator.yml`, `agent-events.yml` |
+| Private helpers  | \_camelCase      | `_parseMetadata`, `_validateInput`           |
 
 ## Formatting
 
 ### Indentation
+
 - **2 spaces** (no tabs)
 - Consistent across all file types (TS, JSON, YAML, MD)
 
 ### Line Length
+
 - Maximum 100 characters
 - Break long lines at logical boundaries
 
 ### Strings
+
 - Double quotes for strings: `"example"`
 - Template literals for interpolation: `` `Hello ${name}` ``
 
 ### Semicolons
+
 - Always use semicolons at statement ends
 
 ### Trailing Commas
+
 - Use ES5 trailing commas in objects/arrays
 
 **Example**:
+
 ```typescript
 const config = {
   apiKey: "secret",
@@ -123,6 +132,7 @@ const config = {
 ## Comments
 
 ### Documentation Comments
+
 ```typescript
 // Describe the purpose and intent of the function
 // Include important assumptions or constraints
@@ -132,12 +142,14 @@ export function computeSeverity(files: string[]): Severity {
 ```
 
 ### Inline Comments
+
 - Use `//` for single-line comments
 - Place above the code being explained
 - Start with lowercase unless starting a sentence
 - Describe "why" not "what" (code should be self-documenting)
 
 **Example**:
+
 ```typescript
 // Calculate weighted severity based on file patterns
 // Higher weights for security-critical paths
@@ -147,6 +159,7 @@ const severity = files.reduce((acc, file) => {
 ```
 
 ### TODO Comments
+
 - Format: `// TODO(owner): description`
 - Include issue reference if available
 - Never use `TODO_REMOVE` (prohibited pattern)
@@ -154,11 +167,13 @@ const severity = files.reduce((acc, file) => {
 ## Error Handling
 
 ### Async Operations
+
 - Always use `try-catch` for async operations
 - Provide context in error messages
 - Include trace_id in error logs
 
 **Example**:
+
 ```typescript
 try {
   const result = await fetchData(url);
@@ -173,6 +188,7 @@ try {
 ```
 
 ### Validation
+
 - Fail fast with descriptive errors
 - Use Zod or similar for runtime validation
 - Never silently fail
@@ -180,17 +196,20 @@ try {
 ## Imports
 
 ### Order
+
 1. Node built-ins: `import { randomUUID } from "crypto";`
 2. External packages: `import { z } from "zod";`
 3. Internal packages: `import { Evidence } from "@atlasit/shared";`
 4. Local modules: `import { helper } from "./utils";`
 
 ### Style
+
 - Named imports preferred
 - Group imports with blank lines between categories
 - No wildcard imports unless necessary
 
 **Example**:
+
 ```typescript
 import { randomUUID } from "crypto";
 import { writeFile } from "fs/promises";
@@ -206,24 +225,24 @@ import { loadRules } from "./rules";
 ## Function Design
 
 ### Principles
+
 - Single responsibility
 - Maximum 50 lines per function
 - Maximum 4 parameters (use object for more)
 - Pure functions preferred (no side effects when possible)
 
 ### Async/Await
+
 - Prefer `async/await` over `.then()` chains
 - Use `Promise.all()` for parallel operations
 - Never mix callback and promise patterns
 
 **Example**:
+
 ```typescript
 // ✅ Correct - parallel execution
 async function loadData(): Promise<Data> {
-  const [users, roles] = await Promise.all([
-    fetchUsers(),
-    fetchRoles(),
-  ]);
+  const [users, roles] = await Promise.all([fetchUsers(), fetchRoles()]);
   return { users, roles };
 }
 
@@ -238,6 +257,7 @@ async function loadData(): Promise<Data> {
 ## Commit Messages
 
 ### Format
+
 ```
 <type>: <short summary>
 
@@ -248,6 +268,7 @@ Refs: #<issue_number>
 ```
 
 ### Types
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `ops`: Operational/infrastructure change
@@ -256,12 +277,14 @@ Refs: #<issue_number>
 - `refactor`: Code restructuring without behavior change
 
 ### Prefix for Automation
+
 - `[AUTO]` prefix for agent-generated commits
 - Example: `[AUTO] feat: Add drift detection workflow`
 
 ## Security
 
 ### Prohibited Patterns
+
 - Hardcoded secrets: API keys, tokens, passwords
 - `console.log()` in production code (use proper logging)
 - `eval()` or `Function()` constructors
@@ -269,6 +292,7 @@ Refs: #<issue_number>
 - Direct use of `any` type
 
 ### Required Practices
+
 - Validate all external inputs
 - Use parameterized queries/commands
 - Sanitize user-provided data
@@ -278,11 +302,13 @@ Refs: #<issue_number>
 ## Testing
 
 ### File Naming
+
 - Test files: `*.test.ts`
 - Spec files: `*.spec.ts`
 - Co-locate with source or in `tests/` directory
 
 ### Test Structure
+
 ```typescript
 import { describe, it, expect } from "vitest";
 
@@ -291,7 +317,7 @@ describe("computeSeverity", () => {
     const files = ["EVIDENCE_SCHEMA.json"];
     expect(computeSeverity(files)).toBe("high");
   });
-  
+
   it("returns low for documentation files", () => {
     const files = ["docs/README.md"];
     expect(computeSeverity(files)).toBe("low");
@@ -302,6 +328,7 @@ describe("computeSeverity", () => {
 ## Cloudflare Worker Specifics
 
 ### Module Format
+
 ```typescript
 export interface Env {
   // Define environment bindings
@@ -317,10 +344,14 @@ export default {
 ```
 
 ### Durable Objects
+
 ```typescript
 export class RouterState implements DurableObject {
-  constructor(private state: DurableObjectState, private env: Env) {}
-  
+  constructor(
+    private state: DurableObjectState,
+    private env: Env
+  ) {}
+
   async fetch(request: Request): Promise<Response> {
     // Durable Object logic
   }
@@ -348,6 +379,7 @@ Before committing code, verify:
 ## Enforcement
 
 Grammar compliance enforced via:
+
 - ESLint with TypeScript plugin
 - Prettier formatting
 - Pre-commit hooks

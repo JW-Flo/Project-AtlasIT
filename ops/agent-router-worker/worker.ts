@@ -1,5 +1,3 @@
-import { randomUUID } from "crypto";
-
 // Type definitions for routing logic
 export interface PRMetadata {
   number: number;
@@ -146,7 +144,11 @@ function determineEvidenceRequired(pr: PRMetadata, rules: RoutingRules): string[
 }
 
 // Main routing logic
-export async function routePR(pr: PRMetadata, env: Env, simulate: boolean = false): Promise<RoutingDecision> {
+export async function routePR(
+  pr: PRMetadata,
+  env: Env,
+  simulate: boolean = false
+): Promise<RoutingDecision> {
   const rules = await loadRules(env);
 
   const { severity, matches } = computeSeverity(pr, rules);
@@ -158,7 +160,7 @@ export async function routePR(pr: PRMetadata, env: Env, simulate: boolean = fals
   const finalSeverity = prohibitedHits.length > 0 ? "critical" : severity;
 
   const decision: RoutingDecision = {
-    decision_id: randomUUID(),
+    decision_id: crypto.randomUUID(),
     severity: finalSeverity as "low" | "medium" | "high" | "critical",
     agents: {
       primary,

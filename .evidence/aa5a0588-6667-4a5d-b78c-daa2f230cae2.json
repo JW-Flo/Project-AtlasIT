@@ -1,0 +1,16 @@
+{
+  "trace_id": "aa5a0588-6667-4a5d-b78c-daa2f230cae2",
+  "control_id": "TEST-001",
+  "timestamp": "2025-11-15T10:18:09.563Z",
+  "agent": "Copilot coding agent",
+  "action": "test_action",
+  "result": "pass",
+  "metadata": {
+    "run_id": "19388212868",
+    "run_number": "68",
+    "actor": "copilot-swe-agent[bot]",
+    "repository": "HarderWorkingCo/Project-AtlasIT",
+    "ref": "refs/heads/copilot/featinit-agent-framework",
+    "sha": "c05e29b2ac05b617a64d68ecd5da35c13eca733e"
+  }
+}

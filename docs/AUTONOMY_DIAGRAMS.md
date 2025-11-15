@@ -42,9 +42,9 @@ sequenceDiagram
     RW-->>AE: Return {decision}
     AE->>GH: Apply labels
     AE->>GH: Post comment with decision
-    
+
     Note over GH,MO: PR ready for review
-    
+
     GH->>MO: Trigger on label/review
     MO->>MO: Validate drift PRs closed
     MO->>MO: Verify evidence hashes
@@ -101,23 +101,23 @@ graph TD
     subgraph "Planning Layer"
         A[Copilot Agent]
     end
-    
+
     subgraph "Execution Layer"
         B[CodeGen Agent]
         C[Drift Agent]
     end
-    
+
     subgraph "Validation Layer"
         D[Router Worker]
         E[OPA Validator]
         F[NIST Verifier]
     end
-    
+
     subgraph "Evidence Layer"
         G[Evidence Store]
         H[Compliance Reporter]
     end
-    
+
     A --> B
     A --> C
     B --> D
@@ -127,7 +127,7 @@ graph TD
     E --> G
     F --> G
     G --> H
-    
+
     B -.->|Feedback| A
     C -.->|Feedback| A
     D -.->|Routing| B
@@ -141,26 +141,26 @@ graph TD
 stateDiagram-v2
     [*] --> Analyze
     Analyze --> ComputeSeverity
-    
+
     ComputeSeverity --> Low: docs only
     ComputeSeverity --> Medium: schema changes
     ComputeSeverity --> High: security files
     ComputeSeverity --> Critical: prohibited patterns
-    
+
     Low --> AutoLabel
     AutoLabel --> AutoMerge: approvals not required
-    
+
     Medium --> RequireApproval
     RequireApproval --> CodexReview: assign Codex
     CodexReview --> ManualMerge: approved
-    
+
     High --> MultipleApprovals
     MultipleApprovals --> MaintainerReview: assign 2+ maintainers
     MaintainerReview --> ManualMerge: approved
-    
+
     Critical --> Block
     Block --> [*]: merge prevented
-    
+
     AutoMerge --> [*]
     ManualMerge --> [*]
 ```
@@ -198,7 +198,7 @@ stateDiagram-v2
     Indexed --> Queried: Compliance report
     Queried --> Archived: Retention policy
     Archived --> [*]
-    
+
     Validated --> Rejected: Invalid schema
     Rejected --> [*]
 ```
@@ -211,24 +211,24 @@ graph TD
     B -->|Only docs| C[Low Severity]
     B -->|Schema files| D[Medium Severity]
     B -->|Workflows/Security| E[High Severity]
-    
+
     C --> F{Prohibited Patterns?}
     D --> F
     E --> F
-    
+
     F -->|Yes| G[Block Immediately]
     F -->|No| H{Drift PRs Open?}
-    
+
     H -->|Yes High Drift| I[Block Until Resolved]
     H -->|No| J{Evidence Valid?}
-    
+
     J -->|No| K[Block Until Complete]
     J -->|Yes| L{Severity Level?}
-    
+
     L -->|Low| M[Auto-Merge Path]
     L -->|Medium| N[Codex Approval Path]
     L -->|High| O[Maintainer Approval Path]
-    
+
     M --> P[Merge]
     N --> Q{Approved?}
     O --> Q
@@ -245,26 +245,26 @@ graph TD
         B[Compliance Worker]
         C[Documentation Worker]
     end
-    
+
     subgraph "Durable Objects"
         D[Routing State]
         E[Evidence State]
     end
-    
+
     subgraph "Storage"
         F[KV: Rules]
         G[KV: Config]
         H[R2: Artifacts]
         I[D1: Audit Log]
     end
-    
+
     A --> D
     A --> F
     B --> E
     B --> I
     C --> G
     C --> H
-    
+
     D --> I
     E --> I
 ```

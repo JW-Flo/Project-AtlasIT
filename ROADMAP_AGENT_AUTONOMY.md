@@ -26,6 +26,7 @@ Achieve fully autonomous repository operations with human oversight limited to s
 - [ ] Configure OPA policy framework
 
 **Success Criteria**:
+
 - All PRs automatically routed and labeled
 - Evidence artifacts generated for 80%+ of operations
 - Drift detection runs weekly with auto-fix PRs
@@ -42,6 +43,7 @@ Achieve fully autonomous repository operations with human oversight limited to s
 - [ ] Add real-time evidence validation via GitHub API
 
 **Success Criteria**:
+
 - 60%+ of PRs auto-merged without human intervention
 - Zero manual compliance report generation
 - Drift resolution SLA < 24 hours
@@ -58,6 +60,7 @@ Achieve fully autonomous repository operations with human oversight limited to s
 - [ ] Self-optimizing routing rules based on historical data
 
 **Success Criteria**:
+
 - 95%+ uptime with autonomous recovery
 - Zero unplanned manual interventions
 - Compliance audit preparation fully automated
@@ -74,19 +77,20 @@ Achieve fully autonomous repository operations with human oversight limited to s
 - [ ] Compliance certification automation
 
 **Success Criteria**:
+
 - Strategic decisions presented with AI recommendations
 - Security patches applied < 4 hours from disclosure
 - Infrastructure costs optimized autonomously within 10% targets
 
 ## Metrics and KPIs
 
-| Metric | Current | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
-|--------|---------|---------|---------|---------|---------|
-| Auto-merge rate | 0% | 20% | 60% | 80% | 90% |
-| Evidence coverage | 10% | 80% | 95% | 99% | 99.9% |
-| Mean time to drift fix | N/A | 72h | 24h | 4h | 1h |
-| Manual approvals/week | 50+ | 30 | 15 | 5 | 2 |
-| Compliance audit prep time | 40h | 20h | 4h | 1h | 15min |
+| Metric                     | Current | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+| -------------------------- | ------- | ------- | ------- | ------- | ------- |
+| Auto-merge rate            | 0%      | 20%     | 60%     | 80%     | 90%     |
+| Evidence coverage          | 10%     | 80%     | 95%     | 99%     | 99.9%   |
+| Mean time to drift fix     | N/A     | 72h     | 24h     | 4h      | 1h      |
+| Manual approvals/week      | 50+     | 30      | 15      | 5       | 2       |
+| Compliance audit prep time | 40h     | 20h     | 4h      | 1h      | 15min   |
 
 ## Risk Mitigation
 

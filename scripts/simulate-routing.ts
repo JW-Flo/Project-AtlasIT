@@ -112,9 +112,7 @@ function validateDecision(
   const errors: string[] = [];
 
   if (decision.severity !== scenario.expected.severity) {
-    errors.push(
-      `Expected severity '${scenario.expected.severity}', got '${decision.severity}'`
-    );
+    errors.push(`Expected severity '${scenario.expected.severity}', got '${decision.severity}'`);
   }
 
   if (decision.agents.primary !== scenario.expected.primary_agent) {
@@ -162,7 +160,7 @@ async function validateRules(): Promise<{ valid: boolean; errors: string[] }> {
 
     // Validate severity values
     const validSeverities = ["low", "medium", "high", "critical"];
-    
+
     for (const [path, severity] of Object.entries(rules.severity_by_path)) {
       if (!validSeverities.includes(severity as string)) {
         errors.push(`Invalid severity '${severity}' for path '${path}'`);
@@ -175,7 +173,9 @@ async function validateRules(): Promise<{ valid: boolean; errors: string[] }> {
       }
     }
   } catch (error) {
-    errors.push(`Failed to load rules.json: ${error instanceof Error ? error.message : "Unknown error"}`);
+    errors.push(
+      `Failed to load rules.json: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
   }
 
   return { valid: errors.length === 0, errors };
@@ -188,7 +188,7 @@ async function simulateRouting(): Promise<void> {
   // Validate rules first
   console.log("📋 Validating routing rules...\n");
   const rulesValidation = await validateRules();
-  
+
   if (!rulesValidation.valid) {
     console.error("❌ Rules validation failed:");
     for (const error of rulesValidation.errors) {
@@ -196,7 +196,7 @@ async function simulateRouting(): Promise<void> {
     }
     process.exit(1);
   }
-  
+
   console.log("✅ Rules validation passed\n");
 
   // Run test scenarios
@@ -219,12 +219,12 @@ async function simulateRouting(): Promise<void> {
         console.log(`   ✅ PASSED`);
         console.log(`      Severity: ${decision.severity}`);
         console.log(`      Agent: ${decision.agents.primary}`);
-        
+
         if (decision.rule_summary) {
           console.log(`      Matched paths: ${decision.rule_summary.matched_paths.length}`);
           console.log(`      Matched keywords: ${decision.rule_summary.matched_keywords.length}`);
         }
-        
+
         passed++;
       } else {
         console.log(`   ❌ FAILED`);

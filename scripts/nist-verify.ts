@@ -69,7 +69,7 @@ async function loadEvidence(): Promise<Evidence[]> {
 
   try {
     const files = await readdir(evidenceDir);
-    
+
     for (const file of files) {
       if (file.endsWith(".json") && file !== ".keep") {
         const content = await readFile(join(evidenceDir, file), "utf-8");
@@ -91,7 +91,7 @@ async function verifyControl(
 ): Promise<NISTVerificationResult> {
   const requirement = CONTROL_REQUIREMENTS[controlId];
   const family = controlId.split("-")[0];
-  
+
   if (!requirement) {
     return {
       control_family: family,
@@ -106,8 +106,7 @@ async function verifyControl(
   // Find evidence matching this control
   const matchingEvidence = evidence.filter((e) => {
     return (
-      e.control_id === controlId ||
-      (e.action && requirement.required_actions.includes(e.action))
+      e.control_id === controlId || (e.action && requirement.required_actions.includes(e.action))
     );
   });
 
@@ -136,22 +135,23 @@ async function verifyNISTCompliance(): Promise<void> {
   console.log(`📋 Loaded ${evidence.length} evidence artifacts\n`);
 
   const results: NISTVerificationResult[] = [];
-  
+
   for (const controlId of Object.keys(CONTROL_REQUIREMENTS)) {
     const result = await verifyControl(controlId, evidence);
     results.push(result);
   }
 
   // Summary by control family
-  const familySummary: Record<string, { compliant: number; non_compliant: number; total: number }> = {};
-  
+  const familySummary: Record<string, { compliant: number; non_compliant: number; total: number }> =
+    {};
+
   for (const result of results) {
     if (!familySummary[result.control_family]) {
       familySummary[result.control_family] = { compliant: 0, non_compliant: 0, total: 0 };
     }
-    
+
     familySummary[result.control_family].total++;
-    
+
     if (result.status === "compliant") {
       familySummary[result.control_family].compliant++;
     } else if (result.status === "non_compliant") {
@@ -161,29 +161,34 @@ async function verifyNISTCompliance(): Promise<void> {
 
   // Print results
   console.log("📊 Compliance Status by Control\n");
-  
+
   for (const result of results) {
-    const statusIcon = result.status === "compliant" ? "✅" : 
-                      result.status === "non_compliant" ? "❌" : "⚪";
-    
-    console.log(`${statusIcon} ${result.control_id}: ${CONTROL_REQUIREMENTS[result.control_id]?.description || "Unknown"}`);
+    const statusIcon =
+      result.status === "compliant" ? "✅" : result.status === "non_compliant" ? "❌" : "⚪";
+
+    console.log(
+      `${statusIcon} ${result.control_id}: ${CONTROL_REQUIREMENTS[result.control_id]?.description || "Unknown"}`
+    );
     console.log(`   Status: ${result.status}`);
     console.log(`   Evidence: ${result.evidence_count} artifact(s)`);
-    
+
     if (result.evidence_refs.length > 0) {
-      console.log(`   Refs: ${result.evidence_refs.slice(0, 3).join(", ")}${result.evidence_refs.length > 3 ? "..." : ""}`);
+      console.log(
+        `   Refs: ${result.evidence_refs.slice(0, 3).join(", ")}${result.evidence_refs.length > 3 ? "..." : ""}`
+      );
     }
-    
+
     console.log();
   }
 
   // Print family summary
   console.log("📈 Summary by Control Family\n");
-  
+
   for (const [family, summary] of Object.entries(familySummary)) {
     const familyName = CONTROL_FAMILIES[family as keyof typeof CONTROL_FAMILIES] || family;
-    const complianceRate = summary.total > 0 ? (summary.compliant / summary.total * 100).toFixed(0) : 0;
-    
+    const complianceRate =
+      summary.total > 0 ? ((summary.compliant / summary.total) * 100).toFixed(0) : 0;
+
     console.log(`${family} - ${familyName}`);
     console.log(`   Compliant: ${summary.compliant}/${summary.total} (${complianceRate}%)`);
     console.log();
@@ -192,8 +197,8 @@ async function verifyNISTCompliance(): Promise<void> {
   // Overall status
   const totalCompliant = results.filter((r) => r.status === "compliant").length;
   const totalControls = results.filter((r) => r.status !== "not_applicable").length;
-  const overallRate = totalControls > 0 ? (totalCompliant / totalControls * 100).toFixed(0) : 0;
-  
+  const overallRate = totalControls > 0 ? ((totalCompliant / totalControls) * 100).toFixed(0) : 0;
+
   console.log(`🎯 Overall Compliance: ${totalCompliant}/${totalControls} (${overallRate}%)\n`);
 
   // Exit with error if not fully compliant

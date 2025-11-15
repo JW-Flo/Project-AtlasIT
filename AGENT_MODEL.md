@@ -7,6 +7,7 @@ The AtlasIT Autonomous Development Framework establishes a multi-agent architect
 ## Agent Roles
 
 ### Copilot Agent
+
 - **Purpose**: Strategic planning, branch provisioning, and workflow orchestration
 - **Responsibilities**:
   - Create feature branches and sub-issues
@@ -16,6 +17,7 @@ The AtlasIT Autonomous Development Framework establishes a multi-agent architect
 - **Communication**: GitHub API, Linear API, workflow dispatch events
 
 ### CodeGen Agent
+
 - **Purpose**: Execute code generation tasks from fenced command plans
 - **Responsibilities**:
   - Parse and execute `.codex` command plans
@@ -25,6 +27,7 @@ The AtlasIT Autonomous Development Framework establishes a multi-agent architect
 - **Communication**: File system markers, git commits, CI event hooks
 
 ### Router Agent (Worker)
+
 - **Purpose**: Route PRs to appropriate agents based on severity and file patterns
 - **Responsibilities**:
   - Analyze PR metadata (files changed, labels, title)
@@ -35,6 +38,7 @@ The AtlasIT Autonomous Development Framework establishes a multi-agent architect
 - **Communication**: HTTP POST API, GitHub webhooks, simulation mode
 
 ### Drift Detection Agent
+
 - **Purpose**: Monitor repository structure against canonical specification
 - **Responsibilities**:
   - Compare actual file tree to required structure
@@ -46,6 +50,7 @@ The AtlasIT Autonomous Development Framework establishes a multi-agent architect
 ## Agent Communication Protocol
 
 All agents communicate via:
+
 1. **Evidence Emission**: JSON artifacts conforming to `EVIDENCE_SCHEMA.json`
 2. **GitHub Events**: PR comments, labels, status checks
 3. **Workflow Dispatch**: Trigger cross-workflow coordination
