@@ -5,7 +5,142 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
 jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check Prettier formatting
+        run: npx prettier --check "**/*.{ts,tsx,json,md}"
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: TypeScript type check
+        run: npm run typecheck
+
+  opa-tests:
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run OPA tests
+        run: |
+          if [ -d "policies" ] && [ -f "scripts/run-opa.sh" ]; then
+            bash scripts/run-opa.sh
+          else
+            echo "OPA policies not present, skipping"
+          fi
+
+  nist-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Run NIST verification
+        run: |
+          if [ -f "scripts/nist-verify.ts" ]; then
+            npx tsx scripts/nist-verify.ts
+          else
+            echo "NIST verify script not present, skipping"
+          fi
+
+  simulate-routing:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Simulate routing
+        run: |
+          if [ -f "scripts/simulate-routing.ts" ]; then
+            npx tsx scripts/simulate-routing.ts
+          else
+            echo "Routing simulation script not present, skipping"
+          fi
+
+  emit-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Emit evidence artifact
+        run: |
+          if [ -f "scripts/emit-evidence.ts" ]; then
+            npx tsx scripts/emit-evidence.ts
+          else
+            echo "Evidence emission script not present, skipping"
+          fi
+
+      - name: Upload evidence artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evidence-artifacts
+          path: .evidence/
+
   build-test-sbom:
     runs-on: ubuntu-latest
     env:
@@ -14,17 +149,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: "npm"
+
       - name: Install dependencies
-        run: npm install
+        run: npm install --no-fund --no-audit
+
       - name: Validate environment
         run: npm run validate:env
+
       - name: Build, test, sbom
         run: npm run ci:run
+
       - name: Upload CI artifacts
         uses: actions/upload-artifact@v4
         with:

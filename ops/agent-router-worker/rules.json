@@ -1,0 +1,42 @@
+{
+  "severity_by_path": {
+    "docs/": "low",
+    ".github/workflows/": "high",
+    "EVIDENCE_SCHEMA.json": "medium",
+    "DRIFT_DETECTION_SPEC.md": "medium",
+    "scripts/nist-verify.ts": "medium",
+    "scripts/emit-evidence.ts": "medium",
+    "ops/": "high",
+    "packages/": "medium",
+    "README.md": "low"
+  },
+  "severity_by_keyword": {
+    "drift": "medium",
+    "security": "high",
+    "evidence": "medium",
+    "critical": "high",
+    "breaking": "high"
+  },
+  "codex_assignment_triggers": [
+    "DRIFT_DETECTION_SPEC.md",
+    "EVIDENCE_SCHEMA.json",
+    "AGENT_MODEL.md",
+    "COPILOT_GRAMMAR.md"
+  ],
+  "evidence_required": [
+    "EVIDENCE_SCHEMA.json",
+    "AGENT_MODEL.md",
+    ".github/workflows/merge-orchestrator.yml",
+    ".github/workflows/agent-events.yml",
+    "ops/agent-router-worker/worker.ts"
+  ],
+  "prohibited_patterns": [
+    "TODO_REMOVE",
+    "console.log(",
+    "eval(",
+    "password = \"",
+    "api_key = \"",
+    "secret = \"",
+    "token = \""
+  ]
+}
