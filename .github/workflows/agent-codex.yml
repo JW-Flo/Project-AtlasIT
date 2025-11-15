@@ -58,7 +58,7 @@ jobs:
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
 
       - name: Upload Evidence Artifacts
-        if: always()
+        if: ${{ steps.codex-run.outcome == 'success' || steps.codex-run.outcome == 'failure' }}
         uses: actions/upload-artifact@v4
         with:
           name: codex-evidence-${{ github.run_id }}
