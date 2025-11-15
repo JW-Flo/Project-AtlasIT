@@ -36,11 +36,24 @@ jobs:
           node scripts/run-codex.mjs
         continue-on-error: true
 
+      - name: Verify Evidence Artifacts Exist
+        run: |
+          if ! ls .codex.done 1> /dev/null 2>&1; then
+            echo "❌ .codex.done file not found. Workflow execution may have failed."
+            exit 1
+          fi
+          if ! ls artifacts/EV-codex-*.json 1> /dev/null 2>&1; then
+            echo "❌ No evidence artifacts found matching artifacts/EV-codex-*.json."
+            exit 1
+          fi
+          echo "✅ Evidence artifacts verified."
+
       - name: Commit .codex.done
+        if: ${{ steps.codex-run.outcome == 'success' || steps.codex-run.outcome == 'failure' }}
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "[AUTO] CodeGen execution completed"
-          file_pattern: ".codex.done artifacts/EV-*.json"
+          file_pattern: ".codex.done artifacts/EV-codex-*.json"
           commit_user_name: "github-actions[bot]"
           commit_user_email: "github-actions[bot]@users.noreply.github.com"
 

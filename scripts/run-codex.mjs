@@ -2,7 +2,7 @@
 /**
  * Codex Runner - Autonomous execution of fenced command plans
  *
- * Reads `## COMMAND PLAN` section from ops/hand-off.md,
+ * Reads `## COMMAND PLAN` section (flexible whitespace matching) from ops/hand-off.md,
  * executes each command sequentially, and logs output to .codex.done
  */
 
@@ -17,16 +17,21 @@ import { randomUUID } from "node:crypto";
 async function extractCommandPlan(filePath) {
   const content = await readFile(filePath, "utf-8");
 
-  // Find the ## COMMAND PLAN section
-  const commandPlanMatch = content.match(
-    /##\s+COMMAND\s+PLAN\s*\n\s*```(?:bash)?\s*\n([\s\S]*?)\n\s*```/i,
-  );
+  // Find all ## COMMAND PLAN sections (should be exactly one)
+  const commandPlanRegex =
+    /##\s+COMMAND\s+PLAN\s*\n\s*```(?:bash)?\s*\n([\s\S]*?)\n\s*```/gi;
+  const matches = Array.from(content.matchAll(commandPlanRegex));
 
-  if (!commandPlanMatch) {
+  if (matches.length === 0) {
     throw new Error("No ## COMMAND PLAN section found in ops/hand-off.md");
   }
+  if (matches.length > 1) {
+    throw new Error(
+      "Multiple ## COMMAND PLAN sections found in ops/hand-off.md. Please ensure only one exists.",
+    );
+  }
 
-  const commandBlock = commandPlanMatch[1];
+  const commandBlock = matches[0][1];
 
   // Split into lines and filter out comments and empty lines
   const commands = commandBlock
@@ -35,7 +40,7 @@ async function extractCommandPlan(filePath) {
     .filter((line) => {
       // Skip empty lines
       if (!line) return false;
-      // Skip comment-only lines
+      // Skip comment-only lines (lines starting with '#'); inline comments are preserved and handled by bash
       if (line.startsWith("#")) return false;
       return true;
     });
@@ -43,20 +48,91 @@ async function extractCommandPlan(filePath) {
   return commands;
 }
 
+// Configuration constants
+const COMMAND_TIMEOUT_MS = 300000; // 5 minutes per command
+const MAX_OUTPUT_SIZE = 1024 * 1024; // 1MB max output per command
+
 /**
- * Execute a single shell command
+ * Sanitize output to remove potential secrets
  */
-async function executeCommand(command) {
+function sanitizeOutput(output) {
+  if (!output) return output;
+
+  // Truncate if too large
+  if (output.length > MAX_OUTPUT_SIZE) {
+    return (
+      output.substring(0, MAX_OUTPUT_SIZE) +
+      "\n\n[Output truncated - exceeded 1MB limit]"
+    );
+  }
+
+  // Redact common secret patterns
+  let sanitized = output;
+  // Redact long base64-like strings that might be secrets
+  sanitized = sanitized.replace(
+    /([a-zA-Z0-9+/]{40,}={0,2})/g,
+    "[REDACTED_BASE64]",
+  );
+  // Redact bearer tokens
+  sanitized = sanitized.replace(
+    /Bearer\s+[a-zA-Z0-9\-._~+/]+=*/gi,
+    "Bearer [REDACTED]",
+  );
+  // Redact AWS-style keys
+  sanitized = sanitized.replace(/AKIA[0-9A-Z]{16}/g, "[REDACTED_AWS_KEY]");
+
+  return sanitized;
+}
+
+/**
+ * Filter environment variables to exclude sensitive ones
+ */
+function getFilteredEnv() {
+  const sensitivePatterns = [
+    /TOKEN/i,
+    /SECRET/i,
+    /KEY/i,
+    /PASSWORD/i,
+    /PASSWD/i,
+    /API[_-]?KEY/i,
+    /AUTH/i,
+    /CREDENTIAL/i,
+  ];
+
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => {
+      return !sensitivePatterns.some((pattern) => pattern.test(key));
+    }),
+  );
+}
+
+/**
+ * Execute a single shell command with timeout
+ */
+async function executeCommand(command, timeoutMs = COMMAND_TIMEOUT_MS) {
   const startTime = Date.now();
 
   return new Promise((resolve) => {
     const proc = spawn("bash", ["-c", command], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env },
+      env: getFilteredEnv(),
     });
 
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+
+    // Set up timeout
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      // Force kill after 5 seconds if still running
+      setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill("SIGKILL");
+        }
+      }, 5000);
+    }, timeoutMs);
 
     if (proc.stdout) {
       proc.stdout.on("data", (data) => {
@@ -70,24 +146,32 @@ async function executeCommand(command) {
       });
     }
 
-    proc.on("close", (code) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+    };
+
+    proc.once("close", (code) => {
+      cleanup();
       const duration = Date.now() - startTime;
       resolve({
         command,
-        exitCode: code ?? 1,
-        stdout,
-        stderr,
+        exitCode: timedOut ? 124 : (code ?? 1), // 124 is timeout exit code
+        stdout: sanitizeOutput(stdout),
+        stderr: sanitizeOutput(
+          timedOut ? stderr + "\n[Command timed out]" : stderr,
+        ),
         duration,
       });
     });
 
-    proc.on("error", (err) => {
+    proc.once("error", (err) => {
+      cleanup();
       const duration = Date.now() - startTime;
       resolve({
         command,
         exitCode: 1,
-        stdout,
-        stderr: stderr + "\nError: " + err.message,
+        stdout: sanitizeOutput(stdout),
+        stderr: sanitizeOutput(stderr + "\nSpawn error: " + err.message),
         duration,
       });
     });
@@ -166,6 +250,8 @@ Error: ${errorMsg}
   // Generate evidence artifact
   const evidence = {
     trace_id: traceId,
+    tenant_id: process.env.TENANT_ID || "system",
+    subject_id: process.env.GITHUB_ACTOR || "github-actions",
     control_id: "CODEX_RUNNER_EXECUTION",
     timestamp,
     status: failedCommands === 0 ? "pass" : "fail",
