@@ -1,8 +1,8 @@
 {
-  "generated_at": "2025-11-15T10:42:46.568Z",
-  "total_artifacts": 6,
+  "generated_at": "2025-11-15T10:44:25.623Z",
+  "total_artifacts": 7,
   "by_control": {
-    "DRIFT-SCAN": 1,
+    "DRIFT-SCAN": 2,
     "CX-004": 1,
     "CX-001": 1,
     "submodule_cleanup": 1,
@@ -10,7 +10,7 @@
     "TEST-CONTROL-001": 1
   },
   "by_result": {
-    "pass": 2,
+    "pass": 3,
     "CYCLE_VALIDATED": 1,
     "ENV_VALIDATED": 1,
     "undefined": 1,
@@ -22,6 +22,13 @@
       "trace_id": "0807a97a-ccb2-4a05-9a24-e7dea0c4a05a",
       "control_id": "DRIFT-SCAN",
       "timestamp": "2025-11-15T10:40:28.404Z",
+      "result": "pass"
+    },
+    {
+      "filename": "DRIFT-SCAN-1763203464865.json",
+      "trace_id": "25b83d5f-d3ce-466d-b154-f2a5c3c12b2c",
+      "control_id": "DRIFT-SCAN",
+      "timestamp": "2025-11-15T10:44:24.865Z",
       "result": "pass"
     },
     {
