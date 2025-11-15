@@ -1,0 +1,62 @@
+{
+  "generated_at": "2025-11-15T10:42:46.568Z",
+  "total_artifacts": 6,
+  "by_control": {
+    "DRIFT-SCAN": 1,
+    "CX-004": 1,
+    "CX-001": 1,
+    "submodule_cleanup": 1,
+    "NIST-VERIFY": 1,
+    "TEST-CONTROL-001": 1
+  },
+  "by_result": {
+    "pass": 2,
+    "CYCLE_VALIDATED": 1,
+    "ENV_VALIDATED": 1,
+    "undefined": 1,
+    "fail": 1
+  },
+  "artifacts": [
+    {
+      "filename": "DRIFT-SCAN-1763203228404.json",
+      "trace_id": "0807a97a-ccb2-4a05-9a24-e7dea0c4a05a",
+      "control_id": "DRIFT-SCAN",
+      "timestamp": "2025-11-15T10:40:28.404Z",
+      "result": "pass"
+    },
+    {
+      "filename": "EV-codex-cycle.json",
+      "trace_id": "d300ec10-b5ef-4fd7-a112-75b3874656bd",
+      "control_id": "CX-004",
+      "timestamp": "2025-11-15T05:16:05+00:00",
+      "result": "CYCLE_VALIDATED"
+    },
+    {
+      "filename": "EV-codex-env.json",
+      "trace_id": "b50e2c4b-2b55-4745-8d72-934328fa943c",
+      "control_id": "CX-001",
+      "timestamp": "2025-11-13T07:36:30+00:00",
+      "result": "ENV_VALIDATED"
+    },
+    {
+      "filename": "EV-submodule-cleanup.json",
+      "trace_id": "53ea2ed6-15a3-4239-9983-87ec131ae98b",
+      "control_id": "submodule_cleanup",
+      "timestamp": "2025-11-13T06:40:26+00:00"
+    },
+    {
+      "filename": "NIST-VERIFY-1763203345700.json",
+      "trace_id": "6ba57cc2-93de-417b-a4fc-a6fe79741731",
+      "control_id": "NIST-VERIFY",
+      "timestamp": "2025-11-15T10:42:25.700Z",
+      "result": "fail"
+    },
+    {
+      "filename": "TEST-CONTROL-001-1763203238377.json",
+      "trace_id": "a9b43bd0-e2be-49c0-959d-b5350230c9dc",
+      "control_id": "TEST-CONTROL-001",
+      "timestamp": "2025-11-15T10:40:38.377Z",
+      "result": "pass"
+    }
+  ]
+}
