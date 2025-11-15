@@ -9,6 +9,9 @@ on:
 jobs:
   track-event:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
