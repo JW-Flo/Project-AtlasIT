@@ -42,8 +42,6 @@ jobs:
             - name: Wrangler publish
               run: npx wrangler deploy ai-orchestrator/index.js --name ai-orchestrator
               env:
-                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-                  WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
                   AI_MAX_REQUESTS_PER_DAY: 5000
                   AI_ALLOWED_MODELS: openai:gpt-4o-mini,anthropic:claude-3-haiku
                   AI_RATE_WINDOW_SECONDS: 60
@@ -60,8 +58,6 @@ jobs:
                   WORKER_URL="https://ai-orchestrator.${CF_ACCOUNT_ID}.workers.dev" || true
                   echo "Probing $WORKER_URL/health"
                   curl -sS "$WORKER_URL/health" || echo "Health endpoint probe failed (URL may differ)."
-              env:
-                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
               if: always()
 
             - name: Guidance

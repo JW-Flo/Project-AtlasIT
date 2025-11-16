@@ -43,9 +43,6 @@ jobs:
 
             - name: Deploy console worker
               run: npx wrangler deploy --config console-app/wrangler.toml
-              env:
-                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-                  WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
 
             - name: Post-deploy smoke
               run: |
@@ -55,8 +52,6 @@ jobs:
                   curl -sS "$FALLBACK_URL/api/config" || echo 'Config probe failed (may require custom domain propagation).'
                   echo "Probing mock compliance snapshot: $FALLBACK_URL/api/mock/compliance/snapshot"
                   curl -sS "$FALLBACK_URL/api/mock/compliance/snapshot" | head -c 300 || echo 'Snapshot probe failed.'
-              env:
-                  CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
               if: always()
 
             - name: Guidance
