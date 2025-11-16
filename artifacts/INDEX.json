@@ -1,41 +1,32 @@
 {
-  "generated_at": "2025-11-15T10:53:40.052Z",
-  "total_artifacts": 8,
+  "generated_at": "2025-11-16T11:29:01.080Z",
+  "total_artifacts": 6,
   "by_control": {
-    "DRIFT-SCAN": 3,
+    "DRIFT-SCAN": 2,
     "CX-004": 1,
     "CX-001": 1,
     "submodule_cleanup": 1,
-    "NIST-VERIFY": 1,
-    "TEST-CONTROL-001": 1
+    "TEST-001": 1
   },
   "by_result": {
-    "pass": 4,
+    "pass": 3,
     "CYCLE_VALIDATED": 1,
     "ENV_VALIDATED": 1,
-    "undefined": 1,
-    "fail": 1
+    "undefined": 1
   },
   "artifacts": [
     {
-      "filename": "DRIFT-SCAN-1763203228404.json",
-      "trace_id": "0807a97a-ccb2-4a05-9a24-e7dea0c4a05a",
+      "filename": "DRIFT-SCAN-1763292448457.json",
+      "trace_id": "e2f16a22-6183-411a-b3d2-de439226a90c",
       "control_id": "DRIFT-SCAN",
-      "timestamp": "2025-11-15T10:40:28.404Z",
+      "timestamp": "2025-11-16T11:27:28.457Z",
       "result": "pass"
     },
     {
-      "filename": "DRIFT-SCAN-1763203464865.json",
-      "trace_id": "25b83d5f-d3ce-466d-b154-f2a5c3c12b2c",
+      "filename": "DRIFT-SCAN-1763292535533.json",
+      "trace_id": "92523881-c02e-493f-a16e-c0164f099bbc",
       "control_id": "DRIFT-SCAN",
-      "timestamp": "2025-11-15T10:44:24.865Z",
-      "result": "pass"
-    },
-    {
-      "filename": "DRIFT-SCAN-1763204017632.json",
-      "trace_id": "7bebb129-e69a-492a-b63d-58cbe3e64b6b",
-      "control_id": "DRIFT-SCAN",
-      "timestamp": "2025-11-15T10:53:37.632Z",
+      "timestamp": "2025-11-16T11:28:55.533Z",
       "result": "pass"
     },
     {
@@ -59,17 +50,10 @@
       "timestamp": "2025-11-13T06:40:26+00:00"
     },
     {
-      "filename": "NIST-VERIFY-1763203345700.json",
-      "trace_id": "6ba57cc2-93de-417b-a4fc-a6fe79741731",
-      "control_id": "NIST-VERIFY",
-      "timestamp": "2025-11-15T10:42:25.700Z",
-      "result": "fail"
-    },
-    {
-      "filename": "TEST-CONTROL-001-1763203238377.json",
-      "trace_id": "a9b43bd0-e2be-49c0-959d-b5350230c9dc",
-      "control_id": "TEST-CONTROL-001",
-      "timestamp": "2025-11-15T10:40:38.377Z",
+      "filename": "TEST-001-1763292538747.json",
+      "trace_id": "e67b097b-3827-4833-9759-6f5fd809304c",
+      "control_id": "TEST-001",
+      "timestamp": "2025-11-16T11:28:58.746Z",
       "result": "pass"
     }
   ]
