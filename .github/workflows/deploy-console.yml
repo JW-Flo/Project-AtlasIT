@@ -39,7 +39,9 @@ jobs:
               working-directory: console-app
 
             - name: Lint console (best effort)
-              run: npx eslint console-app || echo 'Lint warnings ignored for deploy'
+              run: |
+                  npx eslint console-app || \
+                    echo 'Lint warnings ignored for deploy'
 
             - name: Deploy console worker
               run: npx wrangler deploy --config console-app/wrangler.toml
@@ -47,15 +49,21 @@ jobs:
             - name: Post-deploy smoke
               run: |
                   set -e
-                  FALLBACK_URL=${CONSOLE_WORKERS_DEV:-"https://atlasit-console.${CF_ACCOUNT_ID}.workers.dev"}
+                  DEFAULT_URL="https://atlasit-console.${CF_ACCOUNT_ID}.workers.dev"
+                  FALLBACK_URL=${CONSOLE_WORKERS_DEV:-"$DEFAULT_URL"}
                   echo "Probing config endpoint: $FALLBACK_URL/api/config"
-                  curl -sS "$FALLBACK_URL/api/config" || echo 'Config probe failed (may require custom domain propagation).'
-                  echo "Probing mock compliance snapshot: $FALLBACK_URL/api/mock/compliance/snapshot"
-                  curl -sS "$FALLBACK_URL/api/mock/compliance/snapshot" | head -c 300 || echo 'Snapshot probe failed.'
+                  curl -sS "$FALLBACK_URL/api/config" || \
+                    echo 'Config probe failed (may require custom domain propagation).'
+                  echo "Probing mock compliance snapshot:"
+                  echo "$FALLBACK_URL/api/mock/compliance/snapshot"
+                  curl -sS "$FALLBACK_URL/api/mock/compliance/snapshot" | \
+                    head -c 300 || echo 'Snapshot probe failed.'
               if: always()
 
             - name: Guidance
               run: |
                   echo 'Deployed atlasit-console worker.'
-                  echo 'If custom domain routes (www.atlasit.pro/console*) still 404, verify DNS, route propagation, and that no overlapping Pages project is intercepting base path.'
+                  echo 'If custom domain routes (www.atlasit.pro/console*)'
+                  echo 'still 404, verify DNS, route propagation, and that'
+                  echo 'no overlapping Pages project is intercepting base path.'
                   echo 'workers.dev fallback usable immediately.'

@@ -31,16 +31,23 @@ jobs:
               run: npm ci
 
             - name: Lint orchestrator
-              run: npx eslint ai-orchestrator --max-warnings=0 || npx eslint ai-orchestrator
+              run: |
+                  npx eslint ai-orchestrator --max-warnings=0 || \
+                    npx eslint ai-orchestrator
 
             - name: Run tests (if present)
               run: |
-                  if [ -f "package.json" ] && jq -e '.scripts.test' package.json > /dev/null; then
-                    npm test --workspaces --if-present || echo "No tests or tests failed"
+                  if [ -f "package.json" ] && \
+                     jq -e '.scripts.test' package.json > /dev/null; then
+                    npm test --workspaces --if-present || \
+                      echo "No tests or tests failed"
                   fi
 
             - name: Wrangler publish
-              run: npx wrangler deploy ai-orchestrator/index.js --name ai-orchestrator
+              run: |
+                  npx wrangler deploy \
+                    ai-orchestrator/index.js \
+                    --name ai-orchestrator
               env:
                   AI_MAX_REQUESTS_PER_DAY: 5000
                   AI_ALLOWED_MODELS: openai:gpt-4o-mini,anthropic:claude-3-haiku
@@ -55,12 +62,16 @@ jobs:
               run: |
                   set -e
                   # Derive worker URL if using custom domain adjust accordingly
-                  WORKER_URL="https://ai-orchestrator.${CF_ACCOUNT_ID}.workers.dev" || true
+                  BASE_URL="https://ai-orchestrator.${CF_ACCOUNT_ID}.workers.dev"
+                  WORKER_URL="${BASE_URL}" || true
                   echo "Probing $WORKER_URL/health"
-                  curl -sS "$WORKER_URL/health" || echo "Health endpoint probe failed (URL may differ)."
+                  curl -sS "$WORKER_URL/health" || \
+                    echo "Health endpoint probe failed (URL may differ)."
               if: always()
 
             - name: Guidance
               run: |
-                  echo "Ensure secrets CF_ACCOUNT_ID and WRANGLER_API_TOKEN are configured."
-                  echo "Optional: set AI_* vars in dashboard for production overrides."
+                  echo "Ensure secrets CF_ACCOUNT_ID and"
+                  echo "WRANGLER_API_TOKEN are configured."
+                  echo "Optional: set AI_* vars in dashboard"
+                  echo "for production overrides."
