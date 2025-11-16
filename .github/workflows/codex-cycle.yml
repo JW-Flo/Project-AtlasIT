@@ -18,15 +18,15 @@ jobs:
         with:
           fetch-depth: 0  # Full history for proper git operations
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      
+
       - name: Execute Codex Evidence Cycle
         run: bash scripts/codex-cycle.sh
-      
+
       - name: Upload Evidence Artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -32,7 +32,7 @@ jobs:
             --entry-point=oktaRampSync \
             --source=cloud_functions/oktaRampSync \
             --trigger-http \
-            --allow-unauthenticated 
+            --allow-unauthenticated
 
       - name: Revert repository to desired state
         run: |

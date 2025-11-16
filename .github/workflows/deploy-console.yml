@@ -53,7 +53,7 @@ jobs:
                   FALLBACK_URL=${CONSOLE_WORKERS_DEV:-"https://atlasit-console.${CF_ACCOUNT_ID}.workers.dev"}
                   echo "Probing config endpoint: $FALLBACK_URL/api/config"
                   curl -sS "$FALLBACK_URL/api/config" || echo 'Config probe failed (may require custom domain propagation).'
-                  echo "Probing mock compliance snapshot: $FALLBACK_URL/api/mock/compliance/snapshot" 
+                  echo "Probing mock compliance snapshot: $FALLBACK_URL/api/mock/compliance/snapshot"
                   curl -sS "$FALLBACK_URL/api/mock/compliance/snapshot" | head -c 300 || echo 'Snapshot probe failed.'
               env:
                   CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
