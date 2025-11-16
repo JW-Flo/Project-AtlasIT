@@ -1,13 +1,13 @@
 ---
-# Fill in the fields below to create a basic custom agent for your repository.
-# The Copilot CLI can be used for local testing: https://gh.io/customagents/cli
-# To make this agent available, merge this file into the default repository branch.
-# For format details, see: https://gh.io/customagents/config
-
-name:--- copilot-issue-triage-agent
+name: copilot-issue-triage-agent
 description: >
   Recursively reviews, triages, and resolves all open issues in the HarderWorkingCo/Project-AtlasIT repository.
   Automatically closes redundant or completed issues, emits traceable compliance evidence, and updates /artifacts.
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+---
 
 # My Agent
 
@@ -21,11 +21,6 @@ Automate the triage of open issues by:
 ## Triggers
 - Manual via `workflow_dispatch`
 - Optional: Schedule via cron (disabled by default for safety)
-
-## Permissions
-- issues: write
-- contents: write
-- pull-requests: write
 
 ## Behavior
 1. **Scan Open Issues**
@@ -64,10 +59,3 @@ Automate the triage of open issues by:
 - `/artifacts/EV-<issue-id>.json` – per closed issue
 - `/artifacts/triage-summary.md` – global audit summary
 - `/artifacts/triage-trace-<timestamp>.log` – raw execution log
-
-description:
----
-
-# My Agent
-
-Describe what your agent does here...
