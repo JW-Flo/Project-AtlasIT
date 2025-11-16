@@ -39,7 +39,7 @@ interface RoutingDecision {
 }
 
 // Import rules at build time
-import RULES from './rules.json';
+const RULES = require('./rules.json') as RoutingRules;
 
 // Recursively sort object keys for deterministic serialization
 function deepSortObject<T>(obj: T): T {
