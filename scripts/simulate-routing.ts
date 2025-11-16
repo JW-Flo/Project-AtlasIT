@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 
 interface PRMetadata {
   pr_number?: number;
@@ -39,8 +39,23 @@ interface RoutingRules {
 
 const DEFAULT_SEED = 'PR-INIT-001-simulation';
 
+// Recursively sort object keys for deterministic serialization
+function deepSortObject<T>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return obj.map(deepSortObject) as T;
+  } else if (obj !== null && typeof obj === 'object') {
+    const sortedKeys = Object.keys(obj).sort();
+    const result: any = {};
+    for (const key of sortedKeys) {
+      result[key] = deepSortObject((obj as any)[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
 function computeRulesHash(rules: RoutingRules): string {
-  const canonical = JSON.stringify(rules, Object.keys(rules).sort());
+  const canonical = JSON.stringify(deepSortObject(rules));
   return createHash('sha256').update(canonical).digest('hex');
 }
 
@@ -48,7 +63,7 @@ function simulateRouting(
   prMetadata: PRMetadata,
   seed: string = DEFAULT_SEED
 ): RoutingDecision {
-  console.log('[SIMULATE] Starting routing simulation...');
+  console.error('[SIMULATE] Starting routing simulation...');
 
   // Load routing rules
   const rulesPath = join(
@@ -133,15 +148,18 @@ function simulateRouting(
     decision.rule_summary = `Matched ${triggers.length} trigger(s): ${triggers.join(', ')}`;
   }
 
-  console.log(`[SIMULATE] Severity: ${severity}`);
-  console.log(`[SIMULATE] Assignee: ${assignee}`);
-  console.log(`[SIMULATE] Triggers: ${triggers.length}`);
+  console.error(`[SIMULATE] Severity: ${severity}`);
+  console.error(`[SIMULATE] Assignee: ${assignee}`);
+  console.error(`[SIMULATE] Triggers: ${triggers.length}`);
 
   return decision;
 }
 
 // CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = import.meta.url.endsWith(process.argv[1]) || 
+                     import.meta.url === `file://${process.argv[1]}` ||
+                     import.meta.url.endsWith('/' + process.argv[1].split('/').pop());
+if (isMainModule) {
   const args = process.argv.slice(2);
 
   if (args.length < 1) {
@@ -154,7 +172,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const decision = simulateRouting(prMetadata, seed);
 
-  console.log('\n[SIMULATE] Decision JSON:');
+  // Output JSON to stdout only (logging goes to stderr)
   console.log(JSON.stringify(decision, null, 2));
 }
 

@@ -48,7 +48,10 @@ export function emitEvidence(
 }
 
 // CLI interface
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = import.meta.url.endsWith(process.argv[1]) || 
+                     import.meta.url === `file://${process.argv[1]}` ||
+                     import.meta.url.endsWith('/' + process.argv[1].split('/').pop());
+if (isMainModule) {
   const args = process.argv.slice(2);
   if (args.length < 2) {
     console.error('Usage: emit-evidence.ts <control_id> <result> [metadata_json]');

@@ -84,7 +84,10 @@ function verifyNistControls(): number {
 }
 
 // CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = import.meta.url.endsWith(process.argv[1]) || 
+                     import.meta.url === `file://${process.argv[1]}` ||
+                     import.meta.url.endsWith('/' + process.argv[1].split('/').pop());
+if (isMainModule) {
   const exitCode = verifyNistControls();
   process.exit(exitCode);
 }

@@ -49,8 +49,8 @@ deny contains msg if {
     input.file_content
     contains(lower(input.file_content), "secret")
     contains(lower(input.file_content), "=")
-    not contains(input.file_content, "SECRET_ENV_VAR")
-    not contains(input.file_content, "secret_name")
+    not contains(lower(input.file_content), lower("SECRET_ENV_VAR"))
+    not contains(lower(input.file_content), lower("secret_name"))
     msg := "Potential hardcoded secret detected"
 }
 

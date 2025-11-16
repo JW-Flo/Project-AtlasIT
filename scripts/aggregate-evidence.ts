@@ -96,7 +96,10 @@ function aggregateEvidence(): EvidenceIndex {
 }
 
 // CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = import.meta.url.endsWith(process.argv[1]) || 
+                     import.meta.url === `file://${process.argv[1]}` ||
+                     import.meta.url.endsWith('/' + process.argv[1].split('/').pop());
+if (isMainModule) {
   const index = aggregateEvidence();
   console.log('\n[AGGREGATE] Summary:');
   console.log(JSON.stringify(index, null, 2));

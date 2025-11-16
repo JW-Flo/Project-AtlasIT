@@ -97,7 +97,10 @@ function scanForDrift(): DriftResult {
 }
 
 // CLI execution
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = import.meta.url.endsWith(process.argv[1]) || 
+                     import.meta.url === `file://${process.argv[1]}` ||
+                     import.meta.url.endsWith('/' + process.argv[1].split('/').pop());
+if (isMainModule) {
   const result = scanForDrift();
   const exitCode = result.clean ? 0 : 1;
 

@@ -3,8 +3,6 @@
  * Cloudflare Worker for autonomous agent routing decisions
  */
 
-import { createHash } from 'crypto';
-
 interface Env {
   // Environment bindings would go here
 }
@@ -43,17 +41,40 @@ interface RoutingDecision {
 // Import rules at build time
 import RULES from './rules.json';
 
-function computeRulesHash(rules: RoutingRules): string {
-  const canonical = JSON.stringify(rules, Object.keys(rules).sort());
-  return createHash('sha256').update(canonical).digest('hex');
+// Recursively sort object keys for deterministic serialization
+function deepSortObject<T>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return obj.map(deepSortObject) as T;
+  } else if (obj !== null && typeof obj === 'object') {
+    const sortedKeys = Object.keys(obj).sort();
+    const result: any = {};
+    for (const key of sortedKeys) {
+      result[key] = deepSortObject((obj as any)[key]);
+    }
+    return result;
+  }
+  return obj;
 }
 
-function generateDeterministicUUID(seed: string): string {
-  const hash = createHash('sha256').update(seed).digest('hex');
+async function computeRulesHash(rules: RoutingRules): Promise<string> {
+  const canonical = JSON.stringify(deepSortObject(rules));
+  const encoder = new TextEncoder();
+  const data = encoder.encode(canonical);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function generateDeterministicUUID(seed: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(seed);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-${hash.substring(12, 16)}-${hash.substring(16, 20)}-${hash.substring(20, 32)}`;
 }
 
-function evaluateRouting(prMetadata: PRMetadata, rules: RoutingRules): RoutingDecision {
+async function evaluateRouting(prMetadata: PRMetadata, rules: RoutingRules): Promise<RoutingDecision> {
   const triggers: string[] = [];
   let severity: 'low' | 'medium' | 'high' | 'critical' = 'low';
   let assignee: 'copilot' | 'codex' | 'human' = 'copilot';
@@ -109,7 +130,8 @@ function evaluateRouting(prMetadata: PRMetadata, rules: RoutingRules): RoutingDe
     files: prMetadata.files_changed.sort(),
     pr_number: prMetadata.pr_number,
   });
-  const decisionId = generateDeterministicUUID(seed);
+  const decisionId = await generateDeterministicUUID(seed);
+  const rulesHash = await computeRulesHash(rules);
 
   const decision: RoutingDecision = {
     decision_id: decisionId,
@@ -117,7 +139,7 @@ function evaluateRouting(prMetadata: PRMetadata, rules: RoutingRules): RoutingDe
     severity,
     assignee,
     rule_version: rules.version,
-    rules_hash: computeRulesHash(rules),
+    rules_hash: rulesHash,
     triggers,
     pr_metadata: prMetadata,
   };
@@ -135,12 +157,13 @@ export default {
 
     // Health check endpoint
     if (url.pathname === '/health') {
+      const rulesHash = await computeRulesHash(RULES);
       return new Response(
         JSON.stringify({
           status: 'healthy',
           service: 'agent-router-worker',
           version: RULES.version,
-          rules_hash: computeRulesHash(RULES),
+          rules_hash: rulesHash,
         }),
         {
           headers: { 'Content-Type': 'application/json' },
@@ -166,7 +189,7 @@ export default {
           );
         }
 
-        const decision = evaluateRouting(prMetadata, RULES);
+        const decision = await evaluateRouting(prMetadata, RULES);
 
         return new Response(JSON.stringify(decision, null, 2), {
           headers: { 'Content-Type': 'application/json' },

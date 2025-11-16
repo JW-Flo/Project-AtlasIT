@@ -24,22 +24,42 @@ jobs:
 
       - name: Extract PR metadata
         id: pr-metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat > /tmp/pr-metadata.json <<EOF
-          {
-            "pr_number": ${{ github.event.pull_request.number }},
-            "title": "${{ github.event.pull_request.title }}",
-            "files_changed": [],
-            "labels": [],
-            "author": "${{ github.event.pull_request.user.login }}"
-          }
-          EOF
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          TITLE="${{ github.event.pull_request.title }}"
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          
+          # Fetch changed files using GitHub CLI
+          FILES=$(gh pr view "$PR_NUMBER" --json files -q '.files[].path' || echo "")
+          
+          # Convert newline-separated list to JSON array, handling empty case
+          if [ -z "$FILES" ]; then
+            FILES_JSON="[]"
+          else
+            FILES_JSON=$(echo "$FILES" | jq -R -s 'split("\n") | map(select(length > 0))')
+          fi
+          
+          # Fetch labels
+          LABELS=$(jq -r '[.pull_request.labels[].name]' "$GITHUB_EVENT_PATH" || echo "[]")
+          
+          # Write metadata JSON using jq for proper escaping
+          jq -n \
+            --arg pr_number "$PR_NUMBER" \
+            --arg title "$TITLE" \
+            --argjson files_changed "$FILES_JSON" \
+            --argjson labels "$LABELS" \
+            --arg author "$AUTHOR" \
+            '{pr_number: ($pr_number|tonumber), title: $title, files_changed: $files_changed, labels: $labels, author: $author}' \
+            > /tmp/pr-metadata.json
+          
           echo "metadata_path=/tmp/pr-metadata.json" >> $GITHUB_OUTPUT
 
       - name: Simulate routing decision
         id: routing
         run: |
-          npm run simulate:routing -- /tmp/pr-metadata.json "pr-${{ github.event.pull_request.number }}" > /tmp/decision.json
+          npm run simulate:routing -- /tmp/pr-metadata.json "pr-${{ github.event.pull_request.number }}" 2> /tmp/decision.log | tail -1 > /tmp/decision.json
           cat /tmp/decision.json
           echo "decision_path=/tmp/decision.json" >> $GITHUB_OUTPUT
 
@@ -47,6 +67,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Validate JSON before parsing
+          if ! jq empty /tmp/decision.json 2>/dev/null; then
+            echo "Error: Invalid JSON in decision output"
+            cat /tmp/decision.log
+            exit 1
+          fi
+          
           SEVERITY=$(jq -r '.severity' /tmp/decision.json)
           ASSIGNEE=$(jq -r '.assignee' /tmp/decision.json)
           
