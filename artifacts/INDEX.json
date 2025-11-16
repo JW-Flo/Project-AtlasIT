@@ -1,32 +1,24 @@
 {
-  "generated_at": "2025-11-16T11:29:01.080Z",
-  "total_artifacts": 6,
+  "generated_at": "2025-11-16T13:09:53.013Z",
+  "total_artifacts": 4,
   "by_control": {
-    "DRIFT-SCAN": 2,
+    "DRIFT-SCAN": 1,
     "CX-004": 1,
     "CX-001": 1,
-    "submodule_cleanup": 1,
-    "TEST-001": 1
+    "submodule_cleanup": 1
   },
   "by_result": {
-    "pass": 3,
+    "pass": 1,
     "CYCLE_VALIDATED": 1,
     "ENV_VALIDATED": 1,
     "undefined": 1
   },
   "artifacts": [
     {
-      "filename": "DRIFT-SCAN-1763292448457.json",
-      "trace_id": "e2f16a22-6183-411a-b3d2-de439226a90c",
+      "filename": "DRIFT-SCAN-1763298566755.json",
+      "trace_id": "3c5c8761-1262-4419-8e5a-b5ba50ae2271",
       "control_id": "DRIFT-SCAN",
-      "timestamp": "2025-11-16T11:27:28.457Z",
-      "result": "pass"
-    },
-    {
-      "filename": "DRIFT-SCAN-1763292535533.json",
-      "trace_id": "92523881-c02e-493f-a16e-c0164f099bbc",
-      "control_id": "DRIFT-SCAN",
-      "timestamp": "2025-11-16T11:28:55.533Z",
+      "timestamp": "2025-11-16T13:09:26.755Z",
       "result": "pass"
     },
     {
@@ -48,13 +40,6 @@
       "trace_id": "53ea2ed6-15a3-4239-9983-87ec131ae98b",
       "control_id": "submodule_cleanup",
       "timestamp": "2025-11-13T06:40:26+00:00"
-    },
-    {
-      "filename": "TEST-001-1763292538747.json",
-      "trace_id": "e67b097b-3827-4833-9759-6f5fd809304c",
-      "control_id": "TEST-001",
-      "timestamp": "2025-11-16T11:28:58.746Z",
-      "result": "pass"
     }
   ]
 }
