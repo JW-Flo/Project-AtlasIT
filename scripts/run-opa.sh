@@ -12,6 +12,19 @@ if [ -z "$INPUT_FILE" ]; then
   exit 1
 fi
 
+# Check for required dependencies
+if ! command -v jq &> /dev/null; then
+  echo "[OPA] jq not installed, attempting to install..."
+  if command -v apt-get &> /dev/null; then
+    sudo apt-get update && sudo apt-get install -y jq
+  elif command -v brew &> /dev/null; then
+    brew install jq
+  else
+    echo "[OPA] Error: jq is required but not installed. Please install jq manually."
+    exit 1
+  fi
+fi
+
 if ! command -v opa &> /dev/null; then
   echo "[OPA] OPA not installed, downloading..."
   mkdir -p /tmp/opa

@@ -33,7 +33,8 @@ jobs:
       - name: OPA policy tests
         run: |
           if [ -d "policies" ]; then
-            npm run opa:test || echo "OPA tests skipped (no valid policies)"
+            # OPA tests are enforced - failures will cause the workflow to fail
+            npm run opa:test
           else
             echo "No policies directory, skipping OPA tests"
           fi
