@@ -30,7 +30,7 @@ try {
 
   // Send Slack notification (without secret value)
   const slackMsg = {
-    text: `:lock: *New secret stored in 1Password vault*\n*Name:* ${secretName}\n*Vault:* Project Ignite Secrets\n*Notes:* ${notes}`
+    text: `:lock: *New secret stored in 1Password vault*\n*Name:* ${secretName}\n*Vault:* AtlasIT Secrets\n*Notes:* ${notes}`
   };
   const data = JSON.stringify(slackMsg);
   const url = new URL(SLACK_WEBHOOK_URL);

@@ -1,4 +1,4 @@
-# Wrangler configuration for Project Ignite
+# Wrangler configuration for AtlasIT (legacy worker name `project-ignite` retained)
 name = "project-ignite"
 main = "index.js"
 compatibility_date = "2024-03-20"

@@ -1,16 +1,17 @@
 # AtlasIT Roadmap (High-Level)
 
-Status: Living document – last updated <!--DATE-->
+Status: Living document – last updated 2025-11-17
+Framework baseline: SvelteKit (`console-app/`), per `docs/FE_DECISION.md`.
 
 This roadmap enumerates _unimplemented_ phases required to reach the UI/feature breadth captured in design mockups (compliance center, policy generation, risk dashboard). Production today: three Workers (onboarding, orchestrator, docs).
 
 ## Phase 1 – UI & Stub Layer
 
-- SvelteKit (or Next.js) frontend scaffold
+- SvelteKit frontend scaffold (console-app baseline retained)
 - Auth placeholder (dev token)
 - Stub endpoints: compliance score, frameworks list, policy list (empty)
 - Dashboard renders without console errors
-  **Exit:** Manual smoke shows stable layout + stub JSON <50ms
+  **Exit:** Manual smoke shows stable layout + stub JSON <50ms; branch `codex/phase-1-ui-scaffold` cut with navigation + compliance score stub view
 
 ## Phase 2 – Compliance Core
 
@@ -70,14 +71,14 @@ This roadmap enumerates _unimplemented_ phases required to reach the UI/feature 
 
 ## Status Matrix
 
-| Phase | State       | Notes                                              |
-| ----- | ----------- | -------------------------------------------------- |
-| 1     | NOT STARTED | Awaiting framework decision                        |
-| 2     | NOT STARTED | Depends on Phase 1 endpoints contract              |
-| 3     | NOT STARTED | Template authoring blocked until Phase 1 UI slots  |
-| 4     | NOT STARTED | Requires Okta app credentials & sync window design |
-| 5     | NOT STARTED | Waits on stable compliance + policy datasets       |
-| 6     | NOT STARTED | Metrics scaffolding delayed until real traffic     |
+| Phase | State       | Notes                                                                          |
+| ----- | ----------- | ------------------------------------------------------------------------------ |
+| 1     | IN PROGRESS | Scaffold branch `codex/phase-1-ui-scaffold`; framework decision in FE_DECISION |
+| 2     | NOT STARTED | Depends on Phase 1 endpoints contract                                          |
+| 3     | NOT STARTED | Template authoring blocked until Phase 1 UI slots                              |
+| 4     | NOT STARTED | Requires Okta app credentials & sync window design                             |
+| 5     | NOT STARTED | Waits on stable compliance + policy datasets                                   |
+| 6     | NOT STARTED | Metrics scaffolding delayed until real traffic                                 |
 
 ---
 

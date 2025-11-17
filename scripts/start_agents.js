@@ -11,14 +11,14 @@ async function main() {
     try {
         // Log startup
         await logging.logInfo('system', 'Starting agent system...');
-        await slack.sendAlert('🚀 Starting Project Ignite agent system');
+        await slack.sendAlert('🚀 Starting AtlasIT agent system');
         
         // Start all agents
         await orchestrator.startAllAgents();
         
         // Log successful startup
         await logging.logInfo('system', 'Agent system started successfully');
-        await slack.sendAlert('✅ Project Ignite agent system started successfully');
+        await slack.sendAlert('✅ AtlasIT agent system started successfully');
         
         // Handle process termination
         process.on('SIGINT', async () => {
@@ -54,13 +54,13 @@ async function handleShutdown(signal) {
     
     try {
         await logging.logInfo('system', `Received ${signal}, shutting down...`);
-        await slack.sendAlert(`🛑 Shutting down Project Ignite agent system (${signal})`);
+        await slack.sendAlert(`🛑 Shutting down AtlasIT agent system (${signal})`);
         
         // Stop all agents
         await orchestrator.stopAllAgents();
         
         await logging.logInfo('system', 'Agent system shut down successfully');
-        await slack.sendAlert('✅ Project Ignite agent system shut down successfully');
+        await slack.sendAlert('✅ AtlasIT agent system shut down successfully');
         
         process.exit(0);
     } catch (error) {
@@ -84,7 +84,7 @@ async function handleStartupError(error) {
     });
     
     await slack.sendAlert(
-        `❌ Failed to start Project Ignite agent system:\n` +
+        `❌ Failed to start AtlasIT agent system:\n` +
         `Error: ${error.message}\n` +
         `Check logs for details.`
     );

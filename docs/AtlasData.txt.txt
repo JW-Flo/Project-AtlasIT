@@ -1,3 +1,5 @@
+NOTE: Historical brainstorming transcript retained for audit purposes. Active platform branding is **AtlasIT**; references to "Project Ignite" below are legacy and should not be used for new work.
+
 I want to build out Projet Ignite as a software solution for small to medium businesses, basically connecting to all their systems (HR, Idp, Comms (slack,etc), Security, DB, Device management, Google(whoever their mail and office suite of apps is), AWS ( whatever they use for their infrastructure). It would be sold to these companies as a IT central managment solution if theyu don't have a built out IT team but are scaling fast. 
 
 That sounds like a compelling and ambitious software solution! To help you start building out Project Ignite as an IT central management platform for SMBs, here are some clarifying questions and suggestions to get you on the right track:

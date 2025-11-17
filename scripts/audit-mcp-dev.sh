@@ -28,7 +28,7 @@ TS=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 HOST=$(hostname)
 
 if "$HEALTH_CHECK"; then
-  MSG="[OK][Project Ignite MCP Auditor] $TS on $HOST: MCP dev server is healthy."
+  MSG="[OK][AtlasIT MCP Auditor] $TS on $HOST: MCP dev server is healthy."
   echo "$MSG"
   send_slack_alert "$MSG"
   exit 0
@@ -39,12 +39,12 @@ else
   nohup wrangler dev --port 8080 > _remote.log 2>&1 &
   sleep 3
   if "$HEALTH_CHECK"; then
-    MSG="[RECOVERED][Project Ignite MCP Auditor] $TS on $HOST: MCP dev server was unhealthy but is now healthy after restart."
+    MSG="[RECOVERED][AtlasIT MCP Auditor] $TS on $HOST: MCP dev server was unhealthy but is now healthy after restart."
     echo "$MSG"
     send_slack_alert "$MSG"
     exit 0
   else
-    MSG="[FATAL][Project Ignite MCP Auditor] $TS on $HOST: MCP dev server failed to restart. Manual intervention required."
+    MSG="[FATAL][AtlasIT MCP Auditor] $TS on $HOST: MCP dev server failed to restart. Manual intervention required."
     echo "$MSG"
     send_slack_alert "$MSG"
     exit 1

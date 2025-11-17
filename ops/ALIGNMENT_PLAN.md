@@ -31,6 +31,7 @@ Next Actions:
 - (Optional) Upgrade plan to enable Queues; then add queue bindings.
 - Run cleanup script to remove legacy D1/KV/R2 after confirming no dependencies.
 - Add health endpoint integration tests referencing new DB / KV bindings.
+- Reaffirm SvelteKit as the primary UI framework; retire Next.js evaluation from Phase 1 scope (DONE – roadmap/status updated, FE decision logged).
 
 # AtlasIT Alignment & Legacy Ignite De‑Branding Plan
 

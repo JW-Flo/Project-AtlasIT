@@ -24,7 +24,7 @@ export class SlackAPI {
                 },
                 body: JSON.stringify({
                     text: message,
-                    username: 'Project Ignite',
+                    username: 'AtlasIT',
                     icon_emoji: ':rocket:'
                 })
             });

@@ -1,0 +1,6 @@
+{
+  "trace_id": "ev-frontend-001",
+  "timestamp": "2025-10-01T00:00:00Z",
+  "control_id": "FE_FRAMEWORK_DECISION",
+  "summary": "Confirmed SvelteKit as baseline UI framework and documented roadmap/status updates."
+}

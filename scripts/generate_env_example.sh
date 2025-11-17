@@ -2,7 +2,7 @@
 set -euo pipefail
 
 cat > .env.example <<'EOF'
-# Project Ignite Example Environment Variables
+# AtlasIT Example Environment Variables
 
 # --- Core Secrets ---
 GH_PAT=

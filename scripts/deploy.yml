@@ -1,4 +1,4 @@
-name: Project Ignite CI/CD
+name: AtlasIT CI/CD
 
 on:
   push:

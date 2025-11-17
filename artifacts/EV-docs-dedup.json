@@ -1,0 +1,6 @@
+{
+  "trace_id": "ev-docs-dedup-001",
+  "timestamp": "2025-11-17T04:04:04Z",
+  "control_id": "DOCS_DEDUP_PHASE1",
+  "summary": "Reduced redundant SvelteKit framework statements by pointing ROADMAP and STATUS to the canonical FE decision record."
+}

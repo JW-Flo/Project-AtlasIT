@@ -92,7 +92,7 @@ def main():
         now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         deadline = metrics.get("deadline_ms_remaining", DEADLINE)
         mins_left = int(deadline / 60000) if deadline > 0 else "?"
-        msg = f"[Project Ignite Status – {now}]\n"
+        msg = f"[AtlasIT Status – {now}]\n"
         msg += (
             f"• Health: {health} (latency: {latency:.0f}ms)\n"
             if latency

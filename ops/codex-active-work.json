@@ -5,7 +5,7 @@
   "active": [
     {
       "task": "policy_compliance_phase2.5",
-      "status": "committed",
+      "status": "merged",
       "entries": [
         "src/policy/engine.ts",
         "src/policy/packs/mfa.ts",
@@ -137,7 +137,7 @@
       "branch": "feat/pr4-adapter-gen",
       "pr": "PR4",
       "title": "AI adapter generator",
-      "status": "committed",
+      "status": "merged",
       "files": [
         "packages/adapter-gen/**",
         "packages/adapter-sim/**",
@@ -169,7 +169,7 @@
         "ops/codex-active-work.json"
       ],
       "notes": "Artifacts generated under artifacts/research for Example HR Suite, Slack Provisioning, Google Workspace. Research normalizer and generator integration verified.",
-      "status": "committed"
+      "status": "merged"
     },
     {
       "branch": "chore/docs-pr6-alignment",
@@ -234,7 +234,7 @@
       "branch": "feat/pr12-idp-core-okta",
       "pr": "PR12 TBD",
       "title": "IdP Core + Mock Okta + Minimal Routes",
-      "status": "committed",
+      "status": "merged",
       "files": [
         "packages/idp/**",
         "packages/idp-adapters/okta/**",
@@ -261,7 +261,7 @@
       "branch": "deploy/dev-pages-worker",
       "pr": "PR-DEPLOY-DEV TBD",
       "title": "Deploy AtlasIT to Cloudflare (dev)",
-      "status": "committed",
+      "status": "merged",
       "files": [
         "wrangler.toml",
         "index.js",
