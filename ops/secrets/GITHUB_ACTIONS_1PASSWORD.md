@@ -63,3 +63,35 @@ Dummy placeholder rationale
 
 - Earlier examples used dummy paths to avoid leaking real secret metadata.
 - Replace placeholders with actual `op://vault/Item/field` paths once Connect container is live.
+
+Secret & variable matrix (GitHub / Docker Cloud)
+
+| Purpose                   | GitHub Secret/Var                     | Docker Cloud Env          | Notes                                     |
+| ------------------------- | ------------------------------------- | ------------------------- | ----------------------------------------- |
+| Connect host URL          | (none, set in secret OP_CONNECT_HOST) | CONNECT_HOST (container)  | Example: https://connect.your-domain:8080 |
+| Connect access token      | OP_CONNECT_TOKEN                      | CONNECT_TOKEN (optional)  | Keep scope minimal; rotate post-trial     |
+| Fallback automation token | OP_SERVICE_ACCOUNT_TOKEN (optional)   | (not required)            | Only enable if Connect unstable           |
+| Docker Hub username       | DOCKER_USER (Repository Variable)     | (not needed in container) | Used by build workflows                   |
+| Docker Hub PAT            | DOCKER_PAT                            | (not needed in container) | Provide repo read/write or publish scope  |
+| Vault item mappings       | op-map.json (in repo)                 | (none)                    | Paths only; no secret values              |
+
+Rotation & fallback checklist
+
+Weekly (during trial):
+
+1. Review audit logs (identify unexpected vault access).
+2. Confirm OP_CONNECT_TOKEN scope unchanged.
+3. Validate health workflow success (`connect-health`).
+
+If Connect outage:
+
+1. Uncomment automation token fallback step in `ci-with-1password.yml`.
+2. Add/verify `OP_SERVICE_ACCOUNT_TOKEN` secret.
+3. Re-run CI, then restore Connect usage and re-comment fallback.
+
+End of trial (Day 7):
+
+1. Decide: continue Docker Cloud OR migrate.
+2. If continue: issue new token, update secret, revoke old.
+3. If migrate: stand up alternative (self-host / tunnel) → switch host secret → revoke Docker Cloud token.
+4. Archive audit logs for security review.

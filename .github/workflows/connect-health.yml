@@ -1,0 +1,43 @@
+name: connect-health
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # every 30 minutes
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check 1Password Connect health endpoint
+        env:
+          OP_CONNECT_HOST: ${{ secrets.OP_CONNECT_HOST }}
+          OP_CONNECT_TOKEN: ${{ secrets.OP_CONNECT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OP_CONNECT_HOST:-}" ]; then
+            echo "OP_CONNECT_HOST not set" >&2
+            exit 1
+          fi
+          echo "Probing $OP_CONNECT_HOST/health"
+          code=$(curl -k -s -o /dev/null -w '%{http_code}' "$OP_CONNECT_HOST/health" || true)
+          if [ "$code" != "200" ]; then
+            echo "Health endpoint returned $code" >&2
+            exit 1
+          fi
+          echo "Connect healthy (200)"
+      - name: Optional token scope check
+        if: env.OP_CONNECT_TOKEN != ''
+        env:
+          OP_CONNECT_HOST: ${{ secrets.OP_CONNECT_HOST }}
+          OP_CONNECT_TOKEN: ${{ secrets.OP_CONNECT_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Basic sanity: list vaults (if endpoint available)
+          resp=$(curl -k -s -H "Authorization: Bearer $OP_CONNECT_TOKEN" "$OP_CONNECT_HOST/v1/vaults" || true)
+          if echo "$resp" | grep -qi 'error'; then
+            echo "Vault listing may have failed: $resp" >&2
+            exit 1
+          fi
+          echo "Vaults response length: ${#resp}"
