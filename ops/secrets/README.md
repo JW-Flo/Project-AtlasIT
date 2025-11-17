@@ -7,6 +7,7 @@ Local development secrets are sourced from:
 1. `.env` (developer overrides / non-sensitive defaults)
 2. 1Password CLI (`op`) using mapping file `op-map.json`
 3. Ephemeral injection via `op run` or the helper script `op-inject.sh`
+4. CI workflows via `.github/workflows/1password-secrets.yml` (see `ops/secrets/CI.md`), which validates each mapped variable (placeholder + format/prefix checks) and only exports functional credentials to downstream jobs; an optional live smoke (`ci/live-1password-fetch.sh`) uses the service account token to read and validate the same mappings without logging secret values
 
 ## Files
 
