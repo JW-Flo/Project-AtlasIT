@@ -1,5 +1,5 @@
 === CODEX CONTINUOUS EVIDENCE CYCLE START ===
-2025-11-17T15:34:22+00:00
+2025-11-17T15:58:35+00:00
 
 --- Git Sync ---
 From https://github.com/JW-Flo/Project-AtlasIT
@@ -7,7 +7,7 @@ From https://github.com/JW-Flo/Project-AtlasIT
 
 --- Environment Validation ---
 === CODEX ENVIRONMENT VALIDATION START ===
-2025-11-17T15:34:22+00:00
+2025-11-17T15:58:35+00:00
 
 --- Node.js Environment ---
 v20.19.5
@@ -30,7 +30,7 @@ v20.19.5
 
 --- Git Repository ---
 ✓ Git repository initialized
-03bce0a merge(main <- codex/1password-integration): resolve 1Password workflow & docs conflicts
+410c5ed feat(secrets): make 1Password Connect primary; remove OIDC artifacts; update docs for Docker Cloud 7-day trial
   Current branch: main
 
 --- GitHub Actions Workflows ---
@@ -38,11 +38,11 @@ v20.19.5
 
 === CODEX ENVIRONMENT VALIDATION COMPLETE ===
 Status: PASSED
-2025-11-17T15:34:23+00:00
+2025-11-17T15:58:35+00:00
 
 --- Evidence Generation ---
 ✓ Evidence artifact generated: artifacts/EV-codex-cycle.json
-  Trace ID: 577259d8-98ba-43a3-8bd6-740041994529
-  Timestamp: 2025-11-17T15:34:23+00:00
+  Trace ID: 71e577d3-5abf-4dbd-8fcf-a4b545d7f9b1
+  Timestamp: 2025-11-17T15:58:35+00:00
 
 --- Git Commit ---
