@@ -84,4 +84,9 @@ Both prefixes should match.
 ## Roadmap
 
 - Add CI integration via OIDC + 1Password Connect.
+
+## CI integration
+
+For CI workflows we prefer ephemeral access (OIDC + 1Password Connect) or using the 1Password CLI with an automation token. See `ops/secrets/GITHUB_ACTIONS_1PASSWORD.md` for examples and recommended patterns.
+
 - Pre-commit secret scanning (already in security workflow).
