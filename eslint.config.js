@@ -60,7 +60,8 @@ export default [
       ecmaVersion: "latest",
       sourceType: "module",
     },
-    ignores: ["./agents/utils/**", "./mcp-mobile/**"],
+    // Ensure generated/mobile bundles are ignored by JS linting
+    ignores: ["./agents/utils/**", "./mcp-mobile/**", "**/mcp-mobile/**"],
     rules: {
       // Customize project-specific rules here
       // Temporarily disabled to satisfy zero-warning pre-commit; rely on TS rule when re-enabled
@@ -88,6 +89,11 @@ export default [
       // Exclude generated build output (but allow source including worker-entry for type parsing)
       "./console-app/.svelte-kit/**",
       "./apps/atlasit-web/.svelte-kit/**",
+      // Exclude generated wrangler bundles and standalone worker templates that aren't part of a TS project
+      "mcp/.wrangler/tmp/**",
+      "documentation-worker/index.ts",
+      "shared/services/cdt/test/**",
+      "templates/worker/**",
       // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
       "./ai-orchestrator/*.test.ts",
       // Exclude IdP packages and idp routes from project-aware parsing; they use lightweight override below

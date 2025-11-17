@@ -1,0 +1,10 @@
+name = "op-connect-oidc-exchange"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+[env.production]
+route = "exchange.your-domain.example/*"
+usage_model = "bundled"
+
+[env.production.vars]
+OP_CONNECT_HOST = "https://your-connect.example.com"

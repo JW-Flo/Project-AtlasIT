@@ -1,25 +1,23 @@
-
 ### .vscode/extensions.json
+
 ```json
 {
-  "recommendations": [
-    "GitHub.copilot",
-    "esbenp.prettier-vscode"
-  ]
+  "recommendations": ["GitHub.copilot", "esbenp.prettier-vscode"]
 }
-
 ```
 
 ### .vscode/settings.json
+
 ```json
 {
-    "codepal-vscode.api.CloudflareApiToken": "NdlPFZtSzD62V_NTsYQnzxJh08x__oa4cXVwjtAo",
-    "cloudflareDevTools.api.key": "",
-    "codepal-vscode.inlineCompletion.triggerMode": "manual"
+  "codepal-vscode.api.CloudflareApiToken": "NdlPFZtSzD62V_NTsYQnzxJh08x__oa4cXVwjtAo",
+  "cloudflareDevTools.api.key": "",
+  "codepal-vscode.inlineCompletion.triggerMode": "manual"
 }
 ```
 
 ### .vscode/tasks.json
+
 ```json
 {
   "version": "2.0.0",
@@ -50,6 +48,7 @@
 ```
 
 ### agents/base_agent.js
+
 ```js
 import { Agent } from '../MCP_Index.js';
 import { MCPClient } from '@cloudflare/mcp';
@@ -176,25 +175,26 @@ export class BaseAgent extends Agent {
 ```
 
 ### agents/filesystem_agent.js
+
 ```js
-import { BaseAgent } from './base_agent.js';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { BaseAgent } from "./base_agent.js";
+import { promises as fs } from "fs";
+import path from "path";
 
 export class FilesystemAgent extends BaseAgent {
   constructor(ctx, env) {
     super(ctx, env);
-    this.name = 'filesystem-agent';
-    this.version = '1.0.0';
+    this.name = "filesystem-agent";
+    this.version = "1.0.0";
   }
 
   async init() {
     await super.init();
     // Register filesystem-specific capabilities
     this.registerCapabilities({
-      tools: ['read', 'write', 'execute', 'list', 'create', 'delete'],
-      resources: ['file', 'directory'],
-      prompts: ['filesystem']
+      tools: ["read", "write", "execute", "list", "create", "delete"],
+      resources: ["file", "directory"],
+      prompts: ["filesystem"],
     });
   }
 
@@ -202,7 +202,7 @@ export class FilesystemAgent extends BaseAgent {
   async handleRead(args) {
     const { path: filePath } = args;
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const content = await fs.readFile(filePath, "utf8");
       return { success: true, data: content };
     } catch (error) {
       return { success: false, error: error.message };
@@ -212,8 +212,8 @@ export class FilesystemAgent extends BaseAgent {
   async handleWrite(args) {
     const { path: filePath, content } = args;
     try {
-      await fs.writeFile(filePath, content, 'utf8');
-      return { success: true, data: 'File written successfully' };
+      await fs.writeFile(filePath, content, "utf8");
+      return { success: true, data: "File written successfully" };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -234,10 +234,10 @@ export class FilesystemAgent extends BaseAgent {
     const { path: dirPath } = args;
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      const items = entries.map(entry => ({
+      const items = entries.map((entry) => ({
         name: entry.name,
-        type: entry.isDirectory() ? 'directory' : 'file',
-        path: path.join(dirPath, entry.name)
+        type: entry.isDirectory() ? "directory" : "file",
+        path: path.join(dirPath, entry.name),
       }));
       return { success: true, data: items };
     } catch (error) {
@@ -248,10 +248,10 @@ export class FilesystemAgent extends BaseAgent {
   async handleCreate(args) {
     const { path: filePath, type, content } = args;
     try {
-      if (type === 'directory') {
+      if (type === "directory") {
         await fs.mkdir(filePath, { recursive: true });
       } else {
-        await fs.writeFile(filePath, content || '', 'utf8');
+        await fs.writeFile(filePath, content || "", "utf8");
       }
       return { success: true, data: `${type} created successfully` };
     } catch (error) {
@@ -268,7 +268,7 @@ export class FilesystemAgent extends BaseAgent {
       } else {
         await fs.unlink(targetPath);
       }
-      return { success: true, data: 'Item deleted successfully' };
+      return { success: true, data: "Item deleted successfully" };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -277,7 +277,7 @@ export class FilesystemAgent extends BaseAgent {
   // Override resource implementations
   async readFile(filePath) {
     try {
-      const content = await fs.readFile(filePath, 'utf8');
+      const content = await fs.readFile(filePath, "utf8");
       return { success: true, data: content };
     } catch (error) {
       return { success: false, error: error.message };
@@ -287,20 +287,21 @@ export class FilesystemAgent extends BaseAgent {
   async readDirectory(dirPath) {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
-      const items = entries.map(entry => ({
+      const items = entries.map((entry) => ({
         name: entry.name,
-        type: entry.isDirectory() ? 'directory' : 'file',
-        path: path.join(dirPath, entry.name)
+        type: entry.isDirectory() ? "directory" : "file",
+        path: path.join(dirPath, entry.name),
       }));
       return { success: true, data: items };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
-} 
+}
 ```
 
 ### agents/infrastructure_agent.js
+
 ```js
 import { BaseAgent } from './base_agent.js';
 import { exec } from 'child_process';
@@ -336,7 +337,7 @@ export class InfrastructureAgent extends BaseAgent {
     await super.init();
     // Ensure state directory exists
     await fs.mkdir(this.statePath, { recursive: true });
-    
+
     // Register infrastructure-specific capabilities
     this.registerCapabilities({
       tools: ['terraform', 'security', 'monitor', 'recover'],
@@ -352,7 +353,7 @@ export class InfrastructureAgent extends BaseAgent {
   // Terraform operations with robust error handling and state management
   async handleTerraform(args) {
     const { action, workspace = 'default' } = args;
-    
+
     return this.circuitBreaker.execute(async () => {
       try {
         const startTime = Date.now();
@@ -423,16 +424,18 @@ export class InfrastructureAgent extends BaseAgent {
     await this.metrics.close();
     await super.destroy();
   }
-} 
+}
 ```
 
 ### agents/production_manager_agent.js
+
 ```js
 #!/usr/bin/env node
-import fetch from 'node-fetch';
+import fetch from "node-fetch";
 
-const MCP_URL = process.env.MCP_URL || 'https://project-ignite-mcp.kd8jc7v8cd.workers.dev';
-const AGENT_NAME = process.env.AGENT_NAME || 'production-agent';
+const MCP_URL =
+  process.env.MCP_URL || "https://project-ignite-mcp.kd8jc7v8cd.workers.dev";
+const AGENT_NAME = process.env.AGENT_NAME || "production-agent";
 const POLL_INTERVAL = 5000; // ms
 
 // Task priorities
@@ -440,23 +443,23 @@ const PRIORITIES = {
   CRITICAL: 0,
   HIGH: 1,
   NORMAL: 2,
-  LOW: 3
+  LOW: 3,
 };
 
 // Simulated escalation logic
 function shouldEscalate(task) {
   // Escalate if CRITICAL or ambiguous
-  return task.priority === 'CRITICAL' || !task.action;
+  return task.priority === "CRITICAL" || !task.action;
 }
 
 // Simulated execution logic
 async function executeTask(task) {
   // Simulate work
-  await new Promise(r => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 1000));
   return {
-    status: 'completed',
-    output: `Executed action '${task.action}' on target '${task.params?.target || 'N/A'}'`,
-    completed_at: new Date().toISOString()
+    status: "completed",
+    output: `Executed action '${task.action}' on target '${task.params?.target || "N/A"}'`,
+    completed_at: new Date().toISOString(),
   };
 }
 
@@ -472,72 +475,81 @@ async function pollAndAct() {
       const res = await fetch(`${MCP_URL}/task/list`);
       const { tasks = [] } = await res.json();
       // Filter for this agent
-      const myTasks = tasks.filter(t => t.agent === AGENT_NAME && !t.completed);
+      const myTasks = tasks.filter(
+        (t) => t.agent === AGENT_NAME && !t.completed,
+      );
       if (myTasks.length === 0) {
-        log('No tasks. Sleeping...');
-        await new Promise(r => setTimeout(r, POLL_INTERVAL));
+        log("No tasks. Sleeping...");
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
         continue;
       }
       // Prioritize
-      myTasks.sort((a, b) => (PRIORITIES[a.priority] ?? 2) - (PRIORITIES[b.priority] ?? 2));
+      myTasks.sort(
+        (a, b) => (PRIORITIES[a.priority] ?? 2) - (PRIORITIES[b.priority] ?? 2),
+      );
       for (const task of myTasks) {
-        log('Evaluating task:', task);
+        log("Evaluating task:", task);
         if (shouldEscalate(task)) {
-          log('Escalating task:', task.task_id);
-          await reportResult(task.task_id, 'escalated', 'Task escalated to management');
+          log("Escalating task:", task.task_id);
+          await reportResult(
+            task.task_id,
+            "escalated",
+            "Task escalated to management",
+          );
           continue;
         }
         // Execute
-        log('Executing task:', task.task_id);
+        log("Executing task:", task.task_id);
         const result = await executeTask(task);
         await reportResult(task.task_id, result.status, result.output);
       }
     } catch (err) {
-      log('Error in agent loop:', err);
+      log("Error in agent loop:", err);
     }
-    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL));
   }
 }
 
 async function reportResult(task_id, status, output) {
   const res = await fetch(`${MCP_URL}/task/result`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       task_id,
       agent: AGENT_NAME,
       status,
       output,
-      reported_at: new Date().toISOString()
-    })
+      reported_at: new Date().toISOString(),
+    }),
   });
   const data = await res.json();
-  log('Reported result:', data);
+  log("Reported result:", data);
 }
 
 // Register agent on startup
 async function registerAgent() {
   const res = await fetch(`${MCP_URL}/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: AGENT_NAME,
-      type: 'production',
-      capabilities: ['build', 'deploy', 'monitor', 'triage', 'escalate']
-    })
+      type: "production",
+      capabilities: ["build", "deploy", "monitor", "triage", "escalate"],
+    }),
   });
   const data = await res.json();
-  log('Registered agent:', data);
+  log("Registered agent:", data);
 }
 
 // Start
 (async () => {
   await registerAgent();
   await pollAndAct();
-})(); 
+})();
 ```
 
 ### agents/utils/circuit_breaker.js
+
 ```js
 export class CircuitBreaker {
   constructor(options = {}) {
@@ -553,7 +565,7 @@ export class CircuitBreaker {
       if (Date.now() - this.lastFailureTime >= this.resetTimeout) {
         this.reset();
       } else {
-        throw new Error('Circuit breaker is open');
+        throw new Error("Circuit breaker is open");
       }
     }
 
@@ -578,10 +590,11 @@ export class CircuitBreaker {
     this.lastFailureTime = null;
     this.isOpen = false;
   }
-} 
+}
 ```
 
 ### agents/utils/file_security.js
+
 ```js
 // Deep security protection for sensitive files
 // Applies multiple layers of encryption, obfuscation, and access control
@@ -592,7 +605,7 @@ const FileSecurity = (() => {
   // Buried configuration
   const _0x1f2e = new WeakMap();
   const _0x3d4c = new WeakMap();
-  
+
   // Sensitive file patterns
   const _0x5b6a = [
     /\.(key|pem|cert|env|config|secret|token)$/i,
@@ -629,11 +642,11 @@ const FileSecurity = (() => {
       // Obfuscate file path
       const pathBytes = new TextEncoder().encode(path);
       const obfuscated = new Uint8Array(pathBytes.length);
-      
+
       for (let i = 0; i < pathBytes.length; i++) {
         obfuscated[i] = pathBytes[i] ^ this._getRuntimeKey();
       }
-      
+
       return obfuscated;
     }
 
@@ -678,11 +691,11 @@ const FileSecurity = (() => {
       const a = new Uint8Array(hash1);
       const b = new Uint8Array(hash2);
       let result = 0;
-      
+
       for (let i = 0; i < a.length; i++) {
         result |= a[i] ^ b[i];
       }
-      
+
       return result === 0;
     }
 
@@ -704,10 +717,11 @@ const FileSecurity = (() => {
   };
 })();
 
-export default FileSecurity; 
+export default FileSecurity;
 ```
 
 ### agents/utils/logger.js
+
 ```js
 export class Logger {
   constructor(component) {
@@ -720,31 +734,32 @@ export class Logger {
       level,
       component: this.component,
       message,
-      ...metadata
+      ...metadata,
     });
   }
 
   info(message, metadata = {}) {
-    console.log(this.formatMessage('INFO', message, metadata));
+    console.log(this.formatMessage("INFO", message, metadata));
   }
 
   warn(message, metadata = {}) {
-    console.warn(this.formatMessage('WARN', message, metadata));
+    console.warn(this.formatMessage("WARN", message, metadata));
   }
 
   error(message, metadata = {}) {
-    console.error(this.formatMessage('ERROR', message, metadata));
+    console.error(this.formatMessage("ERROR", message, metadata));
   }
 
   debug(message, metadata = {}) {
     if (process.env.DEBUG) {
-      console.debug(this.formatMessage('DEBUG', message, metadata));
+      console.debug(this.formatMessage("DEBUG", message, metadata));
     }
   }
-} 
+}
 ```
 
 ### agents/utils/metrics.js
+
 ```js
 export class MetricsCollector {
   constructor() {
@@ -761,15 +776,15 @@ export class MetricsCollector {
 
   async recordOperation(component, operation, duration, success) {
     const key = `${component}.${operation}`;
-    
+
     // Update operation counts
     this.operationCounts.set(key, (this.operationCounts.get(key) || 0) + 1);
-    
+
     // Update operation durations
     const durations = this.operationDurations.get(key) || [];
     durations.push(duration);
     this.operationDurations.set(key, durations);
-    
+
     // Update error counts
     if (!success) {
       this.operationErrors.set(key, (this.operationErrors.get(key) || 0) + 1);
@@ -780,18 +795,19 @@ export class MetricsCollector {
     const metrics = {
       uptime: Date.now() - this.startTime,
       operations: {},
-      errors: {}
+      errors: {},
     };
 
     // Calculate operation metrics
     for (const [key, count] of this.operationCounts) {
       const durations = this.operationDurations.get(key) || [];
       const errors = this.operationErrors.get(key) || 0;
-      
+
       metrics.operations[key] = {
         count,
-        averageDuration: durations.reduce((a, b) => a + b, 0) / durations.length,
-        errorRate: errors / count
+        averageDuration:
+          durations.reduce((a, b) => a + b, 0) / durations.length,
+        errorRate: errors / count,
       };
     }
 
@@ -799,8 +815,8 @@ export class MetricsCollector {
     if (target) {
       metrics.target = {
         name: target,
-        status: 'healthy', // This should be determined by actual health checks
-        lastChecked: new Date().toISOString()
+        status: "healthy", // This should be determined by actual health checks
+        lastChecked: new Date().toISOString(),
       };
     }
 
@@ -814,10 +830,11 @@ export class MetricsCollector {
     this.operationDurations.clear();
     this.operationErrors.clear();
   }
-} 
+}
 ```
 
 ### agents/utils/secure_file_manager.js
+
 ```js
 // Secure file manager for automatically protecting sensitive files
 // Applies deep security to files matching sensitive patterns
@@ -829,7 +846,7 @@ const SecureFileManager = (() => {
   // Buried configuration
   const _0x2a3b = new WeakMap();
   const _0x4c5d = new WeakMap();
-  
+
   // Security levels for different file types
   const _0x6e7f = {
     critical: [
@@ -940,10 +957,11 @@ const SecureFileManager = (() => {
   return instance;
 })();
 
-export default SecureFileManager; 
+export default SecureFileManager;
 ```
 
 ### agents/utils/security_boundary.js
+
 ```js
 // This is a frozen configuration that cannot be modified at runtime
 const IMMUTABLE_SECURITY_BOUNDARY = Object.freeze({
@@ -1048,10 +1066,10 @@ export class SecurityBoundary {
       event,
       ...details
     };
-    
+
     // Store in memory (in production, this would be sent to a secure audit log system)
     this.auditLog.push(auditEntry);
-    
+
     // Log to console in development
     if (process.env.NODE_ENV === 'development') {
       console.log('AUDIT:', auditEntry);
@@ -1066,10 +1084,11 @@ export class SecurityBoundary {
   static getBoundary() {
     return IMMUTABLE_SECURITY_BOUNDARY;
   }
-} 
+}
 ```
 
 ### agents/utils/security_core.js
+
 ```js
 // This module uses runtime compilation and obfuscation to protect security parameters
 // The actual values are never stored in plain text and are reconstructed at runtime
@@ -1082,18 +1101,18 @@ export class SecurityCore {
   _initializeSecurityCore() {
     // Initialize with runtime-generated keys
     const runtimeParams = this._reconstructParameters();
-    
+
     // Create a secure context that can't be accessed from outside
     const secureContext = new WeakMap();
     this._secureContext = secureContext;
-    
+
     // Store in secure context
     secureContext.set(this, {
       params: runtimeParams,
       lastVerified: Date.now(),
       integrityHash: this._generateIntegrityHash(runtimeParams)
     });
-    
+
     // Bind all methods to prevent tampering
     this.validateOperation = this.validateOperation.bind(this);
     this.checkPermission = this.checkPermission.bind(this);
@@ -1103,7 +1122,7 @@ export class SecurityCore {
   _reconstructParameters() {
     // Reconstruct security parameters at runtime
     const params = {};
-    
+
     // Use runtime compilation to reconstruct parameters
     const reconstruct = new Function('_0x1a2b', `
       const params = {};
@@ -1149,7 +1168,7 @@ export class SecurityCore {
       key,
       params.BOUNDARY
     );
-    
+
     return verification;
   }
 
@@ -1177,11 +1196,11 @@ export class SecurityCore {
     const a = new Uint8Array(hash1);
     const b = new Uint8Array(hash2);
     let result = 0;
-    
+
     for (let i = 0; i < a.length; i++) {
       result |= a[i] ^ b[i];
     }
-    
+
     return result === 0;
   }
 
@@ -1192,10 +1211,11 @@ export class SecurityCore {
     }
     return SecurityCore.instance;
   }
-} 
+}
 ```
 
 ### agents/utils/security_escalation.js
+
 ```js
 export class SecurityEscalation {
   constructor(options = {}) {
@@ -1205,7 +1225,7 @@ export class SecurityEscalation {
       MEDIUM: 3,
       LOW: 4
     };
-    
+
     this.escalationPaths = {
       CRITICAL: {
         immediate: ['oncall-security', 'security-lead'],
@@ -1318,10 +1338,11 @@ export class SecurityEscalation {
     // Implement actual scheduling logic
     console.log(`Scheduling followup for ${role} regarding incident ${incident.incidentId}`);
   }
-} 
+}
 ```
 
 ### agents/utils/security_layers.js
+
 ```js
 // This is a deeply buried security configuration
 // Multiple layers of obfuscation and cryptography make it virtually impossible to find or modify
@@ -1331,7 +1352,7 @@ const _0x7f8e = (() => {
   // Buried in a closure to prevent global access
   const _0x9a1b = new WeakMap();
   const _0x2c3d = new WeakMap();
-  
+
   // Layer 2: Obfuscated Storage
   const _0x4e5f = [
     // Core parameters buried in nested arrays
@@ -1342,7 +1363,7 @@ const _0x7f8e = (() => {
 
   // Layer 3: Runtime Transformation
   const _0x6g7h = new Map();
-  
+
   // Layer 4: Secure Context
   const _0x8i9j = new WeakMap();
 
@@ -1350,11 +1371,11 @@ const _0x7f8e = (() => {
     constructor() {
       // Initialize with multiple layers of security
       this._initializeLayers();
-      
+
       // Create deeply buried secure context
       const secureContext = new WeakMap();
       this._secureContext = secureContext;
-      
+
       // Bind all methods with multiple layers of protection
       this._bindSecureMethods();
     }
@@ -1362,7 +1383,7 @@ const _0x7f8e = (() => {
     _initializeLayers() {
       // Layer 5: Runtime Parameter Generation
       const runtimeParams = this._generateRuntimeParams();
-      
+
       // Layer 6: Secure Storage
       this._secureContext.set(this, {
         params: runtimeParams,
@@ -1375,7 +1396,7 @@ const _0x7f8e = (() => {
     _generateRuntimeParams() {
       // Layer 7: Parameter Reconstruction
       const params = {};
-      
+
       // Use multiple layers of runtime compilation
       const reconstruct = new Function('_0x4e5f', `
         const params = {};
@@ -1430,11 +1451,11 @@ const _0x7f8e = (() => {
 
   // Create deeply buried instance
   const instance = new BuriedSecurityConfig();
-  
+
   // Layer 27: Instance Protection
   Object.freeze(instance);
   Object.seal(instance);
-  
+
   // Layer 28: Export Protection
   return Object.freeze({
     getInstance: () => instance
@@ -1444,10 +1465,11 @@ const _0x7f8e = (() => {
 // Layer 29: Module Protection
 export default Object.freeze({
   getSecurityConfig: () => _0x7f8e.getInstance()
-}); 
+});
 ```
 
 ### agents/utils/security_policy.js
+
 ```js
 export class SecurityPolicy {
   constructor() {
@@ -1516,15 +1538,15 @@ export class SecurityPolicy {
 
   async validateResourceUsage(usage) {
     const limits = this.operationalBoundaries.maxResourceUsage;
-    
+
     if (usage.cpu > this.parseResourceLimit(limits.cpu)) {
       throw new Error('CPU usage limit exceeded');
     }
-    
+
     if (usage.memory > this.parseResourceLimit(limits.memory)) {
       throw new Error('Memory usage limit exceeded');
     }
-    
+
     if (usage.storage > this.parseResourceLimit(limits.storage)) {
       throw new Error('Storage usage limit exceeded');
     }
@@ -1564,16 +1586,17 @@ export class SecurityPolicy {
       return false;
     }
 
-    const validApprovers = requirements.approvers.filter(approver => 
+    const validApprovers = requirements.approvers.filter(approver =>
       approvers.has(approver)
     );
 
     return validApprovers.length >= requirements.quorum;
   }
-} 
+}
 ```
 
 ### ai-orchestrator/index.js
+
 ```js
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
@@ -1621,7 +1644,7 @@ async function checkWithMCP(action, context) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, context })
     });
-    
+
     const result = await response.json();
     return result.approved;
   } catch (error) {
@@ -1666,26 +1689,26 @@ app.get('/status', async (c) => {
 
 app.post('/task', async (c) => {
   const task = await c.req.json();
-  
+
   // Get MCP approval for task
   const approved = await checkWithMCP('add_task', { task });
   if (!approved) return c.json({ error: 'MCP rejected task' }, 403);
 
   pendingTasks.add(task);
-  
+
   // Check if AI assistance is needed
   const { needed, tasks, reason } = await needsAIAssistance();
   if (needed) {
     await requestAIAssistance(tasks);
   }
-  
+
   return c.json({ success: true, task });
 });
 
 // Terminal command endpoint
 app.post('/terminal', async (c) => {
   const { command, context } = await c.req.json();
-  
+
   const result = await executeTerminalCommand(command, context);
   return c.json(result);
 });
@@ -1696,10 +1719,11 @@ app.get('/healthz', (c) => c.text('OK'));
 // Start monitoring
 setInterval(monitorProjectState, 5 * 60 * 1000); // Check every 5 minutes
 
-export default app; 
+export default app;
 ```
 
 ### ai-orchestrator/wrangler.toml
+
 ```toml
 name = "ignite-ai-orchestrator"
 main = "index.js"
@@ -1718,52 +1742,55 @@ usage_model = "bundled"
 vars = { ENVIRONMENT = "production" }
 
 [env.production.logs]
-enabled = true 
+enabled = true
 ```
 
 ### ai-worker.js
+
 ```js
 export default {
   async fetch(request, env, ctx) {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
-    const gatewayUrl = "https://gateway.ai.cloudflare.com/v1/620865722bd88ef0a77dbbb60c91392e/project-ignite/workers-ai/@cf/meta/llama-3.1-8b-instruct";
+    const gatewayUrl =
+      "https://gateway.ai.cloudflare.com/v1/620865722bd88ef0a77dbbb60c91392e/project-ignite/workers-ai/@cf/meta/llama-3.1-8b-instruct";
     const token = env.AI_GATEWAY_TOKEN;
     const body = await request.text();
     const resp = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      body
+      body,
     });
     return resp;
-  }
-}
-
+  },
+};
 ```
 
-### cloud_functions/__init__.py
+### cloud_functions/**init**.py
+
 ```py
 # This file makes the cloud-functions directory a Python package.
 ```
 
 ### cloud_functions/autoDoc.js
+
 ```js
-const { ConfluenceClient } = require('@atlassian/confluence');
-const axios = require('axios');
+const { ConfluenceClient } = require("@atlassian/confluence");
+const axios = require("axios");
 
 // Initialize Confluence client
 const confluence = new ConfluenceClient({
   host: process.env.CONFLUENCE_HOST,
   email: process.env.CONFLUENCE_EMAIL,
-  token: process.env.CONFLUENCE_API_TOKEN
+  token: process.env.CONFLUENCE_API_TOKEN,
 });
 
 // Documentation Agent endpoint
-const DOCS_ENDPOINT = 'https://docs.project-ignite.kd8jc7v8cd.workers.dev/docs';
+const DOCS_ENDPOINT = "https://docs.project-ignite.kd8jc7v8cd.workers.dev/docs";
 
 async function syncToConfluence() {
   try {
@@ -1777,9 +1804,9 @@ async function syncToConfluence() {
     // 3. Update Confluence page
     await updateConfluencePage(confluenceContent);
 
-    console.log('Documentation synced to Confluence successfully');
+    console.log("Documentation synced to Confluence successfully");
   } catch (error) {
-    console.error('Error syncing to Confluence:', error);
+    console.error("Error syncing to Confluence:", error);
     throw error;
   }
 }
@@ -1789,27 +1816,27 @@ function convertToConfluenceFormat(markdown) {
   // This is a simplified version - you'll need to handle all markdown elements
   return {
     version: { number: 1 },
-    title: 'Project Ignite Documentation',
-    type: 'page',
+    title: "Project Ignite Documentation",
+    type: "page",
     body: {
       storage: {
         value: markdown,
-        representation: 'storage'
-      }
-    }
+        representation: "storage",
+      },
+    },
   };
 }
 
 async function updateConfluencePage(content) {
   const pageId = process.env.CONFLUENCE_PAGE_ID;
-  
+
   try {
     await confluence.content.updateContent({
       id: pageId,
-      ...content
+      ...content,
     });
   } catch (error) {
-    console.error('Error updating Confluence page:', error);
+    console.error("Error updating Confluence page:", error);
     throw error;
   }
 }
@@ -1818,14 +1845,15 @@ async function updateConfluencePage(content) {
 exports.autoDoc = async (req, res) => {
   try {
     await syncToConfluence();
-    res.status(200).send('Documentation synced to Confluence');
+    res.status(200).send("Documentation synced to Confluence");
   } catch (error) {
     res.status(500).send(`Error: ${error.message}`);
   }
-}; 
+};
 ```
 
 ### cloud_functions/ingest_alerts.py
+
 ```py
 import os
 import requests
@@ -1924,6 +1952,7 @@ def ingest_alerts(request):
 ```
 
 ### cloud_functions/ramp_role_promoter/main.py
+
 ```py
 #!/usr/bin/env python3
 import os
@@ -1995,6 +2024,7 @@ def handler(request):
 ```
 
 ### cloud_functions/test_ingest_alerts.py
+
 ```py
 import pytest
 from cloud_functions.ingest_alerts import (
@@ -2050,26 +2080,25 @@ def test_main_no_tokens(mock_rc, mock_dt, mock_env):
 ```
 
 ### context/.vscode/settings.json
+
 ```json
 {
-    "cSpell.words": [
-        "gcloudignore",
-        "pipefail",
-        "SCIM"
-    ]
+  "cSpell.words": ["gcloudignore", "pipefail", "SCIM"]
 }
 ```
 
 ### customer-worker-1/.vscode/settings.json
+
 ```json
 {
-	"files.associations": {
-		"wrangler.json": "jsonc"
-	}
+  "files.associations": {
+    "wrangler.json": "jsonc"
+  }
 }
 ```
 
 ### customer-worker-1/package-lock.json
+
 ```json
 {
 	"name": "customer-worker-1",
@@ -2197,29 +2226,30 @@ def test_main_no_tokens(mock_rc, mock_dt, mock_env):
 ```
 
 ### customer-worker-1/package.json
+
 ```json
 {
-	"name": "customer-worker-1",
-	"version": "0.0.0",
-	"private": true,
-	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"test": "vitest",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.19",
-		"typescript": "^5.5.2",
-		"vitest": "~3.0.7",
-		"wrangler": "^4.15.2"
-	}
+  "name": "customer-worker-1",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "test": "vitest",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "typescript": "^5.5.2",
+    "vitest": "~3.0.7",
+    "wrangler": "^4.15.2"
+  }
 }
-
 ```
 
 ### customer-worker-1/src/index.ts
+
 ```ts
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
@@ -2235,114 +2265,117 @@ def test_main_no_tokens(mock_rc, mock_dt, mock_env):
  */
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+  async fetch(request, env, ctx): Promise<Response> {
+    return new Response("Hello World!");
+  },
 } satisfies ExportedHandler<Env>;
-
 ```
 
 ### customer-worker-1/test/env.d.ts
-```ts
-declare module 'cloudflare:test' {
-	interface ProvidedEnv extends Env {}
-}
 
+```ts
+declare module "cloudflare:test" {
+  interface ProvidedEnv extends Env {}
+}
 ```
 
 ### customer-worker-1/test/index.spec.ts
+
 ```ts
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
-import worker from '../src/index';
+import {
+  env,
+  createExecutionContext,
+  waitOnExecutionContext,
+  SELF,
+} from "cloudflare:test";
+import { describe, it, expect } from "vitest";
+import worker from "../src/index";
 
 // For now, you'll need to do something like this to get a correctly-typed
 // `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe('Hello World worker', () => {
-	it('responds with Hello World! (unit style)', async () => {
-		const request = new IncomingRequest('http://example.com');
-		// Create an empty context to pass to `worker.fetch()`.
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+describe("Hello World worker", () => {
+  it("responds with Hello World! (unit style)", async () => {
+    const request = new IncomingRequest("http://example.com");
+    // Create an empty context to pass to `worker.fetch()`.
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    // Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
+    await waitOnExecutionContext(ctx);
+    expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+  });
 
-	it('responds with Hello World! (integration style)', async () => {
-		const response = await SELF.fetch('https://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+  it("responds with Hello World! (integration style)", async () => {
+    const response = await SELF.fetch("https://example.com");
+    expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+  });
 });
-
 ```
 
 ### customer-worker-1/test/tsconfig.json
+
 ```json
 {
-	"extends": "../tsconfig.json",
-	"compilerOptions": {
-		"types": ["@cloudflare/vitest-pool-workers"]
-	},
-	"include": ["./**/*.ts", "../worker-configuration.d.ts"],
-	"exclude": []
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/vitest-pool-workers"]
+  },
+  "include": ["./**/*.ts", "../worker-configuration.d.ts"],
+  "exclude": []
 }
-
 ```
 
 ### customer-worker-1/tsconfig.json
+
 ```json
 {
-	"compilerOptions": {
-		/* Visit https://aka.ms/tsconfig.json to read more about this file */
+  "compilerOptions": {
+    /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
-		/* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
-		"target": "es2021",
-		/* Specify a set of bundled library declaration files that describe the target runtime environment. */
-		"lib": ["es2021"],
-		/* Specify what JSX code is generated. */
-		"jsx": "react-jsx",
+    /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "target": "es2021",
+    /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+    "lib": ["es2021"],
+    /* Specify what JSX code is generated. */
+    "jsx": "react-jsx",
 
-		/* Specify what module code is generated. */
-		"module": "es2022",
-		/* Specify how TypeScript looks up a file from a given module specifier. */
-		"moduleResolution": "Bundler",
-		/* Enable importing .json files */
-		"resolveJsonModule": true,
+    /* Specify what module code is generated. */
+    "module": "es2022",
+    /* Specify how TypeScript looks up a file from a given module specifier. */
+    "moduleResolution": "Bundler",
+    /* Enable importing .json files */
+    "resolveJsonModule": true,
 
-		/* Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files. */
-		"allowJs": true,
-		/* Enable error reporting in type-checked JavaScript files. */
-		"checkJs": false,
+    /* Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files. */
+    "allowJs": true,
+    /* Enable error reporting in type-checked JavaScript files. */
+    "checkJs": false,
 
-		/* Disable emitting files from a compilation. */
-		"noEmit": true,
+    /* Disable emitting files from a compilation. */
+    "noEmit": true,
 
-		/* Ensure that each file can be safely transpiled without relying on other imports. */
-		"isolatedModules": true,
-		/* Allow 'import x from y' when a module doesn't have a default export. */
-		"allowSyntheticDefaultImports": true,
-		/* Ensure that casing is correct in imports. */
-		"forceConsistentCasingInFileNames": true,
+    /* Ensure that each file can be safely transpiled without relying on other imports. */
+    "isolatedModules": true,
+    /* Allow 'import x from y' when a module doesn't have a default export. */
+    "allowSyntheticDefaultImports": true,
+    /* Ensure that casing is correct in imports. */
+    "forceConsistentCasingInFileNames": true,
 
-		/* Enable all strict type-checking options. */
-		"strict": true,
+    /* Enable all strict type-checking options. */
+    "strict": true,
 
-		/* Skip type checking all .d.ts files. */
-		"skipLibCheck": true,
-		"types": [
-			"./worker-configuration.d.ts"
-		]
-	},
-	"exclude": ["test"],
-	"include": ["worker-configuration.d.ts", "src/**/*.ts"]
+    /* Skip type checking all .d.ts files. */
+    "skipLibCheck": true,
+    "types": ["./worker-configuration.d.ts"]
+  },
+  "exclude": ["test"],
+  "include": ["worker-configuration.d.ts", "src/**/*.ts"]
 }
-
 ```
 
 ### dashboard/app.py
+
 ```py
 import os
 import json
@@ -2470,53 +2503,55 @@ if __name__ == "__main__":
 ```
 
 ### documentation-worker/.vscode/settings.json
+
 ```json
 {
-	"files.associations": {
-		"wrangler.json": "jsonc"
-	}
+  "files.associations": {
+    "wrangler.json": "jsonc"
+  }
 }
 ```
 
 ### documentation-worker/index.js
+
 ```js
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { logger } from 'hono/logger';
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger } from "hono/logger";
 
 const app = new Hono();
 
 // Middleware
-app.use('*', logger());
-app.use('*', cors());
+app.use("*", logger());
+app.use("*", cors());
 
 // KV Namespace for storing documentation
-const DOCS = 'ignite_docs';
+const DOCS = "ignite_docs";
 
 // Update documentation
-app.post('/update', async (c) => {
+app.post("/update", async (c) => {
   const { section, content } = await c.req.json();
-  
+
   try {
     // Get current documentation
-    const currentDoc = await c.env.DOCS.get('PROJECT_IGNITE.md') || '';
-    
+    const currentDoc = (await c.env.DOCS.get("PROJECT_IGNITE.md")) || "";
+
     // Update the section
     const updatedDoc = updateSection(currentDoc, section, content);
-    
+
     // Store updated documentation
-    await c.env.DOCS.put('PROJECT_IGNITE.md', updatedDoc);
-    
-    return c.json({ success: true, message: 'Documentation updated' });
+    await c.env.DOCS.put("PROJECT_IGNITE.md", updatedDoc);
+
+    return c.json({ success: true, message: "Documentation updated" });
   } catch (error) {
     return c.json({ success: false, error: error.message }, 500);
   }
 });
 
 // Get documentation
-app.get('/docs', async (c) => {
+app.get("/docs", async (c) => {
   try {
-    const doc = await c.env.DOCS.get('PROJECT_IGNITE.md');
+    const doc = await c.env.DOCS.get("PROJECT_IGNITE.md");
     return c.json({ success: true, doc });
   } catch (error) {
     return c.json({ success: false, error: error.message }, 500);
@@ -2527,49 +2562,51 @@ app.get('/docs', async (c) => {
 function updateSection(doc, section, content) {
   const sectionRegex = new RegExp(`## ${section}[\\s\\S]*?(?=##|$)`);
   const newSection = `## ${section}\n\n${content}\n\n`;
-  
+
   if (sectionRegex.test(doc)) {
     return doc.replace(sectionRegex, newSection);
   } else {
-    return doc + '\n\n' + newSection;
+    return doc + "\n\n" + newSection;
   }
 }
 
 // Health check
-app.get('/healthz', (c) => c.text('OK'));
+app.get("/healthz", (c) => c.text("OK"));
 
-export default app; 
+export default app;
 ```
 
 ### documentation-worker/index.ts
+
 ```ts
-import { writeFile, appendFile, stat, rename } from 'fs/promises';
-import { createWriteStream } from 'fs';
-import { join } from 'path';
-import { fileURLToPath } from 'url';
+import { writeFile, appendFile, stat, rename } from "fs/promises";
+import { createWriteStream } from "fs";
+import { join } from "path";
+import { fileURLToPath } from "url";
 
-console.log('import.meta.url:', import.meta.url);
+console.log("import.meta.url:", import.meta.url);
 
-const LOG_FILE = './logs/worker.log';
+const LOG_FILE = "./logs/worker.log";
 const MAX_LOG_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
 
 async function logMessage(message: object) {
-  const logEntry = JSON.stringify({
-    timestamp: new Date().toISOString(),
-    ...message,
-  }) + '\n';
+  const logEntry =
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ...message,
+    }) + "\n";
 
   try {
     const stats = await stat(LOG_FILE).catch(() => null);
 
     if (stats && stats.size >= MAX_LOG_SIZE) {
-      const rolledFile = LOG_FILE.replace('.log', `-${Date.now()}.log`);
+      const rolledFile = LOG_FILE.replace(".log", `-${Date.now()}.log`);
       await rename(LOG_FILE, rolledFile);
     }
 
     await appendFile(LOG_FILE, logEntry);
   } catch (error) {
-    console.error('Failed to write log:', error);
+    console.error("Failed to write log:", error);
   }
 }
 
@@ -2584,12 +2621,16 @@ export default {
         headers: Object.fromEntries(request.headers.entries()),
       };
 
-      await logMessage({ type: 'request', ...logData });
+      await logMessage({ type: "request", ...logData });
 
-      return new Response('Documentation Worker is running.', { status: 200 });
+      return new Response("Documentation Worker is running.", { status: 200 });
     } catch (error) {
-      await logMessage({ type: 'error', message: error.message, stack: error.stack });
-      return new Response('Internal Server Error', { status: 500 });
+      await logMessage({
+        type: "error",
+        message: error.message,
+        stack: error.stack,
+      });
+      return new Response("Internal Server Error", { status: 500 });
     }
   },
 
@@ -2616,6 +2657,7 @@ export default {
 ```
 
 ### documentation-worker/package-lock.json
+
 ```json
 {
 	"name": "documentation-worker",
@@ -2743,29 +2785,30 @@ export default {
 ```
 
 ### documentation-worker/package.json
+
 ```json
 {
-	"name": "documentation-worker",
-	"version": "0.0.0",
-	"private": true,
-	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"test": "vitest",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.8.19",
-		"typescript": "^5.5.2",
-		"vitest": "~3.0.7",
-		"wrangler": "^4.15.2"
-	}
+  "name": "documentation-worker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "test": "vitest",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "typescript": "^5.5.2",
+    "vitest": "~3.0.7",
+    "wrangler": "^4.15.2"
+  }
 }
-
 ```
 
 ### documentation-worker/src/index.ts
+
 ```ts
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
@@ -2781,114 +2824,117 @@ export default {
  */
 
 export default {
-	async fetch(request, env, ctx): Promise<Response> {
-		return new Response('Hello World!');
-	},
+  async fetch(request, env, ctx): Promise<Response> {
+    return new Response("Hello World!");
+  },
 } satisfies ExportedHandler<Env>;
-
 ```
 
 ### documentation-worker/test/env.d.ts
-```ts
-declare module 'cloudflare:test' {
-	interface ProvidedEnv extends Env {}
-}
 
+```ts
+declare module "cloudflare:test" {
+  interface ProvidedEnv extends Env {}
+}
 ```
 
 ### documentation-worker/test/index.spec.ts
+
 ```ts
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
-import { describe, it, expect } from 'vitest';
-import worker from '../src/index';
+import {
+  env,
+  createExecutionContext,
+  waitOnExecutionContext,
+  SELF,
+} from "cloudflare:test";
+import { describe, it, expect } from "vitest";
+import worker from "../src/index";
 
 // For now, you'll need to do something like this to get a correctly-typed
 // `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe('Hello World worker', () => {
-	it('responds with Hello World! (unit style)', async () => {
-		const request = new IncomingRequest('http://example.com');
-		// Create an empty context to pass to `worker.fetch()`.
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+describe("Hello World worker", () => {
+  it("responds with Hello World! (unit style)", async () => {
+    const request = new IncomingRequest("http://example.com");
+    // Create an empty context to pass to `worker.fetch()`.
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(request, env, ctx);
+    // Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
+    await waitOnExecutionContext(ctx);
+    expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+  });
 
-	it('responds with Hello World! (integration style)', async () => {
-		const response = await SELF.fetch('https://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+  it("responds with Hello World! (integration style)", async () => {
+    const response = await SELF.fetch("https://example.com");
+    expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+  });
 });
-
 ```
 
 ### documentation-worker/test/tsconfig.json
+
 ```json
 {
-	"extends": "../tsconfig.json",
-	"compilerOptions": {
-		"types": ["@cloudflare/vitest-pool-workers"]
-	},
-	"include": ["./**/*.ts", "../worker-configuration.d.ts"],
-	"exclude": []
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/vitest-pool-workers"]
+  },
+  "include": ["./**/*.ts", "../worker-configuration.d.ts"],
+  "exclude": []
 }
-
 ```
 
 ### documentation-worker/tsconfig.json
+
 ```json
 {
-	"compilerOptions": {
-		/* Visit https://aka.ms/tsconfig.json to read more about this file */
+  "compilerOptions": {
+    /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
-		/* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
-		"target": "es2021",
-		/* Specify a set of bundled library declaration files that describe the target runtime environment. */
-		"lib": ["es2021"],
-		/* Specify what JSX code is generated. */
-		"jsx": "react-jsx",
+    /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "target": "es2021",
+    /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+    "lib": ["es2021"],
+    /* Specify what JSX code is generated. */
+    "jsx": "react-jsx",
 
-		/* Specify what module code is generated. */
-		"module": "es2022",
-		/* Specify how TypeScript looks up a file from a given module specifier. */
-		"moduleResolution": "Bundler",
-		/* Enable importing .json files */
-		"resolveJsonModule": true,
+    /* Specify what module code is generated. */
+    "module": "es2022",
+    /* Specify how TypeScript looks up a file from a given module specifier. */
+    "moduleResolution": "Bundler",
+    /* Enable importing .json files */
+    "resolveJsonModule": true,
 
-		/* Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files. */
-		"allowJs": true,
-		/* Enable error reporting in type-checked JavaScript files. */
-		"checkJs": false,
+    /* Allow JavaScript files to be a part of your program. Use the `checkJS` option to get errors from these files. */
+    "allowJs": true,
+    /* Enable error reporting in type-checked JavaScript files. */
+    "checkJs": false,
 
-		/* Disable emitting files from a compilation. */
-		"noEmit": true,
+    /* Disable emitting files from a compilation. */
+    "noEmit": true,
 
-		/* Ensure that each file can be safely transpiled without relying on other imports. */
-		"isolatedModules": true,
-		/* Allow 'import x from y' when a module doesn't have a default export. */
-		"allowSyntheticDefaultImports": true,
-		/* Ensure that casing is correct in imports. */
-		"forceConsistentCasingInFileNames": true,
+    /* Ensure that each file can be safely transpiled without relying on other imports. */
+    "isolatedModules": true,
+    /* Allow 'import x from y' when a module doesn't have a default export. */
+    "allowSyntheticDefaultImports": true,
+    /* Ensure that casing is correct in imports. */
+    "forceConsistentCasingInFileNames": true,
 
-		/* Enable all strict type-checking options. */
-		"strict": true,
+    /* Enable all strict type-checking options. */
+    "strict": true,
 
-		/* Skip type checking all .d.ts files. */
-		"skipLibCheck": true,
-		"types": [
-			"./worker-configuration.d.ts"
-		]
-	},
-	"exclude": ["test"],
-	"include": ["worker-configuration.d.ts", "src/**/*.ts"]
+    /* Skip type checking all .d.ts files. */
+    "skipLibCheck": true,
+    "types": ["./worker-configuration.d.ts"]
+  },
+  "exclude": ["test"],
+  "include": ["worker-configuration.d.ts", "src/**/*.ts"]
 }
-
 ```
 
 ### documentation-worker/wrangler.toml
+
 ```toml
 name = "ignite-documentation"
 main = "index.js"
@@ -2908,10 +2954,11 @@ usage_model = "bundled"
 vars = { ENVIRONMENT = "production" }
 
 [env.production.logs]
-enabled = true 
+enabled = true
 ```
 
 ### eslint.config.js
+
 ```js
 import js from "@eslint/js";
 
@@ -2928,17 +2975,18 @@ export default [
       "./dist/**",
       "./build/**",
       "./agents/utils/**",
-      "./mcp-mobile/**"
+      "./mcp-mobile/**",
     ],
     rules: {
       // Customize project-specific rules here
       "no-unused-vars": "warn",
     },
   },
-]; 
+];
 ```
 
 ### Groups (Okta API).postman_collection.json
+
 ```json
 {
 	"info": {
@@ -3065,6 +3113,7 @@ export default [
 ```
 
 ### index.js
+
 ```js
 // index.js - Cloudflare dispatch Worker
 export default {
@@ -3080,11 +3129,11 @@ export default {
     try {
       // Extract the sub-worker name from the URL path
       const url = new URL(request.url);
-      const pathParts = url.pathname.split('/').filter(Boolean);
+      const pathParts = url.pathname.split("/").filter(Boolean);
       const subWorkerName = pathParts[0] || "customer-worker-1";
 
       if (!subWorkerName) {
-        return new Response('No sub-worker specified', { status: 400 });
+        return new Response("No sub-worker specified", { status: 400 });
       }
 
       // Forward the request to the sub-worker in the dispatcher namespace
@@ -3092,92 +3141,106 @@ export default {
         // Attempt auto-remediation: try to create the dispatcher binding if possible
         // NOTE: This is a placeholder. Cloudflare Workers cannot create bindings at runtime.
         // Instead, return a clear error and remediation hint.
-        return new Response('Dispatcher namespace not configured. To auto-remediate: redeploy with correct wrangler.toml [[dispatch_namespaces]] binding.', { status: 500 });
+        return new Response(
+          "Dispatcher namespace not configured. To auto-remediate: redeploy with correct wrangler.toml [[dispatch_namespaces]] binding.",
+          { status: 500 },
+        );
       }
 
       let subWorker = await env.dispatcher.get(subWorkerName);
       if (!subWorker) {
         // Attempt auto-remediation: try to deploy a default sub-worker (not possible at runtime)
         // Instead, return a clear error and remediation hint.
-        return new Response(`Sub-worker "${subWorkerName}" not found in dispatcher. To auto-remediate: deploy the sub-worker to the dispatcher namespace.`, { status: 502 });
+        return new Response(
+          `Sub-worker "${subWorkerName}" not found in dispatcher. To auto-remediate: deploy the sub-worker to the dispatcher namespace.`,
+          { status: 502 },
+        );
       }
       return subWorker.fetch(request);
     } catch (err) {
       console.error("Error occurred:", err); // Log the error for debugging
       return new Response("Bad Gateway", { status: 502 });
     }
-  }
+  },
 };
-
 ```
 
 ### mcp-idp/index.js
+
 ```js
-import { Hono } from 'hono';
-import { logger } from 'hono/logger';
-import { cors } from 'hono/cors';
-import { jwt } from 'hono/jwt';
-import { serve } from '@hono/node-server';
+import { Hono } from "hono";
+import { logger } from "hono/logger";
+import { cors } from "hono/cors";
+import { jwt } from "hono/jwt";
+import { serve } from "@hono/node-server";
 
 const app = new Hono();
 
 // Middleware
-app.use('*', logger());
-app.use('*', cors({
-  origin: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev'],
-  allowMethods: ['POST', 'GET'],
-  allowHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 600,
-}));
+app.use("*", logger());
+app.use(
+  "*",
+  cors({
+    origin: ["https://mcp.project-ignite.kd8jc7v8cd.workers.dev"],
+    allowMethods: ["POST", "GET"],
+    allowHeaders: ["Content-Type", "Authorization"],
+    maxAge: 600,
+  }),
+);
 
 // Client registry (in production, this would be in KV)
 const CLIENTS = new Map([
-  ['mcp-mobile', {
-    clientId: 'mcp-mobile',
-    clientSecret: process.env.MCP_MOBILE_SECRET,
-    redirectUris: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev/callback'],
-    grantTypes: ['client_credentials'],
-    scopes: ['mcp:read', 'mcp:write']
-  }]
+  [
+    "mcp-mobile",
+    {
+      clientId: "mcp-mobile",
+      clientSecret: process.env.MCP_MOBILE_SECRET,
+      redirectUris: [
+        "https://mcp.project-ignite.kd8jc7v8cd.workers.dev/callback",
+      ],
+      grantTypes: ["client_credentials"],
+      scopes: ["mcp:read", "mcp:write"],
+    },
+  ],
 ]);
 
 // Token endpoint
-app.post('/token', async (c) => {
+app.post("/token", async (c) => {
   const { grant_type, client_id, client_secret, scope } = await c.req.json();
 
   // Validate client credentials
   const client = CLIENTS.get(client_id);
   if (!client || client.clientSecret !== client_secret) {
-    return c.json({ error: 'invalid_client' }, 401);
+    return c.json({ error: "invalid_client" }, 401);
   }
 
   // Validate grant type
-  if (grant_type !== 'client_credentials') {
-    return c.json({ error: 'unsupported_grant_type' }, 400);
+  if (grant_type !== "client_credentials") {
+    return c.json({ error: "unsupported_grant_type" }, 400);
   }
 
   // Generate access token
   const token = await generateToken(client_id, scope);
-  
+
   return c.json({
     access_token: token,
-    token_type: 'Bearer',
+    token_type: "Bearer",
     expires_in: 3600,
-    scope: scope || 'mcp:read'
+    scope: scope || "mcp:read",
   });
 });
 
 // Token introspection endpoint
-app.post('/introspect', async (c) => {
+app.post("/introspect", async (c) => {
   const { token } = await c.req.json();
-  
+
   try {
     const decoded = await verifyToken(token);
     return c.json({
       active: true,
       client_id: decoded.client_id,
       scope: decoded.scope,
-      exp: decoded.exp
+      exp: decoded.exp,
     });
   } catch (error) {
     return c.json({ active: false });
@@ -3188,8 +3251,8 @@ app.post('/introspect', async (c) => {
 async function generateToken(clientId, scope) {
   const payload = {
     client_id: clientId,
-    scope: scope || 'mcp:read',
-    exp: Math.floor(Date.now() / 1000) + 3600
+    scope: scope || "mcp:read",
+    exp: Math.floor(Date.now() / 1000) + 3600,
   };
 
   return jwt.sign(payload, process.env.JWT_SECRET);
@@ -3201,22 +3264,26 @@ async function verifyToken(token) {
 }
 
 // Health check
-app.get('/healthz', (c) => c.text('OK'));
+app.get("/healthz", (c) => c.text("OK"));
 
 // Development server
-if (process.env.NODE_ENV === 'development') {
-  serve({
-    fetch: app.fetch,
-    port: 3000
-  }, (info) => {
-    console.log(`IdP server running at http://localhost:${info.port}`);
-  });
+if (process.env.NODE_ENV === "development") {
+  serve(
+    {
+      fetch: app.fetch,
+      port: 3000,
+    },
+    (info) => {
+      console.log(`IdP server running at http://localhost:${info.port}`);
+    },
+  );
 }
 
-export default app; 
+export default app;
 ```
 
 ### mcp-idp/package-lock.json
+
 ```json
 {
   "name": "ignite-mcp-idp",
@@ -3344,6 +3411,7 @@ export default app;
 ```
 
 ### mcp-idp/package.json
+
 ```json
 {
   "name": "ignite-mcp-idp",
@@ -3362,10 +3430,11 @@ export default app;
   "devDependencies": {
     "wrangler": "^3.0.0"
   }
-} 
+}
 ```
 
 ### mcp-idp/wrangler.toml
+
 ```toml
 name = "ignite-mcp-idp"
 main = "index.js"
@@ -3403,10 +3472,11 @@ enabled = true
 # Rate limiting
 [env.production.rate_limit]
 requests = 100
-period = 60 
+period = 60
 ```
 
 ### mcp-mobile/index.js
+
 ```js
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
@@ -3465,13 +3535,13 @@ app.get('/api/status', async (c) => {
 // Quick Actions Endpoint
 app.post('/api/quick-action', async (c) => {
   const { action, context } = await c.req.json();
-  
+
   // Validate action
   const validActions = ['deploy', 'rollback', 'status', 'logs', 'approve', 'reject'];
 
 … truncated …
             // Update logs
-            document.getElementById('logs').innerHTML = 
+            document.getElementById('logs').innerHTML =
               data.recentLogs.map(log => `
                 <div class="text-gray-400">${log}</div>
               `).join('');
@@ -3498,16 +3568,16 @@ app.post('/api/quick-action', async (c) => {
               credentials: 'include',
               body: JSON.stringify({ action, context: 'mobile' })
             });
-            
+
             if (!response.ok) {
               throw new Error('Action execution failed');
             }
-            
+
             const result = await response.json();
-            
+
             // Show feedback
             alert(result.message || 'Action executed');
-            
+
             // Update status
             updateStatus();
           } catch (error) {
@@ -3529,10 +3599,11 @@ app.post('/api/quick-action', async (c) => {
   `);
 });
 
-export default app; 
+export default app;
 ```
 
 ### mcp-mobile/wrangler.toml
+
 ```toml
 name = "ignite-mcp-mobile"
 main = "index.js"
@@ -3568,110 +3639,118 @@ enabled = true
 # Rate limiting
 [env.production.rate_limit]
 requests = 100
-period = 60 
+period = 60
 ```
 
 ### mcp/flat-bundle.js
+
 ```js
 #!/usr/bin/env node
-import { readFileSync } from 'fs';
-const system = JSON.parse(readFileSync('mcp/segments/system.json', 'utf-8')).content;
-const project = JSON.parse(readFileSync('mcp/segments/project-ignite.json', 'utf-8')).content;
+import { readFileSync } from "fs";
+const system = JSON.parse(
+  readFileSync("mcp/segments/system.json", "utf-8"),
+).content;
+const project = JSON.parse(
+  readFileSync("mcp/segments/project-ignite.json", "utf-8"),
+).content;
 console.log(JSON.stringify({ system, project }));
-
 ```
 
 ### mcp/index.js
+
 ```js
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
 const app = new Hono();
 
 // Root endpoint
-app.get('/', (c) => c.text('MCP Server Running'));
+app.get("/", (c) => c.text("MCP Server Running"));
 
 // Health check endpoint
-app.get('/healthz', (c) => c.text('OK'));
+app.get("/healthz", (c) => c.text("OK"));
 
 // Configuration endpoint
-app.post('/configure', async (c) => {
+app.post("/configure", async (c) => {
   const config = await c.req.json();
   // Store config in KV
-  await c.env.MCP_STORE.put('config', JSON.stringify(config));
-  return c.json({ status: 'success' });
+  await c.env.MCP_STORE.put("config", JSON.stringify(config));
+  return c.json({ status: "success" });
 });
 
 // Agent registration endpoint
-app.post('/register', async (c) => {
+app.post("/register", async (c) => {
   const agent = await c.req.json();
   // Store agent in KV (append to agents list)
-  const agentsRaw = await c.env.MCP_STORE.get('agents');
+  const agentsRaw = await c.env.MCP_STORE.get("agents");
   const agents = agentsRaw ? JSON.parse(agentsRaw) : [];
   agents.push(agent);
-  await c.env.MCP_STORE.put('agents', JSON.stringify(agents));
-  return c.json({ status: 'success' });
+  await c.env.MCP_STORE.put("agents", JSON.stringify(agents));
+  return c.json({ status: "success" });
 });
 
 // Task submission endpoint
-app.post('/task', async (c) => {
+app.post("/task", async (c) => {
   const task = await c.req.json();
   // Store task in KV (append to tasks list)
-  const tasksRaw = await c.env.MCP_STORE.get('tasks');
+  const tasksRaw = await c.env.MCP_STORE.get("tasks");
   const tasks = tasksRaw ? JSON.parse(tasksRaw) : [];
   tasks.push(task);
-  await c.env.MCP_STORE.put('tasks', JSON.stringify(tasks));
-  return c.json({ status: 'success', task });
+  await c.env.MCP_STORE.put("tasks", JSON.stringify(tasks));
+  return c.json({ status: "success", task });
 });
 
 // Task result reporting endpoint
-app.post('/task/result', async (c) => {
+app.post("/task/result", async (c) => {
   const result = await c.req.json();
   // Store result in KV by task_id
   if (!result.task_id) {
-    return c.json({ status: 'error', message: 'Missing task_id' }, 400);
+    return c.json({ status: "error", message: "Missing task_id" }, 400);
   }
-  await c.env.MCP_STORE.put(`task_result_${result.task_id}`, JSON.stringify(result));
-  return c.json({ status: 'success', result });
+  await c.env.MCP_STORE.put(
+    `task_result_${result.task_id}`,
+    JSON.stringify(result),
+  );
+  return c.json({ status: "success", result });
 });
 
 // Task list endpoint
-app.get('/task/list', async (c) => {
-  const tasksRaw = await c.env.MCP_STORE.get('tasks');
+app.get("/task/list", async (c) => {
+  const tasksRaw = await c.env.MCP_STORE.get("tasks");
   const tasks = tasksRaw ? JSON.parse(tasksRaw) : [];
   return c.json({ tasks });
 });
 
 // Plan proposal endpoint
-app.post('/plan/propose', async (c) => {
+app.post("/plan/propose", async (c) => {
   const plan = await c.req.json();
   // Store plan in KV with status 'pending'
-  plan.status = 'pending';
+  plan.status = "pending";
   plan.proposed_at = new Date().toISOString();
-  await c.env.MCP_STORE.put('latest_plan', JSON.stringify(plan));
-  return c.json({ status: 'success', plan });
+  await c.env.MCP_STORE.put("latest_plan", JSON.stringify(plan));
+  return c.json({ status: "success", plan });
 });
 
 // Plan approval endpoint
-app.post('/plan/approve', async (c) => {
+app.post("/plan/approve", async (c) => {
   const { approved_by } = await c.req.json();
-  const planRaw = await c.env.MCP_STORE.get('latest_plan');
+  const planRaw = await c.env.MCP_STORE.get("latest_plan");
   if (!planRaw) {
-    return c.json({ status: 'error', message: 'No plan to approve' }, 404);
+    return c.json({ status: "error", message: "No plan to approve" }, 404);
   }
   const plan = JSON.parse(planRaw);
-  plan.status = 'approved';
-  plan.approved_by = approved_by || 'admin';
+  plan.status = "approved";
+  plan.approved_by = approved_by || "admin";
   plan.approved_at = new Date().toISOString();
-  await c.env.MCP_STORE.put('latest_plan', JSON.stringify(plan));
-  return c.json({ status: 'success', plan });
+  await c.env.MCP_STORE.put("latest_plan", JSON.stringify(plan));
+  return c.json({ status: "success", plan });
 });
 
 // Metrics endpoint
-app.get('/metrics', async (c) => {
+app.get("/metrics", async (c) => {
   const [agentsRaw, tasksRaw, planRaw] = await Promise.all([
-    c.env.MCP_STORE.get('agents'),
-    c.env.MCP_STORE.get('tasks'),
-    c.env.MCP_STORE.get('latest_plan')
+    c.env.MCP_STORE.get("agents"),
+    c.env.MCP_STORE.get("tasks"),
+    c.env.MCP_STORE.get("latest_plan"),
   ]);
   const agents = agentsRaw ? JSON.parse(agentsRaw) : [];
   const tasks = tasksRaw ? JSON.parse(tasksRaw) : [];
@@ -3681,15 +3760,16 @@ app.get('/metrics', async (c) => {
     timestamp: new Date().toISOString(),
     agents_count: agents.length,
     tasks_count: tasks.length,
-    latest_plan_status: plan ? plan.status : 'none',
-    deadline_ms_remaining: parseInt(c.env.MCP_DEADLINE_MS || '-1', 10)
+    latest_plan_status: plan ? plan.status : "none",
+    deadline_ms_remaining: parseInt(c.env.MCP_DEADLINE_MS || "-1", 10),
   });
 });
 
-export default app; 
+export default app;
 ```
 
 ### mcp/project_guide.json
+
 ```json
 {
   "version": "1.0.0",
@@ -3812,30 +3892,31 @@ export default app;
     "mfa_required": true,
     "static_scan_tools": ["Checkov", "tfsec", "ESLint", "tflint"]
   }
-} 
+}
 ```
 
 ### mcp/segments/project-ignite.json
+
 ```json
 {
   "version": "1.0.0",
   "type": "project",
   "content": "Project Ignite is a zero-trust, fully autonomous DevSecOps platform spanning local (Prometheus) and cloud (GCP→AWS) environments."
 }
-
 ```
 
 ### mcp/segments/system.json
+
 ```json
 {
   "version": "1.0.0",
   "type": "system",
   "content": "You are Copilot, a fully autonomous DevSecOps assistant for Project Ignite."
 }
-
 ```
 
 ### mcp/wrangler.toml
+
 ```toml
 name = "project-ignite-mcp"
 main = "index.js"
@@ -3858,10 +3939,11 @@ database_id = "ecc7933f-00da-4427-9dc7-3c5d35a8ff38"
 
 [[kv_namespaces]]
 binding = "MCP_STORE"
-id = "c7eba0c892bf4f2fbcf73fb60a38706c" 
+id = "c7eba0c892bf4f2fbcf73fb60a38706c"
 ```
 
 ### package.json
+
 ```json
 {
   "name": "project-ignite",
@@ -3900,10 +3982,10 @@ id = "c7eba0c892bf4f2fbcf73fb60a38706c"
   },
   "type": "module"
 }
-
 ```
 
 ### scripts/agent_fixer.py
+
 ```py
 #!/usr/bin/env python3
 """
@@ -3983,14 +4065,15 @@ def main():
         logging.error(f"Git push failed: {e}"); sys.exit(1)
 
     logging.info("✅ Safe patch applied and pushed successfully!")
-    
+
 if __name__ == "__main__":
     main()
 
 ```
 
 ### scripts/autonomous_ai_agent_module.py
-```py
+
+````py
 import os
 from openai import OpenAI
 from github import Github
@@ -4078,61 +4161,64 @@ completion = client.chat.completions.create(
 print(completion.choices[0].message.content)
 
 
-```
+````
 
 ### scripts/example_script.py
+
 ```py
 
 ```
 
 ### scripts/init_secure_system.js
+
 ```js
-import SecureFileManager from '../agents/utils/secure_file_manager.js';
+import SecureFileManager from "../agents/utils/secure_file_manager.js";
 
 async function initializeSecureSystem() {
   try {
-    console.log('Initializing secure file system...');
-    
+    console.log("Initializing secure file system...");
+
     // Initialize secure file manager
     const secureManager = SecureFileManager;
-    
+
     // Scan and protect sensitive directories
     const sensitiveDirs = [
-      './agents',
-      './cloud-functions',
-      './scripts',
-      './terraform'
+      "./agents",
+      "./cloud-functions",
+      "./scripts",
+      "./terraform",
     ];
-    
+
     for (const dir of sensitiveDirs) {
       console.log(`Scanning directory: ${dir}`);
       await secureManager.scanDirectory(dir);
     }
-    
+
     // Verify integrity of all protected files
-    console.log('Verifying file integrity...');
+    console.log("Verifying file integrity...");
     await secureManager.verifyIntegrity();
-    
-    console.log('Secure file system initialized successfully');
+
+    console.log("Secure file system initialized successfully");
     return true;
   } catch (error) {
-    console.error('Failed to initialize secure file system:', error);
+    console.error("Failed to initialize secure file system:", error);
     return false;
   }
 }
 
 // Run initialization
-initializeSecureSystem().then(success => {
+initializeSecureSystem().then((success) => {
   if (success) {
-    console.log('System ready for secure operations');
+    console.log("System ready for secure operations");
   } else {
-    console.error('System initialization failed');
+    console.error("System initialization failed");
     process.exit(1);
   }
-}); 
+});
 ```
 
 ### scripts/re_add_okta_group_users.py
+
 ```py
 #!/usr/bin/env python3
 import os
@@ -4209,6 +4295,7 @@ if __name__ == "__main__":
 ```
 
 ### scripts/run_ai_agent.py
+
 ```py
 #!/usr/bin/env python3
 import os, sys
@@ -4236,77 +4323,89 @@ else:
 ```
 
 ### scripts/start_agents.js
+
 ```js
-import { FilesystemAgent } from '../agents/filesystem_agent.js';
-import { InfrastructureAgent } from '../agents/infrastructure_agent.js';
+import { FilesystemAgent } from "../agents/filesystem_agent.js";
+import { InfrastructureAgent } from "../agents/infrastructure_agent.js";
 
 async function startAgents() {
   try {
     // Create and initialize the filesystem agent
     const filesystemAgent = new FilesystemAgent();
     await filesystemAgent.init();
-    console.log('Filesystem agent initialized successfully');
-    console.log('Filesystem agent capabilities:', filesystemAgent.getCapabilities());
+    console.log("Filesystem agent initialized successfully");
+    console.log(
+      "Filesystem agent capabilities:",
+      filesystemAgent.getCapabilities(),
+    );
 
     // Create and initialize the infrastructure agent
     const infrastructureAgent = new InfrastructureAgent();
     await infrastructureAgent.init();
-    console.log('Infrastructure agent initialized successfully');
-    console.log('Infrastructure agent capabilities:', infrastructureAgent.getCapabilities());
+    console.log("Infrastructure agent initialized successfully");
+    console.log(
+      "Infrastructure agent capabilities:",
+      infrastructureAgent.getCapabilities(),
+    );
 
     // Keep the process running
-    process.on('SIGINT', async () => {
-      console.log('Shutting down agents...');
+    process.on("SIGINT", async () => {
+      console.log("Shutting down agents...");
       await filesystemAgent.destroy();
       await infrastructureAgent.destroy();
       process.exit(0);
     });
-
   } catch (error) {
-    console.error('Error starting agents:', error);
+    console.error("Error starting agents:", error);
     process.exit(1);
   }
 }
 
 // Start the agents
-startAgents(); 
+startAgents();
 ```
 
 ### slack-approval-worker/index.js
+
 ```js
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
 const app = new Hono();
 
 // Helper to verify Slack signature
 async function verifySlackSignature(req, body, signingSecret) {
-  const timestamp = req.headers.get('x-slack-request-timestamp');
-  const sig = req.headers.get('x-slack-signature');
+  const timestamp = req.headers.get("x-slack-request-timestamp");
+  const sig = req.headers.get("x-slack-signature");
   if (!timestamp || !sig) return false;
   const baseString = `v0:${timestamp}:${body}`;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
-    'raw',
+    "raw",
     encoder.encode(signingSecret),
-    { name: 'HMAC', hash: 'SHA-256' },
+    { name: "HMAC", hash: "SHA-256" },
     false,
-    ['sign', 'verify']
+    ["sign", "verify"],
   );
-  const hash = await crypto.subtle.sign('HMAC', key, encoder.encode(baseString));
-  const mySig = 'v0=' + Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return crypto.timingSafeEqual(
-    encoder.encode(mySig),
-    encoder.encode(sig)
+  const hash = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(baseString),
   );
+  const mySig =
+    "v0=" +
+    Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  return crypto.timingSafeEqual(encoder.encode(mySig), encoder.encode(sig));
 }
 
-app.post('/slack/approve', async (c) => {
+app.post("/slack/approve", async (c) => {
   const body = await c.req.text();
   const signingSecret = c.env.SLACK_SIGNING_SECRET;
-  if (!await verifySlackSignature(c.req, body, signingSecret)) {
-    return c.text('Invalid signature', 401);
+  if (!(await verifySlackSignature(c.req, body, signingSecret))) {
+    return c.text("Invalid signature", 401);
   }
-  const payload = JSON.parse(new URLSearchParams(body).get('payload'));
+  const payload = JSON.parse(new URLSearchParams(body).get("payload"));
   const action = payload.actions[0];
   const secretName = action.value;
   // TODO: Trigger backend update to set status=approved in 1Password for secretName
@@ -4314,17 +4413,18 @@ app.post('/slack/approve', async (c) => {
 
   // Respond to Slack
   return c.json({
-    response_type: 'in_channel',
-    text: `:white_check_mark: Secret *${secretName}* has been approved and is now active.`
+    response_type: "in_channel",
+    text: `:white_check_mark: Secret *${secretName}* has been approved and is now active.`,
   });
 });
 
-app.get('/healthz', (c) => c.text('OK'));
+app.get("/healthz", (c) => c.text("OK"));
 
-export default app; 
+export default app;
 ```
 
 ### slack-approval-worker/wrangler.toml
+
 ```toml
 name = "slack-approval-worker"
 main = "index.js"
@@ -4336,10 +4436,11 @@ route = "slack-approval.project-ignite.workers.dev/*"
 usage_model = "bundled"
 
 [env.production.vars]
-SLACK_SIGNING_SECRET = ""  # Set this via wrangler secret 
+SLACK_SIGNING_SECRET = ""  # Set this via wrangler secret
 ```
 
 ### utils/api_guard.js
+
 ```js
 export class RateLimiter {
   constructor({ maxRequests = 3, windowMs = 10 * 60 * 1000 } = {}) {
@@ -4358,7 +4459,9 @@ export class RateLimiter {
     if (!this.calls.has(key)) {
       this.calls.set(key, []);
     }
-    const timestamps = this.calls.get(key).filter((ts) => now - ts < this.windowMs);
+    const timestamps = this.calls
+      .get(key)
+      .filter((ts) => now - ts < this.windowMs);
     this.calls.set(key, timestamps);
     return timestamps.length < this.maxRequests;
   }
@@ -4379,11 +4482,10 @@ export class RateLimiter {
  * @param {number}   opts.baseDelayMs Initial delay in ms (default 1000).
  * @param {Function} opts.classifier  Optional function(err) -> { transient: bool }.
  */
-export async function withBackoff(fn, {
-  maxRetries = 3,
-  baseDelayMs = 1000,
-  classifier
-} = {}) {
+export async function withBackoff(
+  fn,
+  { maxRetries = 3, baseDelayMs = 1000, classifier } = {},
+) {
   let attempt = 0;
   while (true) {
     try {
@@ -4411,50 +4513,56 @@ export function defaultClassifier(err) {
   if (!err) return true;
   const msg = err.message || "";
   return /timed out|ECONNRESET|5\d{2}|rate limit/i.test(msg);
-} 
+}
 ```
 
 ### utils/mock_data.js
+
 ```js
 export function generateMockContractors(count = 5) {
   const contractors = [];
   for (let i = 1; i <= count; i++) {
     contractors.push({
-      id: `MOCK${i.toString().padStart(3, '0')}`,
+      id: `MOCK${i.toString().padStart(3, "0")}`,
       name: `Mock Contractor ${i}`,
       email: `mock${i}@example.com`,
-      department: 'Mock Dept',
-      project: 'Demo',
-      start_date: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().split('T')[0],
-      end_date: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0],
-      access_level: 'Standard',
-      status: 'Active',
-      days_remaining: 30
+      department: "Mock Dept",
+      project: "Demo",
+      start_date: new Date(Date.now() - 14 * 24 * 3600 * 1000)
+        .toISOString()
+        .split("T")[0],
+      end_date: new Date(Date.now() + 30 * 24 * 3600 * 1000)
+        .toISOString()
+        .split("T")[0],
+      access_level: "Standard",
+      status: "Active",
+      days_remaining: 30,
     });
   }
   return contractors;
 }
 
 export function generateMockAlerts(count = 3) {
-  const severities = ['low', 'medium', 'high', 'critical'];
+  const severities = ["low", "medium", "high", "critical"];
   const alerts = [];
   for (let i = 1; i <= count; i++) {
     alerts.push({
       id: `MOCK-ALERT-${i}`,
       timestamp: new Date().toISOString(),
       severity: severities[Math.floor(Math.random() * severities.length)],
-      source: 'Mock EDR',
+      source: "Mock EDR",
       title: `Mock Alert ${i}`,
-      description: 'This is a mock alert generated for demo purposes',
+      description: "This is a mock alert generated for demo purposes",
       affected_device: `MOCK-DEVICE-${i}`,
-      status: 'open'
+      status: "open",
     });
   }
   return alerts;
-} 
+}
 ```
 
 ### utils/store_secret_and_notify.js
+
 ```js
 #!/usr/bin/env node
 
@@ -4463,37 +4571,10 @@ const https = require('https');
 
 const VAULT_ID = '7miu6z6kxqreys7op6ckgvfhvq';
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
-const OP_SERVICE_ACCOUNT_TOKEN = process.env.OP_SERVICE_ACCOUNT_TOKEN;
+// Service account token integration removed. Use 1Password Connect server + OIDC or the
+// `op_atlas_it_connect_server_pat` token for CI reads. The archived service-account code
+// was intentionally removed to avoid accidental exposure and to centralize on Connect.
 
-if (!OP_SERVICE_ACCOUNT_TOKEN) {
-  console.error('Error: OP_SERVICE_ACCOUNT_TOKEN is not set in the environment.');
-  process.exit(1);
-}
-if (!SLACK_WEBHOOK_URL) {
-  console.error('Error: SLACK_WEBHOOK_URL is not set in the environment.');
-  process.exit(1);
-}
-
-const [,, secretName, secretValue, ...notesArr] = process.argv;
-const notes = notesArr.join(' ') || `Created by AI system on ${new Date().toISOString()}`;
-
-if (!secretName || !secretValue) {
-  console.error('Usage: node store_secret_and_notify.js <secretName> <secretValue> [notes]');
-  process.exit(1);
-}
-
-try {
-  // Store secret in 1Password
-  execSync(`OP_SERVICE_ACCOUNT_TOKEN="${OP_SERVICE_ACCOUNT_TOKEN}" op item create --vault ${VAULT_ID} --category "API Credential" "credential name=${secretName}" "password=${secretValue}" "notes=${notes}"`, { stdio: 'inherit' });
-
-  // Send Slack notification (without secret value)
-  const slackMsg = {
-    text: `:lock: *New secret stored in 1Password vault*\n*Name:* ${secretName}\n*Vault:* Project Ignite Secrets\n*Notes:* ${notes}`
-  };
-  const data = JSON.stringify(slackMsg);
-  const url = new URL(SLACK_WEBHOOK_URL);
-  const req = https.request({
-    hostname: url.hostname,
     path: url.pathname + url.search,
     method: 'POST',
     headers: {
@@ -4507,10 +4588,11 @@ try {
 } catch (err) {
   console.error('Failed to store secret or notify Slack:', err);
   process.exit(1);
-} 
+}
 ```
 
 ### wrangler.toml
+
 ```toml
 # Wrangler configuration for Project Ignite
 name = "project-ignite"

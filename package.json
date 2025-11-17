@@ -92,7 +92,8 @@
     "codex:context": "npx ts-node tools/generate-codex-context.ts",
     "codex:context:ultra": "npx ts-node tools/generate-codex-context.ts --ultra --no-readme",
     "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections",
-    "audit:ci": "node scripts/audit-ci.mjs"
+    "audit:ci": "node scripts/audit-ci.mjs",
+    "triage:issues": "node scripts/triage-agent.mjs"
   },
   "keywords": [
     "it-management",

@@ -265,17 +265,17 @@ app.get("/", (c) => {
                 'Authorization': 'Bearer ' + token
               }
             });
-            
+
             if (!response.ok) {
               throw new Error('Status check failed');
             }
-            
+
             const data = await response.json();
-            
+
             // Update system status
-            document.getElementById('systemStatus').textContent = 
+            document.getElementById('systemStatus').textContent =
               data.systemHealth === 'healthy' ? 'Healthy' : 'Needs Attention';
-            
+
             // Update deployments
             document.getElementById('deployments').innerHTML =
               (data.activeDeployments.length
@@ -290,7 +290,6 @@ app.get("/", (c) => {
                     })
                     .join('')
                 : 'No active deployments');
-            
             // Update logs
             document.getElementById('logs').innerHTML =
               (data.recentLogs && data.recentLogs.length
@@ -319,16 +318,16 @@ app.get("/", (c) => {
               credentials: 'include',
               body: JSON.stringify({ action, context: 'mobile' })
             });
-            
+
             if (!response.ok) {
               throw new Error('Action execution failed');
             }
-            
+
             const result = await response.json();
-            
+
             // Show feedback
             alert(result.message || 'Action executed');
-            
+
             // Update status
             updateStatus();
           } catch (error) {

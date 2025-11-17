@@ -1,0 +1,42 @@
+name: "Manual: Sync selected secrets from 1Password Connect -> GitHub (opt-in)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type YES to confirm you understand the security implications"
+        required: true
+        default: "NO"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.confirm == 'YES' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load secrets from 1Password Connect
+        uses: 1Password/load-secrets-action@v3
+        with:
+          export-env: |
+            # list of environment mappings to read (example)
+            GH_DEPLOY_KEY=op://Automation/GitHub Deploy Key/credential
+        env:
+          OP_CONNECT_HOST: "${{ secrets.OP_CONNECT_HOST }}"
+          OP_CONNECT_TOKEN: "${{ secrets.op_atlas_it_connect_server_pat }}"
+
+      - name: Write GitHub secret (example)
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          # The load-secrets action exports GH_DEPLOY_KEY into the job environment.
+          NEW_SECRET="${GH_DEPLOY_KEY:-}"
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "Missing PAT_TOKEN; aborting" >&2; exit 1
+          fi
+          if [ -z "${NEW_SECRET:-}" ]; then
+            echo "No secret value loaded; aborting" >&2; exit 1
+          fi
+          echo "Setting secret 'GH_DEPLOY_KEY' via gh CLI"
+          gh secret set GH_DEPLOY_KEY --body "$NEW_SECRET" --repo ${{ github.repository }}

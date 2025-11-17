@@ -1,0 +1,66 @@
+name: Connect token health check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *" # daily at 08:00 UTC
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify secrets exist
+        run: |
+          if [ -z "${{ secrets.op_atlas_it_connect_server_pat }}" ]; then
+            echo "Missing secret: op_atlas_it_connect_server_pat" >&2
+            exit 1
+          fi
+          # Staging JWT is optional; we only warn if it's missing
+          if [ -z "${{ secrets.op_atlas_it_staging_jwt }}" ]; then
+            echo "Warning: op_atlas_it_staging_jwt not set; expiry checks will be skipped"
+          fi
+
+      - name: Check Connect token connectivity
+        env:
+          OP_CONNECT_HOST: "${{ secrets.OP_CONNECT_HOST }}"
+          OP_CONNECT_TOKEN: "${{ secrets.op_atlas_it_connect_server_pat }}"
+        run: |
+          set -euo pipefail
+          if [ -z "${OP_CONNECT_HOST:-}" ] || [ -z "${OP_CONNECT_TOKEN:-}" ]; then
+            echo "Skipping Connect check: missing host or token" && exit 0
+          fi
+          echo "Checking Connect host: $OP_CONNECT_HOST"
+          # Non-destructive GET to list vaults (masking output)
+          VAULTS=$(curl -sS -H "Authorization: Bearer $OP_CONNECT_TOKEN" "$OP_CONNECT_HOST/v1/vaults" || true)
+          if [ -z "$VAULTS" ]; then
+            echo "Connect host did not return vaults" >&2
+            exit 2
+          fi
+          echo "$VAULTS" | jq -r '.[]?.name' | sed -n '1,10p'
+
+      - name: Check staging JWT expiry
+        env:
+          STAGING_JWT: "${{ secrets.op_atlas_it_staging_jwt }}"
+        run: |
+          if [ -z "${STAGING_JWT:-}" ]; then
+            echo "No staging JWT provided; skipping expiry check"
+            exit 0
+          fi
+          # Decode JWT expiry claim without sending token anywhere
+          BODY=$(echo "$STAGING_JWT" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null || true)
+          if [ -z "$BODY" ]; then
+            echo "Failed to decode JWT body" && exit 1
+          fi
+          EXP=$(echo "$BODY" | jq -r '.exp // empty') || true
+          if [ -z "$EXP" ]; then
+            echo "No exp claim found in JWT" && exit 0
+          fi
+          NOW=$(date +%s)
+          if [ "$EXP" -le "$NOW" ]; then
+            echo "STAGING_JWT has expired: exp=$EXP (epoch)" && exit 2
+          fi
+          DIFF=$((EXP - NOW))
+          echo "STAGING_JWT expires in $DIFF seconds"
+
+      - name: Report status
+        run: echo "Connect token health check completed"
