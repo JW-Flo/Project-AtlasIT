@@ -1,0 +1,95 @@
+name: deploy-connect
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_host:
+        description: "SSH host (e.g. user@host)"
+        required: true
+      connect_version:
+        description: "1Password Connect version tag (default latest)"
+        required: false
+        default: "latest"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          missing=()
+          for s in SSH_PRIVATE_KEY OP_CONNECT_TOKEN OP_CONNECT_HOST CONNECT_CREDENTIALS_JSON; do
+            if [ -z "${{ secrets[s] }}" ]; then
+              missing+=("$s")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required secrets: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Render credentials.json
+        run: |
+          echo "Creating credentials.json from secret"
+          echo "${{ secrets.CONNECT_CREDENTIALS_JSON }}" | base64 -d > credentials.json
+          ls -l credentials.json
+
+      - name: Copy credentials to remote
+        run: |
+          scp -o StrictHostKeyChecking=no credentials.json ${{ github.event.inputs.target_host }}:~/credentials.json
+
+      - name: Deploy 1Password Connect (API + Sync)
+        env:
+          HOST: ${{ github.event.inputs.target_host }}
+          VERSION: ${{ github.event.inputs.connect_version }}
+        run: |
+          ssh -o StrictHostKeyChecking=no "$HOST" bash -s <<'EOF'
+          set -euo pipefail
+          VERSION='${VERSION}'
+          echo "Using version: $VERSION"
+          docker pull 1password/connect-api:$VERSION
+          docker pull 1password/connect-sync:$VERSION
+          docker network inspect connect-net >/dev/null 2>&1 || docker network create connect-net
+          mkdir -p ~/connect-data
+          mv ~/credentials.json ~/connect-data/credentials.json || true
+          # Run sync container
+          if ! docker ps --format '{{.Names}}' | grep -q connect-sync; then
+            docker run -d --name connect-sync --restart unless-stopped \
+              -v ~/connect-data:/root/.op \
+              --network connect-net \
+              1password/connect-sync:$VERSION
+          fi
+          # Run api container
+          if ! docker ps --format '{{.Names}}' | grep -q connect-api; then
+            docker run -d --name connect-api --restart unless-stopped \
+              -v ~/connect-data:/root/.op \
+              -p 8080:8080 \
+              --network connect-net \
+              1password/connect-api:$VERSION
+          fi
+          docker ps --filter name=connect- --format 'table {{.Names}}\t{{.Status}}'
+          EOF
+
+      - name: Post-deploy health check
+        run: |
+          code=$(curl -k -s -o /dev/null -w '%{http_code}' ${{ secrets.OP_CONNECT_HOST }}/health || true)
+          if [ "$code" != "200" ]; then
+            echo "Health endpoint returned $code" >&2
+            exit 1
+          fi
+          echo "Connect deployment healthy (200)"
+
+    # Required secrets:
+    # - SSH_PRIVATE_KEY: private key with access to target host
+    # - CONNECT_CREDENTIALS_JSON: base64 of credentials.json (1Password provided)
+    # - OP_CONNECT_HOST: public URL to connect-api container (e.g. https://example:8080)
+    # - OP_CONNECT_TOKEN: access token for CI secret loading

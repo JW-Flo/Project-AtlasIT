@@ -95,3 +95,31 @@ End of trial (Day 7):
 2. If continue: issue new token, update secret, revoke old.
 3. If migrate: stand up alternative (self-host / tunnel) → switch host secret → revoke Docker Cloud token.
 4. Archive audit logs for security review.
+
+Automated deployment (remote host)
+
+Use the workflow `.github/workflows/deploy-connect.yml` (workflow_dispatch) supplying `target_host` (e.g. `ubuntu@host`) and optionally `connect_version` (default `latest`). Required secrets:
+
+- SSH_PRIVATE_KEY: private key for the remote host.
+- CONNECT_CREDENTIALS_JSON: base64 of credentials.json issued by 1Password.
+- OP_CONNECT_HOST: URL that maps to the API container (e.g. https://host:8080).
+- OP_CONNECT_TOKEN: scoped access token for CI secret retrieval.
+
+Steps performed by the workflow:
+
+1. Validates required secrets present.
+2. Decodes credentials.json and transfers to host.
+3. Pulls `1password/connect-api` and `1password/connect-sync` images at requested version.
+4. Creates `connect-net` Docker network if missing.
+5. Starts sync then api containers with persisted credentials volume.
+6. Performs a post-deploy health check against `/health` (expects HTTP 200).
+
+Manual alternative:
+Run `scripts/deploy-connect.sh` locally with `HOST=user@remote` env var after copying credentials.json.
+
+Security hardening tips:
+
+- Restrict SSH access (IP allowlist, key rotation).
+- Use TLS termination / reverse proxy in front of api container; avoid exposing raw port publicly.
+- Remove `OP_SERVICE_ACCOUNT_TOKEN` from repo if fallback unused.
+- Monitor network egress from containers for unexpected destinations.
