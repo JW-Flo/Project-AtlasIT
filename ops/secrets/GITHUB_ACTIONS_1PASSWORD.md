@@ -9,10 +9,11 @@ Two main approaches
    - Advantage: no long-lived tokens in GitHub secrets; better audit trail.
    - Disadvantage: requires 1Password Connect deployment and some infra setup.
 
-2. 1Password CLI with stored automation token (simpler to bootstrap)
-   - Store a 1Password automation token (Connect or personal) in GitHub Actions secrets (e.g., `OP_AUTOMATION_TOKEN`). Use `op signin --raw` or `OP_SESSION_xxx` approaches.
-   - Advantage: quick to set up for CI runs that need to read secrets.
-   - Disadvantage: must protect the automation token and rotate it periodically.
+2. 1Password CLI with stored automation token (legacy / local dev)
+
+- Local developer flows can use the `op` CLI and an automation token, but this repo has standardized on 1Password Connect for CI.
+- Advantage: quick to set up for local development and debugging.
+- Disadvantage: automation tokens should not be used broadly in CI; prefer Connect/OIDC for production.
 
 Example: minimal workflow using 1Password CLI (op) in a job
 
@@ -61,4 +62,50 @@ Security notes and repo conventions
 
 Next steps
 
-- If you want I can add a sample `ci-with-1password.yml` workflow file under `.github/workflows/` wired to the repo's `op-map.json` and demonstrating OIDC/Connect usage (this will be a template; you'll need to configure 1Password Connect or provide an automation token in Actions secrets).
+-- If you want I can add a sample reusable workflow `1password-secrets.yml` that validates mappings (non-live) and optionally runs a live-check in GitHub Actions via Connect. The repo now prefers Connect/OIDC.
+
+Connect + OIDC quick note
+
+- When possible prefer using 1Password Connect with an OIDC exchange so GitHub Actions can obtain short-lived tokens.
+- The high-level flow is: GitHub Actions issues an OIDC identity token -> your Connect or identity gateway exchanges it for a short-lived 1Password token -> the workflow uses the short-lived token to fetch secrets.
+- Implementing the exchange requires configuration on your 1Password Connect deployment and identity provider and is environment specific. Contact your infrastructure/security team and consult 1Password Connect docs for steps.
+
+Repository token and usage
+
+- Primary token name in this repository: `op_atlas_it_connect_server_pat` (stored in GitHub repository secrets and as an env secret on the Connect host).
+- Expires: 2026-02-15 23:59:59 UTC.
+- Storage: GitHub repository secrets + environment secret on the Connect host (as you noted).
+- Scope (for documentation): read & write access to the associated repo and Connect server for the initial standup. When your OIDC/auth flows are ready, replace this with a read-only token or short-lived OIDC-based tokens.
+
+Immediate recommended actions while this token remains Read & Write:
+
+1. Limit the token's vault scope to the absolute minimum required (e.g., `PP_SHARED_SECRETS`), not all vaults.
+2. Enable and monitor 1Password Connect audit logs for any unexpected activity.
+3. Schedule a rotation window: provision a read-only token (for example `op_atlas_it_connect_server_pat_ro`) when your OIDC/auth flow is ready, and retire the read/write token promptly.
+4. Consider setting up an alert (Splunk/CloudWatch/Slack) for any write events from the CI token.
+
+Runbook: rotate and validate token (when ready)
+
+1. In 1Password Admin: Create a new Access Token scoped to required vault(s) with Read-only permissions.
+2. In GitHub repository Settings -> Secrets: Add the new read-only secret (e.g., `op_atlas_it_connect_server_pat_ro`) and keep the old token in place temporarily.
+3. Edit `.github/workflows/ci-with-1password-connect.yml` to reference the new secret name.
+4. Trigger the workflow manually via "Run workflow" and confirm the verification step lists vaults and subsequent steps succeed.
+5. If successful, remove/rotate the old read/write token in 1Password and delete the secret in GitHub.
+
+Monitoring and audit
+
+- Ensure Connect audit logs are enabled and monitor for unexpected writes or operations from the CI token during the period it has write permission.
+- Consider creating a scheduled job to rotate the CI token periodically (the 1Password API can be used for automation or perform rotation manually as part of a quarterly security task).
+
+Syncing secrets into GitHub (optional)
+
+- This repository includes a template workflow `.github/workflows/sync-secrets-from-connect.yml` which can be run
+  manually or on a schedule to sync a small set of secrets from 1Password Connect into GitHub repository secrets.
+- The workflow uses `secrets.op_atlas_it_connect_server_pat` to read from Connect and `secrets.PAT_TOKEN` (a repo PAT)
+  to write secrets into GitHub. The PAT needs `repo` and `write:packages`/`admin:repo_hook` or the newer secret write scopes
+  (see GitHub docs) to allow programmatic secret writes. Only enable this workflow if you understand the security tradeoffs.
+
+Usage notes
+
+- Keep `PAT_TOKEN` scoped minimally and rotate it regularly. Prefer running the sync workflow manually during controlled maintenance windows.
+- Alternatively, prefer runtime secret fetching in deployed services (the service talks to Connect at runtime using a Connect token) instead of syncing secrets into GH if possible.

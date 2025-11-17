@@ -6,18 +6,27 @@ const _0x7f8e = (() => {
   // Buried in a closure to prevent global access
   const _0x9a1b = new WeakMap();
   const _0x2c3d = new WeakMap();
-  
+
   // Layer 2: Obfuscated Storage
   const _0x4e5f = [
     // Core parameters buried in nested arrays
-    [[0x1a, 0x2b, 0x3c], [0x4d, 0x5e, 0x6f]],
-    [[0x7g, 0x8h, 0x9i], [0x0j, 0x1k, 0x2l]],
-    [[0x3m, 0x4n, 0x5o], [0x6p, 0x7q, 0x8r]]
+    [
+      [0x1a, 0x2b, 0x3c],
+      [0x4d, 0x5e, 0x6f],
+    ],
+    [
+      [0x07, 0x08, 0x09],
+      [0x00, 0x11, 0x22],
+    ],
+    [
+      [0x33, 0x44, 0x55],
+      [0x66, 0x77, 0x88],
+    ],
   ];
 
   // Layer 3: Runtime Transformation
   const _0x6g7h = new Map();
-  
+
   // Layer 4: Secure Context
   const _0x8i9j = new WeakMap();
 
@@ -25,11 +34,11 @@ const _0x7f8e = (() => {
     constructor() {
       // Initialize with multiple layers of security
       this._initializeLayers();
-      
+
       // Create deeply buried secure context
       const secureContext = new WeakMap();
       this._secureContext = secureContext;
-      
+
       // Bind all methods with multiple layers of protection
       this._bindSecureMethods();
     }
@@ -37,22 +46,24 @@ const _0x7f8e = (() => {
     _initializeLayers() {
       // Layer 5: Runtime Parameter Generation
       const runtimeParams = this._generateRuntimeParams();
-      
+
       // Layer 6: Secure Storage
       this._secureContext.set(this, {
         params: runtimeParams,
         lastVerified: Date.now(),
         integrityHash: this._generateMultiLayerHash(runtimeParams),
-        securityLayers: this._initializeSecurityLayers()
+        securityLayers: this._initializeSecurityLayers(),
       });
     }
 
     _generateRuntimeParams() {
       // Layer 7: Parameter Reconstruction
       const params = {};
-      
+
       // Use multiple layers of runtime compilation
-      const reconstruct = new Function('_0x4e5f', `
+      const reconstruct = new Function(
+        "_0x4e5f",
+        `
         const params = {};
         for (let i = 0; i < _0x4e5f.length; i++) {
           for (let j = 0; j < _0x4e5f[i].length; j++) {
@@ -61,16 +72,17 @@ const _0x7f8e = (() => {
           }
         }
         return params;
-      `);
+      `,
+      );
 
       return reconstruct.call(this, _0x4e5f);
     }
 
     _transformKey(keyArray) {
       // Layer 8: Key Transformation
-      return keyArray.map(k => 
-        String.fromCharCode(k ^ this._getRuntimeKey())
-      ).join('');
+      return keyArray
+        .map((k) => String.fromCharCode(k ^ this._getRuntimeKey()))
+        .join("");
     }
 
     _getRuntimeKey() {
@@ -90,9 +102,9 @@ const _0x7f8e = (() => {
     _encryptValue(value, key) {
       // Layer 11: Value Encryption
       return crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: this._generateIV() },
+        { name: "AES-GCM", iv: this._generateIV() },
         this._deriveKey(key),
-        value
+        value,
       );
     }
 
@@ -107,15 +119,15 @@ const _0x7f8e = (() => {
       // Layer 13: Key Derivation
       return crypto.subtle.deriveKey(
         {
-          name: 'PBKDF2',
+          name: "PBKDF2",
           salt: this._generateSalt(),
           iterations: 100000,
-          hash: 'SHA-512'
+          hash: "SHA-512",
         },
         this._getMasterKey(),
-        { name: 'AES-GCM', length: 256 },
+        { name: "AES-GCM", length: 256 },
         false,
-        ['encrypt', 'decrypt']
+        ["encrypt", "decrypt"],
       );
     }
 
@@ -129,11 +141,11 @@ const _0x7f8e = (() => {
     _getMasterKey() {
       // Layer 15: Master Key Management
       return crypto.subtle.importKey(
-        'raw',
+        "raw",
         this._generateMasterKeyMaterial(),
-        'PBKDF2',
+        "PBKDF2",
         false,
-        ['deriveKey']
+        ["deriveKey"],
       );
     }
 
@@ -149,36 +161,30 @@ const _0x7f8e = (() => {
       const layers = [
         this._hashLayer1(params),
         this._hashLayer2(params),
-        this._hashLayer3(params)
+        this._hashLayer3(params),
       ];
-      
+
       return this._combineHashes(layers);
     }
 
     async _hashLayer1(params) {
       // Layer 18: First Hash Layer
       return crypto.subtle.digest(
-        'SHA-512',
-        new TextEncoder().encode(JSON.stringify(params))
+        "SHA-512",
+        new TextEncoder().encode(JSON.stringify(params)),
       );
     }
 
     async _hashLayer2(params) {
       // Layer 19: Second Hash Layer
       const layer1 = await this._hashLayer1(params);
-      return crypto.subtle.digest(
-        'SHA-512',
-        new Uint8Array(layer1)
-      );
+      return crypto.subtle.digest("SHA-512", new Uint8Array(layer1));
     }
 
     async _hashLayer3(params) {
       // Layer 20: Third Hash Layer
       const layer2 = await this._hashLayer2(params);
-      return crypto.subtle.digest(
-        'SHA-512',
-        new Uint8Array(layer2)
-      );
+      return crypto.subtle.digest("SHA-512", new Uint8Array(layer2));
     }
 
     async _combineHashes(layers) {
@@ -196,16 +202,16 @@ const _0x7f8e = (() => {
     _bindSecureMethods() {
       // Layer 22: Method Protection
       const methods = [
-        'validateOperation',
-        'checkPermission',
-        'verifyIntegrity'
+        "validateOperation",
+        "checkPermission",
+        "verifyIntegrity",
       ];
 
-      methods.forEach(method => {
+      methods.forEach((method) => {
         this[method] = this[method].bind(this);
         Object.defineProperty(this, method, {
           writable: false,
-          configurable: false
+          configurable: false,
         });
       });
     }
@@ -215,7 +221,7 @@ const _0x7f8e = (() => {
       return {
         layer1: this._createSecurityLayer(1),
         layer2: this._createSecurityLayer(2),
-        layer3: this._createSecurityLayer(3)
+        layer3: this._createSecurityLayer(3),
       };
     }
 
@@ -224,7 +230,7 @@ const _0x7f8e = (() => {
       return {
         level,
         key: this._generateLayerKey(level),
-        hash: this._generateLayerHash(level)
+        hash: this._generateLayerHash(level),
       };
     }
 
@@ -238,26 +244,26 @@ const _0x7f8e = (() => {
     _generateLayerHash(level) {
       // Layer 26: Layer Hash Generation
       return crypto.subtle.digest(
-        'SHA-512',
-        new TextEncoder().encode(`layer${level}`)
+        "SHA-512",
+        new TextEncoder().encode(`layer${level}`),
       );
     }
   }
 
   // Create deeply buried instance
   const instance = new BuriedSecurityConfig();
-  
+
   // Layer 27: Instance Protection
   Object.freeze(instance);
   Object.seal(instance);
-  
+
   // Layer 28: Export Protection
   return Object.freeze({
-    getInstance: () => instance
+    getInstance: () => instance,
   });
 })();
 
 // Layer 29: Module Protection
 export default Object.freeze({
-  getSecurityConfig: () => _0x7f8e.getInstance()
-}); 
+  getSecurityConfig: () => _0x7f8e.getInstance(),
+});

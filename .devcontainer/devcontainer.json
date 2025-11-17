@@ -18,7 +18,9 @@
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
         "github.copilot",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
       ],
       "settings": {
         "editor.formatOnSave": true,

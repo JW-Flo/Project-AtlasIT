@@ -90,3 +90,34 @@ Both prefixes should match.
 For CI workflows we prefer ephemeral access (OIDC + 1Password Connect) or using the 1Password CLI with an automation token. See `ops/secrets/GITHUB_ACTIONS_1PASSWORD.md` for examples and recommended patterns.
 
 - Pre-commit secret scanning (already in security workflow).
+
+### Quick-start (GitHub Actions)
+
+Example: call the reusable workflow (non-live validation) and then load secrets in a job:
+
+```yaml
+uses: ./.github/workflows/1password-secrets.yml
+with:
+  mode: connect
+  mapping-file: ops/secrets/op-map.json
+  live-fetch: false
+
+# Then load secrets using the official action
+- uses: 1Password/load-secrets-action@v3
+  with:
+    export-env: |
+      DATABASE_URL=op://vault/My App DB/password
+  env:
+    OP_CONNECT_HOST: ${{ secrets.OP_CONNECT_HOST }}
+    OP_CONNECT_TOKEN: ${{ secrets.op_atlas_it_connect_server_pat }}
+```
+
+Notes:
+
+- `op_atlas_it_connect_server_pat` is the repository secret name used in this project for the Connect token.
+- `live-fetch: true` will perform a non-destructive test against your Connect host if you provide the relevant repo secrets. Use it only when you want to validate connectivity.
+
+### Token rotation and future work
+
+- You previously agreed to handle the transition from read/write Connect token to a read-only token or OIDC exchanges when required. Keep `op_atlas_it_connect_server_pat` in place until you rotate it.
+- TODO (service-account deprecation): see `ops/secrets/TO_DO_SERVICE_ACCOUNT_DEPRECATION.md` for the action checklist.

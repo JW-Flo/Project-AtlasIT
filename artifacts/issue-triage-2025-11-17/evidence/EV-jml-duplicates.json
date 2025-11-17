@@ -1,0 +1,56 @@
+{
+  "trace_id": "TRIAGE-JML-2025-11-17-004",
+  "control_id": "ATLAS-TRIAGE-DEDUP-004",
+  "timestamp": "2025-11-17T00:00:00Z",
+  "category": "duplicate_consolidation",
+  "action": "CLOSE_DUPLICATE_ISSUES",
+  "issues_closed": [53, 55],
+  "primary_issue": 57,
+  "total_count": 2,
+  "rationale": "Multiple duplicate issues created for the same JML Mover automation flow feature. Issues #53, #55, and #57 all describe identical implementation scope. Consolidating to most recent issue #57.",
+  "evidence": {
+    "creation_dates": {
+      "issue_53": "2025-11-05T11:22:04Z",
+      "issue_55": "2025-11-05T11:34:03Z",
+      "issue_57": "2025-11-05T11:47:33Z"
+    },
+    "all_created_within": "25 minutes",
+    "identical_scope": true,
+    "common_elements": [
+      "PR-JML-002/003/004: Implement Mover Automation Flow",
+      "Codegen + Cursor Execution pattern",
+      "Same worker file: /workers/jml/mover.ts",
+      "Same test file: /tests/jml/mover.test.ts",
+      "Same evidence requirements",
+      "Same acceptance criteria"
+    ],
+    "primary_issue_selected": 57,
+    "primary_issue_reason": "Most recent, has Linear link HAR-12, most complete description"
+  },
+  "linked_sub_issues": {
+    "parent_issue": 57,
+    "sub_issues": [58, 59],
+    "sub_issue_58": "Codegen execution for mover flow",
+    "sub_issue_59": "Cursor validation for mover flow"
+  },
+  "compliance_mappings": {
+    "NIST_800_53": {
+      "CM-3": "Configuration Change Control - Deduplication maintains clear change tracking",
+      "AC-2": "Account Management - JML Mover affects user lifecycle management"
+    },
+    "SOC2": {
+      "CC6.1": "Logical Access Controls - User role change automation",
+      "CC6.2": "Prior to Issuing System Credentials - Access management lifecycle"
+    },
+    "ISO27001": {
+      "A.9.2.1": "User Registration and De-registration - Mover flow part of lifecycle",
+      "A.9.2.6": "Removal or Adjustment of Access Rights - Primary function of Mover"
+    }
+  },
+  "closure_reason": "Duplicate issues. Consolidating to #57 as primary tracking issue. Sub-issues #58 and #59 remain linked to #57.",
+  "action_items": {
+    "keep_open": [57, 58, 59],
+    "close_as_duplicate": [53, 55]
+  },
+  "risk_assessment": "NONE - Deduplication improves clarity, no functionality impact"
+}

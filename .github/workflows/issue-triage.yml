@@ -1,0 +1,45 @@
+name: Issue Triage
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Set true to avoid closing issues'
+        required: false
+        default: 'true'
+  # Uncomment to enable scheduled triage (safe with dry-run first)
+  # schedule:
+  #   - cron: '15 4 * * *'
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Root
+        run: npm install --workspaces --include-workspace-root
+      - name: Run Triage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRIAGE_DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: npm run triage:issues
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-triage-${{ github.run_id }}
+          path: |
+            artifacts/EV-*.json
+            artifacts/triage-summary.md
+            artifacts/triage-trace-*.log
+            artifacts/EV-triage-session-*.json
+          retention-days: 120
