@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="adapter-simulation" tests="4" failures="0" time="0">
-    <testcase name="health-status"/>
-    <testcase name="health-body-json"/>
-    <testcase name="health-header-content-type"/>
-    <testcase name="health-header-x-adapter"/>
-</testsuite>

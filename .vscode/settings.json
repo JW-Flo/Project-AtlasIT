@@ -1,7 +1,0 @@
-{
-  "github.copilot.chat.languageContext.typescript.enabled": true,
-  "github.copilot.chat.languageContext.inline.typescript.enabled": true,
-  "github.copilot.chat.languageContext.fix.typescript.enabled": true,
-  "python.terminal.useEnvFile": true,
-  "npm.packageManager": "npm"
-}

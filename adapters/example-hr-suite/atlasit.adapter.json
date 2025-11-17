@@ -1,7 +1,0 @@
-{
-  "name": "Example HR Suite",
-  "slug": "example-hr-suite",
-  "featureFlag": "FEATURE_CONNECTOR_EXAMPLE_HR_SUITE",
-  "schemaPath": "schema.json",
-  "createdAt": "2025-09-18T05:35:56.408Z"
-}

@@ -1,2 +1,0 @@
-Bucket: atlas-evidence
-objects: UNKNOWN (capture via dashboard)
