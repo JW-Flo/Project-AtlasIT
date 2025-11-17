@@ -123,3 +123,88 @@ Security hardening tips:
 - Use TLS termination / reverse proxy in front of api container; avoid exposing raw port publicly.
 - Remove `OP_SERVICE_ACCOUNT_TOKEN` from repo if fallback unused.
 - Monitor network egress from containers for unexpected destinations.
+
+Developer CLI install & quickstart
+
+Windows (winget)
+
+1. Search the winget catalog:
+
+```powershell
+winget search 1password
+```
+
+2. Install (replace package ID if search shows a different one):
+
+```powershell
+winget install --id 1Password.1Password -e
+```
+
+Or if your winget supports the short name:
+
+```powershell
+winget install 1password-cli
+```
+
+Run PowerShell as Administrator if you encounter permission errors.
+
+Verify:
+
+```powershell
+op --version
+op --help
+```
+
+Sign-in (interactive local dev):
+
+```powershell
+op signin             # follows interactive prompt
+# or
+op signin <account-shortname>
+```
+
+After sign-in:
+
+```powershell
+op account list
+op vault list
+op item list
+op item get "<item-id-or-title>" --field password
+```
+
+macOS (Homebrew)
+
+```bash
+brew install --cask 1password-cli
+# or
+brew install 1password-cli
+```
+
+Linux (package or zip)
+
+```bash
+# Download a release and install
+TAG=v2.23.1
+VER=${TAG#v}
+curl -sSLo /tmp/op.zip "https://github.com/1Password/op/releases/download/${TAG}/op_linux_amd64_${VER}.zip"
+unzip -o /tmp/op.zip -d /tmp/op
+sudo install -m 0755 /tmp/op/op /usr/local/bin/op
+op --version
+```
+
+Non-interactive / CI usage
+
+- For CI we prefer `1Password/load-secrets-action@v3` with `OP_CONNECT_HOST` + `OP_CONNECT_TOKEN`.
+- If you must use the CLI non-interactively for local scripts, follow 1Password docs and **never** commit tokens to source.
+
+Quick verification commands
+
+```bash
+op --version
+op account list
+op vault list
+```
+
+Want this in the repo?
+
+- I can commit this install & quickstart section into `ops/secrets/GITHUB_ACTIONS_1PASSWORD.md` (it will replace placeholders with concrete commands). Confirm and I'll stage + commit + push.
