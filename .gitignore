@@ -42,6 +42,12 @@ __pycache__/
 # Ignore logs
 *.log
 
+# Ignore triage artifacts (keep examples with .example- prefix)
+artifacts/triage-*.md
+artifacts/triage-*.log
+artifacts/EV-issue-*.json
+!artifacts/.example-*
+
 # Ignore other sensitive or generated files
 # ai-agent/
 *.bak
