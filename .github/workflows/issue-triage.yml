@@ -1,0 +1,90 @@
+name: Automated Issue Triage
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run mode (no actual closures)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  # Optional: Schedule via cron (disabled by default for safety)
+  # schedule:
+  #   - cron: '0 0 * * 0'  # Weekly on Sunday
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  triage-issues:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Execute Issue Triage
+        id: triage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          node scripts/triage-issues.mjs
+        continue-on-error: true
+
+      - name: Verify Artifacts Exist
+        run: |
+          if ! ls artifacts/triage-summary.md 1> /dev/null 2>&1; then
+            echo "❌ Summary artifact not found. Workflow may have failed."
+            exit 1
+          fi
+          echo "✅ Triage artifacts verified."
+
+      - name: Commit Artifacts
+        if: ${{ steps.triage.outcome == 'success' || steps.triage.outcome == 'failure' }}
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "[AUTO] Issue triage execution completed"
+          file_pattern: "artifacts/EV-*.json artifacts/triage-*.md artifacts/triage-*.log"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "github-actions[bot]@users.noreply.github.com"
+
+      - name: Upload Evidence Artifacts
+        if: ${{ steps.triage.outcome == 'success' || steps.triage.outcome == 'failure' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-triage-evidence-${{ github.run_id }}
+          path: |
+            artifacts/EV-*.json
+            artifacts/triage-*.md
+            artifacts/triage-*.log
+          retention-days: 90
+
+      - name: Comment Summary on PR
+        if: github.event_name == 'pull_request' && steps.triage.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('artifacts/triage-summary.md', 'utf8');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
