@@ -188,6 +188,18 @@ async function main() {
   console.log(`[Codex Runner] Starting execution - trace_id: ${traceId}`);
   console.log(`[Codex Runner] Timestamp: ${timestamp}\n`);
 
+  // Require explicit enabling via environment variable to execute commands
+  if (process.env.CODEX_RUN_ENABLED !== "true") {
+    const msg = "Codex Runner disabled: set CODEX_RUN_ENABLED=true to enable execution.";
+    console.log(msg);
+    await writeFile(
+      ".codex.done",
+      `Codex Runner skipped\nTrace ID: ${traceId}\nTimestamp: ${timestamp}\nReason: CODEX_RUN_ENABLED != true\n`,
+      "utf-8",
+    );
+    process.exit(0);
+  }
+
   // Extract commands from hand-off.md
   const handoffPath = path.join(process.cwd(), "ops/hand-off.md");
   let commands;
@@ -211,6 +223,24 @@ Error: ${errorMsg}
     process.exit(1);
   }
 
+  // Allowed command whitelist (prefix-based). Only commands starting with
+  // these prefixes will be executed. This prevents arbitrary destructive
+  // commands from being run unintentionally.
+  const ALLOWED_PREFIXES = [
+    "git ",
+    "npm ",
+    "node ",
+    "ls ",
+    "echo ",
+    "cat ",
+    "sed ",
+    "awk ",
+    "curl ",
+    "jq ",
+    "docker ",
+    "wrangler ",
+  ];
+
   // Execute commands sequentially
   const results = [];
   let failedCommands = 0;
@@ -220,6 +250,20 @@ Error: ${errorMsg}
     console.log(
       `[${i + 1}/${commands.length}] Executing: ${command.substring(0, 100)}${command.length > 100 ? "..." : ""}`,
     );
+
+    // Enforce whitelist by prefix
+    const allowed = ALLOWED_PREFIXES.some((p) => command.startsWith(p));
+    if (!allowed) {
+      console.log(`  SKIPPED (not whitelisted): ${command}`);
+      results.push({
+        command,
+        exitCode: 0,
+        stdout: "",
+        stderr: "[SKIPPED - command not whitelisted]",
+        duration: 0,
+      });
+      continue;
+    }
 
     const result = await executeCommand(command);
     results.push(result);
@@ -258,6 +302,7 @@ Error: ${errorMsg}
     commands_executed: results.length,
     commands_failed: failedCommands,
     execution_results: results,
+    whitelist: ALLOWED_PREFIXES,
   };
 
   const artifactsDir = path.join(process.cwd(), "artifacts");
