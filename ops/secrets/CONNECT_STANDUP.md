@@ -52,4 +52,20 @@ Security
 - Restrict the exchange endpoint to only accept requests from GitHub IPs or authenticate via mTLS if possible.
 - Audit all token exchanges and monitor for anomalous behavior.
 
+Using the repository deploy workflow (optional)
+
+If you prefer not to use Docker Cloud or run a manual SSH deploy, the repo includes a manual GitHub Actions workflow that can deploy the Connect container to a remote VM over SSH:
+
+- `.github/workflows/deploy-connect-to-vm.yml` (workflow_dispatch)
+
+Before running it add the following repository secrets in Settings → Secrets → Actions:
+
+- `DEPLOY_HOST` — host or IP of the VM
+- `DEPLOY_SSH_USER` — SSH username
+- `DEPLOY_SSH_PORT` — SSH port (default 22)
+- `DEPLOY_SSH_PRIVATE_KEY` — SSH private key content used to authenticate
+- `OP_CONNECT_TOKEN` — the Connect token generated in the 1Password Admin console (this workflow will write it into the container env)
+
+Run the workflow from Actions → Deploy 1Password Connect to remote VM (SSH) → Run workflow. It will pull `1password/connect:latest` and run it as a Docker container named `op-connect`.
+
 \*\*\* End of doc
