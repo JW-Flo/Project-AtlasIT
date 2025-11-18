@@ -18,7 +18,7 @@
 - Node.js 20.x (container supplies) – host install optional if you run scripts outside container
 - Wrangler CLI (`npm install -g wrangler`) for local secret and deployment tasks
 
-Optional later: 1Password CLI (deferred; use `scripts/install-op-cli.sh` stub for guidance)
+Optional: Global Wrangler install outside container if you plan to run commands directly on host.
 
 ## 3. Clone & Patch (If Applying Exported Changes)
 
@@ -47,7 +47,7 @@ bash scripts/patch-apply.sh workspace-changes.patch
 2. Command Palette: “Dev Containers: Reopen in Container”.
 3. Wait for build (Node, dependencies, etc.).
 
-Dev container is Debian-based; we intentionally removed auto 1Password install.
+Dev container is Debian-based; only essential tooling is provisioned (Node, Wrangler, TypeScript). No secret manager auto-install.
 
 ## 5. Install Dependencies
 
@@ -98,28 +98,14 @@ List secrets to confirm:
 wrangler secret list --env core
 ```
 
-## 9. Optional: 1Password CLI for Secret Sync
-
-We provide a non-invasive stub: `./scripts/install-op-cli.sh`.
-If you manually install `op`:
-
-```bash
-op signin <account>.1password.com <email>
-export OP_VAULT=AtlasIT
-export WRANGLER_ENV=core
-./scripts/secrets/op-sync.sh   # maps vault items -> wrangler secrets
-```
-
-If vault item names differ, edit `scripts/secrets/op-sync.sh` mapping array.
-
-## 10. Tests & Type Safety
+## 9. Tests & Type Safety
 
 ```bash
 npm run typecheck
 npm test              # executes multi-workspace test runner
 ```
 
-## 11. Deployment (Edge Workers)
+## 10. Deployment (Edge Workers)
 
 After smoke validation:
 
@@ -129,7 +115,7 @@ cd ../ai-orchestrator && wrangler deploy
 cd ../documentation-worker && wrangler deploy
 ```
 
-## 12. Quick Checklist
+## 11. Quick Checklist
 
 | Item                   | Command                           | Status Indicator            |
 | ---------------------- | --------------------------------- | --------------------------- |
@@ -140,7 +126,7 @@ cd ../documentation-worker && wrangler deploy
 | Tests pass             | `npm test`                        | All suites green            |
 | Typecheck              | `npm run typecheck`               | No TS errors                |
 
-## 13. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom                    | Likely Cause                   | Fix                                                  |
 | -------------------------- | ------------------------------ | ---------------------------------------------------- |
@@ -149,13 +135,13 @@ cd ../documentation-worker && wrangler deploy
 | Secrets unavailable in dev | Not seeded / wrong env         | Rerun `wrangler secret put ...` with correct `--env` |
 | CLI install failures       | External repo transient        | Use manual download; skip automation                 |
 
-## 14. AI Agent Notes
+## 13. AI Agent Notes
 
 - Agents rely on stable Linux tooling; WSL2 ensures parity.
 - Keep patch application small; large uncommitted diffs degrade context windows.
 - Use `codex:context` scripts to regenerate trimmed context for agent ingestion.
 
-## 15. Next Improvements (Optional)
+## 14. Next Improvements (Optional)
 
 - Add automated smoke script hitting local endpoints.
 - Integrate lightweight SBOM diff into predeploy.
