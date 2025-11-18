@@ -10,7 +10,7 @@
     "8787": { "label": "wrangler dev", "onAutoForward": "openBrowser" }
   },
   "updateContentCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
-  "postCreateCommand": "set -e; corepack enable || true; if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; elif [ -f package-lock.json ]; then npm ci; else npm install; fi; npm i -g wrangler@3 typescript && echo 'Codespace ready ✔️'",
+  "postCreateCommand": "set -e; corepack enable || true; if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; elif [ -f package-lock.json ]; then npm ci; else npm install; fi; npm i -g wrangler@3 typescript && echo 'Dev container ready (1Password CLI optional)'",
   "postStartCommand": "node -v && wrangler --version || true",
   "customizations": {
     "vscode": {
