@@ -2,6 +2,32 @@
 
 Cloudflare Workers based automation substrate for onboarding, orchestration, docs, and future compliance modules.
 
+> Local setup & migration: see `MIGRATION_LOCAL.md` for WSL2/Dev Container steps, patch workflows, secret seeding, and troubleshooting. Quick environment probe: `bash scripts/env-check.sh`.
+
+## Local Migration (Codespaces → Local Overview)
+
+If leaving Codespaces:
+
+```bash
+# In Codespaces: capture uncommitted changes
+git diff > workspace-changes.patch
+bash scripts/export-workspace.sh
+
+# Locally: copy artifacts
+gh codespace list
+gh codespace cp <codespaceName>:/workspaces/Project-AtlasIT/workspace-changes.patch .
+gh codespace cp <codespaceName>:/workspaces/Project-AtlasIT/atlasit-export-<timestamp>.tgz .  # optional
+
+# Clone & apply
+git clone https://github.com/JW-Flo/Project-AtlasIT.git
+cd Project-AtlasIT
+bash scripts/patch-apply.sh ../workspace-changes.patch || echo 'Patch had conflicts; resolve manually.'
+npm run install:all
+npm run dev:core
+```
+
+For full details (WSL2, secrets, troubleshooting) read `MIGRATION_LOCAL.md`. This inline section is a fast reference. Secrets must be reseeded with `wrangler secret put ...`. 1Password CLI is optional (stubbed installer).
+
 ## Cloudflare Binding Configuration (Diagnostics Reference)
 
 If you encounter responses indicating missing bindings (e.g. `DISPATCHER_BINDING_MISSING` or console warnings `[bindings] Missing Cloudflare bindings detected`), ensure the following are present in `wrangler.toml` for the target environment (e.g. `[env.core]`, `[env.production]`, or `[env.ai]`).
