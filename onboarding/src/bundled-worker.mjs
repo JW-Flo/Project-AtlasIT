@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// onboarding/dist/onboarding/src/utils/error.js
+// dist/onboarding/src/utils/error.js
 function handleError(error) {
   console.error("Error:", error);
   const toJson = (payload, status = 500) => new Response(JSON.stringify(payload), {
@@ -50,7 +50,7 @@ var IntegrationError = class extends Error {
   }
 };
 
-// node_modules/zod/v3/external.js
+// ../node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
   BRAND: () => BRAND,
@@ -162,7 +162,7 @@ __export(external_exports, {
   void: () => voidType
 });
 
-// node_modules/zod/v3/helpers/util.js
+// ../node_modules/zod/v3/helpers/util.js
 var util;
 (function(util2) {
   util2.assertEqual = (_) => {
@@ -296,7 +296,7 @@ var getParsedType = (data) => {
   }
 };
 
-// node_modules/zod/v3/ZodError.js
+// ../node_modules/zod/v3/ZodError.js
 var ZodIssueCode = util.arrayToEnum([
   "invalid_type",
   "invalid_literal",
@@ -414,7 +414,7 @@ ZodError.create = (issues) => {
   return error;
 };
 
-// node_modules/zod/v3/locales/en.js
+// ../node_modules/zod/v3/locales/en.js
 var errorMap = (issue, _ctx) => {
   let message;
   switch (issue.code) {
@@ -517,7 +517,7 @@ var errorMap = (issue, _ctx) => {
 };
 var en_default = errorMap;
 
-// node_modules/zod/v3/errors.js
+// ../node_modules/zod/v3/errors.js
 var overrideErrorMap = en_default;
 function setErrorMap(map) {
   overrideErrorMap = map;
@@ -526,7 +526,7 @@ function getErrorMap() {
   return overrideErrorMap;
 }
 
-// node_modules/zod/v3/helpers/parseUtil.js
+// ../node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
   const { data, path, errorMaps, issueData } = params;
   const fullPath = [...path, ...issueData.path || []];
@@ -636,14 +636,14 @@ var isDirty = (x) => x.status === "dirty";
 var isValid = (x) => x.status === "valid";
 var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-// node_modules/zod/v3/helpers/errorUtil.js
+// ../node_modules/zod/v3/helpers/errorUtil.js
 var errorUtil;
 (function(errorUtil2) {
   errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
   errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
 })(errorUtil || (errorUtil = {}));
 
-// node_modules/zod/v3/types.js
+// ../node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
   constructor(parent, value, path, key) {
     this._cachedPath = [];
@@ -4091,7 +4091,7 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// onboarding/dist/onboarding/src/utils/validation.js
+// dist/onboarding/src/utils/validation.js
 var IntegrationSchema = external_exports.object({
   id: external_exports.string(),
   name: external_exports.string(),
@@ -4174,7 +4174,7 @@ async function validateTenantConfig(config) {
   }
 }
 
-// onboarding/dist/onboarding/src/services/template.js
+// dist/onboarding/src/services/template.js
 async function generateTemplate(config) {
   const templateId = `template-${Date.now()}`;
   const template = {
@@ -4408,7 +4408,7 @@ For support and documentation, visit [AtlasIT Documentation](https://docs.atlasi
   };
 }
 
-// onboarding/dist/onboarding/src/services/ai-config.js
+// dist/onboarding/src/services/ai-config.js
 var AIConfigService = class {
   apiKey;
   constructor(apiKey) {
@@ -4733,7 +4733,7 @@ var AIConfigService = class {
   }
 };
 
-// onboarding/dist/onboarding/src/utils/errors.js
+// dist/onboarding/src/utils/errors.js
 var OnboardingErrors = {
   MISSING_FIELDS: (missing) => ({
     error: {
@@ -4784,7 +4784,7 @@ function json(data, status = 200) {
   });
 }
 
-// onboarding/dist/onboarding/src/handlers/onboarding.js
+// dist/onboarding/src/handlers/onboarding.js
 async function handleOnboarding(request, env) {
   try {
     const body = await request.json();
@@ -4886,7 +4886,7 @@ async function generateOnboardingQuestions(industry, requirements = []) {
   return baseQuestions;
 }
 
-// packages/shared/src/logger.ts
+// ../packages/shared/src/logger.ts
 var LEVELS = ["debug", "info", "warn", "error"];
 function shouldLog(configLevel, messageLevel) {
   return LEVELS.indexOf(messageLevel) >= LEVELS.indexOf(configLevel);
@@ -4927,7 +4927,7 @@ var Logger = class {
 };
 var logger = new Logger({ service: "shared" });
 
-// packages/shared/src/env.ts
+// ../packages/shared/src/env.ts
 function validateEnv(spec, raw) {
   const schema = external_exports.object(spec);
   const result = schema.safeParse(raw);
@@ -4951,7 +4951,7 @@ function resolveCfApiToken(raw) {
   return preferred;
 }
 
-// onboarding/dist/onboarding/src/index.js
+// dist/onboarding/src/index.js
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
 var index_default = {
