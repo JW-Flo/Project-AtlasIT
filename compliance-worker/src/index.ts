@@ -1953,7 +1953,7 @@ async function handleHealth(
     try {
       const securityRow = await db
         .prepare(
-          `SELECT 
+          `SELECT
           SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
           SUM(CASE WHEN status = 'open' AND severity = 'critical' THEN 1 ELSE 0 END) AS critical_open,
           SUM(CASE WHEN status = 'open' AND severity = 'high' THEN 1 ELSE 0 END) AS high_open,
@@ -2364,7 +2364,13 @@ async function handleEvidenceGet(
     if (!object) {
       return errorResponse(404, requestId, headers, "Evidence not found");
     }
-    const body = await object.text();
+    // Some test stubs provide only text(); production may have arrayBuffer(). Prefer text() if available.
+    let body: string;
+    if (typeof (object as any).text === "function") {
+      body = await (object as any).text();
+    } else {
+      body = new TextDecoder().decode(await (object as any).arrayBuffer());
+    }
     return new Response(body, {
       status: 200,
       headers: mergeHeaders(headers, {
@@ -2522,7 +2528,11 @@ async function handleEvidenceVerify(
     if (!obj) {
       return errorResponse(404, requestId, headers, "Evidence not found");
     }
-    const text = await obj.text();
+    // Fallback to text() if available else decode arrayBuffer
+    const text =
+      typeof (obj as any).text === "function"
+        ? await (obj as any).text()
+        : new TextDecoder().decode(await (obj as any).arrayBuffer());
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);

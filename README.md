@@ -26,7 +26,7 @@ npm run install:all
 npm run dev:core
 ```
 
-For full details (WSL2, secrets, troubleshooting) read `MIGRATION_LOCAL.md`. This inline section is a fast reference. Secrets must be reseeded with `wrangler secret put ...`.
+For full details (WSL2, secrets, troubleshooting) read `MIGRATION_LOCAL.md`. This inline section is a fast reference. Secrets must be reseeded with `wrangler secret put ...`. 1Password CLI is optional (stubbed installer).
 
 ## Cloudflare Binding Configuration (Diagnostics Reference)
 

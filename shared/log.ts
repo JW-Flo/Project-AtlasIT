@@ -2,7 +2,8 @@
 // Provides: log(level,event,payload,{env,c}) with correlation id support and in-memory ring buffer
 // Optionally persists to D1 (LOG_DB) if binding provided (table `logs` with columns id, ts, level, event, correlationId, payload JSON)
 
-import { normalizeLog, validateLog } from "./log-schema.ts";
+// Import without explicit .ts extension to satisfy TypeScript configuration
+import { normalizeLog, validateLog } from "./log-schema";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 

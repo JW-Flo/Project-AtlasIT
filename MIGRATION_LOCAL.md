@@ -18,7 +18,7 @@
 - Node.js 20.x (container supplies) – host install optional if you run scripts outside container
 - Wrangler CLI (`npm install -g wrangler`) for local secret and deployment tasks
 
-Optional: Global Wrangler install outside container if you plan to run commands directly on host.
+Optional later: 1Password CLI (deferred; not required for baseline migration)
 
 ## 3. Clone & Patch (If Applying Exported Changes)
 
@@ -41,13 +41,50 @@ If using the provided helper:
 bash scripts/patch-apply.sh workspace-changes.patch
 ```
 
+### Enhanced Automated Migration Script
+
+For a more robust, flag-driven migration (clone + patch + deps + validation), use:
+
+```bash
+bash scripts/migrate-from-codespaces.sh --codespace <codespaceName>
+```
+
+Key flags:
+
+| Flag                 | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `--codespace <name>` | Codespace identifier (required)                             |
+| `--patch <file>`     | Override patch filename (default `workspace-changes.patch`) |
+| `--branch <name>`    | Create and checkout a branch after patch application        |
+| `--skip-patch`       | Do not attempt to download/apply patch                      |
+| `--skip-deps`        | Skip dependency installation                                |
+| `--skip-tests`       | Skip typecheck + unit test steps                            |
+| `--python`           | Also install Python dependencies from `requirements.txt`    |
+| `--dry-run`          | Show actions without making changes                         |
+| `--force`            | Continue despite non-critical preflight warnings            |
+
+Examples:
+
+```bash
+# Basic
+bash scripts/migrate-from-codespaces.sh --codespace twilight-river-a1b2
+
+# Custom patch + branch
+bash scripts/migrate-from-codespaces.sh --codespace twilight-river-a1b2 --patch my.patch --branch migrate/2025-11-18
+
+# Dry-run review
+bash scripts/migrate-from-codespaces.sh --codespace twilight-river-a1b2 --dry-run
+```
+
+Outputs include next-step instructions (commit, secrets seeding, dev commands). Non-blocking failures (typecheck/tests) are surfaced but do not abort unless critical.
+
 ## 4. Open in Dev Container
 
 1. Open folder in VS Code.
 2. Command Palette: “Dev Containers: Reopen in Container”.
 3. Wait for build (Node, dependencies, etc.).
 
-Dev container is Debian-based; only essential tooling is provisioned (Node, Wrangler, TypeScript). No secret manager auto-install.
+Dev container is Debian-based; we intentionally removed auto 1Password install.
 
 ## 5. Install Dependencies
 

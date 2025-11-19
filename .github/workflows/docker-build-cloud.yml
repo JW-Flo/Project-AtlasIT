@@ -2,9 +2,9 @@ name: docker-build-cloud
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -55,5 +55,5 @@ jobs:
 
     # Notes:
   # - Requires either (preferred) DOCKER_USER & DOCKER_PAT or fallback secrets OP_ATLAS_IT_CONNECT_SERVER_USER / OP_ATLAS_IT_CONNECT_SERVER_PAT.
-    # - Image name aligned with connect server trial tag.
-    # - Disable provenance/SBOM for faster trial builds; enable later for supply-chain visibility.
+  # - Image name aligned with connect server trial tag.
+  # - Disable provenance/SBOM for faster trial builds; enable later for supply-chain visibility.

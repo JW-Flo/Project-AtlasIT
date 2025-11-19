@@ -90,7 +90,7 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   if (url.pathname === "/admin/tenant-keys" && req.method === "POST") {
     try {
-      const body = await req.json();
+      const body: any = await req.json();
       const rawTenant = String(body.tenantId || "")
         .trim()
         .toLowerCase();
@@ -120,7 +120,7 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
   }
   if (url.pathname === "/admin/tenant-scripts" && req.method === "POST") {
     try {
-      const body = await req.json();
+      const body: any = await req.json();
       const tenantId = String(body.tenantId || "")
         .trim()
         .toLowerCase();

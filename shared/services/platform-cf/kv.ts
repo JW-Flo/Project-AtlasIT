@@ -1,9 +1,9 @@
 import { KVState } from "../shared/iface-state";
 
-export function makeKVState<T=unknown>(ns: KVNamespace): KVState<T> {
+export function makeKVState<T = unknown>(ns: KVNamespace): KVState<T> {
   return {
     async get(key: string) {
-      const v = await ns.get(key, { type: 'json' }) as T | null;
+      const v = (await ns.get(key, { type: "json" })) as T | null;
       return v;
     },
     async put(key: string, val: T, opts?: { ifMatch?: number }) {
@@ -21,14 +21,17 @@ export function makeKVState<T=unknown>(ns: KVNamespace): KVState<T> {
     async *scan(prefix: string, limit = 100) {
       let cursor: string | undefined = undefined;
       do {
-        const list = await ns.list({ prefix, cursor, limit });
-        for (const k of list.keys) {
+        const listing = (await (ns as any).list({ prefix, cursor, limit })) as {
+          keys: Array<{ name: string }>;
+          cursor?: string;
+        };
+        for (const k of listing.keys) {
           if (k.name.endsWith(":v")) continue;
           const v = await ns.get(k.name + ":v");
           yield { key: k.name, version: v ? parseInt(v) : 0 };
         }
-        cursor = list.cursor;
+        cursor = listing.cursor;
       } while (cursor);
-    }
+    },
   };
 }

@@ -1,0 +1,35 @@
+name: Deploy OIDC exchange worker (example)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy OIDC worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.CF_API_TOKEN }}" ]; then
+            echo "Missing required secret: CF_API_TOKEN" >&2
+            exit 1
+          fi
+          if [ -z "${{ secrets.CF_ACCOUNT_ID }}" ]; then
+            echo "Missing required secret: CF_ACCOUNT_ID" >&2
+            exit 1
+          fi
+
+      - name: Publish worker with Wrangler
+        uses: cloudflare/wrangler-action@2.0.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          args: publish
+          workingDirectory: ops/oidc
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+      - name: Post-deploy note
+        run: |
+          echo "If deployed, set OP_CONNECT_OIDC_EXCHANGE_URL to your worker URL in repo Secrets."
