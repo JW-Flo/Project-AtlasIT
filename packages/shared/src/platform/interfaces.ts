@@ -29,15 +29,29 @@ export interface WorkflowStateStore {
 }
 
 // ---------------------------------------------------------------------------
-// EvidenceStore — write immutable evidence objects
+// EvidenceStore — content-addressed immutable evidence objects
 // ---------------------------------------------------------------------------
 
+export interface EvidenceWriteResult {
+  key: string;
+  uri: string;
+  alreadyExists: boolean;
+}
+
+export interface EvidenceReadResult {
+  body: string;
+}
+
 export interface EvidenceStore {
-  putObject(
-    path: string,
-    body: Uint8Array,
-    meta: Record<string, string>,
-  ): Promise<{ uri: string }>;
+  exists(key: string): Promise<boolean>;
+  put(
+    tenantId: string,
+    runId: string,
+    stepId: string,
+    hash: string,
+    body: string,
+  ): Promise<EvidenceWriteResult>;
+  get(key: string): Promise<EvidenceReadResult | null>;
 }
 
 // ---------------------------------------------------------------------------

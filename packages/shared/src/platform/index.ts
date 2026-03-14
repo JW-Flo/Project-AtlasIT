@@ -3,6 +3,8 @@ export type {
   PublishOptions,
   WorkflowStateStore,
   EvidenceStore,
+  EvidenceWriteResult,
+  EvidenceReadResult,
   PolicyEvaluator,
   SecretResolver,
   ConnectorInvoker,

@@ -65,6 +65,7 @@ export interface StepState {
   completedAt?: string;
   output?: unknown;
   error?: string;
+  durationMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,8 @@ export interface RunState {
   status: RunStatus;
   tenantId: string;
   userId: string;
+  /** Actor identity for evidence attribution. */
+  actor: string;
   createdAt: string;
   completedAt?: string;
   steps: StepState[];
@@ -114,6 +117,38 @@ export interface RunState {
   context: Record<string, unknown>;
   /** Number of alarm wake-ups processed (diagnostic). */
   alarmCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence envelope types
+// ---------------------------------------------------------------------------
+
+export interface EvidenceArtifact {
+  kind: string;
+  uri: string;
+  sha256: string;
+}
+
+export interface EvidencePolicy {
+  bundleRevision: string;
+  decisionId: string;
+  query: string;
+}
+
+export interface EvidenceEnvelope {
+  tenantId: string;
+  workflowRunId: string;
+  stepId: string;
+  actor: string;
+  eventType: string;
+  createdAt: string;
+  hash: string;
+  outcome?: "success" | "failure" | "skipped";
+  error?: string;
+  durationMs?: number;
+  artifacts?: EvidenceArtifact[];
+  policy?: EvidencePolicy;
+  metadata?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

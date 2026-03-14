@@ -22,4 +22,9 @@ export type {
   RunState,
   StepTaskMessage,
   StepResultMessage,
+  EvidenceEnvelope,
+  EvidenceArtifact,
+  EvidencePolicy,
 } from "./types.js";
+export { EvidenceEmitter } from "./evidence-emitter.js";
+export type { EmitOptions } from "./evidence-emitter.js";

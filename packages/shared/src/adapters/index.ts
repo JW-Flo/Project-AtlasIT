@@ -2,4 +2,4 @@ export type {
   AdapterManifest,
   AdapterResult,
   AdapterHealthCheck,
-} from "./contract";
+} from "./contract.js";

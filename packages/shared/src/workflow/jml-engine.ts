@@ -98,6 +98,7 @@ export class JMLEngine {
       status: "queued",
       tenantId,
       userId,
+      actor: (context.actor as string) ?? "atlas.workflow-engine",
       createdAt: now,
       steps,
       history: [],
