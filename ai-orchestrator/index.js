@@ -7,6 +7,8 @@ import {
   commonEnvSpec,
   generateAI,
   resolveCfApiToken,
+  executeAgentMesh,
+  classifyTask,
 } from "@atlasit/shared";
 import log, {
   correlationMiddleware,
@@ -928,9 +930,6 @@ app.post("/ai/agent-mesh", async (c) => {
   }
 
   try {
-    // Dynamic import of agent-mesh (works with bundled @atlasit/shared)
-    const { executeAgentMesh, classifyTask } = await import("@atlasit/shared");
-
     const config = {
       groqApiKey,
       guardEnabled: body.guardEnabled !== false,
@@ -991,7 +990,6 @@ app.post("/ai/classify", async (c) => {
   }
 
   try {
-    const { classifyTask } = await import("@atlasit/shared");
     const classification = classifyTask(input);
     return c.json({
       ...classification,

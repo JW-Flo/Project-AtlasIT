@@ -1,4 +1,4 @@
-name = "atlasit-orchestrator" # previously ignite-ai-orchestrator
+name = "atlasit-orchestrator"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
