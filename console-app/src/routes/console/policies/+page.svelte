@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import Button from "$lib/components/primitives/Button.svelte";
   import Skeleton from "$lib/components/loading/Skeleton.svelte";
-  import { getRuntimeConfig } from "$lib/config";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
 
   interface PolicyTemplate {
@@ -28,19 +27,11 @@
   let contactEmail = "";
   let summary = "";
   let generatedPolicy: GeneratedPolicy | null = null;
-  let complianceBase = "";
-
-  function ensureBase(base: string | undefined | null) {
-    if (!base) return "";
-    return base.replace(/\/$/, "");
-  }
 
   async function loadTemplates() {
     loading = true;
     error = null;
     try {
-      const cfg = await getRuntimeConfig();
-      complianceBase = ensureBase(cfg.resolvedBase || cfg.complianceBase);
       const res = await fetch("/api/policies/templates");
       if (!res.ok) throw new Error(`Failed to load templates (${res.status})`);
       const data = await res.json();

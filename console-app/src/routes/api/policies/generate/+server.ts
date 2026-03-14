@@ -44,7 +44,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       status: res.status,
       headers: { "Content-Type": "application/json" },
     });
-  } catch (e: any) {
+  } catch {
     return new Response(
       JSON.stringify({ error: "Policy generation service unavailable" }),
       { status: 503, headers: { "Content-Type": "application/json" } },
