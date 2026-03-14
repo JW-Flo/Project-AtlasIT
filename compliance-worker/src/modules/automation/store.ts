@@ -41,49 +41,77 @@ function parseJson<T>(value: unknown): T {
 }
 
 export async function ensureAutomationSchema(db: D1Database) {
-  await db.exec(
-    `CREATE TABLE IF NOT EXISTS workflow_templates (
-       type TEXT PRIMARY KEY,
-       payload TEXT NOT NULL,
-       created_at TEXT NOT NULL,
-       updated_at TEXT NOT NULL
-     );
-     CREATE TABLE IF NOT EXISTS workflow_executions (
-       id TEXT PRIMARY KEY,
-       tenant_id TEXT NOT NULL,
-       workflow_type TEXT NOT NULL,
-       subject_ref TEXT,
-       status TEXT NOT NULL,
-       created_at TEXT NOT NULL,
-       updated_at TEXT NOT NULL,
-       completed_at TEXT,
-       duration_ms INTEGER DEFAULT 0,
-       idempotency_key TEXT,
-       context_json TEXT NOT NULL
-     );
-     CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_exec_tenant_created
-       ON workflow_executions (tenant_id, created_at DESC);
-     CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_exec_idempotent
-       ON workflow_executions (tenant_id, idempotency_key)
-       WHERE idempotency_key IS NOT NULL;
-     CREATE TABLE IF NOT EXISTS workflow_steps (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       execution_id TEXT NOT NULL,
-       step_id TEXT NOT NULL,
-       action TEXT NOT NULL,
-       status TEXT NOT NULL,
-       attempts INTEGER DEFAULT 0,
-       output_json TEXT,
-       error TEXT,
-       started_at TEXT,
-       completed_at TEXT,
-       duration_ms INTEGER DEFAULT 0,
-       FOREIGN KEY(execution_id) REFERENCES workflow_executions(id)
-     );
-     CREATE INDEX IF NOT EXISTS idx_workflow_steps_execution
-       ON workflow_steps (execution_id, id ASC);
-    `,
-  );
+  // D1 db.exec() can fail with multi-statement SQL.
+  // Use individual prepare().run() calls for reliability.
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS workflow_templates (
+         type TEXT PRIMARY KEY,
+         payload TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS workflow_executions (
+         id TEXT PRIMARY KEY,
+         tenant_id TEXT NOT NULL,
+         workflow_type TEXT NOT NULL,
+         subject_ref TEXT,
+         status TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         completed_at TEXT,
+         duration_ms INTEGER DEFAULT 0,
+         idempotency_key TEXT,
+         context_json TEXT NOT NULL
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_exec_tenant_created
+         ON workflow_executions (tenant_id, created_at DESC)`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_exec_idempotent
+         ON workflow_executions (tenant_id, idempotency_key)
+         WHERE idempotency_key IS NOT NULL`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS workflow_steps (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         execution_id TEXT NOT NULL,
+         step_id TEXT NOT NULL,
+         action TEXT NOT NULL,
+         status TEXT NOT NULL,
+         attempts INTEGER DEFAULT 0,
+         output_json TEXT,
+         error TEXT,
+         started_at TEXT,
+         completed_at TEXT,
+         duration_ms INTEGER DEFAULT 0,
+         FOREIGN KEY(execution_id) REFERENCES workflow_executions(id)
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_workflow_steps_execution
+         ON workflow_steps (execution_id, id ASC)`,
+    )
+    .run();
 }
 
 export async function ensureWorkflowTemplates(db: D1Database) {
