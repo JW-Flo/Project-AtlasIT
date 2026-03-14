@@ -27,7 +27,7 @@ command = "npm run build"
 
 [vars]
 APP_NAME = "AtlasIT Console"
-COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
+COMPLIANCE_BASE = "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev/api/compliance"
 CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
 DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
 ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
