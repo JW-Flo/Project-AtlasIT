@@ -7,6 +7,8 @@ import {
   commonEnvSpec,
   generateAI,
   resolveCfApiToken,
+  executeAgentMesh,
+  classifyTask,
 } from "@atlasit/shared";
 import log, {
   correlationMiddleware,
@@ -896,6 +898,113 @@ app.post("/ai/infer", async (c) => {
   const model = m.model;
   const { response } = await runInference(c, prompt, model, quotaInfo);
   return response;
+});
+
+// ─── Agent Mesh Endpoint ────────────────────────────────────────────────────
+// POST /ai/agent-mesh { input, systemPrompt?, guardEnabled? }
+// Routes through the AtlasIT Agent Mesh: Guard -> Classify -> Route to model
+app.post("/ai/agent-mesh", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) || {};
+  const input = typeof body.input === "string" ? body.input.trim() : "";
+  if (!input) {
+    return c.json(
+      { error: "input required", requestId: c.get("requestId") },
+      400,
+    );
+  }
+
+  const rl = applyRateLimit(c);
+  if (!rl.ok) return rl.error;
+  const quota = await applyQuota(c);
+  if (!quota.ok) return quota.error;
+
+  const groqApiKey = c.env?.GROQ_API_KEY;
+  if (!groqApiKey) {
+    return c.json(
+      {
+        error: "GROQ_API_KEY not configured",
+        requestId: c.get("requestId"),
+      },
+      503,
+    );
+  }
+
+  try {
+    const config = {
+      groqApiKey,
+      guardEnabled: body.guardEnabled !== false,
+      modelOverrides: body.modelOverrides || undefined,
+    };
+
+    const result = await executeAgentMesh(
+      input,
+      config,
+      body.systemPrompt || undefined,
+    );
+
+    if (result.classification.blocked) {
+      return c.json(
+        {
+          blocked: true,
+          reason: result.classification.blockReason,
+          requestId: c.get("requestId"),
+        },
+        403,
+      );
+    }
+
+    return c.json({
+      response: result.response,
+      model: result.model,
+      role: result.classification.role,
+      confidence: result.classification.confidence,
+      durationMs: result.durationMs,
+      guardResult: result.guardResult,
+      requestId: c.get("requestId"),
+    });
+  } catch (err) {
+    log("error", "agent_mesh.error", {
+      requestId: c.get("requestId"),
+      error: String(err),
+    });
+    return c.json(
+      {
+        error: "Agent mesh inference failed",
+        detail: err instanceof Error ? err.message : String(err),
+        requestId: c.get("requestId"),
+      },
+      502,
+    );
+  }
+});
+
+// POST /ai/classify { input } — classify a task without executing
+app.post("/ai/classify", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) || {};
+  const input = typeof body.input === "string" ? body.input.trim() : "";
+  if (!input) {
+    return c.json(
+      { error: "input required", requestId: c.get("requestId") },
+      400,
+    );
+  }
+
+  try {
+    const classification = classifyTask(input);
+    return c.json({
+      ...classification,
+      requestId: c.get("requestId"),
+    });
+  } catch (err) {
+    return c.json(
+      {
+        error: "Classification failed",
+        detail: err instanceof Error ? err.message : String(err),
+        requestId: c.get("requestId"),
+      },
+      500,
+    );
+  }
 });
 
 // Health check

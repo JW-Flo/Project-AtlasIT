@@ -9,7 +9,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
   try {
     const res = await proxyFetch(platform, upstream, {
       headers: {
-        "x-api-key": env.COMPLIANCE_API_KEY || "demo",
+        "x-api-key": env.COMPLIANCE_API_KEY,
         "x-tenant-id": env.TENANT_ID || "atlasit-prod",
       },
     });

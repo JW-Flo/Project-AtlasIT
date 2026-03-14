@@ -8,7 +8,7 @@ const app = new Hono();
 // Middleware
 app.use('*', logger());
 app.use('*', cors({
-  origin: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev'],
+  origin: ['https://atlasit-mcp.kd8jc7v8cd.workers.dev'],
   allowMethods: ['POST', 'GET'],
   allowHeaders: ['Content-Type', 'Authorization'],
   maxAge: 600,
@@ -19,7 +19,7 @@ function buildClients(env) {
     ['mcp-mobile', {
       clientId: 'mcp-mobile',
       clientSecret: env.MCP_MOBILE_SECRET,
-      redirectUris: ['https://mcp.project-ignite.kd8jc7v8cd.workers.dev/callback'],
+      redirectUris: ['https://atlasit-mcp.kd8jc7v8cd.workers.dev/callback'],
       grantTypes: ['client_credentials'],
       scopes: ['mcp:read', 'mcp:write']
     }]

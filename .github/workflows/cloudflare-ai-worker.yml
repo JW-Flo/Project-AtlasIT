@@ -49,7 +49,7 @@ jobs:
 
       - name: Smoke test AI Worker
         env:
-          AI_WORKER_URL: "https://ai-project-ignite.kd8jc7v8cd.workers.dev"
+          AI_WORKER_URL: "https://atlasit-ai.kd8jc7v8cd.workers.dev"
           AI_GATEWAY_TOKEN: ${{ secrets.AI_GATEWAY_TOKEN }}
         run: ./scripts/smoke-test-ai-worker.sh
 

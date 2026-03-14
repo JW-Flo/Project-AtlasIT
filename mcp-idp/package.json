@@ -1,5 +1,5 @@
 {
-  "name": "ignite-mcp-idp",
+  "name": "atlasit-mcp-idp",
   "version": "1.0.0",
   "description": "MCP Identity Provider",
   "main": "index.js",

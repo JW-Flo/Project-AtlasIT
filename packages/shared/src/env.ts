@@ -21,7 +21,7 @@ export function validateEnv<T extends BaseEnvSpec>(
 
 export const commonEnvSpec = {
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  AI_PROVIDER: z.enum(["cloudflare", "together", "openai"]).optional(),
+  AI_PROVIDER: z.enum(["cloudflare", "together", "openai", "groq"]).optional(),
 };
 
 export type CommonEnv = z.infer<z.ZodObject<typeof commonEnvSpec>>;

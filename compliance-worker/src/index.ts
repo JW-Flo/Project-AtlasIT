@@ -193,11 +193,15 @@ async function consumeIncidentQuota(
   const windowStart = now - INCIDENT_WINDOW_MS;
 
   // Ensure table exists
-  await db.exec(`CREATE TABLE IF NOT EXISTS incident_rate_limit (
-    tenant_id TEXT PRIMARY KEY,
-    window_start INTEGER NOT NULL,
-    count INTEGER NOT NULL
-  );`);
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS incident_rate_limit (
+         tenant_id TEXT PRIMARY KEY,
+         window_start INTEGER NOT NULL,
+         count INTEGER NOT NULL
+       )`,
+    )
+    .run();
 
   // Try to update existing row atomically
   const row = await db
@@ -1985,42 +1989,60 @@ async function ensureSchema(env: Env) {
   const db = resolveD1(env);
   if (!db) return;
   try {
-    await db.exec(`CREATE TABLE IF NOT EXISTS snapshots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tenant_id TEXT NOT NULL UNIQUE,
-      generated_at TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`);
-    await db.exec(`CREATE TABLE IF NOT EXISTS evidence_index (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      hash TEXT NOT NULL UNIQUE,
-      tenant_id TEXT NOT NULL,
-      pack TEXT NOT NULL,
-      subject_ref TEXT,
-      payload TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`);
-    await db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_evidence_tenant_created ON evidence_index (tenant_id, created_at DESC);",
-    );
-    await db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_evidence_pack_created ON evidence_index (pack, created_at DESC);",
-    );
-    await db.exec(`CREATE TABLE IF NOT EXISTS notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tenant_id TEXT NOT NULL,
-      kind TEXT,
-      severity TEXT,
-      message TEXT NOT NULL,
-      ref TEXT,
-      "read" INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      read_at TEXT
-    );`);
-    await db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_notifications_tenant_created ON notifications (tenant_id, created_at DESC);",
-    );
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS snapshots (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           tenant_id TEXT NOT NULL UNIQUE,
+           generated_at TEXT NOT NULL,
+           payload TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+         )`,
+      )
+      .run();
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS evidence_index (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           hash TEXT NOT NULL UNIQUE,
+           tenant_id TEXT NOT NULL,
+           pack TEXT NOT NULL,
+           subject_ref TEXT,
+           payload TEXT NOT NULL,
+           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+         )`,
+      )
+      .run();
+    await db
+      .prepare(
+        "CREATE INDEX IF NOT EXISTS idx_evidence_tenant_created ON evidence_index (tenant_id, created_at DESC)",
+      )
+      .run();
+    await db
+      .prepare(
+        "CREATE INDEX IF NOT EXISTS idx_evidence_pack_created ON evidence_index (pack, created_at DESC)",
+      )
+      .run();
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS notifications (
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+           tenant_id TEXT NOT NULL,
+           kind TEXT,
+           severity TEXT,
+           message TEXT NOT NULL,
+           ref TEXT,
+           "read" INTEGER NOT NULL DEFAULT 0,
+           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           read_at TEXT
+         )`,
+      )
+      .run();
+    await db
+      .prepare(
+        "CREATE INDEX IF NOT EXISTS idx_notifications_tenant_created ON notifications (tenant_id, created_at DESC)",
+      )
+      .run();
     const tableInfo = await db
       .prepare("PRAGMA table_info('notifications')")
       .all<{ name: string }>();
@@ -2036,17 +2058,21 @@ async function ensureSchema(env: Env) {
         )
         .run();
     }
-    await db.exec(`CREATE TABLE IF NOT EXISTS risks (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL DEFAULT 'demo',
-      title TEXT NOT NULL,
-      likelihood INTEGER NOT NULL,
-      impact INTEGER NOT NULL,
-      score INTEGER NOT NULL,
-      severity TEXT NOT NULL,
-      owner TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );`);
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS risks (
+           id TEXT PRIMARY KEY,
+           tenant_id TEXT NOT NULL DEFAULT 'demo',
+           title TEXT NOT NULL,
+           likelihood INTEGER NOT NULL,
+           impact INTEGER NOT NULL,
+           score INTEGER NOT NULL,
+           severity TEXT NOT NULL,
+           owner TEXT,
+           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+         )`,
+      )
+      .run();
     // Seed default risks if table is empty
     const riskCount = await db
       .prepare("SELECT COUNT(*) as count FROM risks")

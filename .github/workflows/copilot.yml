@@ -18,7 +18,7 @@ suggestions:
       - cloud-functions/**
       - src/**
       - .github/workflows/sandbox-pipeline.yml
-project: project-ignite
+project: atlasit
 prompts:
   - name: cf-token
     description: "Generate a Cloudflare API token scoped for Worker script read/write"

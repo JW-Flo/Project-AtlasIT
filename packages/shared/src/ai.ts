@@ -5,12 +5,12 @@ export interface AIMessage {
   content: string;
 }
 export interface AIOptions {
-  provider?: "cloudflare" | "together" | "openai";
+  provider?: "cloudflare" | "together" | "openai" | "groq";
   model?: string;
   maxTokens?: number;
   temperature?: number;
   deterministic?: boolean; // force deterministic hashing of output (used in tests)
-  fallbackProviders?: ("cloudflare" | "together" | "openai")[]; // explicit fallback order override
+  fallbackProviders?: ("cloudflare" | "together" | "openai" | "groq")[]; // explicit fallback order override
 }
 
 export interface AIProvider {
@@ -68,6 +68,55 @@ export class OpenAIAIProvider implements AIProvider {
   }
 }
 
+/**
+ * Groq AI Provider — uses the Groq API (OpenAI-compatible chat completions).
+ * Recommended models for AtlasIT:
+ *   - qwen/qwen3-32b (primary — automation planner, Terraform/CI-CD)
+ *   - llama-3.1-8b-instant (fast ops agent — alerts + commands)
+ *   - openai/gpt-oss-120b (architecture reasoning — system design)
+ *   - meta-llama/llama-prompt-guard-2-86m (guardrail layer — safety)
+ *   - whisper-large-v3-turbo (speech ingestion — transcripts)
+ */
+export class GroqAIProvider implements AIProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly logger = new Logger({ service: "ai-groq" }),
+  ) {}
+  async generate(messages: AIMessage[], opts: AIOptions = {}): Promise<string> {
+    const model = opts.model || "qwen/qwen3-32b";
+    const body = {
+      model,
+      messages,
+      max_tokens: opts.maxTokens || 1024,
+      temperature: opts.temperature ?? 0.7,
+    };
+    this.logger.debug("Calling Groq", { model, messageCount: messages.length });
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Groq API error ${response.status}: ${text.slice(0, 200)}`);
+    }
+    const data = (await response.json()) as {
+      choices?: { message?: { content?: string } }[];
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("Groq returned empty response");
+    }
+    return content;
+  }
+}
+
 export function createAIProvider(
   env: Record<string, any>,
   providerName?: string,
@@ -78,6 +127,8 @@ export function createAIProvider(
       return new TogetherAIProvider(env.TOGETHER_API_KEY);
     case "openai":
       return new OpenAIAIProvider(env.OPENAI_API_KEY);
+    case "groq":
+      return new GroqAIProvider(env.GROQ_API_KEY);
     default:
       return new CloudflareAIProvider(env.AI_GATEWAY_TOKEN);
   }

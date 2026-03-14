@@ -157,63 +157,106 @@ const CONTROL_POLICY_MAPPINGS = [
 ];
 
 export async function ensurePolicySchema(db: D1Database) {
-  await db.exec(
-    `CREATE TABLE IF NOT EXISTS policy_templates (
-       key TEXT PRIMARY KEY,
-       name TEXT NOT NULL,
-       format TEXT NOT NULL,
-       body TEXT NOT NULL,
-       created_at TEXT NOT NULL,
-       updated_at TEXT NOT NULL
-     );
-     CREATE TABLE IF NOT EXISTS generated_policies (
-       hash TEXT PRIMARY KEY,
-       tenant_id TEXT NOT NULL,
-       template_key TEXT NOT NULL,
-       content TEXT NOT NULL,
-       context_hash TEXT NOT NULL,
-       input_canonical TEXT NOT NULL,
-       created_at TEXT NOT NULL,
-       size_bytes INTEGER DEFAULT 0
-     );
-     CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_context
-       ON generated_policies (tenant_id, template_key, context_hash);
-     CREATE TABLE IF NOT EXISTS policy_evaluations (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       tenant_id TEXT NOT NULL,
-       policy_key TEXT NOT NULL,
-       input_hash TEXT NOT NULL,
-       result_hash TEXT NOT NULL,
-       result_json TEXT NOT NULL,
-       created_at TEXT NOT NULL
-     );
-     CREATE TABLE IF NOT EXISTS internal_controls (
-       control_key TEXT PRIMARY KEY,
-       framework TEXT NOT NULL,
-       title TEXT NOT NULL,
-       description TEXT
-     );
-     CREATE TABLE IF NOT EXISTS control_mappings (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       control_key TEXT NOT NULL,
-       policy_key TEXT NOT NULL,
-       framework TEXT NOT NULL,
-       UNIQUE(control_key, policy_key)
-     );
-     CREATE TABLE IF NOT EXISTS control_evidence_links (
-       id INTEGER PRIMARY KEY AUTOINCREMENT,
-       control_key TEXT NOT NULL,
-       tenant_id TEXT NOT NULL,
-       evidence_hash TEXT NOT NULL,
-       created_at TEXT NOT NULL,
-       UNIQUE(control_key, tenant_id, evidence_hash)
-     );
-     CREATE INDEX IF NOT EXISTS idx_control_links_control_tenant
-       ON control_evidence_links (control_key, tenant_id);
-     CREATE INDEX IF NOT EXISTS idx_control_links_tenant_control
-       ON control_evidence_links (tenant_id, control_key);
-  `,
-  );
+  // D1 db.exec() can fail with multi-statement SQL.
+  // Use individual prepare().run() calls for reliability.
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS policy_templates (
+         key TEXT PRIMARY KEY,
+         name TEXT NOT NULL,
+         format TEXT NOT NULL,
+         body TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS generated_policies (
+         hash TEXT PRIMARY KEY,
+         tenant_id TEXT NOT NULL,
+         template_key TEXT NOT NULL,
+         content TEXT NOT NULL,
+         context_hash TEXT NOT NULL,
+         input_canonical TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         size_bytes INTEGER DEFAULT 0
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_generated_context
+         ON generated_policies (tenant_id, template_key, context_hash)`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS policy_evaluations (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         tenant_id TEXT NOT NULL,
+         policy_key TEXT NOT NULL,
+         input_hash TEXT NOT NULL,
+         result_hash TEXT NOT NULL,
+         result_json TEXT NOT NULL,
+         created_at TEXT NOT NULL
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS internal_controls (
+         control_key TEXT PRIMARY KEY,
+         framework TEXT NOT NULL,
+         title TEXT NOT NULL,
+         description TEXT
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS control_mappings (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         control_key TEXT NOT NULL,
+         policy_key TEXT NOT NULL,
+         framework TEXT NOT NULL,
+         UNIQUE(control_key, policy_key)
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS control_evidence_links (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         control_key TEXT NOT NULL,
+         tenant_id TEXT NOT NULL,
+         evidence_hash TEXT NOT NULL,
+         created_at TEXT NOT NULL,
+         UNIQUE(control_key, tenant_id, evidence_hash)
+       )`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_control_links_control_tenant
+         ON control_evidence_links (control_key, tenant_id)`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      `CREATE INDEX IF NOT EXISTS idx_control_links_tenant_control
+         ON control_evidence_links (tenant_id, control_key)`,
+    )
+    .run();
 }
 
 export async function seedPolicyData(db: D1Database) {

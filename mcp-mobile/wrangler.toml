@@ -1,4 +1,4 @@
-name = "ignite-mcp-mobile"
+name = "atlasit-mcp-mobile"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -6,11 +6,11 @@ compatibility_flags = ["nodejs_compat"]
 # KV Namespace for mobile state
 [[kv_namespaces]]
 binding = "MOBILE_STATE"
-id = "ignite-mobile-state"
-preview_id = "ignite-mobile-state-preview"
+id = "atlasit-mobile-state"
+preview_id = "atlasit-mobile-state-preview"
 
 [env.production]
-route = "mobile.project-ignite.workers.dev/*"
+route = "mobile.atlasit.workers.dev/*"
 usage_model = "bundled"
 
 # Security settings

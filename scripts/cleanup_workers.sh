@@ -17,7 +17,7 @@ done
 # 2. Check and clean up wrangler.toml or wrangler.jsonc
 for config in wrangler.toml wrangler.jsonc; do
   if [[ -f "$config" ]]; then
-    if ! grep -q 'name = "project-ignite"' "$config" || ! grep -q '\[dispatch_namespaces\]' "$config"; then
+    if ! grep -q 'name = "atlasit-core"' "$config" || ! grep -q '\[dispatch_namespaces\]' "$config"; then
       mv "$config" backup/
       echo "Backed up: $config"
     fi

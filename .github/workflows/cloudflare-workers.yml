@@ -93,16 +93,16 @@ jobs:
 
       - name: Smoke test AI Worker
         env:
-          AI_WORKER_URL: "https://ai-project-ignite.kd8jc7v8cd.workers.dev"
+          AI_WORKER_URL: "https://atlasit-ai.kd8jc7v8cd.workers.dev"
           AI_GATEWAY_TOKEN: ${{ secrets.AI_GATEWAY_TOKEN }}
         run: ./scripts/smoke-test-ai-worker.sh
 
       - name: Test MCP dispatch to all AI providers
         run: |
-          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Together","provider":"together"}'
-          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Gemini","provider":"gemini"}'
-          curl -X POST https://project-ignite.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Cloudflare AI","provider":"cloudflare-ai"}'
-          curl https://project-ignite.kd8jc7v8cd.workers.dev/tasks
+          curl -X POST https://atlasit-core.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Together","provider":"together"}'
+          curl -X POST https://atlasit-core.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Gemini","provider":"gemini"}'
+          curl -X POST https://atlasit-core.kd8jc7v8cd.workers.dev/task -H 'Content-Type: application/json' -d '{"content":"Test Cloudflare AI","provider":"cloudflare-ai"}'
+          curl https://atlasit-core.kd8jc7v8cd.workers.dev/tasks
 
       - name: Revert repository to desired state
         run: |

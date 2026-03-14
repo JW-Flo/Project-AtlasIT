@@ -1,4 +1,4 @@
-name: ignite-deploy
+name: atlasit-deploy
 on:
   workflow_dispatch: # Manual trigger only (automated schedule & push disabled)
 
@@ -33,11 +33,11 @@ jobs:
 
       - name: Log success
         if: success()
-        run: echo "✅ Ignite deployment completed successfully."
+        run: echo "✅ AtlasIT deployment completed successfully."
 
       - name: Log failure
         if: failure()
-        run: echo "❌ Ignite deployment failed. Check logs for details."
+        run: echo "❌ AtlasIT deployment failed. Check logs for details."
 
       - name: Revert repository to desired state
         run: |

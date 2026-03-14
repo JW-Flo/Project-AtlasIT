@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Configuration
-MCP_HOST="mcp.project-ignite.kd8jc7v8cd.workers.dev"
+MCP_HOST="atlasit-mcp.kd8jc7v8cd.workers.dev"
 AGENTS_DIR="agents"
 MCP_DIR="mcp"
 

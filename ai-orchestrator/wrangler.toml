@@ -1,4 +1,4 @@
-name = "atlasit-orchestrator" # previously ignite-ai-orchestrator
+name = "atlasit-orchestrator"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -16,6 +16,10 @@ binding = "AI_QUOTA"
 id = "d4380b3e24094a24907b83c95238a0af"
 preview_id = "d4380b3e24094a24907b83c95238a0af"
 
+[vars]
+AI_PROVIDER = "groq"
+AI_FALLBACKS = "groq,together,cloudflare"
+
 [env.production]
 # Dual routing: keep workers.dev for fallback, add custom orchestrator.atlasit.pro
 routes = [
@@ -26,6 +30,11 @@ usage_model = "bundled"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+AI_PROVIDER = "groq"
+AI_FALLBACKS = "groq,together,cloudflare"
+
+# Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
+# GROQ_API_KEY — Groq API key for AtlasIT Agent Mesh
 
 [env.production.logs]
 enabled = true
