@@ -1,4 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
 const FALLBACK_TEMPLATES = [
   {
@@ -36,17 +37,15 @@ function fallbackResponse() {
 }
 
 export const GET: RequestHandler = async ({ platform }) => {
-  const env = (platform?.env as any) || {};
-  const complianceBase: string =
-    env.COMPLIANCE_BASE ||
-    "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev";
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
 
   try {
-    const upstream = `${complianceBase.replace(/\/$/, "")}/api/v1/policies/templates`;
-    const res = await fetch(upstream, {
+    const upstream = `${base}/api/v1/policies/templates`;
+    const res = await proxyFetch(platform, upstream, {
       headers: {
         "x-api-key": env.COMPLIANCE_API_KEY || "demo",
-        "x-tenant-id": "demo",
+        "x-tenant-id": env.TENANT_ID || "atlasit-prod",
       },
     });
     if (!res.ok) {

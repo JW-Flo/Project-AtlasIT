@@ -18,7 +18,10 @@ binding = "D1_COMPLIANCE"
 database_name = "atlasit_compliance"
 database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5" # provisioned via wrangler d1 create
 
-# R2 requires activation in CF Dashboard. Uncomment after enabling R2:
-# [[r2_buckets]]
-# binding = "EVIDENCE_BUCKET"
-# bucket_name = "atlasit-evidence"
+[[r2_buckets]]
+binding = "EVIDENCE_BUCKET"
+bucket_name = "atlasit-evidence"
+
+[[kv_namespaces]]
+binding = "API_TOKENS"
+id = "3c5284c47e2e43dc8166fd53f2d35166"

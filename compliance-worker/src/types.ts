@@ -30,6 +30,11 @@ export interface ComplianceSnapshot {
   frameworkSummary: FrameworkSummary[];
   risks: Risk[];
   policies: Policy[];
+  openIncidents?: number;
+  pendingAccessRequests?: number;
+  lastActivity?: string | null;
+  workflowExecutions24h?: number;
+  evidenceCount?: number;
 }
 
 export function deriveRiskScore(likelihood: number, impact: number) {
