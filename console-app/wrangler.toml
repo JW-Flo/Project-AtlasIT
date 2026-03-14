@@ -33,7 +33,7 @@ directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
 [build]
-command = "npm run build"
+command = "npm install --no-fund --no-audit --ignore-scripts && npm run build"
 
 [vars]
 APP_NAME = "AtlasIT Console"
