@@ -14,6 +14,7 @@ routes = [
 	"www.atlasit.pro/incidents*",
 	"www.atlasit.pro/api/config*",
 	"www.atlasit.pro/api/mock/*",
+	"www.atlasit.pro/api/policies/*",
 	"www.atlasit.pro/" # root catch for redirect
 ]
 
