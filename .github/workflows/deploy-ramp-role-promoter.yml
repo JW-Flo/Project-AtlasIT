@@ -48,13 +48,3 @@ jobs:
         if: failure()
         run: echo "❌ Failed to deploy Ramp Role Promoter. Check logs for details."
 
-      - name: Revert repository to desired state
-        run: git revert <commit-hash>
-
-      - name: Verify revert
-        run: git checkout <commit-hash> && git log -1
-
-      - name: Commit and push changes
-        run: |
-          git commit -am "Revert to desired state"
-          git push origin main
