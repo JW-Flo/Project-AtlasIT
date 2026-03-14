@@ -28,7 +28,7 @@ export type WorkflowType = "joiner" | "mover" | "leaver";
 // Step status lifecycle
 // ---------------------------------------------------------------------------
 
-export type StepStatus = "pending" | "running" | "completed" | "failed" | "dlq";
+export type StepStatus = "pending" | "running" | "completed" | "failed" | "dlq" | "skipped";
 
 // ---------------------------------------------------------------------------
 // Run status lifecycle

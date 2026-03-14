@@ -115,6 +115,18 @@ const KNOWN_MISMATCHES: Array<{ spec: string; impl: string; reason: string }> =
       reason:
         "Spec documents /api/v1/access/requests but implementation uses /api/v1/access-requests",
     },
+    {
+      spec: "/api/evidence",
+      impl: "/api/compliance/evidence",
+      reason:
+        "Spec documents /api/evidence/{hash} but implementation uses /api/compliance/evidence/* namespace",
+    },
+    {
+      spec: "/api/orchestrator/ai/infer",
+      impl: "N/A",
+      reason:
+        "Spec documents /api/orchestrator/ai/infer but this endpoint is served by ai-orchestrator worker, not compliance-worker",
+    },
   ];
 
 const KNOWN_MISMATCH_SPEC_PREFIXES = new Set(
