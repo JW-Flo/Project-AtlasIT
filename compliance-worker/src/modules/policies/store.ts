@@ -36,7 +36,8 @@ export interface CoverageSummary {
   coveragePercent: number;
 }
 
-const SOC2_CONTROLS = [
+const INTERNAL_CONTROLS = [
+  // SOC2
   {
     key: "SOC2_CC1.1",
     framework: "SOC2",
@@ -58,12 +59,101 @@ const SOC2_CONTROLS = [
     description:
       "Logical access security software, infrastructure, and architectures are implemented to protect assets.",
   },
+  // ISO 27001
+  {
+    key: "ISO27001_A.8",
+    framework: "ISO27001",
+    title: "Asset management",
+    description: "Inventory and classification of information assets.",
+  },
+  {
+    key: "ISO27001_A.9",
+    framework: "ISO27001",
+    title: "Access control",
+    description:
+      "Restrict access to information and information processing facilities.",
+  },
+  {
+    key: "ISO27001_A.10",
+    framework: "ISO27001",
+    title: "Cryptography",
+    description:
+      "Ensure proper and effective use of cryptography to protect information.",
+  },
+  {
+    key: "ISO27001_A.16",
+    framework: "ISO27001",
+    title: "Incident management",
+    description: "Manage information security incidents effectively.",
+  },
+  // NIST CSF
+  {
+    key: "NIST_ID",
+    framework: "NIST CSF",
+    title: "Identify",
+    description:
+      "Develop organizational understanding to manage cybersecurity risk.",
+  },
+  {
+    key: "NIST_PR",
+    framework: "NIST CSF",
+    title: "Protect",
+    description: "Develop and implement appropriate safeguards.",
+  },
+  {
+    key: "NIST_DE",
+    framework: "NIST CSF",
+    title: "Detect",
+    description:
+      "Develop and implement activities to identify cybersecurity events.",
+  },
+  {
+    key: "NIST_RS",
+    framework: "NIST CSF",
+    title: "Respond",
+    description:
+      "Develop and implement activities to take action on detected events.",
+  },
+  {
+    key: "NIST_RC",
+    framework: "NIST CSF",
+    title: "Recover",
+    description: "Develop and implement activities to restore capabilities.",
+  },
 ];
 
-const SOC2_MAPPINGS = [
-  { controlKey: "SOC2_CC1.1", policyKey: "soc2.demo" },
-  { controlKey: "SOC2_CC2.2", policyKey: "soc2.demo" },
-  { controlKey: "SOC2_CC6.1", policyKey: "soc2.demo" },
+const CONTROL_POLICY_MAPPINGS = [
+  // SOC2
+  { controlKey: "SOC2_CC1.1", policyKey: "soc2.demo", framework: "SOC2" },
+  { controlKey: "SOC2_CC2.2", policyKey: "soc2.demo", framework: "SOC2" },
+  { controlKey: "SOC2_CC6.1", policyKey: "soc2.demo", framework: "SOC2" },
+  // ISO 27001
+  {
+    controlKey: "ISO27001_A.8",
+    policyKey: "iso27001.isms",
+    framework: "ISO27001",
+  },
+  {
+    controlKey: "ISO27001_A.9",
+    policyKey: "iso27001.isms",
+    framework: "ISO27001",
+  },
+  {
+    controlKey: "ISO27001_A.10",
+    policyKey: "iso27001.isms",
+    framework: "ISO27001",
+  },
+  {
+    controlKey: "ISO27001_A.16",
+    policyKey: "iso27001.isms",
+    framework: "ISO27001",
+  },
+  // NIST CSF
+  { controlKey: "NIST_ID", policyKey: "nist.csf", framework: "NIST CSF" },
+  { controlKey: "NIST_PR", policyKey: "nist.csf", framework: "NIST CSF" },
+  { controlKey: "NIST_DE", policyKey: "nist.csf", framework: "NIST CSF" },
+  { controlKey: "NIST_RS", policyKey: "nist.csf", framework: "NIST CSF" },
+  { controlKey: "NIST_RC", policyKey: "nist.csf", framework: "NIST CSF" },
 ];
 
 export async function ensurePolicySchema(db: D1Database) {
@@ -150,7 +240,7 @@ export async function seedPolicyData(db: D1Database) {
       .run();
   }
 
-  for (const control of SOC2_CONTROLS) {
+  for (const control of INTERNAL_CONTROLS) {
     await db
       .prepare(
         `INSERT INTO internal_controls (control_key, framework, title, description)
@@ -164,13 +254,13 @@ export async function seedPolicyData(db: D1Database) {
       .run();
   }
 
-  for (const mapping of SOC2_MAPPINGS) {
+  for (const mapping of CONTROL_POLICY_MAPPINGS) {
     await db
       .prepare(
         `INSERT OR IGNORE INTO control_mappings (control_key, policy_key, framework)
          VALUES (?, ?, ?)`,
       )
-      .bind(mapping.controlKey, mapping.policyKey, "SOC2")
+      .bind(mapping.controlKey, mapping.policyKey, mapping.framework)
       .run();
   }
 }

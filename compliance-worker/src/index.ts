@@ -1754,20 +1754,45 @@ function buildSnapshot(tenantId: string): ComplianceSnapshot {
         failing: 40,
         total: 160,
       },
+      {
+        framework: "NIST CSF",
+        coveragePercent: 55,
+        passing: 120,
+        failing: 96,
+        total: 216,
+      },
     ],
     risks: risksBase,
     policies: [
       {
         id: "P1",
-        name: "Access Control Policy",
+        name: "SOC 2 Access Control Policy",
         status: "approved",
         updated: new Date(Date.now() - 86400000).toISOString(),
       },
       {
         id: "P2",
-        name: "Incident Response Plan",
+        name: "ISO 27001 ISMS Policy",
+        status: "approved",
+        updated: new Date(Date.now() - 86400000 * 3).toISOString(),
+      },
+      {
+        id: "P3",
+        name: "NIST CSF Policy",
         status: "draft",
         updated: now.toISOString(),
+      },
+      {
+        id: "P4",
+        name: "HIPAA Security Rule Policy",
+        status: "draft",
+        updated: now.toISOString(),
+      },
+      {
+        id: "P5",
+        name: "Data Protection & Privacy Policy",
+        status: "approved",
+        updated: new Date(Date.now() - 86400000 * 7).toISOString(),
       },
     ],
   };
