@@ -21,6 +21,8 @@ routes = [
 	"www.atlasit.pro/api/incidents/*",
 	"www.atlasit.pro/api/access-requests/*",
 	"www.atlasit.pro/api/notifications/*",
+	"www.atlasit.pro/_app/*",
+	"www.atlasit.pro/favicon.png",
 	"www.atlasit.pro/" # root catch for redirect
 ]
 
