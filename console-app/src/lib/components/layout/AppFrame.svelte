@@ -1,7 +1,8 @@
 <script lang="ts">
   import Button from "../primitives/Button.svelte";
   import { theme, setTheme } from "../../stores/theme";
-  import { onMount } from "svelte";
+  import { onMount, afterUpdate } from "svelte";
+  import { page } from "$app/stores";
   import { init as initUx } from "../../instrumentation/ux-metrics";
   import ToastContainer from "../feedback/ToastContainer.svelte";
   import { push as pushToast } from "../feedback/toastStore";
@@ -11,40 +12,47 @@
     href: string;
     label: string;
   }
-  export let nav: NavItem[] = [{ href: "/console", label: "Console" }];
 
-  let current: string = "";
+  const navItems: NavItem[] = [
+    { href: "/console", label: "Dashboard" },
+    { href: "/console/policies", label: "Policy Generator" },
+    { href: "/console/marketplace", label: "Marketplace" },
+    { href: "/access-requests", label: "Access Requests" },
+    { href: "/incidents", label: "Incidents" },
+    { href: "/notifications", label: "Notifications" },
+    { href: "/console/platform-status", label: "Platform Status" },
+  ];
+  export let nav: NavItem[] = navItems;
+
   let resolvedBase: string | null = null;
   let complianceBase: string | null = null;
   let usingFallback = false;
+
+  // Reactive current path from SvelteKit page store
+  $: current = $page.url.pathname;
 
   function ensureBase(base: string | null | undefined) {
     if (!base) return "";
     return base.replace(/\/$/, "");
   }
 
+  // Check if a nav item is active — exact match for Dashboard, prefix for others
+  function isActive(href: string, pathname: string): boolean {
+    if (href === "/console") return pathname === "/console" || pathname === "/console/";
+    return pathname.startsWith(href);
+  }
+
   onMount(async () => {
-    current = location.pathname;
     initUx();
     try {
       const cfg = await getRuntimeConfig();
       complianceBase = cfg.complianceBase;
       resolvedBase = cfg.resolvedBase || null;
-      const base = ensureBase(cfg.resolvedBase || cfg.complianceBase);
       usingFallback = Boolean(
         cfg.resolvedBase && cfg.resolvedBase !== cfg.complianceBase
       );
-      nav = [
-        { href: "/console", label: "Dashboard" },
-        { href: "/console/policies", label: "Policy Generator" },
-        { href: "/console/marketplace", label: "Marketplace" },
-        { href: "/access-requests", label: "Access Requests" },
-        { href: "/incidents", label: "Incidents" },
-        { href: "/notifications", label: "Notifications" },
-        { href: "/console/platform-status", label: "Platform Status" },
-      ];
     } catch {
-      // silent fallback keeps existing nav
+      // silent fallback
     }
   });
   let t: "light" | "dark" = "dark";
@@ -61,7 +69,7 @@
     <div class="logo">AtlasIT</div>
     <nav>
       {#each nav as item}
-        <a href={item.href} class:item-active={current.startsWith(item.href)}
+        <a href={item.href} class:item-active={isActive(item.href, current)}
           >{item.label}</a
         >
       {/each}
@@ -193,7 +201,8 @@
   }
   .actions {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
   }
   @media (max-width: 860px) {
     .sidebar {

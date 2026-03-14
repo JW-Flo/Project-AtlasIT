@@ -38,7 +38,7 @@ export const GET: RequestHandler = async ({ platform, url }) => {
     "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev/api/compliance";
   const fallbacks = [
     complianceBase,
-    "https://atlasit.pro/api/compliance",
+    "https://www.atlasit.pro/api/compliance",
     workersDevGuess,
     "/api/mock/compliance",
   ];

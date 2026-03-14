@@ -134,7 +134,7 @@
           <select
             id="template"
             bind:value={selectedTemplate}
-            class="bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+            class="select-dark bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
           >
             {#each templates as tpl}
               <option value={tpl.key}>{tpl.name}</option>
@@ -179,13 +179,15 @@
             </h3>
             <div class="flex flex-col gap-1">
               {#each templates as tpl}
-                <div
-                  class="text-xs px-2 py-1.5 rounded {selectedTemplate === tpl.key
+                <button
+                  type="button"
+                  class="text-xs px-2 py-1.5 rounded text-left cursor-pointer transition-colors {selectedTemplate === tpl.key
                     ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
-                    : 'text-white/50'}"
+                    : 'text-white/50 hover:text-white/70 hover:bg-white/5 border border-transparent'}"
+                  on:click={() => { selectedTemplate = tpl.key; }}
                 >
                   {tpl.name}
-                </div>
+                </button>
               {/each}
             </div>
           </div>
@@ -256,6 +258,10 @@
 </div>
 
 <style>
+  .select-dark option {
+    background: #0f1923;
+    color: #f5f7fa;
+  }
   .policy-content :global(h1) {
     font-size: 1.25rem;
     font-weight: 700;

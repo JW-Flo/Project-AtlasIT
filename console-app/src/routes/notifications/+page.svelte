@@ -136,18 +136,18 @@
             : 'border-white/10'}"
         >
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
               {#if notif.kind}
                 <span
-                  class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border {kindBadge(notif.kind)}"
+                  class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 {kindBadge(notif.kind)}"
                 >
                   {notif.kind.replace("_", " ")}
                 </span>
               {/if}
               {#if notif.severity}
-                <span class="text-xs {severityColor(notif.severity)}">{notif.severity}</span>
+                <span class="text-[10px] uppercase tracking-wider shrink-0 {severityColor(notif.severity)}">{notif.severity}</span>
               {/if}
-              <span class="text-xs text-white/30 ml-auto">
+              <span class="text-xs text-white/30 ml-auto shrink-0">
                 {new Date(notif.createdAt).toLocaleString()}
               </span>
             </div>
