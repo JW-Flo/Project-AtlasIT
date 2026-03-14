@@ -5,8 +5,8 @@ on:
         branches: [main]
         paths:
             - "ai-orchestrator/**"
+            - "packages/shared/**"
             - ".github/workflows/deploy-orchestrator.yml"
-            - "DEPLOY_ENV.md"
     workflow_dispatch:
 
 jobs:

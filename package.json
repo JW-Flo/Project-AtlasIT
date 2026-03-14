@@ -8,6 +8,7 @@
     "packages/*",
     "onboarding",
     "ai-orchestrator",
+    "compliance-worker",
     "mcp*",
     "documentation-worker",
     "slack-approval-worker",

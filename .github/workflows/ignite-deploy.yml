@@ -39,15 +39,7 @@ jobs:
         if: failure()
         run: echo "❌ AtlasIT deployment failed. Check logs for details."
 
-      - name: Revert repository to desired state
-        run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
-          git push origin main
-
-      - name: Verify revert
-        run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
+      - name: Verify deployment
+        run: echo "Deployment steps completed."
 
   # … rest of jobs (dev, ci-scans, smoke, manual-approval, prod-deploy)
