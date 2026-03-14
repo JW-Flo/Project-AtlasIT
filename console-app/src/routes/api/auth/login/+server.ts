@@ -1,7 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 
-async function hashPassword(password: string, salt: string): Promise<string> {
+// PBKDF2 hash — stored as "pbkdf2$310000$<hex>"
+async function hashPasswordPBKDF2(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
@@ -20,9 +21,35 @@ async function hashPassword(password: string, salt: string): Promise<string> {
     keyMaterial,
     256
   );
-  return Array.from(new Uint8Array(bits))
+  const hex = Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+  return `pbkdf2$310000$${hex}`;
+}
+
+// Legacy SHA-256 hash (salt + password) — used only during migration verification
+async function hashPasswordLegacy(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(salt + password);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Verify a password against a stored hash (supports both legacy SHA-256 and PBKDF2 formats)
+async function verifyPassword(
+  password: string,
+  salt: string,
+  storedHash: string
+): Promise<boolean> {
+  if (storedHash.startsWith("pbkdf2$")) {
+    const candidate = await hashPasswordPBKDF2(password, salt);
+    return candidate === storedHash;
+  }
+  // Legacy: plain hex SHA-256 hash
+  const candidate = await hashPasswordLegacy(password, salt);
+  return candidate === storedHash;
 }
 
 export const POST: RequestHandler = async ({ request, platform, cookies }) => {
@@ -106,9 +133,18 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       return json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const inputHash = await hashPassword(password, row.salt);
-    if (inputHash !== row.password_hash) {
+    const valid = await verifyPassword(password, row.salt, row.password_hash);
+    if (!valid) {
       return json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    // If the stored hash is a legacy SHA-256, re-hash with PBKDF2 transparently
+    if (!row.password_hash.startsWith("pbkdf2$")) {
+      const newHash = await hashPasswordPBKDF2(password, row.salt);
+      await db
+        .prepare("UPDATE console_users SET password_hash = ? WHERE id = ?")
+        .bind(newHash, row.id)
+        .run();
     }
 
     // Update last login

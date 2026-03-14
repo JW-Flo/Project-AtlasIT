@@ -23,9 +23,10 @@ async function hashPassword(
     keyMaterial,
     256
   );
-  return Array.from(new Uint8Array(bits))
+  const hex = Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+  return `pbkdf2$310000$${hex}`;
 }
 
 export const POST: RequestHandler = async ({ request, platform }) => {

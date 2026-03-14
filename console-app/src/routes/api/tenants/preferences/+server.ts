@@ -21,8 +21,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     return json({ error: "tenantId required" }, { status: 400 });
   }
 
-  // Enforce tenant ownership: the authenticated user must belong to the requested tenant
-  if (user.tenantId && user.tenantId !== tenantId && !user.superAdmin) {
+  // Enforce tenant ownership: non-superAdmin must have a matching tenantId
+  if (!user.superAdmin && user.tenantId !== tenantId) {
     return json({ error: "Forbidden" }, { status: 403 });
   }
 
