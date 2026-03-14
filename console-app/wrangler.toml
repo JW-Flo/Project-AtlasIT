@@ -18,6 +18,10 @@ routes = [
 	"www.atlasit.pro/" # root catch for redirect
 ]
 
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
+
 [build]
 command = "npm run build"
 
