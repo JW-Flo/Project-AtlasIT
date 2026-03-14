@@ -90,6 +90,9 @@ console-app/.svelte-kit/
 # Cloudflare Wrangler local state / telemetry
 .wrangler/
 
+# Claude worktrees for agent development
+.claude/worktrees/
+
 # Large local audit artifacts (regenerate on demand)
 audit-full.json
 audit-prod.json
