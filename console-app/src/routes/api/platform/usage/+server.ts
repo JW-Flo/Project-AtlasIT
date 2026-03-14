@@ -19,7 +19,7 @@ export const GET: RequestHandler = async ({ platform }) => {
         Authorization: `Bearer ${env.DISPATCH_ADMIN_TOKEN}`,
       },
     });
-    const data = await resp.json();
+    const data = (await resp.json()) as Record<string, unknown>;
     if (!resp.ok) {
       return new Response(JSON.stringify({ ok: false, error: data }), {
         status: resp.status,
@@ -29,12 +29,22 @@ export const GET: RequestHandler = async ({ platform }) => {
     // Sanitize: remove any internal tokens, keep only public fields
     const sanitized: PlatformUsageSummary = {
       ok: true,
-      total: data.total,
-      failures: data.failures,
-      failureRate: data.failureRate,
-      tenants: data.tenants,
-      breakerOpenScripts: data.breakerOpenScripts || 0,
-      topScripts: data.topScripts || [],
+      total: typeof data["total"] === "number" ? data["total"] : undefined,
+      failures:
+        typeof data["failures"] === "number" ? data["failures"] : undefined,
+      failureRate:
+        typeof data["failureRate"] === "number"
+          ? data["failureRate"]
+          : undefined,
+      tenants:
+        typeof data["tenants"] === "number" ? data["tenants"] : undefined,
+      breakerOpenScripts:
+        typeof data["breakerOpenScripts"] === "number"
+          ? data["breakerOpenScripts"]
+          : 0,
+      topScripts: Array.isArray(data["topScripts"])
+        ? (data["topScripts"] as Array<{ name: string; invocations: number }>)
+        : [],
     };
     return new Response(JSON.stringify(sanitized), {
       status: 200,

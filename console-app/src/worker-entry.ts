@@ -7,6 +7,7 @@ let _worker: any;
 async function load() {
   if (!_worker) {
     // Use dynamic import; during dev before build this may throw. Wrangler build step ensures presence.
+    // @ts-expect-error: .svelte-kit/cloudflare/_worker.js is generated at build time; not present before `npm run build`.
     _worker = (await import("../.svelte-kit/cloudflare/_worker.js")).default;
   }
   return _worker;
