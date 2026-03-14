@@ -87,8 +87,71 @@ function renderTemplate(
   });
 }
 
+async function generateWithAI(
+  template: PolicyTemplateRecord,
+  baseContent: string,
+  input: Record<string, unknown>,
+  groqApiKey: string | undefined,
+): Promise<string> {
+  if (!groqApiKey) return baseContent;
+
+  const userContext = input.summary
+    ? `\nAdditional context from user: ${input.summary}`
+    : "";
+  const prompt = `You are a compliance policy expert. Enhance the following ${template.name} policy document with specific, actionable details. Keep the same structure and headings but expand each section with industry best practices, specific procedures, and implementation guidance. Be thorough but concise.${userContext}
+
+Here is the base policy to enhance:
+
+${baseContent}
+
+Return ONLY the enhanced policy document in markdown format. Do not include any preamble or explanation.`;
+
+  try {
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${groqApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a compliance and security policy expert. Generate professional, detailed policy documents.",
+            },
+            { role: "user", content: prompt },
+          ],
+          max_tokens: 4096,
+          temperature: 0.3,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      console.error("Groq API error:", response.status);
+      return baseContent;
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const aiContent = data.choices?.[0]?.message?.content;
+    if (aiContent && aiContent.length > 100) {
+      return aiContent;
+    }
+  } catch (e) {
+    console.error("AI generation failed, using template:", e);
+  }
+
+  return baseContent;
+}
+
 export async function generatePolicy(
-  options: GeneratePolicyOptions,
+  options: GeneratePolicyOptions & { groqApiKey?: string },
 ): Promise<GeneratedPolicyData> {
   const generatedAt = new Date().toISOString();
   const input = options.input ?? {};
@@ -97,12 +160,22 @@ export async function generatePolicy(
     tenantId: options.tenantId,
     templateKey: options.template.key,
     input,
+    ai: !!options.groqApiKey,
   };
   const { canonical, hash: contextHash } =
     await hashCanonicalJson(stableContext);
   // Rendering context can include the actual generation time for human readability without affecting reuse hash
   const renderContext = { ...stableContext, generatedAt };
-  const content = renderTemplate(options.template.body, renderContext);
+  let content = renderTemplate(options.template.body, renderContext);
+
+  // Enhance with AI if Groq API key is available
+  content = await generateWithAI(
+    options.template,
+    content,
+    input,
+    options.groqApiKey,
+  );
+
   const hash = await sha256Hex(content);
   const sizeBytes = new TextEncoder().encode(content).byteLength;
 

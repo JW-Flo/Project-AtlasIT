@@ -1364,11 +1364,13 @@ async function handlePolicyGenerate(
 
   try {
     const genStart = Date.now();
+    const groqApiKey = (env as any).GROQ_API_KEY;
     const result = await generatePolicyDocument({
       db,
       tenantId: tenant.tenantId,
       templateKey,
       input,
+      groqApiKey,
     });
     recordLatency("policyGenerate", Date.now() - genStart);
 

@@ -25,3 +25,6 @@ bucket_name = "atlasit-evidence"
 [[kv_namespaces]]
 binding = "API_TOKENS"
 id = "3c5284c47e2e43dc8166fd53f2d35166"
+
+# Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
+# GROQ_API_KEY — Groq API key for AI-powered policy generation
