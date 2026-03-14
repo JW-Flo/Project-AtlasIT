@@ -33,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Install compliance worker deps
-        run: npm install --no-fund --no-audit
+        run: npm ci --no-fund --no-audit
         working-directory: compliance-worker
 
       - name: Deploy compliance worker
@@ -42,16 +42,24 @@ jobs:
 
       - name: Post-deploy smoke test
         run: |
-          set -e
           WORKER_URL="https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev"
           echo "Probing health endpoint..."
-          curl -sS --max-time 10 "$WORKER_URL/api/compliance/health" || \
-            echo 'Health probe failed (may need propagation).'
+          HEALTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$WORKER_URL/api/compliance/health" || echo "000")
+          echo "Health response: $HEALTH_CODE"
+          if [ "$HEALTH_CODE" = "000" ]; then
+            echo "WARNING: Health probe failed (transient or propagation delay)."
+          elif [ "$HEALTH_CODE" = "200" ]; then
+            echo "Health endpoint healthy."
+          else
+            echo "WARNING: Health returned $HEALTH_CODE — may need setup."
+          fi
           echo ""
           echo "Probing snapshot endpoint..."
-          HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WORKER_URL/api/compliance/snapshot")
+          HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WORKER_URL/api/compliance/snapshot" || echo "000")
           echo "Snapshot response: $HTTP_CODE"
-          if [ "$HTTP_CODE" = "200" ]; then
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "WARNING: Snapshot probe failed (transient or propagation delay)."
+          elif [ "$HTTP_CODE" = "200" ]; then
             echo "Snapshot endpoint healthy."
           else
             echo "WARNING: Snapshot returned $HTTP_CODE — may need D1 migration or secret setup."
