@@ -5,9 +5,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
 
-  let body: any;
+  let body: string;
   try {
-    body = await request.json();
+    const json = await request.json();
+    body = JSON.stringify(json);
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON" }), {
       status: 400,
@@ -15,16 +16,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     });
   }
 
-  const templateKey = body?.templateKey;
-  if (!templateKey || typeof templateKey !== "string") {
-    return new Response(JSON.stringify({ error: "templateKey required" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
   try {
-    const upstream = `${base}/api/v1/policies/generate`;
+    const upstream = `${base}/api/v1/notifications/read`;
     const res = await proxyFetch(platform, upstream, {
       method: "POST",
       headers: {
@@ -32,12 +25,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         "x-api-key": env.COMPLIANCE_API_KEY || "demo",
         "x-tenant-id": env.TENANT_ID || "atlasit-prod",
       },
-      body: JSON.stringify({
-        templateKey,
-        input: body.input || {},
-      }),
+      body,
     });
-
     const data = await res.json();
     return new Response(JSON.stringify(data), {
       status: res.status,
@@ -45,7 +34,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     });
   } catch {
     return new Response(
-      JSON.stringify({ error: "Policy generation service unavailable" }),
+      JSON.stringify({ error: "Notifications service unavailable" }),
       { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }

@@ -1048,7 +1048,7 @@ async function notificationsRoutes(
       const listStart = Date.now();
       const rows = await db
         .prepare(
-          `SELECT id, kind, severity, message, ref, read, created_at, read_at FROM notifications WHERE tenant_id = ? ${cursorFilter} ORDER BY id DESC LIMIT ?`,
+          `SELECT id, kind, severity, message, ref, "read", created_at, read_at FROM notifications WHERE tenant_id = ? ${cursorFilter} ORDER BY id DESC LIMIT ?`,
         )
         .bind(...bind, limit)
         .all<Record<string, any>>();
@@ -1161,7 +1161,7 @@ async function notificationsRoutes(
 
         if (updatedIds.length) {
           const updatePlaceholders = updatedIds.map(() => "?").join(",");
-          const updateSql = `UPDATE notifications SET read = 1, read_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND read_at IS NULL AND id IN (${updatePlaceholders})`;
+          const updateSql = `UPDATE notifications SET "read" = 1, read_at = CURRENT_TIMESTAMP WHERE tenant_id = ? AND read_at IS NULL AND id IN (${updatePlaceholders})`;
           await db
             .prepare(updateSql)
             .bind(tenant.tenantId, ...updatedIds)
@@ -1211,7 +1211,7 @@ async function notificationsRoutes(
     try {
       await db
         .prepare(
-          "UPDATE notifications SET read = 1, read_at = COALESCE(read_at, CURRENT_TIMESTAMP) WHERE tenant_id = ? AND read_at IS NULL",
+          'UPDATE notifications SET "read" = 1, read_at = COALESCE(read_at, CURRENT_TIMESTAMP) WHERE tenant_id = ? AND read_at IS NULL',
         )
         .bind(tenant.tenantId)
         .run();
@@ -1713,9 +1713,15 @@ async function handleWorkflowGet(
   }
 }
 
-function buildSnapshot(tenantId: string): ComplianceSnapshot {
+async function buildSnapshot(
+  env: Env,
+  tenantId: string,
+): Promise<ComplianceSnapshot> {
   const now = new Date();
-  const risksBase = [
+  const db = resolveD1(env);
+
+  // ── Fallback hardcoded data (used when D1 is unavailable) ──
+  const fallbackRisks = [
     {
       id: "R1",
       title: "Unpatched server infrastructure",
@@ -1736,7 +1742,8 @@ function buildSnapshot(tenantId: string): ComplianceSnapshot {
     const severity = deriveSeverity(score);
     return { ...r, score, severity };
   });
-  return {
+
+  const fallbackSnapshot: ComplianceSnapshot = {
     tenantId,
     generatedAt: now.toISOString(),
     frameworkSummary: [
@@ -1762,7 +1769,7 @@ function buildSnapshot(tenantId: string): ComplianceSnapshot {
         total: 216,
       },
     ],
-    risks: risksBase,
+    risks: fallbackRisks,
     policies: [
       {
         id: "P1",
@@ -1796,6 +1803,182 @@ function buildSnapshot(tenantId: string): ComplianceSnapshot {
       },
     ],
   };
+
+  if (!db) {
+    return fallbackSnapshot;
+  }
+
+  try {
+    // ── Framework coverage (real data from D1) ──
+    const frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    const frameworkSummary: ComplianceSnapshot["frameworkSummary"] = [];
+    for (const fw of frameworks) {
+      try {
+        const coverage = await coverageSummary(db, fw, tenantId);
+        const withEvidence = coverage.controls.filter(
+          (c) => c.evidenceCount > 0,
+        ).length;
+        frameworkSummary.push({
+          framework: fw,
+          coveragePercent: coverage.coveragePercent,
+          passing: withEvidence,
+          failing: coverage.totalControls - withEvidence,
+          total: coverage.totalControls,
+        });
+      } catch (e) {
+        log("error", "snapshot.coverage.error", {
+          framework: fw,
+          error: (e as Error).message,
+        });
+        // Use fallback for this framework
+        const fb = fallbackSnapshot.frameworkSummary.find(
+          (f) => f.framework === fw,
+        );
+        if (fb) frameworkSummary.push(fb);
+      }
+    }
+
+    // ── Policies (real data from D1) ──
+    let policies: ComplianceSnapshot["policies"] = [];
+    try {
+      const templates = await listPolicyTemplates(db);
+      // Check which templates have generated policies (i.e. approved)
+      const generatedRows = await db
+        .prepare(
+          `SELECT DISTINCT template_key FROM generated_policies WHERE tenant_id = ?`,
+        )
+        .bind(tenantId)
+        .all<{ template_key: string }>();
+      const generatedKeys = new Set(
+        (generatedRows.results ?? []).map((r) => r.template_key),
+      );
+      policies = templates.map((t, idx) => ({
+        id: `P${idx + 1}`,
+        name: t.name,
+        status: generatedKeys.has(t.key)
+          ? ("approved" as const)
+          : ("draft" as const),
+        updated: now.toISOString(),
+      }));
+    } catch (e) {
+      log("error", "snapshot.policies.error", { error: (e as Error).message });
+      policies = fallbackSnapshot.policies;
+    }
+
+    // ── Risks (real data from D1) ──
+    let risks: ComplianceSnapshot["risks"] = [];
+    try {
+      const riskRows = await db
+        .prepare(
+          `SELECT id, title, likelihood, impact, score, severity, owner
+           FROM risks WHERE tenant_id = ? OR tenant_id = 'demo'
+           ORDER BY score DESC`,
+        )
+        .bind(tenantId)
+        .all<{
+          id: string;
+          title: string;
+          likelihood: number;
+          impact: number;
+          score: number;
+          severity: string;
+          owner: string | null;
+        }>();
+      risks = (riskRows.results ?? []).map((r) => ({
+        id: r.id,
+        title: r.title,
+        likelihood: r.likelihood,
+        impact: r.impact,
+        score: r.score,
+        severity: r.severity as "low" | "medium" | "high" | "critical",
+        ...(r.owner ? { owner: r.owner } : {}),
+      }));
+    } catch (e) {
+      log("error", "snapshot.risks.error", { error: (e as Error).message });
+      risks = fallbackRisks;
+    }
+    if (risks.length === 0) risks = fallbackRisks;
+
+    // ── Additional dynamic data ──
+    let openIncidents = 0;
+    let pendingAccessRequests = 0;
+    let lastActivity: string | null = null;
+    let workflowExecutions24h = 0;
+    let evidenceCount = 0;
+
+    try {
+      const secRow = await db
+        .prepare(
+          `SELECT SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count
+           FROM security_incidents`,
+        )
+        .first<{ open_count: number }>();
+      openIncidents = secRow?.open_count ?? 0;
+    } catch {
+      // table may not exist
+    }
+
+    try {
+      const pendingRow = await db
+        .prepare(
+          `SELECT COUNT(*) as pending FROM access_requests WHERE status = 'pending'`,
+        )
+        .first<{ pending: number }>();
+      pendingAccessRequests = pendingRow?.pending ?? 0;
+    } catch {
+      // table may not exist
+    }
+
+    try {
+      const activityRow = await db
+        .prepare(`SELECT MAX(created_at) as last_event FROM activity_events`)
+        .first<{ last_event: string | null }>();
+      lastActivity = activityRow?.last_event ?? null;
+    } catch {
+      // table may not exist
+    }
+
+    try {
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const execRow = await db
+        .prepare(
+          `SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`,
+        )
+        .bind(sinceIso)
+        .first<{ count: number }>();
+      workflowExecutions24h = execRow?.count ?? 0;
+    } catch {
+      // table may not exist
+    }
+
+    try {
+      const evRow = await db
+        .prepare("SELECT COUNT(*) as count FROM evidence_index")
+        .first<{ count: number }>();
+      evidenceCount = evRow?.count ?? 0;
+    } catch {
+      // table may not exist
+    }
+
+    return {
+      tenantId,
+      generatedAt: now.toISOString(),
+      frameworkSummary:
+        frameworkSummary.length > 0
+          ? frameworkSummary
+          : fallbackSnapshot.frameworkSummary,
+      risks,
+      policies: policies.length > 0 ? policies : fallbackSnapshot.policies,
+      openIncidents,
+      pendingAccessRequests,
+      lastActivity,
+      workflowExecutions24h,
+      evidenceCount,
+    };
+  } catch (e) {
+    log("error", "snapshot.build.error", { error: (e as Error).message });
+    return fallbackSnapshot;
+  }
 }
 
 async function ensureSchema(env: Env) {
@@ -1831,7 +2014,7 @@ async function ensureSchema(env: Env) {
       severity TEXT,
       message TEXT NOT NULL,
       ref TEXT,
-      read INTEGER NOT NULL DEFAULT 0,
+      "read" INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       read_at TEXT
     );`);
@@ -1849,9 +2032,131 @@ async function ensureSchema(env: Env) {
         .run();
       await db
         .prepare(
-          "UPDATE notifications SET read_at = COALESCE(read_at, CASE WHEN read = 1 THEN created_at ELSE read_at END) WHERE read = 1 AND (read_at IS NULL OR read_at = '')",
+          'UPDATE notifications SET read_at = COALESCE(read_at, CASE WHEN "read" = 1 THEN created_at ELSE read_at END) WHERE "read" = 1 AND (read_at IS NULL OR read_at = \'\')',
         )
         .run();
+    }
+    await db.exec(`CREATE TABLE IF NOT EXISTS risks (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'demo',
+      title TEXT NOT NULL,
+      likelihood INTEGER NOT NULL,
+      impact INTEGER NOT NULL,
+      score INTEGER NOT NULL,
+      severity TEXT NOT NULL,
+      owner TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );`);
+    // Seed default risks if table is empty
+    const riskCount = await db
+      .prepare("SELECT COUNT(*) as count FROM risks")
+      .first<{ count: number }>();
+    if ((riskCount?.count ?? 0) === 0) {
+      const seedRisks = [
+        {
+          id: "R1",
+          title: "Unpatched server infrastructure",
+          likelihood: 4,
+          impact: 4,
+          owner: "ops@tenant",
+        },
+        {
+          id: "R2",
+          title: "MFA coverage gaps",
+          likelihood: 3,
+          impact: 3,
+          owner: null,
+        },
+        {
+          id: "R3",
+          title: "Third-party vendor exposure",
+          likelihood: 5,
+          impact: 4,
+          owner: "security@tenant",
+        },
+      ];
+      for (const r of seedRisks) {
+        const score = deriveRiskScore(r.likelihood, r.impact);
+        const severity = deriveSeverity(score);
+        await db
+          .prepare(
+            `INSERT OR IGNORE INTO risks (id, title, likelihood, impact, score, severity, owner)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(r.id, r.title, r.likelihood, r.impact, score, severity, r.owner)
+          .run();
+      }
+    }
+    // Seed demo notifications if table is empty
+    const notifCount = await db
+      .prepare("SELECT COUNT(*) as count FROM notifications")
+      .first<{ count: number }>();
+    if ((notifCount?.count ?? 0) === 0) {
+      const seedNotifications = [
+        {
+          kind: "compliance",
+          severity: "info",
+          message: "SOC 2 coverage report generated successfully.",
+          ref: "SOC2",
+        },
+        {
+          kind: "security",
+          severity: "warning",
+          message: "MFA enrollment below 90% threshold for engineering team.",
+          ref: "MFA",
+        },
+        {
+          kind: "policy",
+          severity: "info",
+          message: "Data Protection & Privacy Policy approved and published.",
+          ref: "P5",
+        },
+      ];
+      for (const n of seedNotifications) {
+        await db
+          .prepare(
+            `INSERT INTO notifications (tenant_id, kind, severity, message, ref)
+             VALUES ('demo', ?, ?, ?, ?)`,
+          )
+          .bind(n.kind, n.severity, n.message, n.ref)
+          .run();
+      }
+    }
+    // Seed demo activity events if table is empty (only if table exists)
+    try {
+      const activityCount = await db
+        .prepare("SELECT COUNT(*) as count FROM activity_events")
+        .first<{ count: number }>();
+      if ((activityCount?.count ?? 0) === 0) {
+        const seedActivities = [
+          {
+            action: "policy.approved",
+            actor: "admin@demo",
+            detail: "Data Protection & Privacy Policy approved",
+          },
+          {
+            action: "evidence.ingested",
+            actor: "system",
+            detail: "Infrastructure scan evidence collected",
+          },
+          {
+            action: "risk.assessed",
+            actor: "admin@demo",
+            detail: "Quarterly risk assessment completed",
+          },
+        ];
+        for (const a of seedActivities) {
+          await db
+            .prepare(
+              `INSERT INTO activity_events (tenant_id, action, actor, detail)
+               VALUES ('demo', ?, ?, ?)`,
+            )
+            .bind(a.action, a.actor, a.detail)
+            .run();
+        }
+      }
+    } catch {
+      // activity_events table may not exist yet — ensureExtendedSchema handles it
     }
   } catch (e) {
     log("error", "schema.ensure.error", { error: (e as Error).message });
@@ -2149,7 +2454,7 @@ async function handleSnapshot(
       });
     }
 
-    const fresh = buildSnapshot(tenantId);
+    const fresh = await buildSnapshot(env, tenantId);
     await persistSnapshot(env, tenantId, fresh);
     const enriched: ComplianceSnapshot = { ...fresh, ageSeconds: 0 };
     log("info", "snapshot.fresh", {

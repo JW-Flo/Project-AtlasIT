@@ -12,18 +12,26 @@ routes = [
 	"www.atlasit.pro/console*",
 	"www.atlasit.pro/access-requests*",
 	"www.atlasit.pro/incidents*",
+	"www.atlasit.pro/notifications*",
 	"www.atlasit.pro/api/config*",
 	"www.atlasit.pro/api/mock/*",
 	"www.atlasit.pro/api/policies/*",
+	"www.atlasit.pro/api/incidents/*",
+	"www.atlasit.pro/api/access-requests/*",
+	"www.atlasit.pro/api/notifications/*",
 	"www.atlasit.pro/" # root catch for redirect
 ]
+
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
 
 [build]
 command = "npm run build"
 
 [vars]
 APP_NAME = "AtlasIT Console"
-COMPLIANCE_BASE = "https://www.atlasit.pro/api/compliance"
+COMPLIANCE_BASE = "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev/api/compliance"
 CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
 DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
 ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
@@ -31,6 +39,7 @@ DISABLE_CONSOLE_AUTH = "true" # temporary bypass for login requirement
 SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
 USE_CF_ACCESS = "true" # When true, trusts Cloudflare Access headers for auth (CF-Access-Authenticated-User-Email)
 ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
+TENANT_ID = "atlasit-prod"
 
 [observability]
 enabled = true
@@ -48,3 +57,7 @@ id = "c3017a1a156a4f2fa2da62dadc714c44"
 [[kv_namespaces]]
 binding = "KV_CACHE"
 id = "4f08086308004796bfd7cab01c34b006"
+
+[[services]]
+binding = "COMPLIANCE_WORKER"
+service = "atlasit-compliance-worker"

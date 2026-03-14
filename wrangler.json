@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration-schema.json",
-  "name": "project-ignite-root-meta",
+  "name": "atlasit-console",
   "minify": false,
   "compatibility_date": "2025-09-27",
   "compatibility_flags": ["nodejs_compat"],

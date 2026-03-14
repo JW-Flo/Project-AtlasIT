@@ -2,8 +2,9 @@ name = "atlasit-compliance-worker"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 workers_dev = true
+compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
+# zone_id = "1a5cc8cc62bc51b21430f970dc86fec7" # moved to route-level; top-level deprecated
 routes = [
 	"www.atlasit.pro/api/compliance/*",
 	"compliance.atlasit.pro/*"
@@ -20,3 +21,7 @@ database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5" # provisioned via wrangler 
 [[r2_buckets]]
 binding = "EVIDENCE_BUCKET"
 bucket_name = "atlasit-evidence"
+
+[[kv_namespaces]]
+binding = "API_TOKENS"
+id = "3c5284c47e2e43dc8166fd53f2d35166"

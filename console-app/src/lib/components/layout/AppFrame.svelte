@@ -39,6 +39,7 @@
         { href: "/console/policies", label: "Policy Generator" },
         { href: "/access-requests", label: "Access Requests" },
         { href: "/incidents", label: "Incidents" },
+        { href: "/notifications", label: "Notifications" },
         { href: `${base}/snapshot`, label: "Raw JSON" },
       ];
     } catch {
