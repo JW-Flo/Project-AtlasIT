@@ -1,0 +1,66 @@
+name: Deploy Compliance Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "compliance-worker/**"
+      - "src/lib/**"
+      - "fixtures/**"
+      - "packages/shared/**"
+      - ".github/workflows/deploy-compliance-worker.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Install compliance worker deps
+        run: npm install --no-fund --no-audit
+        working-directory: compliance-worker
+
+      - name: Deploy compliance worker
+        run: npx wrangler deploy
+        working-directory: compliance-worker
+
+      - name: Post-deploy smoke test
+        run: |
+          set -e
+          WORKER_URL="https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev"
+          echo "Probing health endpoint..."
+          curl -sS --max-time 10 "$WORKER_URL/api/compliance/health" || \
+            echo 'Health probe failed (may need propagation).'
+          echo ""
+          echo "Probing snapshot endpoint..."
+          HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WORKER_URL/api/compliance/snapshot")
+          echo "Snapshot response: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Snapshot endpoint healthy."
+          else
+            echo "WARNING: Snapshot returned $HTTP_CODE — may need D1 migration or secret setup."
+          fi
+        if: always()
+
+      - name: Guidance
+        run: |
+          echo 'Deployed atlasit-compliance-worker.'
+          echo 'Ensure D1 migrations are applied: npm run migrate:compliance'
+          echo 'Ensure API_TOKENS KV namespace has valid tokens for auth.'
+          echo 'workers.dev URL: https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev'

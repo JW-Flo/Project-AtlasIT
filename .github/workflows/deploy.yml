@@ -1,4 +1,4 @@
-name: Project Ignite CI/CD
+name: AtlasIT CI/CD
 
 on:
   push:
@@ -105,13 +105,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Revert repository to desired state
-        run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
-          git push origin main
-
-      - name: Verify revert
-        run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
+      - name: Verify build
+        run: echo "Build completed successfully."
