@@ -106,6 +106,9 @@ ${baseContent}
 
 Return ONLY the enhanced policy document in markdown format. Do not include any preamble or explanation.`;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
+
   try {
     const response = await fetch(
       "https://api.groq.com/openai/v1/chat/completions",
@@ -128,6 +131,7 @@ Return ONLY the enhanced policy document in markdown format. Do not include any 
           max_tokens: 4096,
           temperature: 0.3,
         }),
+        signal: controller.signal,
       },
     );
 
@@ -144,7 +148,13 @@ Return ONLY the enhanced policy document in markdown format. Do not include any 
       return aiContent;
     }
   } catch (e) {
-    console.error("AI generation failed, using template:", e);
+    if (e instanceof Error && e.name === "AbortError") {
+      console.warn("Groq API timed out, falling back to base content");
+    } else {
+      console.error("AI generation failed, using template:", e);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   return baseContent;

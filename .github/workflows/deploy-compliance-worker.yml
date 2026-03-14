@@ -33,7 +33,7 @@ jobs:
         run: npm ci
 
       - name: Install compliance worker deps
-        run: npm install --no-fund --no-audit
+        run: npm ci --no-fund --no-audit
         working-directory: compliance-worker
 
       - name: Deploy compliance worker
@@ -42,16 +42,39 @@ jobs:
 
       - name: Post-deploy smoke test
         run: |
-          set -e
           WORKER_URL="https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev"
-          echo "Probing health endpoint..."
-          curl -sS --max-time 10 "$WORKER_URL/api/compliance/health" || \
-            echo 'Health probe failed (may need propagation).'
+          MAX_RETRIES=4
+          SLEEP_SECS=10
+
+          # Health check with retry/backoff — fail the job if never 200
+          echo "Probing health endpoint (up to $MAX_RETRIES attempts)..."
+          HEALTH_OK=false
+          for i in $(seq 1 $MAX_RETRIES); do
+            HEALTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$WORKER_URL/api/compliance/health" || echo "000")
+            echo "  Attempt $i: $HEALTH_CODE"
+            if [ "$HEALTH_CODE" = "200" ]; then
+              HEALTH_OK=true
+              echo "Health endpoint healthy."
+              break
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "  Waiting ${SLEEP_SECS}s before retry..."
+              sleep $SLEEP_SECS
+            fi
+          done
+          if [ "$HEALTH_OK" = "false" ]; then
+            echo "ERROR: Health endpoint did not return 200 after $MAX_RETRIES attempts. Deploy may be broken."
+            exit 1
+          fi
+
+          # Snapshot probe — informational only (may need D1 migration or secrets)
           echo ""
-          echo "Probing snapshot endpoint..."
-          HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WORKER_URL/api/compliance/snapshot")
+          echo "Probing snapshot endpoint (informational)..."
+          HTTP_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$WORKER_URL/api/compliance/snapshot" || echo "000")
           echo "Snapshot response: $HTTP_CODE"
-          if [ "$HTTP_CODE" = "200" ]; then
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "WARNING: Snapshot probe failed (transient or propagation delay)."
+          elif [ "$HTTP_CODE" = "200" ]; then
             echo "Snapshot endpoint healthy."
           else
             echo "WARNING: Snapshot returned $HTTP_CODE — may need D1 migration or secret setup."
