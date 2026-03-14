@@ -32,6 +32,7 @@ export interface GeneratePolicyOptions {
   tenantId: string;
   templateKey: string;
   input?: Record<string, unknown>;
+  groqApiKey?: string;
 }
 
 export interface GeneratePolicyResult {
@@ -57,6 +58,7 @@ export async function generatePolicyDocument(
     template,
     tenantId: options.tenantId,
     input: options.input,
+    groqApiKey: options.groqApiKey,
   });
 
   const existing = await findGeneratedPolicyByContext(

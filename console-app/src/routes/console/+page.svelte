@@ -106,6 +106,80 @@
     }
   }
 
+  function exportCSV() {
+    if (!snapshot) return;
+    const lines: string[] = [];
+
+    // Framework coverage
+    lines.push("=== Framework Coverage ===");
+    lines.push("Framework,Coverage %,Passing,Failing,Total");
+    for (const fw of snapshot.frameworkSummary) {
+      lines.push(`${fw.framework},${fw.coveragePercent},${fw.passing},${fw.failing},${fw.total}`);
+    }
+
+    // Risks
+    lines.push("");
+    lines.push("=== Risk Register ===");
+    lines.push("ID,Title,Severity,Likelihood,Impact,Owner");
+    for (const r of snapshot.risks) {
+      lines.push(`${r.id},"${r.title}",${r.severity},${r.likelihood},${r.impact},${r.owner || "unassigned"}`);
+    }
+
+    // Policies
+    lines.push("");
+    lines.push("=== Policies ===");
+    lines.push("ID,Name,Status,Updated");
+    for (const p of snapshot.policies) {
+      lines.push(`${p.id},"${p.name}",${p.status},${p.updated}`);
+    }
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `atlasit-compliance-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportHTML() {
+    if (!snapshot) return;
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>AtlasIT Compliance Report</title>
+<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1a1a1a;}
+table{width:100%;border-collapse:collapse;margin:16px 0;}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left;}
+th{background:#f5f5f5;font-weight:600;}h1{color:#1e40af;}h2{color:#374151;margin-top:32px;}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;}
+.high,.critical{background:#fee2e2;color:#991b1b;}.medium{background:#fef3c7;color:#92400e;}.low{background:#d1fae5;color:#065f46;}
+.approved{background:#d1fae5;color:#065f46;}.draft{background:#e0e7ff;color:#3730a3;}
+.bar{height:20px;border-radius:4px;background:#3b82f6;}</style></head>
+<body>
+<h1>AtlasIT Compliance Report</h1>
+<p>Generated: ${new Date().toLocaleString()} | Tenant: ${snapshot.tenantId}</p>
+<h2>Framework Coverage</h2>
+<table><tr><th>Framework</th><th>Coverage</th><th>Passing</th><th>Failing</th><th>Total</th></tr>
+${snapshot.frameworkSummary.map(fw => `<tr><td>${fw.framework}</td><td><div style="display:flex;align-items:center;gap:8px;"><div class="bar" style="width:${fw.coveragePercent}%;min-width:4px;"></div>${fw.coveragePercent}%</div></td><td>${fw.passing}</td><td>${fw.failing}</td><td>${fw.total}</td></tr>`).join("")}
+</table>
+<h2>Risk Register</h2>
+<table><tr><th>ID</th><th>Title</th><th>Severity</th><th>Likelihood</th><th>Impact</th><th>Owner</th></tr>
+${snapshot.risks.map(r => `<tr><td>${r.id}</td><td>${r.title}</td><td><span class="badge ${r.severity}">${r.severity}</span></td><td>${r.likelihood}</td><td>${r.impact}</td><td>${r.owner || "-"}</td></tr>`).join("")}
+</table>
+<h2>Policies</h2>
+<table><tr><th>ID</th><th>Name</th><th>Status</th><th>Updated</th></tr>
+${snapshot.policies.map(p => `<tr><td>${p.id}</td><td>${p.name}</td><td><span class="badge ${p.status}">${p.status}</span></td><td>${new Date(p.updated).toLocaleDateString()}</td></tr>`).join("")}
+</table>
+<footer style="margin-top:40px;padding-top:16px;border-top:1px solid #ddd;font-size:12px;color:#999;">AtlasIT Compliance Platform</footer>
+</body></html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `atlasit-compliance-report-${new Date().toISOString().slice(0, 10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   onMount(load);
 </script>
 
@@ -129,11 +203,29 @@
     </div>
     <div class="header-actions">
       <a
+        href="/console/marketplace"
+        class="text-sm bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-white"
+      >
+        Marketplace
+      </a>
+      <a
         href="/console/platform-status"
         class="text-sm bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded text-white"
       >
         Platform Status
       </a>
+      {#if snapshot}
+        <button
+          on:click={exportCSV}
+          class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
+          title="Export as CSV"
+        >Export CSV</button>
+        <button
+          on:click={exportHTML}
+          class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
+          title="Export as printable HTML report"
+        >Export Report</button>
+      {/if}
       {#if usingFallback && resolvedBase}
         <span class="fallback-badge" title={`Primary base ${primaryBase}`}
           >Fallback endpoint active</span

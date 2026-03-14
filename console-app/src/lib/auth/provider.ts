@@ -4,6 +4,8 @@ export interface UserPrincipal {
   roles: string[];
   superAdmin?: boolean;
   provider: string;
+  tenantId?: string;
+  displayName?: string;
   createdAt: string;
   lastSeenAt: string;
 }

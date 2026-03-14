@@ -35,12 +35,13 @@
         cfg.resolvedBase && cfg.resolvedBase !== cfg.complianceBase
       );
       nav = [
-        { href: "/console", label: "Console" },
+        { href: "/console", label: "Dashboard" },
         { href: "/console/policies", label: "Policy Generator" },
+        { href: "/console/marketplace", label: "Marketplace" },
         { href: "/access-requests", label: "Access Requests" },
         { href: "/incidents", label: "Incidents" },
         { href: "/notifications", label: "Notifications" },
-        { href: `${base}/snapshot`, label: "Raw JSON" },
+        { href: "/console/platform-status", label: "Platform Status" },
       ];
     } catch {
       // silent fallback keeps existing nav
@@ -81,14 +82,17 @@
         variant="subtle"
         ariaLabel="Toggle theme"
         on:click={toggleTheme}
-        >{t === "dark" ? "Light Mode" : "Dark Mode"}</Button
+        >{t === "dark" ? "Light" : "Dark"}</Button
       >
       <Button
         size="sm"
         variant="outline"
-        ariaLabel="Show demo toast"
-        on:click={() => pushToast({ message: "Demo toast", variant: "info" })}
-        >Toast</Button
+        ariaLabel="Sign out"
+        on:click={async () => {
+          await fetch("/api/auth/logout", { method: "POST" });
+          location.href = "/console/login";
+        }}
+        >Sign Out</Button
       >
     </div>
   </aside>
