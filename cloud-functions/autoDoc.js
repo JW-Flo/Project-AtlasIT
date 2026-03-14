@@ -9,7 +9,7 @@ const confluence = new ConfluenceClient({
 });
 
 // Documentation Agent endpoint
-const DOCS_ENDPOINT = 'https://docs.project-ignite.kd8jc7v8cd.workers.dev/docs';
+const DOCS_ENDPOINT = 'https://atlasit-docs.kd8jc7v8cd.workers.dev/docs';
 
 async function syncToConfluence() {
   try {
@@ -35,7 +35,7 @@ function convertToConfluenceFormat(markdown) {
   // This is a simplified version - you'll need to handle all markdown elements
   return {
     version: { number: 1 },
-    title: 'Project Ignite Documentation',
+    title: 'AtlasIT Documentation',
     type: 'page',
     body: {
       storage: {

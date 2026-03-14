@@ -1,4 +1,4 @@
-name = "ignite-mcp-idp"
+name = "atlasit-mcp-idp"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -10,7 +10,7 @@ id = "9dac31a00856439e96a8ad5dfbf560fc"
 preview_id = "9dac31a00856439e96a8ad5dfbf560fc"
 
 [env.production]
-route = "idp.project-ignite.workers.dev/*"
+route = "idp.atlasit.workers.dev/*"
 usage_model = "bundled"
 
 # SSL/TLS settings

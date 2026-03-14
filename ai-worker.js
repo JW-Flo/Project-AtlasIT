@@ -20,7 +20,7 @@ export default {
     if (request.method !== "POST")
       return new Response("Method Not Allowed", { status: 405 });
     const gatewayUrl =
-      "https://gateway.ai.cloudflare.com/v1/620865722bd88ef0a77dbbb60c91392e/project-ignite/workers-ai/@cf/meta/llama-3.1-8b-instruct";
+      "https://gateway.ai.cloudflare.com/v1/620865722bd88ef0a77dbbb60c91392e/atlasit/workers-ai/@cf/meta/llama-3.1-8b-instruct";
     const token = env.AI_GATEWAY_TOKEN;
     const body = await request.text();
     try {

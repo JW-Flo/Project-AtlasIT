@@ -1,4 +1,4 @@
-name = "project-ignite-mcp"
+name = "atlasit-mcp"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -17,7 +17,7 @@ database_id = "ecc7933f-00da-4427-9dc7-3c5d35a8ff38"
 crons = ["*/1 * * * *"]
 
 [env.production]
-route = "mcp.project-ignite.workers.dev/*"
+route = "mcp.atlasit.workers.dev/*"
 usage_model = "bundled"
 
 [env.production.vars]

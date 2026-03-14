@@ -1,5 +1,5 @@
-# Wrangler configuration for Project Ignite
-name = "project-ignite"
+# Wrangler configuration for AtlasIT
+name = "atlasit-core"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -79,8 +79,8 @@ bucket_name = "atlas-artifacts"
 
 # Example Durable Object binding (uncomment and set if needed)
 # [[durable_objects.bindings]]
-# name = "IGNITE_DO"
-# class_name = "IgniteDurableObject"
+# name = "ATLAS_DO"
+# class_name = "AtlasDurableObject"
 
 # Triggers temporarily disabled to permit parallel env deployments within free plan cron quota.
 # [triggers]
@@ -91,7 +91,7 @@ bucket_name = "atlas-artifacts"
 
 # Production environment (legacy canonical during transition)
 [env.production]
-route = "project-ignite.workers.dev/*"
+route = "atlasit-core.kd8jc7v8cd.workers.dev/*"
 usage_model = "bundled"
 
 [env.production.vars]
@@ -160,7 +160,7 @@ RENAMING_PHASE = "core_parallel"
 # Workers for Platforms dispatch namespace binding
 [[env.core.dispatch_namespaces]]
 binding = "dispatcher"
-namespace = "ignite-dispatcher-namespace"
+namespace = "atlasit-dispatcher-namespace"
 
 # [env.production.durable_objects]
 # bindings = [
@@ -175,7 +175,7 @@ namespace = "ignite-dispatcher-namespace"
 enabled = true
 
 [env.ai]
-name = "atlasit-ai" # previously ai-worker / ai-project-ignite
+name = "atlasit-ai"
 main = "ai-worker.js"
 usage_model = "bundled"
 compatibility_date = "2025-05-16"
@@ -187,7 +187,7 @@ workers_dev = true
 ## Dispatch namespace removed (free plan). Previously:
 # [[env.ai.dispatch_namespaces]]
 # binding = "dispatcher"
-# namespace = "ignite-dispatcher-namespace"
+# namespace = "atlasit-dispatcher-namespace"
 
 # Planned new dispatcher namespace (Phase 3). Create via `wrangler dispatch-namespace create atlasit-dispatcher-namespace` then add id.
 # [[env.ai.dispatch_namespaces]]

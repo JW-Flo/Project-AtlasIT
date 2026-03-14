@@ -29,7 +29,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": env.COMPLIANCE_API_KEY || "demo",
+        "x-api-key": env.COMPLIANCE_API_KEY,
         "x-tenant-id": env.TENANT_ID || "atlasit-prod",
       },
       body: JSON.stringify({

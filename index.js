@@ -325,7 +325,7 @@ async function handleFetch(request, env, ctx) {
     request.headers.get("x-correlation-id") || generateCorrelationId();
   const url = new URL(request.url);
   const host = url.host;
-  const isLegacyHost = host.includes("project-ignite.workers.dev");
+  const isLegacyHost = host.includes("project-ignite.workers.dev") || host.includes("project-ignite.");
   const deprecationHeaders = isLegacyHost
     ? {
         Deprecation: "true",

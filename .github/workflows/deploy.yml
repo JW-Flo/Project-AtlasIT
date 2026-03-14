@@ -101,7 +101,7 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: false
-          tags: project-ignite:latest
+          tags: atlasit:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

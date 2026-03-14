@@ -1,4 +1,4 @@
-name = "atlasit-docs" # previously ignite-documentation
+name = "atlasit-docs"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
@@ -11,7 +11,7 @@ preview_id = "f8c916deeae240f0825097e3b7d17214"
 
 # Production environment
 [env.production]
-# New canonical route (legacy: docs.project-ignite.workers.dev)
+# Route for documentation worker
 route = "docs.atlasit.workers.dev/*"
 usage_model = "bundled"
 

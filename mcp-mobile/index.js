@@ -11,7 +11,7 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: ["https://mcp.project-ignite.kd8jc7v8cd.workers.dev"],
+    origin: ["https://atlasit-mcp.kd8jc7v8cd.workers.dev"],
     allowMethods: ["GET", "POST"],
     allowHeaders: ["Content-Type", "Authorization"],
     exposeHeaders: ["Content-Length", "X-Kuma-Revision"],
