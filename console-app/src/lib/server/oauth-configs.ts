@@ -104,6 +104,20 @@ export const oauthProviders: Record<string, OAuthProviderConfig> = {
     ],
     extraParams: { audience: "api.atlassian.com", prompt: "consent" },
   },
+  confluence: {
+    model: "platform",
+    envPrefix: "JIRA", // shared Atlassian app registration with Jira
+    authorizeUrl: "https://auth.atlassian.com/authorize",
+    tokenUrl: "https://auth.atlassian.com/oauth/token",
+    scopes: [
+      "read:confluence-space.summary",
+      "write:confluence-space",
+      "read:confluence-user",
+      "read:me",
+      "offline_access",
+    ],
+    extraParams: { audience: "api.atlassian.com", prompt: "consent" },
+  },
   quickbooks: {
     model: "platform",
     envPrefix: "QUICKBOOKS",
