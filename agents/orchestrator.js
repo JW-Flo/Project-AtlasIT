@@ -30,7 +30,7 @@ class AgentOrchestrator {
 
   async startAllAgents() {
     await this.logging.logInfo("orchestrator", "Starting all agents...");
-    await this.slack.sendAlert("🚀 Starting Project Ignite Agent System");
+    await this.slack.sendAlert("🚀 Starting AtlasIT Agent System");
 
     const startResults = new Map();
 
@@ -132,7 +132,7 @@ class AgentOrchestrator {
 
   async stopAllAgents() {
     await this.logging.logInfo("orchestrator", "Stopping all agents...");
-    await this.slack.sendAlert("🛑 Stopping Project Ignite Agent System");
+    await this.slack.sendAlert("🛑 Stopping AtlasIT Agent System");
 
     const stopResults = new Map();
 

@@ -540,7 +540,7 @@ async function handleFetch(request, env, ctx) {
   const host = url.host;
   const isLegacyHost =
     host.includes("project-ignite.workers.dev") ||
-    host.includes("project-ignite.");
+    host.includes("project-ignite."); // legacy host detection kept for deprecation redirect
   const deprecationHeaders = isLegacyHost
     ? {
         Deprecation: "true",

@@ -1,4 +1,5 @@
-name = "slack-approval-worker"
+name = "atlasit-slack-approval"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "index.js"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]

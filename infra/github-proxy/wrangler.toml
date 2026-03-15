@@ -1,11 +1,8 @@
 name = "atlasit-github-proxy"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "index.js"
 compatibility_date = "2025-11-01"
 compatibility_flags = ["nodejs_compat"]
-# Account ID is read from CLOUDFLARE_ACCOUNT_ID or CF_ACCOUNT_ID environment variable
-# Set in GitHub Actions secrets or export locally before running wrangler commands
-# Fallback: Uncomment and set the account_id below for local development
-# account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 # Worker will be deployed to atlasit-github-proxy.<account>.workers.dev
 workers_dev = true

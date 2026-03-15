@@ -1,4 +1,5 @@
 name = "atlasit-cdt"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "src/index.ts"
 compatibility_date = "2025-10-03"
 [vars]
