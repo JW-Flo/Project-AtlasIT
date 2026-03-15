@@ -41,6 +41,9 @@ describe("Onboarding Service Integration Tests", () => {
     await db.exec(
       "CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, tenant_id TEXT, type TEXT, payload TEXT, created_at TEXT NOT NULL);",
     );
+    await db.exec(
+      "CREATE TABLE IF NOT EXISTS onboarding_sessions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, industry TEXT, requirements TEXT, answers TEXT, generated_config TEXT, error_message TEXT, started_at TEXT NOT NULL, completed_at TEXT, updated_at TEXT NOT NULL);",
+    );
   });
 
   afterAll(async () => {
@@ -92,14 +95,14 @@ describe("Onboarding Service Integration Tests", () => {
       .all();
     expect(audit.results.length).toBe(1);
 
-    // Step 4: Verify state was stored in KV
-    const kv = await mf.getKVNamespace("STATE");
-    const storedState = await kv.get(`onboarding:${tenantData.tenantId}`);
-    expect(storedState).not.toBeNull();
-
-    const parsedState = JSON.parse(storedState!);
-    expect(parsedState.status).toBe("configured");
-    expect(parsedState.config).toBeTruthy();
+    // Step 4: Verify onboarding session was stored in D1
+    const sessions = await db
+      .prepare("SELECT * FROM onboarding_sessions WHERE tenant_id = ?")
+      .bind(tenantData.tenantId)
+      .all();
+    expect(sessions.results.length).toBe(1);
+    expect(sessions.results[0].status).toBe("completed");
+    expect(sessions.results[0].generated_config).toBeTruthy();
 
     // Step 5: Retrieve status endpoint
     const statusResp = await mf.dispatchFetch(
@@ -107,7 +110,7 @@ describe("Onboarding Service Integration Tests", () => {
     );
     expect(statusResp.status).toBe(200);
     const statusBody: any = await statusResp.json();
-    expect(statusBody.status).toBe("configured");
+    expect(statusBody.status).toBe("completed");
 
     // Step 6: Idempotent POST returns existing
     const secondResp = await mf.dispatchFetch(

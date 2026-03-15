@@ -1,20 +1,40 @@
 import { describe, it, expect, vi } from "vitest";
 
+function createMockDb(overrides?: {
+  first?: () => Promise<unknown>;
+  run?: () => Promise<unknown>;
+}) {
+  const mockRun = overrides?.run ?? (async () => ({ success: true }));
+  const mockFirst = overrides?.first ?? (async () => null);
+  return {
+    prepare: () => ({
+      bind: (..._args: unknown[]) => ({
+        run: mockRun,
+        first: mockFirst,
+      }),
+    }),
+  };
+}
+
+function createMockState(overrides?: {
+  put?: (...args: unknown[]) => Promise<void>;
+  get?: (key: string) => Promise<string | null>;
+}) {
+  return {
+    put: overrides?.put ?? (async () => {}),
+    get: overrides?.get ?? (async () => null),
+    delete: async () => {},
+    list: async () => ({ keys: [], list_complete: true }),
+    getWithMetadata: async () => ({ value: null, metadata: null }),
+  };
+}
+
 describe("Onboarding Worker", () => {
   it("should respond with health status", async () => {
     const request = new Request("https://example.com/health");
-    const mockRun = async () => ({ success: true });
-    const mockBind = () => ({ run: mockRun });
-    const mockPrepare = () => ({ bind: mockBind });
     const env: any = {
-      STATE: {
-        put: async () => {},
-        get: async () => null,
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: mockPrepare },
+      STATE: createMockState(),
+      DB: createMockDb(),
       AI_API_KEY: "test-key",
     };
     const response = await (
@@ -38,17 +58,11 @@ describe("Onboarding Worker", () => {
       body: JSON.stringify(body),
     });
     const statePutMock = vi.fn(async () => {});
-    const dbRunMock = vi.fn(async () => {});
+    const dbRunMock = vi.fn(async () => ({}));
 
     const env: any = {
-      STATE: {
-        put: statePutMock,
-        get: async () => null,
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: () => ({ bind: () => ({ run: dbRunMock }) }) },
+      STATE: createMockState({ put: statePutMock }),
+      DB: createMockDb({ run: dbRunMock, first: async () => null }),
       AI_API_KEY: "test-key",
     };
     const response = await (
@@ -58,7 +72,6 @@ describe("Onboarding Worker", () => {
 
     expect(response.status).toBe(201);
     expect(responseBody.status).toBe("success");
-    expect(statePutMock).toHaveBeenCalled();
     expect(dbRunMock).toHaveBeenCalled();
   });
 
@@ -66,16 +79,9 @@ describe("Onboarding Worker", () => {
     const request = new Request(
       "https://example.com/api/onboarding/questions?industry=healthcare&req=compliance&req=analytics",
     );
-    const mockRun = async () => ({});
     const env: any = {
-      STATE: {
-        put: async () => {},
-        get: async () => null,
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: () => ({ bind: () => ({ run: mockRun }) }) },
+      STATE: createMockState(),
+      DB: createMockDb(),
       AI_API_KEY: "test-key",
     };
     const response = await (
@@ -91,16 +97,9 @@ describe("Onboarding Worker", () => {
     const request = new Request(
       "https://example.com/api/onboarding/nonexistent",
     );
-    const mockRun = async () => ({});
     const env: any = {
-      STATE: {
-        put: async () => {},
-        get: async () => null,
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: () => ({ bind: () => ({ run: mockRun }) }) },
+      STATE: createMockState(),
+      DB: createMockDb({ first: async () => null }),
       AI_API_KEY: "test-key",
     };
     const response = await (
@@ -113,25 +112,26 @@ describe("Onboarding Worker", () => {
 
   it("should retrieve existing tenant status", async () => {
     const tenantId = "tenant-status-1";
-    const stateValue = {
-      status: "configured",
-      config: { sample: true },
-      template: { resources: [] },
-    };
     const request = new Request(
       `https://example.com/api/onboarding/${tenantId}`,
     );
-    const mockRun = async () => ({});
     const env: any = {
-      STATE: {
-        put: async () => {},
-        get: async (key: string) =>
-          key === `onboarding:${tenantId}` ? JSON.stringify(stateValue) : null,
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: () => ({ bind: () => ({ run: mockRun }) }) },
+      STATE: createMockState(),
+      DB: createMockDb({
+        first: async () => ({
+          id: "sess-1",
+          tenant_id: tenantId,
+          status: "configured",
+          industry: "Technology",
+          requirements: null,
+          answers: null,
+          generated_config: JSON.stringify({ sample: true }),
+          error_message: null,
+          started_at: new Date().toISOString(),
+          completed_at: null,
+          updated_at: new Date().toISOString(),
+        }),
+      }),
       AI_API_KEY: "test-key",
     };
     const response = await (
@@ -150,19 +150,30 @@ describe("Onboarding Worker", () => {
       method: "POST",
       body: JSON.stringify(firstBody),
     });
-    // Mock env with STATE storing after first put
-    let stored: any = null;
+
+    // Track calls to first() — return null on first call, completed session on second
+    let firstCallCount = 0;
+    const mockFirst = async () => {
+      firstCallCount++;
+      if (firstCallCount <= 1) return null; // first POST: idempotency check
+      return {
+        id: "sess-dup",
+        tenant_id: tenantId,
+        status: "completed",
+        industry: "Technology",
+        requirements: null,
+        answers: null,
+        generated_config: JSON.stringify({ dup: true }),
+        error_message: null,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    };
+
     const env: any = {
-      STATE: {
-        put: async (_k: string, v: string) => {
-          stored = JSON.parse(v);
-        },
-        get: async (_k: string) => (stored ? JSON.stringify(stored) : null),
-        delete: async () => {},
-        list: async () => ({ keys: [], list_complete: true }),
-        getWithMetadata: async () => ({ value: null, metadata: null }),
-      },
-      DB: { prepare: () => ({ bind: () => ({ run: async () => ({}) }) }) },
+      STATE: createMockState(),
+      DB: createMockDb({ run: async () => ({}), first: mockFirst }),
       AI_API_KEY: "test-key",
     };
     const mod = await import("./index");

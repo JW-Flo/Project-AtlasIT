@@ -39,6 +39,9 @@ describe("Auth & Correlation ID", () => {
     await db.exec(
       "CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, tenant_id TEXT, type TEXT, payload TEXT, created_at TEXT NOT NULL);",
     );
+    await db.exec(
+      "CREATE TABLE IF NOT EXISTS onboarding_sessions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, status TEXT NOT NULL, industry TEXT, requirements TEXT, answers TEXT, generated_config TEXT, error_message TEXT, started_at TEXT NOT NULL, completed_at TEXT, updated_at TEXT NOT NULL);",
+    );
   });
 
   it("rejects missing API key", async () => {
