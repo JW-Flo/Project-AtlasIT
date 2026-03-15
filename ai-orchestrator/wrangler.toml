@@ -20,8 +20,8 @@ preview_id = "d4380b3e24094a24907b83c95238a0af"
 # KV Namespace for idempotency dedup (24h TTL)
 [[kv_namespaces]]
 binding = "IDEMPOTENCY_CACHE"
-id = "PLACEHOLDER_IDEMPOTENCY_CACHE_ID"
-preview_id = "PLACEHOLDER_IDEMPOTENCY_CACHE_PREVIEW_ID"
+id = "51f84cb9b5624496b062d46b4019d7c7"
+preview_id = "1528c13cdf7b4c45ac7648adf5b84425"
 
 # D1 Database (shared ATLAS_CORE_DB)
 [[d1_databases]]

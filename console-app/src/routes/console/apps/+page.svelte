@@ -478,10 +478,11 @@
         <div class="space-y-3 mb-4">
           {#each editApp.credentialFields as field}
             <div>
-              <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.6;">
+              <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.6;" for="cred-{field.key}">
                 {field.label}{field.required ? " *" : ""}
               </label>
               <input
+                id="cred-{field.key}"
                 type={field.type === "password" ? "password" : "text"}
                 bind:value={editValues[field.key]}
                 placeholder="(unchanged)"
