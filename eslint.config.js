@@ -48,6 +48,8 @@ export default [
       "customer-worker-1/**",
       "docs/chat-mcp-main/**",
       "docs/servers-main/**",
+      // Lambda stubs (AWS migration, deps not installed)
+      "lambdas/**",
       // Worker with standalone TypeScript configuration
       "infra/github-proxy/**",
     ],
@@ -78,6 +80,7 @@ export default [
       "**/vite.config.ts",
       "**/jest.config.ts",
       "**/tests/**",
+      "**/__tests__/**",
       "./tests/**",
       // Skip standalone TS utility not included in any tsconfig project (avoids parserOptions.project error)
       "shared/circuit-breaker.ts",
