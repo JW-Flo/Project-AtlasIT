@@ -581,7 +581,7 @@ async function needsAIAssistance() {
 }
 
 // Request AI assistance
-async function requestAIAssistance(tasks) {
+async function requestAIAssistance(tasks, env) {
   // Get MCP approval for AI assistance
   const approved = await checkWithMCP("ai_assistance", { tasks });
   if (!approved)
@@ -591,7 +591,7 @@ async function requestAIAssistance(tasks) {
 
   try {
     // Call AI API with MCP context
-    const response = await callAI(prompt, c.env || {}, { mcpContext: true });
+    const response = await callAI(prompt, env || {}, { mcpContext: true });
 
     // Process AI response with MCP approval
     const processApproved = await checkWithMCP("process_ai_response", {
@@ -743,7 +743,7 @@ app.post("/task", async (c) => {
   // Check if AI assistance is needed
   const { needed, tasks } = await needsAIAssistance();
   if (needed) {
-    await requestAIAssistance(tasks);
+    await requestAIAssistance(tasks, c.env);
   }
 
   return c.json({

@@ -321,11 +321,7 @@ async function appsLifecycleWorkflows(
     );
   }
 
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    Array.isArray(payload)
-  ) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return appsJson(
       baseHeaders,
       { error: "payload must be a JSON object", correlationId },
