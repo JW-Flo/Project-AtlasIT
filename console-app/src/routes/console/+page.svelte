@@ -1,169 +1,48 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import FrameworkCoverage from "$lib/components/FrameworkCoverage.svelte";
-  import RiskMatrix from "$lib/components/RiskMatrix.svelte";
-  import PolicyCards from "$lib/components/PolicyCards.svelte";
-  import RiskHeatmap from "$lib/components/visual/RiskHeatmap.svelte";
-  import Skeleton from "$lib/components/loading/Skeleton.svelte";
-  import EvidenceSummary, {
-    type EvidenceSummaryItem,
-  } from "$lib/components/EvidenceSummary.svelte";
-  import { getRuntimeConfig } from "$lib/config";
-  import { mark } from "$lib/instrumentation/ux-metrics";
+  import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { mark } from "$lib/instrumentation/ux-metrics";
 
-  interface SnapshotRisk {
-    id: string;
-    title: string;
-    severity: string;
-    likelihood: number;
-    impact: number;
-    owner?: string;
-  }
+  // Session / view type
+  let isPlatformOwner = false;
+  let sessionLoaded = false;
+  let session: any = null;
 
-  interface SnapshotPolicy {
-    id: string;
-    name: string;
-    status: string;
-    updated: string;
-  }
-
-  interface SnapshotFramework {
-    framework: string;
-    coveragePercent: number;
-    passing: number;
-    failing: number;
-    total: number;
-  }
-
-  interface Snapshot {
-    tenantId: string;
-    generatedAt: string;
-    ageSeconds?: number;
-    frameworkSummary: SnapshotFramework[];
-    risks: SnapshotRisk[];
-    policies: SnapshotPolicy[];
-  }
-
-  let snapshot: Snapshot | null = null;
+  // Shared
   let loading = true;
   let error: string | null = null;
-  let evidence: EvidenceSummaryItem[] = [];
-  let evidenceError: string | null = null;
-  let usingFallback = false;
-  let resolvedBase: string | null = null;
-  let primaryBase: string | null = null;
 
-  function ensureBase(base: string | undefined | null) {
-    if (!base) return "";
-    return base.replace(/\/$/, "");
-  }
+  // Platform owner data
+  let platformData: {
+    tenants: { total: number; active: number; disabled: number };
+    users: { total: number };
+    recentTenants: any[];
+    recentActivity: any[];
+    workflows: { total: number };
+  } | null = null;
 
-  function deriveEvidenceBase(base: string) {
-    if (!base) return base;
-    return base.replace(/\/compliance$/, "/evidence");
-  }
+  // Tenant data
+  let tenantData: {
+    connectedApps: number;
+    directory: { connected: boolean; provider: string | null; userCount: number; groupCount: number; lastSync: string | null };
+    activeMappings: number;
+    pendingSuggestions: number;
+    recentActivity: any[];
+    workflows: { total: number };
+  } | null = null;
 
-  async function fetchJson<T = any>(url: string): Promise<T> {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Request failed (${res.status})`);
-    }
-    return res.json();
-  }
-
-  async function load() {
-    loading = true;
-    error = null;
-    evidenceError = null;
-    try {
-      const cfg = await getRuntimeConfig();
-      primaryBase = cfg.complianceBase;
-      resolvedBase = cfg.resolvedBase || null;
-      const serviceBase = ensureBase(cfg.resolvedBase || cfg.complianceBase);
-      usingFallback = Boolean(
-        cfg.resolvedBase && cfg.resolvedBase !== cfg.complianceBase
-      );
-
-      const snapshotJson = await fetchJson<Snapshot>(`${serviceBase}/snapshot`);
-      snapshot = snapshotJson;
-
-      const tenantId = snapshot?.tenantId || "demo";
-      const evidenceBase = ensureBase(deriveEvidenceBase(serviceBase));
-      try {
-        const search = await fetchJson<{ items?: EvidenceSummaryItem[] }>(
-          `${evidenceBase}/search?tenantId=${encodeURIComponent(tenantId)}&limit=5`
-        );
-        evidence = Array.isArray(search?.items) ? search.items : [];
-      } catch (err: any) {
-        evidenceError = err?.message || "Unable to load evidence";
-        evidence = [];
-      }
-    } catch (e: any) {
-      error = e?.message || "unknown error";
-      snapshot = null;
-      evidence = [];
-    } finally {
-      loading = false;
-    }
-  }
+  // Invite
+  let inviteCopied = false;
 
   function escapeCSV(value: string | number | null | undefined): string {
     if (value == null) return "";
     const str = String(value);
-    // Mitigate formula/CSV injection by prefixing risky leading characters
     const safe = /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
-    // Wrap in double quotes if field contains comma, double quote, or newline
     if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r")) {
       return '"' + safe.replace(/"/g, '""') + '"';
     }
     return safe;
-  }
-
-  function exportCSV() {
-    if (!snapshot) return;
-    const lines: string[] = [];
-
-    // Framework coverage
-    lines.push("=== Framework Coverage ===");
-    lines.push("Framework,Coverage %,Passing,Failing,Total");
-    for (const fw of snapshot.frameworkSummary) {
-      lines.push([fw.framework, fw.coveragePercent, fw.passing, fw.failing, fw.total].map(escapeCSV).join(","));
-    }
-
-    // Risks
-    lines.push("");
-    lines.push("=== Risk Register ===");
-    lines.push("ID,Title,Severity,Likelihood,Impact,Owner");
-    for (const r of snapshot.risks) {
-      lines.push([r.id, r.title, r.severity, r.likelihood, r.impact, r.owner || "unassigned"].map(escapeCSV).join(","));
-    }
-
-    // Policies
-    lines.push("");
-    lines.push("=== Policies ===");
-    lines.push("ID,Name,Status,Updated");
-    for (const p of snapshot.policies) {
-      lines.push([p.id, p.name, p.status, p.updated].map(escapeCSV).join(","));
-    }
-
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `atlasit-compliance-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-
-  let inviteCopied = false;
-
-  function tenantInviteLink() {
-    if (!snapshot?.tenantId || typeof window === "undefined") return "";
-    const url = new URL(`${window.location.origin}/console/login`);
-    url.searchParams.set("invite", snapshot.tenantId);
-    return url.toString();
   }
 
   async function trackGrowthEvent(event: string, inviteId: string) {
@@ -180,180 +59,265 @@
   }
 
   async function copyInviteLink() {
-    const link = tenantInviteLink();
-    if (!link || !snapshot?.tenantId) return;
+    if (!session?.tenantId) return;
     try {
-      await navigator.clipboard.writeText(link);
+      const url = new URL(`${window.location.origin}/console/login`);
+      url.searchParams.set("invite", session.tenantId);
+      await navigator.clipboard.writeText(url.toString());
       inviteCopied = true;
-      pushToast({
-        message: "Invite link copied. Share it with your team.",
-        variant: "success",
-      });
-      await trackGrowthEvent("invite_link_copied", snapshot.tenantId);
+      pushToast({ message: "Invite link copied. Share it with your team.", variant: "success" });
+      await trackGrowthEvent("invite_link_copied", session.tenantId);
     } catch {
-      pushToast({
-        message: "Could not copy link. Please copy it manually from your browser bar.",
-        variant: "error",
-      });
+      pushToast({ message: "Could not copy link. Please copy it manually.", variant: "error" });
     }
   }
 
-  function exportHTML() {
-    if (!snapshot) return;
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>AtlasIT Compliance Report</title>
-<style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#1a1a1a;}
-table{width:100%;border-collapse:collapse;margin:16px 0;}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left;}
-th{background:#f5f5f5;font-weight:600;}h1{color:#1e40af;}h2{color:#374151;margin-top:32px;}
-.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500;}
-.high,.critical{background:#fee2e2;color:#991b1b;}.medium{background:#fef3c7;color:#92400e;}.low{background:#d1fae5;color:#065f46;}
-.approved{background:#d1fae5;color:#065f46;}.draft{background:#e0e7ff;color:#3730a3;}
-.bar{height:20px;border-radius:4px;background:#3b82f6;}</style></head>
-<body>
-<h1>AtlasIT Compliance Report</h1>
-<p>Generated: ${new Date().toLocaleString()} | Tenant: ${snapshot.tenantId}</p>
-<h2>Framework Coverage</h2>
-<table><tr><th>Framework</th><th>Coverage</th><th>Passing</th><th>Failing</th><th>Total</th></tr>
-${snapshot.frameworkSummary.map(fw => `<tr><td>${fw.framework}</td><td><div style="display:flex;align-items:center;gap:8px;"><div class="bar" style="width:${fw.coveragePercent}%;min-width:4px;"></div>${fw.coveragePercent}%</div></td><td>${fw.passing}</td><td>${fw.failing}</td><td>${fw.total}</td></tr>`).join("")}
-</table>
-<h2>Risk Register</h2>
-<table><tr><th>ID</th><th>Title</th><th>Severity</th><th>Likelihood</th><th>Impact</th><th>Owner</th></tr>
-${snapshot.risks.map(r => `<tr><td>${r.id}</td><td>${r.title}</td><td><span class="badge ${r.severity}">${r.severity}</span></td><td>${r.likelihood}</td><td>${r.impact}</td><td>${r.owner || "-"}</td></tr>`).join("")}
-</table>
-<h2>Policies</h2>
-<table><tr><th>ID</th><th>Name</th><th>Status</th><th>Updated</th></tr>
-${snapshot.policies.map(p => `<tr><td>${p.id}</td><td>${p.name}</td><td><span class="badge ${p.status}">${p.status}</span></td><td>${new Date(p.updated).toLocaleDateString()}</td></tr>`).join("")}
-</table>
-<footer style="margin-top:40px;padding-top:16px;border-top:1px solid #ddd;font-size:12px;color:#999;">AtlasIT Compliance Platform</footer>
-</body></html>`;
+  async function load() {
+    loading = true;
+    error = null;
+    try {
+      // Fetch session
+      const sessionRes = await fetch("/api/auth/session");
+      if (!sessionRes.ok) throw new Error("Not authenticated");
+      session = await sessionRes.json();
+      sessionLoaded = true;
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `atlasit-compliance-report-${new Date().toISOString().slice(0, 10)}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const email = session.email || "";
+      isPlatformOwner = (email.endsWith("@atlasit.pro") || email.endsWith("@atlas.app")) && session.superAdmin === true;
+
+      if (isPlatformOwner) {
+        const res = await fetch("/api/platform/dashboard");
+        if (!res.ok) throw new Error(`Dashboard fetch failed (${res.status})`);
+        platformData = await res.json();
+      } else {
+        const res = await fetch("/api/tenant/dashboard");
+        if (!res.ok) throw new Error(`Dashboard fetch failed (${res.status})`);
+        tenantData = await res.json();
+      }
+    } catch (e: any) {
+      error = e?.message || "Failed to load dashboard";
+    } finally {
+      loading = false;
+    }
   }
+
+  // Check for ?setup=idp
+  $: showIdpBanner = $page.url.searchParams.get("setup") === "idp";
 
   onMount(load);
 </script>
 
 <div class="px-5 py-5 max-w-[1400px] mx-auto">
-  <div
-    class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4"
-  >
-    <div>
-      <h1 class="text-3xl font-semibold mb-1">AtlasIT Console</h1>
-      <p class="text-sm text-white/60">
-        Compliance & risk snapshot view.
-        {#if snapshot?.generatedAt}
-          <span class="generated">
-            Generated {new Date(snapshot.generatedAt).toLocaleString()}
-            {#if typeof snapshot.ageSeconds === "number"}
-              (<span title="Age in seconds">age {snapshot.ageSeconds}s</span>)
-            {/if}
-          </span>
-        {/if}
-      </p>
+  {#if showIdpBanner}
+    <div class="bg-indigo-600/20 border border-indigo-500/30 rounded-lg p-4 mb-6 flex items-center justify-between">
+      <div>
+        <div class="font-medium">Complete your directory setup</div>
+        <div class="text-sm text-white/60">Authorize your identity provider to sync users and groups</div>
+      </div>
+      <a href="/console/marketplace" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white">
+        Connect Now
+      </a>
     </div>
-    <div class="header-actions">
-      <a
-        href="/console/marketplace"
-        class="text-sm bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-white"
-      >
-        Marketplace
-      </a>
-      <a
-        href="/console/platform-status"
-        class="text-sm bg-green-600 hover:bg-green-500 px-3 py-1.5 rounded text-white"
-      >
-        Platform Status
-      </a>
-      {#if snapshot}
+  {/if}
+
+  {#if loading}
+    <div class="flex flex-col gap-4" aria-busy="true" aria-live="polite">
+      <div class="h-8 w-48 rounded bg-white/5 animate-pulse"></div>
+      <div class="h-4 w-64 rounded bg-white/5 animate-pulse"></div>
+      <div class="grid grid-cols-4 gap-4 mt-4">
+        {#each [1, 2, 3, 4] as _}
+          <div class="rounded-lg p-5 bg-white/5 border border-white/10 h-24 animate-pulse"></div>
+        {/each}
+      </div>
+    </div>
+
+  {:else if error}
+    <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{error}</div>
+
+  {:else if isPlatformOwner && platformData}
+    <!-- Platform Owner Dashboard -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-3xl font-semibold mb-1">Platform Overview</h1>
+        <p class="text-sm text-white/60">AtlasIT platform administration</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <a href="/console/admin" class="text-sm bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-white">Admin</a>
+        <a href="/console/settings" class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white">Settings</a>
+        <button on:click={load} class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white">Refresh</button>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Total Tenants</div>
+        <div class="text-3xl font-bold mt-1">{platformData.tenants.total}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Active Tenants</div>
+        <div class="text-3xl font-bold mt-1">{platformData.tenants.active}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Total Users</div>
+        <div class="text-3xl font-bold mt-1">{platformData.users.total}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Workflows (24h)</div>
+        <div class="text-3xl font-bold mt-1">{platformData.workflows.total}</div>
+      </div>
+    </div>
+
+    <!-- Recent Tenants -->
+    {#if platformData.recentTenants.length > 0}
+      <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
+        <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Recent Tenants</h2>
+          <a href="/console/admin" class="text-sm text-blue-400 hover:text-blue-300">View all</a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-white/40 text-xs uppercase tracking-wider">
+                <th class="px-5 py-3">Name</th>
+                <th class="px-5 py-3">Owner</th>
+                <th class="px-5 py-3">Users</th>
+                <th class="px-5 py-3">Status</th>
+                <th class="px-5 py-3">Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each platformData.recentTenants as tenant}
+                <tr class="border-t border-white/5 hover:bg-white/5">
+                  <td class="px-5 py-3 font-medium">{tenant.name}</td>
+                  <td class="px-5 py-3 text-white/60">{tenant.owner || '-'}</td>
+                  <td class="px-5 py-3 text-white/60">{tenant.users ?? '-'}</td>
+                  <td class="px-5 py-3">
+                    <span class="text-xs px-2 py-0.5 rounded-full {tenant.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}">
+                      {tenant.status}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-white/40">{tenant.created ? new Date(tenant.created).toLocaleDateString() : '-'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Recent Activity -->
+    {#if platformData.recentActivity.length > 0}
+      <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="px-5 py-4 border-b border-white/10">
+          <h2 class="text-lg font-semibold">Recent Activity</h2>
+        </div>
+        <div class="divide-y divide-white/5">
+          {#each platformData.recentActivity as entry}
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div>
+                <div class="text-sm">{entry.description || entry.action}</div>
+                {#if entry.tenant}
+                  <div class="text-xs text-white/40 mt-0.5">{entry.tenant}</div>
+                {/if}
+              </div>
+              <div class="text-xs text-white/30">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+  {:else if tenantData}
+    <!-- Tenant Dashboard -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-3xl font-semibold mb-1">
+          Dashboard
+          {#if session?.orgName}
+            <span class="text-lg font-normal text-white/40 ml-2">{session.orgName}</span>
+          {/if}
+        </h1>
+        <p class="text-sm text-white/60">Your organization overview</p>
+      </div>
+      <div class="flex items-center gap-3">
         <button
           on:click={copyInviteLink}
           class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
           title="Copy team invite link"
         >{inviteCopied ? "Invite Link Copied" : "Invite Team"}</button>
-      {/if}
-      {#if snapshot}
-        <button
-          on:click={exportCSV}
-          class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
-          title="Export as CSV"
-        >Export CSV</button>
-        <button
-          on:click={exportHTML}
-          class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
-          title="Export as printable HTML report"
-        >Export Report</button>
-      {/if}
-      {#if usingFallback && resolvedBase}
-        <span class="fallback-badge" title={`Primary base ${primaryBase}`}
-          >Fallback endpoint active</span
-        >
-      {/if}
-      <button
-        on:click={load}
-        class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white"
-        >Refresh</button
-      >
+        <a href="/console/workflows" class="text-sm bg-purple-600 hover:bg-purple-500 px-3 py-1.5 rounded text-white">View Workflows</a>
+        <a href="/console/api-manager" class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white">API Manager</a>
+        <button on:click={load} class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white">Refresh</button>
+      </div>
     </div>
-  </div>
 
-  {#if loading}
-    <div class="flex flex-col gap-4" aria-busy="true" aria-live="polite">
-      <div class="flex gap-4">
-        <Skeleton width="180px" height="20px" />
-        <Skeleton width="140px" height="20px" />
-        <Skeleton width="160px" height="20px" />
+    <!-- Directory setup banner -->
+    {#if tenantData.directory.connected === false}
+      <div class="bg-amber-600/20 border border-amber-500/30 rounded-lg p-4 mb-6 flex items-center justify-between">
+        <div>
+          <div class="font-medium">Connect your identity provider to get started</div>
+          <div class="text-sm text-white/60">Sync users and groups from your directory to automate JML workflows</div>
+        </div>
+        <a href="/console/marketplace" class="text-sm bg-amber-600 hover:bg-amber-500 px-4 py-2 rounded text-white">
+          Connect Directory
+        </a>
       </div>
-      <Skeleton width="60%" height="14px" />
-      <div class="flex gap-6 mt-4">
-        <Skeleton width="45%" height="180px" />
-        <Skeleton width="45%" height="180px" />
+    {/if}
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Connected Apps</div>
+        <div class="text-3xl font-bold mt-1">{tenantData.connectedApps}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Directory Users</div>
+        <div class="text-3xl font-bold mt-1">{tenantData.directory.userCount}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Active Mappings</div>
+        <div class="text-3xl font-bold mt-1">{tenantData.activeMappings}</div>
+      </div>
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="text-sm text-white/50">Pending Suggestions</div>
+        <div class="text-3xl font-bold mt-1">{tenantData.pendingSuggestions}</div>
       </div>
     </div>
-  {:else if error}
-    <div class="text-sm text-red-400">{error}</div>
-  {:else if snapshot}
-    <section class="mt-2">
-      <h2 class="text-lg font-semibold mb-3">Framework Coverage</h2>
-      <FrameworkCoverage frameworks={snapshot.frameworkSummary} />
-      <div class="flex flex-wrap gap-4 mt-6">
-        <div class="flex-1 basis-[420px] min-w-[360px] flex flex-col gap-4">
-          <RiskMatrix risks={snapshot.risks} />
-          <RiskHeatmap risks={snapshot.risks} />
-          <EvidenceSummary items={evidence} error={evidenceError} />
+
+    <!-- Pending suggestions CTA -->
+    {#if tenantData.pendingSuggestions > 0}
+      <div class="rounded-lg bg-indigo-600/10 border border-indigo-500/30 p-5 mb-6 flex items-center justify-between">
+        <div>
+          <div class="font-medium">Review {tenantData.pendingSuggestions} suggested app mapping{tenantData.pendingSuggestions !== 1 ? 's' : ''}</div>
+          <div class="text-sm text-white/60 mt-1">AtlasIT detected apps that can be mapped to directory groups</div>
         </div>
-        <div class="flex-[2] basis-[640px] min-w-[480px]">
-          <PolicyCards policies={snapshot.policies} />
+        <a href="/console/directory" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white">
+          Review Suggestions
+        </a>
+      </div>
+    {/if}
+
+    <!-- Recent Activity -->
+    {#if tenantData.recentActivity.length > 0}
+      <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10">
+        <div class="px-5 py-4 border-b border-white/10">
+          <h2 class="text-lg font-semibold">Recent Activity</h2>
+        </div>
+        <div class="divide-y divide-white/5">
+          {#each tenantData.recentActivity as entry}
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div>
+                <div class="text-sm">{entry.description || entry.action}</div>
+                {#if entry.user}
+                  <div class="text-xs text-white/40 mt-0.5">{entry.user}</div>
+                {/if}
+              </div>
+              <div class="text-xs text-white/30">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+            </div>
+          {/each}
         </div>
       </div>
-    </section>
+    {/if}
   {/if}
 </div>
-
-<style>
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .fallback-badge {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    background: rgba(251, 191, 36, 0.2);
-    color: #fcd34d;
-    padding: 4px 8px;
-    border-radius: 999px;
-    border: 1px solid rgba(251, 191, 36, 0.4);
-  }
-  .generated {
-    margin-left: 8px;
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 0.85rem;
-  }
-</style>

@@ -263,7 +263,7 @@
     </div>
   {:else}
     <!-- Workflow cards -->
-    <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
       {#each filtered as app}
         <div class="rounded-lg p-5 flex flex-col" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
           <!-- Header -->

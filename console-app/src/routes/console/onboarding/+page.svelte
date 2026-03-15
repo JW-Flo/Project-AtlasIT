@@ -20,7 +20,11 @@
   // Step 3: Compliance frameworks
   let frameworks: string[] = [];
 
-  // Step 4: Apps
+  // Step 4: Directory / IdP
+  let selectedIdp: 'okta' | 'google_workspace' | 'microsoft_365' | null = null;
+  let selectedIdpDomain = '';
+
+  // Step 5: Apps
   let selectedApps: string[] = [];
   let expandedCategories: Record<string, boolean> = {};
 
@@ -86,7 +90,8 @@
     if (step === 2 && !ownerEmail) { error = "Owner email is required"; return; }
     if (step === 2 && !ownerPassword) { error = "Password is required"; return; }
     if (step === 2 && ownerPassword.length < 8) { error = "Password must be at least 8 characters"; return; }
-    if (step < 5) step++;
+    if (step === 4 && selectedIdp === 'okta' && !selectedIdpDomain.trim()) { error = "Okta domain is required"; return; }
+    if (step < 6) step++;
   }
 
   function prevStep() {
@@ -106,6 +111,8 @@
           industry,
           companySize,
           frameworks,
+          selectedIdp,
+          selectedIdpDomain,
           selectedApps,
           ownerName,
           ownerEmail,
@@ -128,7 +135,7 @@
 
       if (loginRes.ok) {
         pushToast({ message: `Welcome to AtlasIT! ${data.orgName} is ready.`, variant: "success" });
-        goto("/console");
+        goto(selectedIdp ? "/console?setup=idp" : "/console");
       } else {
         pushToast({ message: "Organization created. Please sign in.", variant: "info" });
         goto("/console/login");
@@ -149,7 +156,7 @@
 
     <!-- Progress -->
     <div class="flex items-center justify-center gap-2 mb-8">
-      {#each [1, 2, 3, 4, 5] as s}
+      {#each [1, 2, 3, 4, 5, 6] as s}
         <div
           class="h-2 rounded-full transition-all"
           style="width: {s <= step ? '40px' : '20px'}; background: {s <= step ? 'var(--color-accent, #3b82f6)' : 'rgba(255,255,255,0.1)'};"
@@ -234,6 +241,59 @@
         </div>
 
       {:else if step === 4}
+        <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Connect Your Directory</h2>
+        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Choose your identity provider to sync users and groups</p>
+
+        <div class="grid grid-cols-3 gap-4">
+          <button
+            class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'okta' ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/5 hover:border-white/30'}"
+            on:click={() => selectedIdp = 'okta'}
+          >
+            <div class="text-lg font-semibold mb-1">Okta</div>
+            <div class="text-sm text-white/60">SSO & directory with SCIM support</div>
+          </button>
+
+          <button
+            class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'google_workspace' ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/5 hover:border-white/30'}"
+            on:click={() => { selectedIdp = 'google_workspace'; selectedIdpDomain = ''; }}
+          >
+            <div class="text-lg font-semibold mb-1">Google Workspace</div>
+            <div class="text-sm text-white/60">Sync users and groups from Google</div>
+          </button>
+
+          <button
+            class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'microsoft_365' ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 bg-white/5 hover:border-white/30'}"
+            on:click={() => { selectedIdp = 'microsoft_365'; selectedIdpDomain = ''; }}
+          >
+            <div class="text-lg font-semibold mb-1">Microsoft 365 / Entra ID</div>
+            <div class="text-sm text-white/60">Azure AD directory and SSO</div>
+          </button>
+        </div>
+
+        {#if selectedIdp === 'okta'}
+          <div class="mt-4">
+            <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Okta Domain *</label>
+            <input
+              type="text"
+              bind:value={selectedIdpDomain}
+              placeholder="your-org.okta.com"
+              class="w-full px-3 py-2 rounded text-sm"
+              style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
+            />
+          </div>
+        {/if}
+
+        <div class="mt-4 text-center">
+          <button
+            type="button"
+            class="text-sm text-white/40 hover:text-white/60 underline"
+            on:click={() => { selectedIdp = null; selectedIdpDomain = ''; step++; }}
+          >
+            Skip for now
+          </button>
+        </div>
+
+      {:else if step === 5}
         <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Select Your Apps</h2>
         <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Choose the apps your organization uses (optional)</p>
 
@@ -317,6 +377,17 @@
               </div>
             </div>
           {/if}
+          {#if selectedIdp}
+            <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
+              <div class="text-xs uppercase tracking-wider mb-2" style="color: var(--color-text, #fff); opacity: 0.4;">Identity Provider</div>
+              <div class="text-sm" style="color: var(--color-text, #fff);">
+                {selectedIdp === 'okta' ? 'Okta' : selectedIdp === 'google_workspace' ? 'Google Workspace' : 'Microsoft 365 / Entra ID'}
+              </div>
+              {#if selectedIdp === 'okta' && selectedIdpDomain}
+                <div class="text-xs mt-1" style="color: var(--color-text, #fff); opacity: 0.5;">{selectedIdpDomain}</div>
+              {/if}
+            </div>
+          {/if}
           {#if selectedApps.length > 0}
             <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
               <div class="text-xs uppercase tracking-wider mb-2" style="color: var(--color-text, #fff); opacity: 0.4;">Apps</div>
@@ -346,9 +417,9 @@
           </a>
         {/if}
 
-        {#if step < 5}
+        {#if step < 6}
           <button type="button" on:click={nextStep} class="px-6 py-2 text-sm font-medium rounded-lg text-white" style="background: var(--color-accent, #3b82f6);">
-            {step === 4 ? (selectedApps.length > 0 ? "Continue" : "Skip") : "Continue"}
+            {step === 4 ? (selectedIdp ? "Continue" : "Skip") : step === 5 ? (selectedApps.length > 0 ? "Continue" : "Skip") : "Continue"}
           </button>
         {:else}
           <button type="button" on:click={finish} disabled={loading} class="px-6 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-50" style="background: var(--color-accent, #3b82f6);">
