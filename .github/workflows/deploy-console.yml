@@ -35,7 +35,7 @@ jobs:
               working-directory: console-app
 
             - name: Build console
-              run: npm run build
+              run: npm run build && touch .svelte-kit/cloudflare/.assetsignore
               working-directory: console-app
 
             - name: Lint console (best effort)
