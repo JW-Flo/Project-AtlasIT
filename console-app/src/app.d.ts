@@ -9,8 +9,12 @@ declare global {
         roles: string[];
         superAdmin?: boolean;
         provider: string;
+        tenantId?: string;
+        displayName?: string;
         createdAt: string;
         lastSeenAt: string;
+        impersonating?: boolean;
+        impersonatedBy?: string;
       } | null;
     }
     // interface PageData {}
