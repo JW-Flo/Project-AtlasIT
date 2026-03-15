@@ -62,7 +62,10 @@ def _is_valid_email(value):
     return isinstance(value, str) and EMAIL_RE.match(value) is not None
 
 
-def handler(request):
+def handler(request, session=None):
+    if session is None:
+        session = requests.Session()
+
     event = request.get_json(silent=True)
     if not isinstance(event, dict):
         return ("Bad Request: no JSON", 400)
@@ -77,16 +80,16 @@ def handler(request):
 
     if not (action.endswith(".add") or action.endswith(".remove")):
         return ("Event not supported", 400)
-    token = get_ramp_token()
+    token = get_ramp_token(session=session)
     try:
         if action.endswith(".add"):
             role = ROLE_MAP.get(group_name)
             if role:
-                assign_role(token, user_email, role)
+                assign_role(token, user_email, role, session=session)
         elif action.endswith(".remove"):
             # Secure default: remove privileged role by downscoping to baseline employee role.
-            assign_role(token, user_email, "employee")
+            assign_role(token, user_email, "employee", session=session)
     finally:
-        revoke_ramp_token(token)
+        revoke_ramp_token(token, session=session)
 
     return ("OK", 200)
