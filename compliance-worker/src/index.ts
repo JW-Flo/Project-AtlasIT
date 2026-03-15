@@ -48,6 +48,7 @@ import {
   SECURITY_HEADERS,
 } from "./http/utils";
 import { log } from "./log";
+import { webhookRoutes } from "./routes/webhooks";
 
 // ----------------------------------------------------------------------------------
 // TODO (Codex Ownership Notes): The following pending enhancements are delegated to
@@ -3248,6 +3249,7 @@ export default {
       activityRoutes,
       notificationsRoutes,
       evidenceRoutes,
+      webhookRoutes,
       adminRoutes,
     ];
 

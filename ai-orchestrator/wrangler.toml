@@ -1,6 +1,6 @@
 name = "atlasit-ai-orchestrator"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-main = "index.js"
+main = "src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
@@ -16,6 +16,26 @@ preview_id = "091c0fba72c84433b9fa0a453b1181ba"
 binding = "AI_QUOTA"
 id = "d4380b3e24094a24907b83c95238a0af"
 preview_id = "d4380b3e24094a24907b83c95238a0af"
+
+# KV Namespace for idempotency dedup (24h TTL)
+[[kv_namespaces]]
+binding = "IDEMPOTENCY_CACHE"
+id = "PLACEHOLDER_IDEMPOTENCY_CACHE_ID"
+preview_id = "PLACEHOLDER_IDEMPOTENCY_CACHE_PREVIEW_ID"
+
+# D1 Database (shared ATLAS_CORE_DB)
+[[d1_databases]]
+binding = "DB"
+database_name = "ATLAS_CORE_DB"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[durable_objects.bindings]]
+name = "WORKFLOW"
+class_name = "WorkflowDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["WorkflowDO"]
 
 [vars]
 AI_PROVIDER = "groq"

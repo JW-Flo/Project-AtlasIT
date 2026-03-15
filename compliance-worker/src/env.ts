@@ -9,6 +9,8 @@ export interface Env {
   apiTokens?: KVNamespace;
   MAX_EVIDENCE_BYTES?: string | number;
   GROQ_API_KEY?: string;
+  WEBHOOK_SECRET?: string;
+  ORCHESTRATOR_URL?: string;
 }
 
 export function resolveD1(env: Env): D1Database | undefined {

@@ -1,64 +1,65 @@
-const LEVEL_ORDER = {
+const LOG_LEVELS = {
   debug: 0,
   info: 1,
   warn: 2,
   error: 3,
 };
-export class StructuredLogger {
-  service;
-  minLevel;
-  constructor(service, level = "info") {
-    this.service = service;
-    this.minLevel = LEVEL_ORDER[level];
-  }
-  debug(message, data) {
-    this.log("debug", message, data);
-  }
-  info(message, data) {
-    this.log("info", message, data);
-  }
-  warn(message, data) {
-    this.log("warn", message, data);
-  }
-  error(message, data) {
-    this.log("error", message, data);
-  }
-  child(defaults) {
-    return new ChildLogger(this, defaults);
-  }
-  log(level, message, data) {
-    if (LEVEL_ORDER[level] < this.minLevel) return;
+export function createLogger(context = {}, minLevel = "info") {
+  const minLevelValue = LOG_LEVELS[minLevel];
+  function log(level, message, data) {
+    if (LOG_LEVELS[level] < minLevelValue) return;
     const entry = {
       level,
       message,
-      service: this.service,
       timestamp: new Date().toISOString(),
+      ...context,
       ...data,
     };
     const output = JSON.stringify(entry);
-    if (level === "error") console.error(output);
-    else if (level === "warn") console.warn(output);
-    else console.log(output);
+    switch (level) {
+      case "error":
+        console.error(output);
+        break;
+      case "warn":
+        console.warn(output);
+        break;
+      case "debug":
+        console.debug(output);
+        break;
+      default:
+        console.log(output);
+        break;
+    }
   }
+  return {
+    debug: (msg, data) => log("debug", msg, data),
+    info: (msg, data) => log("info", msg, data),
+    warn: (msg, data) => log("warn", msg, data),
+    error: (msg, data) => log("error", msg, data),
+    child: (childContext) =>
+      createLogger({ ...context, ...childContext }, minLevel),
+  };
 }
-class ChildLogger {
-  parent;
-  defaults;
-  constructor(parent, defaults) {
-    this.parent = parent;
-    this.defaults = defaults;
+/** @deprecated Use createLogger() instead */
+export class StructuredLogger {
+  logger;
+  constructor(service, level = "info") {
+    this.logger = createLogger({ service }, level);
   }
   debug(message, data) {
-    this.parent.debug(message, { ...this.defaults, ...data });
+    this.logger.debug(message, data);
   }
   info(message, data) {
-    this.parent.info(message, { ...this.defaults, ...data });
+    this.logger.info(message, data);
   }
   warn(message, data) {
-    this.parent.warn(message, { ...this.defaults, ...data });
+    this.logger.warn(message, data);
   }
   error(message, data) {
-    this.parent.error(message, { ...this.defaults, ...data });
+    this.logger.error(message, data);
+  }
+  child(context) {
+    return this.logger.child(context);
   }
 }
 //# sourceMappingURL=logger.js.map

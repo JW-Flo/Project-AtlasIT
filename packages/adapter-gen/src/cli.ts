@@ -1,96 +1,121 @@
 #!/usr/bin/env node
 import process from "node:process";
 import path from "node:path";
-import { generateAdapter } from "./generator.js";
+import { promises as fs } from "node:fs";
+import { ConnectorManifestSchema } from "../../connector-schema/src/manifest.js";
+import { scaffoldAdapter } from "./scaffold.js";
 
 interface ParsedArgs {
-  command?: string;
-  options: Record<string, string | boolean>;
-  positionals: string[];
+  manifestPath?: string;
+  outDir?: string;
+  help: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const [command, ...rest] = argv;
-  const options: Record<string, string | boolean> = {};
-  const positionals: string[] = [];
+  const result: ParsedArgs = { help: false };
 
-  for (let i = 0; i < rest.length; i += 1) {
-    const token = rest[i];
-    if (!token.startsWith("--")) {
-      positionals.push(token);
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i];
+
+    if (token === "--help" || token === "-h") {
+      result.help = true;
       continue;
     }
-    const [flag, value] = token.split("=", 2);
-    const key = flag.replace(/^--/, "");
-    if (typeof value === "string" && value.length > 0) {
-      options[key] = value;
-      continue;
-    }
-    const next = rest[i + 1];
-    if (next && !next.startsWith("--")) {
-      options[key] = next;
+
+    if (token === "--out" || token === "-o") {
+      result.outDir = argv[i + 1];
       i += 1;
-    } else {
-      options[key] = true;
+      continue;
+    }
+
+    if (token.startsWith("--out=")) {
+      result.outDir = token.slice("--out=".length);
+      continue;
+    }
+
+    if (!token.startsWith("-")) {
+      result.manifestPath = token;
     }
   }
 
-  return { command, options, positionals };
+  return result;
 }
 
-function printHelp() {
-  console.log(`AtlasIT Adapter Generator\n\nUsage:\n  atlasit-gen gen --schema <path> --name <adapter> [--out adapters] [--flag FEATURE_CONNECTOR_FOO] [--force]\n`);
+function printHelp(): void {
+  console.log(
+    `AtlasIT Adapter Generator
+
+Usage:
+  adapter-gen <manifest.json> [--out <directory>]
+
+Arguments:
+  manifest.json    Path to a ConnectorManifest JSON file
+
+Options:
+  --out, -o        Output directory (default: ./adapters/<slug>)
+  --help, -h       Show this help message
+`,
+  );
 }
 
-async function run() {
-  const { command, options } = parseArgs(process.argv.slice(2));
-  if (!command || command === "--help" || command === "help") {
+async function run(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+
+  if (args.help || !args.manifestPath) {
     printHelp();
-    process.exit(0);
+    process.exit(args.help ? 0 : 1);
   }
 
-  if (command !== "gen") {
-    console.error(`Unknown command: ${command}`);
-    printHelp();
-    process.exit(1);
-  }
+  const manifestPath = path.resolve(process.cwd(), args.manifestPath);
 
-  const schema = options.schema as string | undefined;
-  const name = options.name as string | undefined;
-  if (!schema || !name) {
-    console.error("Missing required parameters: --schema and --name");
-    process.exit(1);
-  }
-
-  const outDir = (options.out as string | undefined) ?? path.resolve(process.cwd(), "adapters");
-  const featureFlag = options.flag as string | undefined;
-  const force = options.force === true || options.force === "true";
-
+  let rawContent: string;
   try {
-    const result = await generateAdapter({
-      schemaPath: schema,
-      name,
-      outDir,
-      featureFlag,
-      force,
-    });
-
-    console.log(
-      JSON.stringify(
-        {
-          status: "ok",
-          slug: result.slug,
-          featureFlag: result.featureFlag,
-          output: result.targetDir,
-        },
-        null,
-        2,
-      ),
-    );
-  } catch (error) {
-    console.error(`Adapter generation failed: ${(error as Error).message}`);
+    rawContent = await fs.readFile(manifestPath, "utf8");
+  } catch {
+    console.error(`Failed to read manifest file: ${manifestPath}`);
     process.exit(1);
   }
+
+  let rawJson: unknown;
+  try {
+    rawJson = JSON.parse(rawContent);
+  } catch {
+    console.error(`Failed to parse JSON from: ${manifestPath}`);
+    process.exit(1);
+  }
+
+  const parseResult = ConnectorManifestSchema.safeParse(rawJson);
+  if (!parseResult.success) {
+    console.error("Manifest validation failed:");
+    for (const issue of parseResult.error.issues) {
+      console.error(`  ${issue.path.join(".")}: ${issue.message}`);
+    }
+    process.exit(1);
+  }
+
+  const manifest = parseResult.data;
+  const outputDir = args.outDir
+    ? path.resolve(process.cwd(), args.outDir)
+    : path.resolve(process.cwd(), "adapters", manifest.slug);
+
+  await scaffoldAdapter(manifest, outputDir);
+
+  const { files } = await import("./generator.js").then((m) =>
+    m.generateAdapter(manifest),
+  );
+  const fileList = Array.from(files.keys())
+    .map((f) => `    ${f}`)
+    .join("\n");
+
+  console.log(`Adapter generated successfully.
+
+  Connector:  ${manifest.name} (${manifest.slug})
+  Provider:   ${manifest.provider}
+  Auth:       ${manifest.auth.model}
+  Output:     ${outputDir}
+  Files (${files.size}):
+${fileList}
+`);
 }
 
 run();

@@ -60,6 +60,7 @@ async function notifyStakeholders(context) {
 // ---------------------------------------------------------------------------
 async function applyRoleChange(context) {
   const newRole = context.newRole;
+  const movement = context.movement;
   if (!newRole) {
     return { success: false, error: "missing_new_role" };
   }
@@ -68,17 +69,26 @@ async function applyRoleChange(context) {
     output: {
       applied: true,
       newRole,
+      fromRole: movement?.fromRole ?? null,
+      toRole: movement?.toRole ?? null,
+      fromDepartment: movement?.fromDepartment ?? null,
+      toDepartment: movement?.toDepartment ?? null,
     },
   };
 }
 async function reconcileEntitlements(context) {
   const entitlements = context.entitlements;
+  const movement = context.movement;
   const target = entitlements?.target;
   return {
     success: true,
     output: {
       reconciled: true,
       applied: target ?? [],
+      fromGroups: movement?.fromGroups ?? [],
+      toGroups: movement?.toGroups ?? [],
+      fromSystems: movement?.fromSystems ?? [],
+      toSystems: movement?.toSystems ?? [],
     },
   };
 }

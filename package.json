@@ -95,7 +95,9 @@
     "codex:context:ultra": "npx ts-node tools/generate-codex-context.ts --ultra --no-readme",
     "codex:context:sections": "npx ts-node tools/generate-codex-context.ts --sections",
     "audit:ci": "node scripts/audit-ci.mjs",
-    "triage:issues": "node scripts/triage-agent.mjs"
+    "triage:issues": "node scripts/triage-agent.mjs",
+    "test:workers": "vitest run --project workers",
+    "test:watch": "vitest --watch"
   },
   "keywords": [
     "it-management",
@@ -117,6 +119,8 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.9.1",
+    "@cloudflare/vitest-pool-workers": "^0.12.21",
+    "@hono/zod-validator": "^0.7.6",
     "@playwright/test": "^1.48.2",
     "@types/node": "^22.10.2",
     "@typescript-eslint/eslint-plugin": "^8.18.2",

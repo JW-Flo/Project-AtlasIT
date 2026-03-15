@@ -8,7 +8,6 @@
     "module": "nodenext",
     "moduleResolution": "nodenext"
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*"],
+  "references": [{ "path": "../connector-schema" }]
 }

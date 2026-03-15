@@ -1,0 +1,20 @@
+name = "atlasit-okta-connector"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+CONNECTOR_ID = "okta"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas_core_db"
+database_id = "placeholder-replace-with-actual-id"
+
+# Secrets (set via wrangler secret put):
+# OKTA_API_TOKEN - Okta API token (SSWS)
+
+[observability.logs]
+enabled = true

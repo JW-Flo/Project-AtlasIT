@@ -1,88 +1,101 @@
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-interface LogEntry {
-  level: LogLevel;
-  message: string;
-  service: string;
-  timestamp: string;
-  traceId?: string;
-  tenantId?: string;
-  [key: string]: unknown;
-}
-
-const LEVEL_ORDER: Record<LogLevel, number> = {
+const LOG_LEVELS: Record<LogLevel, number> = {
   debug: 0,
   info: 1,
   warn: 2,
   error: 3,
 };
 
-export class StructuredLogger {
-  private readonly minLevel: number;
+export interface LogContext {
+  correlationId?: string;
+  service?: string;
+  environment?: string;
+  [key: string]: unknown;
+}
 
-  constructor(
-    private readonly service: string,
-    level: LogLevel = "info",
-  ) {
-    this.minLevel = LEVEL_ORDER[level];
-  }
+export interface Logger {
+  debug(message: string, data?: Record<string, unknown>): void;
+  info(message: string, data?: Record<string, unknown>): void;
+  warn(message: string, data?: Record<string, unknown>): void;
+  error(message: string, data?: Record<string, unknown>): void;
+  child(context: LogContext): Logger;
+}
 
-  debug(message: string, data?: Record<string, unknown>): void {
-    this.log("debug", message, data);
-  }
+export function createLogger(
+  context: LogContext = {},
+  minLevel: LogLevel = "info",
+): Logger {
+  const minLevelValue = LOG_LEVELS[minLevel];
 
-  info(message: string, data?: Record<string, unknown>): void {
-    this.log("info", message, data);
-  }
-
-  warn(message: string, data?: Record<string, unknown>): void {
-    this.log("warn", message, data);
-  }
-
-  error(message: string, data?: Record<string, unknown>): void {
-    this.log("error", message, data);
-  }
-
-  child(defaults: Record<string, unknown>): ChildLogger {
-    return new ChildLogger(this, defaults);
-  }
-
-  private log(
+  function log(
     level: LogLevel,
     message: string,
     data?: Record<string, unknown>,
   ): void {
-    if (LEVEL_ORDER[level] < this.minLevel) return;
-    const entry: LogEntry = {
+    if (LOG_LEVELS[level] < minLevelValue) return;
+
+    const entry = {
       level,
       message,
-      service: this.service,
       timestamp: new Date().toISOString(),
+      ...context,
       ...data,
     };
+
     const output = JSON.stringify(entry);
-    if (level === "error") console.error(output);
-    else if (level === "warn") console.warn(output);
-    else console.log(output);
+
+    switch (level) {
+      case "error":
+        console.error(output);
+        break;
+      case "warn":
+        console.warn(output);
+        break;
+      case "debug":
+        console.debug(output);
+        break;
+      default:
+        console.log(output);
+        break;
+    }
   }
+
+  return {
+    debug: (msg, data) => log("debug", msg, data),
+    info: (msg, data) => log("info", msg, data),
+    warn: (msg, data) => log("warn", msg, data),
+    error: (msg, data) => log("error", msg, data),
+    child: (childContext) =>
+      createLogger({ ...context, ...childContext }, minLevel),
+  };
 }
 
-class ChildLogger {
-  constructor(
-    private readonly parent: StructuredLogger,
-    private readonly defaults: Record<string, unknown>,
-  ) {}
+/** @deprecated Use createLogger() instead */
+export class StructuredLogger implements Logger {
+  private readonly logger: Logger;
+
+  constructor(service: string, level: LogLevel = "info") {
+    this.logger = createLogger({ service }, level);
+  }
 
   debug(message: string, data?: Record<string, unknown>): void {
-    this.parent.debug(message, { ...this.defaults, ...data });
+    this.logger.debug(message, data);
   }
+
   info(message: string, data?: Record<string, unknown>): void {
-    this.parent.info(message, { ...this.defaults, ...data });
+    this.logger.info(message, data);
   }
+
   warn(message: string, data?: Record<string, unknown>): void {
-    this.parent.warn(message, { ...this.defaults, ...data });
+    this.logger.warn(message, data);
   }
+
   error(message: string, data?: Record<string, unknown>): void {
-    this.parent.error(message, { ...this.defaults, ...data });
+    this.logger.error(message, data);
+  }
+
+  child(context: LogContext): Logger {
+    return this.logger.child(context);
   }
 }
