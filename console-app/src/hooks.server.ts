@@ -167,7 +167,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   // ------------------------------------------------------------------
   if (
     event.url.pathname.startsWith("/console") &&
-    !event.url.pathname.startsWith("/console/login")
+    !event.url.pathname.startsWith("/console/login") &&
+    !event.url.pathname.startsWith("/console/onboarding")
   ) {
     if (!user) {
       // API routes return 401; page routes redirect to login
