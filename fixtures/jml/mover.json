@@ -13,6 +13,16 @@
     "title": "Revenue Ops Manager",
     "effectiveDate": "2025-09-01"
   },
+  "movement": {
+    "fromRole": "Account Manager",
+    "toRole": "Revenue Ops Manager",
+    "fromDepartment": "Customer Success",
+    "toDepartment": "Revenue Operations",
+    "fromGroups": ["cs-team", "account-managers"],
+    "toGroups": ["revops-team", "analytics-users"],
+    "fromSystems": ["salesforce", "gong", "intercom"],
+    "toSystems": ["salesforce", "clari", "mode", "looker"]
+  },
   "entitlements": {
     "previous": ["okta", "salesforce", "gong"],
     "target": ["okta", "salesforce", "clari", "mode"]

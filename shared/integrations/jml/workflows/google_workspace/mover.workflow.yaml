@@ -18,6 +18,14 @@ inputs:
   optional:
     - department
     - title
+    - from_role
+    - to_role
+    - from_department
+    - to_department
+    - from_groups
+    - to_groups
+    - from_systems
+    - to_systems
     - add_group_ids
     - remove_group_ids
 

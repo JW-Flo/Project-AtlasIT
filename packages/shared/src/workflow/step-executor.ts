@@ -89,6 +89,7 @@ async function applyRoleChange(
   context: Record<string, unknown>,
 ): Promise<StepExecutionResult> {
   const newRole = context.newRole as Record<string, unknown> | undefined;
+  const movement = context.movement as Record<string, unknown> | undefined;
   if (!newRole) {
     return { success: false, error: "missing_new_role" };
   }
@@ -97,6 +98,10 @@ async function applyRoleChange(
     output: {
       applied: true,
       newRole,
+      fromRole: movement?.fromRole ?? null,
+      toRole: movement?.toRole ?? null,
+      fromDepartment: movement?.fromDepartment ?? null,
+      toDepartment: movement?.toDepartment ?? null,
     },
   };
 }
@@ -107,12 +112,17 @@ async function reconcileEntitlements(
   const entitlements = context.entitlements as
     | Record<string, unknown>
     | undefined;
+  const movement = context.movement as Record<string, unknown> | undefined;
   const target = entitlements?.target;
   return {
     success: true,
     output: {
       reconciled: true,
       applied: target ?? [],
+      fromGroups: movement?.fromGroups ?? [],
+      toGroups: movement?.toGroups ?? [],
+      fromSystems: movement?.fromSystems ?? [],
+      toSystems: movement?.toSystems ?? [],
     },
   };
 }

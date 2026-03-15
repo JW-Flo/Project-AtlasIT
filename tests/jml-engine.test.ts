@@ -97,6 +97,21 @@ describe("JMLEngine Durable Object orchestrator", () => {
       (entry: any) => entry.stepId === "apply-role-change",
     );
     expect(roleChange?.output?.newRole).toMatchObject(mover.newRole);
+    expect(roleChange?.output?.fromRole).toBe(mover.movement.fromRole);
+    expect(roleChange?.output?.toRole).toBe(mover.movement.toRole);
+
+    expect(reconciliation?.output?.fromGroups).toStrictEqual(
+      mover.movement.fromGroups,
+    );
+    expect(reconciliation?.output?.toGroups).toStrictEqual(
+      mover.movement.toGroups,
+    );
+    expect(reconciliation?.output?.fromSystems).toStrictEqual(
+      mover.movement.fromSystems,
+    );
+    expect(reconciliation?.output?.toSystems).toStrictEqual(
+      mover.movement.toSystems,
+    );
   });
 
   it("sends failed steps to the DLQ after exhausting retries", async () => {
