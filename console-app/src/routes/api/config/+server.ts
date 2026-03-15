@@ -24,7 +24,7 @@ export const GET: RequestHandler = async ({ platform, url }) => {
   if (env.COMPLIANCE_WORKER) {
     try {
       const r = await env.COMPLIANCE_WORKER.fetch(
-        new Request("https://internal/health", { method: "HEAD" }),
+        new Request("https://internal/health"),
       );
       reachable = r.ok;
     } catch {
