@@ -79,6 +79,17 @@ export const integrations: Integration[] = [
       "Manage Atlassian Cloud users and project access via SCIM and REST API.",
     credentialFields: [],
   },
+  {
+    id: "confluence",
+    category: "productivity",
+    name: "Confluence",
+    status: "planned",
+    auth: "platform_oauth",
+    tier: "core",
+    description:
+      "Manage Confluence Cloud space permissions and user access via Atlassian Admin API.",
+    credentialFields: [],
+  },
   // HR
   {
     id: "bamboohr",
@@ -272,6 +283,25 @@ export const integrations: Integration[] = [
         placeholder: "https://api.crowdstrike.com",
         helpText:
           "US-1: api.crowdstrike.com, US-2: api.us-2.crowdstrike.com, EU-1: api.eu-1.crowdstrike.com",
+      },
+    ],
+  },
+  {
+    id: "1password",
+    category: "security",
+    name: "1Password",
+    status: "planned",
+    auth: "api_key",
+    tier: "extended",
+    description:
+      "Manage 1Password team members, groups, and vault access policies.",
+    credentialFields: [
+      {
+        key: "service_account_token",
+        label: "Service Account Token",
+        type: "password",
+        required: true,
+        helpText: "From 1Password > Developer > Service Accounts",
       },
     ],
   },

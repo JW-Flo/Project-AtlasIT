@@ -5,6 +5,10 @@ import { deleteCredentials } from "$lib/server/credentials";
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return json({ error: "Tenant context required" }, { status: 403 });
+  }
   let body: any;
   try {
     body = await request.json();
@@ -23,7 +27,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     });
   }
 
-  await deleteCredentials(platform, appId);
+  await deleteCredentials(platform, appId, tenantId);
 
   return new Response(
     JSON.stringify({ success: true, connected: false, id: appId }),

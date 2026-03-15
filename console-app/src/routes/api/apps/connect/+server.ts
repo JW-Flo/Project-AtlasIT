@@ -5,6 +5,10 @@ import { saveCredentials } from "$lib/server/credentials";
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return json({ error: "Tenant context required" }, { status: 403 });
+  }
   let body: any;
   try {
     body = await request.json();
@@ -25,7 +29,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
   const credentials: Record<string, string> = body.credentials || {};
 
-  const result = await saveCredentials(platform, appId, credentials);
+  const result = await saveCredentials(platform, appId, credentials, tenantId);
 
   if (!result.ok) {
     return new Response(

@@ -14,7 +14,21 @@ import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
  *
  * Usage: GET /api/apps/oauth/start?appId=slack
  */
-export const GET: RequestHandler = async ({ url, platform, cookies }) => {
+export const GET: RequestHandler = async ({
+  url,
+  platform,
+  cookies,
+  locals,
+}) => {
+  const user = locals.user;
+  if (!user) {
+    return jsonError("Unauthorized", 401);
+  }
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return jsonError("Tenant context required", 403);
+  }
+
   const appId = url.searchParams.get("appId");
   if (!appId) {
     return jsonError("appId query param required", 400);
@@ -38,7 +52,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   // For tenant_domain apps, load the tenant's domain from D1
   let tenantCreds: Record<string, string> | null = null;
   if (provider.model === "tenant_domain") {
-    tenantCreds = await getCredentials(platform, appId);
+    tenantCreds = await getCredentials(platform, appId, tenantId);
     if (!tenantCreds?.domain && !tenantCreds?.tenant_url) {
       return jsonError(
         `${appId} requires your organization's domain. Please enter it in the marketplace first.`,
@@ -51,9 +65,9 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   const origin = url.origin;
   const redirectUri = `${origin}/api/apps/oauth/callback`;
 
-  // Generate CSRF state token
+  // Generate CSRF state token — include tenantId so callback can use it
   const state = crypto.randomUUID();
-  cookies.set("oauth_state", JSON.stringify({ state, appId }), {
+  cookies.set("oauth_state", JSON.stringify({ state, appId, tenantId }), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

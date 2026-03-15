@@ -86,6 +86,34 @@ export const handle: Handle = async ({ event, resolve }) => {
         });
         if (resolved) {
           user = resolved;
+
+          // Enrich with tenantId from D1 if the provider didn't set one
+          if (!user.tenantId) {
+            try {
+              const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
+              if (db) {
+                const row = await db
+                  .prepare(
+                    "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
+                  )
+                  .bind(user.email)
+                  .first<{ tenant_id: string }>();
+                if (row?.tenant_id) {
+                  user.tenantId = row.tenant_id;
+                }
+              }
+            } catch (e) {
+              console.error(
+                JSON.stringify({
+                  level: "error",
+                  event: "auth.tenant_lookup_failed",
+                  email: user.email,
+                  err: String(e),
+                }),
+              );
+            }
+          }
+
           // Persist minimal session in KV so subsequent requests do not
           // re-validate the JWT (certs fetch is cached by the runtime, but
           // still best to avoid repeated signature verification).
@@ -194,6 +222,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       roles: ["super-admin"],
       superAdmin: true,
       provider: "dev-bypass",
+      tenantId: envRaw?.["DEV_TENANT_ID"] || "dev-tenant",
       createdAt: now,
       lastSeenAt: now,
     };

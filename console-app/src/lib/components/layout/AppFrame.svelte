@@ -19,7 +19,7 @@
     { href: "/console/policies", label: "Policy Generator" },
     { href: "/console/compliance", label: "Compliance" },
     { href: "/console/marketplace", label: "Marketplace" },
-    { href: "/console/integrations", label: "API Manager" },
+    { href: "/console/apps", label: "Apps" },
     { href: "/console/workflows", label: "Workflows" },
     { href: "/access-requests", label: "Access Requests" },
     { href: "/incidents", label: "Incidents" },

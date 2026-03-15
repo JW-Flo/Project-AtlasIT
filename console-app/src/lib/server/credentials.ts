@@ -70,15 +70,10 @@ export interface StoredCredential {
 interface Env {
   ATLAS_SHARED_DB?: D1Database;
   CRED_ENCRYPTION_KEY?: string;
-  TENANT_ID?: string;
 }
 
 function getEnv(platform: any): Env {
   return (platform?.env as Env) || {};
-}
-
-function tenantId(env: Env): string {
-  return env.TENANT_ID || "atlasit-prod";
 }
 
 /**
@@ -88,12 +83,12 @@ export async function saveCredentials(
   platform: any,
   appId: string,
   credentials: Record<string, string>,
+  tid: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!tid) return { ok: false, error: "Tenant ID required" };
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return { ok: false, error: "Database not available" };
-
-  const tid = tenantId(env);
   const json = JSON.stringify(credentials);
   const stored = env.CRED_ENCRYPTION_KEY
     ? await encrypt(json, env.CRED_ENCRYPTION_KEY)
@@ -119,12 +114,12 @@ export async function saveCredentials(
 export async function getCredentials(
   platform: any,
   appId: string,
+  tid: string,
 ): Promise<Record<string, string> | null> {
+  if (!tid) return null;
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return null;
-
-  const tid = tenantId(env);
   const row = await db
     .prepare(
       "SELECT credentials FROM app_credentials WHERE tenant_id = ?1 AND app_id = ?2",
@@ -146,12 +141,12 @@ export async function getCredentials(
  */
 export async function listConnectedApps(
   platform: any,
+  tid: string,
 ): Promise<StoredCredential[]> {
+  if (!tid) return [];
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return [];
-
-  const tid = tenantId(env);
   const { results } = await db
     .prepare(
       "SELECT app_id, tenant_id, connected_at, updated_at, last_test_at, healthy FROM app_credentials WHERE tenant_id = ?1",
@@ -168,12 +163,12 @@ export async function listConnectedApps(
 export async function deleteCredentials(
   platform: any,
   appId: string,
+  tid: string,
 ): Promise<void> {
+  if (!tid) return;
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return;
-
-  const tid = tenantId(env);
   await db
     .prepare("DELETE FROM app_credentials WHERE tenant_id = ?1 AND app_id = ?2")
     .bind(tid, appId)
@@ -193,12 +188,12 @@ export async function updateTestStatus(
   platform: any,
   appId: string,
   healthy: boolean,
+  tid: string,
 ): Promise<void> {
+  if (!tid) return;
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return;
-
-  const tid = tenantId(env);
   await db
     .prepare(
       "UPDATE app_credentials SET last_test_at = datetime('now'), healthy = ?3 WHERE tenant_id = ?1 AND app_id = ?2",
@@ -222,12 +217,12 @@ export async function saveOAuthTokens(
     scope?: string;
     raw?: any;
   },
+  tid: string,
 ): Promise<void> {
+  if (!tid) return;
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return;
-
-  const tid = tenantId(env);
   const expiresAt = tokens.expires_in
     ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
     : null;
@@ -270,12 +265,12 @@ export async function saveOAuthTokens(
 export async function getOAuthAccessToken(
   platform: any,
   appId: string,
+  tid: string,
 ): Promise<string | null> {
+  if (!tid) return null;
   const env = getEnv(platform);
   const db = env.ATLAS_SHARED_DB;
   if (!db) return null;
-
-  const tid = tenantId(env);
   const row = await db
     .prepare(
       "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ?1 AND app_id = ?2",

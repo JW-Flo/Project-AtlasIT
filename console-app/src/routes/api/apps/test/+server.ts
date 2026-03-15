@@ -5,6 +5,35 @@ import {
   updateTestStatus,
 } from "$lib/server/credentials";
 
+/** AWS Signature V4 helpers */
+async function hmacSha256(
+  key: ArrayBuffer | Uint8Array,
+  data: string,
+): Promise<ArrayBuffer> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key instanceof Uint8Array ? key : new Uint8Array(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
+}
+
+async function sha256Hex(data: string): Promise<string> {
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(data),
+  );
+  return bufToHex(hash);
+}
+
+function bufToHex(buf: ArrayBuffer): string {
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 /**
  * Test connection by actually calling the provider's API.
  * Each provider has a lightweight "ping" endpoint we can hit.
@@ -91,9 +120,84 @@ const PROVIDER_TESTS: Record<
     return { ok: false, message: `Datadog error: ${res.status}` };
   },
 
-  github: async (_creds, token) => {
-    const tok = token || _creds.client_secret; // PAT can be stored as client_secret
-    if (!tok) return { ok: false, message: "No token available" };
+  aws: async (creds) => {
+    const accessKey = creds.access_key_id;
+    const secretKey = creds.secret_access_key;
+    const region = creds.region || "us-east-1";
+    if (!accessKey || !secretKey)
+      return {
+        ok: false,
+        message: "Missing access_key_id or secret_access_key",
+      };
+
+    // AWS STS GetCallerIdentity with Signature V4
+    const host = "sts.amazonaws.com";
+    const now = new Date();
+    const dateStamp = now.toISOString().replace(/[-:]/g, "").slice(0, 8);
+    const amzDate =
+      dateStamp +
+      "T" +
+      now.toISOString().replace(/[-:]/g, "").slice(9, 15) +
+      "Z";
+    const service = "sts";
+    const body = "Action=GetCallerIdentity&Version=2011-06-15";
+    const bodyHash = await sha256Hex(body);
+
+    const canonicalHeaders = `content-type:application/x-www-form-urlencoded\nhost:${host}\nx-amz-date:${amzDate}\n`;
+    const signedHeaders = "content-type;host;x-amz-date";
+    const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${bodyHash}`;
+
+    const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+    const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`;
+
+    const kDate = await hmacSha256(
+      new TextEncoder().encode("AWS4" + secretKey),
+      dateStamp,
+    );
+    const kRegion = await hmacSha256(kDate, region);
+    const kService = await hmacSha256(kRegion, service);
+    const kSigning = await hmacSha256(kService, "aws4_request");
+    const signature = bufToHex(await hmacSha256(kSigning, stringToSign));
+
+    const authHeader = `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    try {
+      const res = await fetch(`https://${host}/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Host: host,
+          "X-Amz-Date": amzDate,
+          Authorization: authHeader,
+        },
+        body,
+      });
+      if (res.ok) {
+        const text = await res.text();
+        const arnMatch = text.match(/<Arn>([^<]+)<\/Arn>/);
+        const accountMatch = text.match(/<Account>([^<]+)<\/Account>/);
+        const arn = arnMatch?.[1] || "unknown";
+        const account = accountMatch?.[1] || "unknown";
+        return { ok: true, message: `AWS account ${account} (${arn})` };
+      }
+      return { ok: false, message: `AWS STS error: ${res.status}` };
+    } catch (e: any) {
+      return { ok: false, message: `AWS connection failed: ${e.message}` };
+    }
+  },
+
+  github: async (creds, token) => {
+    const tok =
+      token ||
+      creds.personal_access_token ||
+      creds.pat ||
+      creds.client_secret ||
+      creds.api_key;
+    if (!tok)
+      return {
+        ok: false,
+        message: "No token available. Connect via OAuth or provide a PAT.",
+      };
     const res = await fetch("https://api.github.com/user", {
       headers: { Authorization: `Bearer ${tok}`, "User-Agent": "AtlasIT" },
     });
@@ -127,6 +231,13 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   let body: any;
   try {
     body = await request.json();
@@ -145,8 +256,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     });
   }
 
-  const creds = await getCredentials(platform, appId);
-  const token = await getOAuthAccessToken(platform, appId);
+  const creds = await getCredentials(platform, appId, tenantId);
+  const token = await getOAuthAccessToken(platform, appId, tenantId);
 
   if (!creds && !token) {
     return new Response(
@@ -162,7 +273,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const result = await testFn(creds || {}, token);
 
   // Persist test result
-  await updateTestStatus(platform, appId, result.ok);
+  await updateTestStatus(platform, appId, result.ok, tenantId);
 
   return new Response(
     JSON.stringify({ healthy: result.ok, message: result.message }),

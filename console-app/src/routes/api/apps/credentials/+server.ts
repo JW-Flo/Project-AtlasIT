@@ -5,6 +5,10 @@ import { saveCredentials, getCredentials } from "$lib/server/credentials";
 export const PUT: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return json({ error: "Tenant context required" }, { status: 403 });
+  }
   let body: any;
   try {
     body = await request.json();
@@ -25,7 +29,7 @@ export const PUT: RequestHandler = async ({ request, platform, locals }) => {
   const credentials: Record<string, string> = body.credentials || {};
 
   // Merge with existing credentials (empty fields = keep existing)
-  const existing = await getCredentials(platform, body.appId);
+  const existing = await getCredentials(platform, body.appId, tenantId);
   if (existing) {
     for (const [key, value] of Object.entries(existing)) {
       if (!credentials[key]) {
@@ -34,7 +38,12 @@ export const PUT: RequestHandler = async ({ request, platform, locals }) => {
     }
   }
 
-  const result = await saveCredentials(platform, body.appId, credentials);
+  const result = await saveCredentials(
+    platform,
+    body.appId,
+    credentials,
+    tenantId,
+  );
 
   if (!result.ok) {
     return new Response(

@@ -30,7 +30,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   const raw = cookies.get("oauth_state");
   if (!raw) return redirectToMarketplace("OAuth state expired. Try again.");
 
-  let oauthState: { state: string; appId: string };
+  let oauthState: { state: string; appId: string; tenantId?: string };
   try {
     oauthState = JSON.parse(raw);
   } catch {
@@ -42,6 +42,10 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   }
 
   const appId = oauthState.appId;
+  const tenantId = oauthState.tenantId;
+  if (!tenantId) {
+    return redirectToMarketplace("Tenant context required. Please try again.");
+  }
   cookies.delete("oauth_state", { path: "/" });
 
   const provider = oauthProviders[appId];
@@ -59,7 +63,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   // For tenant_domain apps, resolve template vars in token URL
   let tokenUrl = provider.tokenUrl;
   if (provider.model === "tenant_domain") {
-    const tenantCreds = await getCredentials(platform, appId);
+    const tenantCreds = await getCredentials(platform, appId, tenantId);
     if (tenantCreds?.domain)
       tokenUrl = tokenUrl.replace("{domain}", tenantCreds.domain);
     if (tenantCreds?.tenant_url)
@@ -117,18 +121,23 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   }
 
   // Store the workspace-scoped OAuth tokens in D1 (encrypted)
-  await saveOAuthTokens(platform, appId, {
-    access_token: accessToken,
-    refresh_token: tokenData.refresh_token,
-    token_type: tokenData.token_type || "Bearer",
-    expires_in: tokenData.expires_in,
-    scope: tokenData.scope,
-    raw: tokenData,
-  });
+  await saveOAuthTokens(
+    platform,
+    appId,
+    {
+      access_token: accessToken,
+      refresh_token: tokenData.refresh_token,
+      token_type: tokenData.token_type || "Bearer",
+      expires_in: tokenData.expires_in,
+      scope: tokenData.scope,
+      raw: tokenData,
+    },
+    tenantId,
+  );
 
   // Ensure app is marked as connected
-  const existingCreds = (await getCredentials(platform, appId)) || {};
-  await saveCredentials(platform, appId, existingCreds);
+  const existingCreds = (await getCredentials(platform, appId, tenantId)) || {};
+  await saveCredentials(platform, appId, existingCreds, tenantId);
 
   return new Response(null, {
     status: 302,

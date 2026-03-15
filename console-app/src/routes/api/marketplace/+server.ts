@@ -28,6 +28,11 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const tenantId = locals.user.tenantId;
+  if (!tenantId) {
+    return json({ error: "Tenant context required" }, { status: 403 });
+  }
+
   const category = url.searchParams.get("category");
   const status = url.searchParams.get("status");
   const limit = url.searchParams.get("limit");
@@ -43,7 +48,9 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const path = `/api/v1/apps${qs ? `?${qs}` : ""}`;
 
   try {
-    const resp = await proxyToMarketplace(platform, path);
+    const resp = await proxyToMarketplace(platform, path, {
+      headers: { "x-tenant-id": tenantId },
+    });
     const data = await resp.json();
     return json(data, { status: resp.status });
   } catch {
