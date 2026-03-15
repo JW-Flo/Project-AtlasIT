@@ -44,8 +44,7 @@ jobs:
                   fi
 
             - name: Deploy orchestrator
-              run: npx wrangler deploy
-              working-directory: ai-orchestrator
+              run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
 
             - name: Post-deploy smoke test
               run: |

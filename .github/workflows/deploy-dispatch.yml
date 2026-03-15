@@ -35,8 +35,7 @@ jobs:
               working-directory: dispatch-worker
 
             - name: Deploy dispatch worker
-              run: npx wrangler deploy
-              working-directory: dispatch-worker
+              run: npx wrangler deploy --config dispatch-worker/wrangler.toml
 
             - name: Post-deploy smoke test
               run: |

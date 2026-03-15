@@ -32,7 +32,7 @@ jobs:
               run: npm ci
 
             - name: Deploy core worker
-              run: npx wrangler deploy
+              run: npx wrangler deploy --config wrangler.toml
 
             - name: Post-deploy smoke test
               run: |

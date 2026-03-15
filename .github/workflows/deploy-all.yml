@@ -26,7 +26,7 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
-      - run: npx wrangler deploy
+      - run: npx wrangler deploy --config wrangler.toml
 
   deploy-console:
     if: >-
@@ -70,8 +70,7 @@ jobs:
       - run: npm ci
       - run: npm ci --no-fund --no-audit
         working-directory: compliance-worker
-      - run: npx wrangler deploy
-        working-directory: compliance-worker
+      - run: npx wrangler deploy --config compliance-worker/wrangler.toml
 
   deploy-orchestrator:
     if: >-
@@ -90,8 +89,7 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
-      - run: npx wrangler deploy
-        working-directory: ai-orchestrator
+      - run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
 
   deploy-dispatch:
     if: >-
@@ -112,8 +110,7 @@ jobs:
       - run: npm ci
       - run: npm ci --no-fund --no-audit
         working-directory: dispatch-worker
-      - run: npx wrangler deploy
-        working-directory: dispatch-worker
+      - run: npx wrangler deploy --config dispatch-worker/wrangler.toml
 
   smoke-test:
     needs: [deploy-core, deploy-console, deploy-compliance, deploy-orchestrator, deploy-dispatch]

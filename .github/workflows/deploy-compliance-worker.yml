@@ -37,8 +37,7 @@ jobs:
         working-directory: compliance-worker
 
       - name: Deploy compliance worker
-        run: npx wrangler deploy
-        working-directory: compliance-worker
+        run: npx wrangler deploy --config compliance-worker/wrangler.toml
 
       - name: Post-deploy smoke test
         run: |
