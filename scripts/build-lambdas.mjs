@@ -9,8 +9,10 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const LAMBDAS_DIR = new URL("../lambdas", import.meta.url).pathname;
+// console-ssr is built by SvelteKit's own pipeline, not esbuild
+const SKIP = new Set(["console-ssr"]);
 const dirs = readdirSync(LAMBDAS_DIR, { withFileTypes: true })
-  .filter((d) => d.isDirectory())
+  .filter((d) => d.isDirectory() && !SKIP.has(d.name))
   .map((d) => d.name);
 
 console.log(`Building ${dirs.length} lambdas...`);
