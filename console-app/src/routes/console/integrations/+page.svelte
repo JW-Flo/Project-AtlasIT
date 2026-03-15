@@ -396,6 +396,7 @@
           on:click={() => (editOpen = false)}
           class="p-1"
           style="color: var(--color-text, #fff); opacity: 0.5;"
+          aria-label="Close"
         >
           <svg
             class="w-5 h-5"

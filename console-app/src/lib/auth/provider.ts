@@ -14,6 +14,9 @@ export interface UserPrincipal {
   displayName?: string;
   createdAt: string;
   lastSeenAt: string;
+  impersonating?: boolean;
+  impersonatedBy?: string;
+  originalSessionId?: string;
 }
 
 export interface AuthProviderContext {

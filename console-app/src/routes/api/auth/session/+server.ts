@@ -11,8 +11,8 @@ export const GET: RequestHandler = async ({ locals }) => {
         superAdmin: user.superAdmin,
         tenantId: user.tenantId,
         displayName: user.displayName,
-        impersonating: (user as any).impersonating,
-        impersonatedBy: (user as any).impersonatedBy,
+        impersonating: user.impersonating,
+        impersonatedBy: user.impersonatedBy,
       }
     : { authenticated: false };
   return json(response);

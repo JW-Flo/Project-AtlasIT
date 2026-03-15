@@ -3,6 +3,7 @@
   import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { mark } from "$lib/instrumentation/ux-metrics";
+  import { fetchSession } from "$lib/stores/session";
 
   // Session / view type
   let isPlatformOwner = false;
@@ -77,9 +78,8 @@
     error = null;
     try {
       // Fetch session
-      const sessionRes = await fetch("/api/auth/session");
-      if (!sessionRes.ok) throw new Error("Not authenticated");
-      session = await sessionRes.json();
+      session = await fetchSession();
+      if (!session) throw new Error("Not authenticated");
       sessionLoaded = true;
 
       const email = session.email || "";
@@ -256,7 +256,7 @@
     </div>
 
     <!-- Directory setup banner -->
-    {#if tenantData.directory.connected === false}
+    {#if tenantData?.directory?.connected === false}
       <div class="bg-amber-600/20 border border-amber-500/30 rounded-lg p-4 mb-6 flex items-center justify-between">
         <div>
           <div class="font-medium">Connect your identity provider to get started</div>
@@ -269,7 +269,7 @@
     {/if}
 
     <!-- Getting started empty state -->
-    {#if tenantData.connectedApps === 0 && !tenantData.directory.connected}
+    {#if tenantData?.connectedApps === 0 && !tenantData?.directory?.connected}
       <div class="rounded-lg p-8 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center mb-6">
         <h2 class="text-xl font-semibold mb-2">Welcome to AtlasIT</h2>
         <p class="text-white/60 mb-4 max-w-md mx-auto">Get started by connecting your identity provider and applications to automate compliance and lifecycle management.</p>
@@ -288,7 +288,7 @@
       </a>
       <a href="/console/directory" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Directory Users</div>
-        <div class="text-3xl font-bold mt-1">{tenantData.directory.userCount}</div>
+        <div class="text-3xl font-bold mt-1">{tenantData?.directory?.userCount ?? 0}</div>
       </a>
       <a href="/console/directory" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Active Mappings</div>

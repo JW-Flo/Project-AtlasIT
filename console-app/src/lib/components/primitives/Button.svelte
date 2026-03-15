@@ -3,7 +3,7 @@
   export let size: "sm" | "md" = "md";
   export let disabled: boolean = false;
   export let type: "button" | "submit" | "reset" = "button";
-  export let ariaLabel: string | undefined;
+  export let ariaLabel: string = "";
   const base = "btn focus-ring";
   $: vClass =
     variant === "primary"

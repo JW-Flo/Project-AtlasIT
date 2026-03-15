@@ -359,7 +359,7 @@
     <div class="w-full max-w-md mx-4 rounded-lg p-6" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold" style="color: var(--color-text, #fff);">Run Workflow — {modalApp.appName}</h3>
-        <button type="button" on:click={() => showModal = false} class="p-1" style="color: var(--color-text, #fff); opacity: 0.5;">
+        <button type="button" on:click={() => showModal = false} class="p-1" style="color: var(--color-text, #fff); opacity: 0.5;" aria-label="Close">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>

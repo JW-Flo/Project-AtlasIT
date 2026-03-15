@@ -1,11 +1,13 @@
-<script lang="ts">
+<script context="module" lang="ts">
   export interface EvidenceSummaryItem {
     hash: string;
     pack: string;
     subject?: string | null;
     createdAt: string;
   }
+</script>
 
+<script lang="ts">
   export let items: EvidenceSummaryItem[] = [];
   export let error: string | null = null;
 

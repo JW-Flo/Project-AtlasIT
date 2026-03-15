@@ -85,7 +85,7 @@ export const integrations: Integration[] = [
     category: "hr",
     name: "BambooHR",
     status: "planned",
-    auth: "api-key",
+    auth: "api_key",
     tier: "extended",
     description:
       "Sync employee records and detect new hires, role changes, and terminations.",
@@ -186,7 +186,7 @@ export const integrations: Integration[] = [
     category: "finance",
     name: "Stripe",
     status: "planned",
-    auth: "api-key",
+    auth: "api_key",
     tier: "core",
     description:
       "Manage persons on connected accounts for identity verification.",
@@ -280,7 +280,7 @@ export const integrations: Integration[] = [
     category: "security",
     name: "PagerDuty",
     status: "planned",
-    auth: "api-key",
+    auth: "api_key",
     tier: "extended",
     description:
       "Manage PagerDuty users and team assignments for incident response.",
@@ -403,7 +403,7 @@ export const integrations: Integration[] = [
     category: "infrastructure",
     name: "Datadog",
     status: "planned",
-    auth: "api-key",
+    auth: "api_key",
     tier: "extended",
     description:
       "Manage Datadog users and role assignments for observability access control.",

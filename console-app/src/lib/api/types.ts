@@ -22,6 +22,7 @@ export interface CreateIncidentInput {
 export interface AccessRequest {
   id: number;
   subject: string;
+  resource?: string;
   status: string;
   reason?: string;
   createdAt: string;
