@@ -37,10 +37,10 @@ command = "npm install --no-fund --no-audit --ignore-scripts && npm run build:co
 
 [vars]
 APP_NAME = "AtlasIT Console"
-COMPLIANCE_BASE = "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev/api/compliance"
-CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
-DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
-ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
+COMPLIANCE_BASE = "https://compliance.atlasit.pro/api/compliance"
+CORE_API_BASE = "https://api.atlasit.pro"
+DISPATCH_BASE = "https://dispatch.atlasit.pro"
+ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
 # Auth: Cloudflare Access JWT validation (required in production)
 # CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
 # CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)

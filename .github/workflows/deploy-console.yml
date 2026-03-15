@@ -5,6 +5,7 @@ on:
         branches: [main]
         paths:
             - "console-app/**"
+            - "packages/shared/**"
             - ".github/workflows/deploy-console.yml"
             - "DEPLOY_ENV.md"
     workflow_dispatch:

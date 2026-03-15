@@ -1,8 +1,7 @@
 export function getWorkerBase(platform: any): string {
   const env = (platform?.env as any) || {};
   const complianceBase: string =
-    env.COMPLIANCE_BASE ||
-    "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev";
+    env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
   return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
 }
 

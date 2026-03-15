@@ -6,7 +6,7 @@ workers_dev = true
 
 [vars]
 # Optional override of orchestrator base URL; fallback uses workers.dev default if unset
-ORCHESTRATOR_URL = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 
 [observability.logs]
 enabled = true
