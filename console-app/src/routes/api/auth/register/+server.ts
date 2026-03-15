@@ -31,6 +31,7 @@ interface RegisterBody {
   industry?: string;
   companySize?: string;
   frameworks?: string[];
+  selectedApps?: string[];
   ownerName?: string;
   ownerEmail: string;
   ownerPassword: string;
@@ -45,6 +46,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     industry,
     companySize,
     frameworks,
+    selectedApps,
     ownerName,
     ownerEmail,
     ownerPassword,
@@ -146,25 +148,37 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       )
       .run();
 
+    // Ensure preferences table exists
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS tenant_preferences (
+           tenant_id TEXT NOT NULL,
+           key TEXT NOT NULL,
+           value TEXT NOT NULL,
+           PRIMARY KEY (tenant_id, key)
+         )`,
+      )
+      .run();
+
     // Store framework preferences
     if (frameworks && frameworks.length > 0) {
-      await db
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS tenant_preferences (
-             tenant_id TEXT NOT NULL,
-             key TEXT NOT NULL,
-             value TEXT NOT NULL,
-             PRIMARY KEY (tenant_id, key)
-           )`,
-        )
-        .run();
-
       await db
         .prepare(
           `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
            VALUES (?, 'frameworks', ?)`,
         )
         .bind(tenantId, JSON.stringify(frameworks))
+        .run();
+    }
+
+    // Store selected apps
+    if (selectedApps && selectedApps.length > 0) {
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+           VALUES (?, 'selected_apps', ?)`,
+        )
+        .bind(tenantId, JSON.stringify(selectedApps))
         .run();
     }
 

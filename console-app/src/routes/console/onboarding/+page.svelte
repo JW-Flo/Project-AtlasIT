@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { integrations, categories, iconMap } from "$lib/data/integrations";
 
   let step = 1;
   let loading = false;
@@ -18,6 +19,10 @@
 
   // Step 3: Compliance frameworks
   let frameworks: string[] = [];
+
+  // Step 4: Apps
+  let selectedApps: string[] = [];
+  let expandedCategories: Record<string, boolean> = {};
 
   const industries = [
     "Technology",
@@ -46,12 +51,32 @@
     { id: "GDPR", name: "GDPR", desc: "General Data Protection Regulation for EU data privacy" },
   ];
 
+  // Group apps by category (exclude "all")
+  const appCategories = categories.filter((c) => c.id !== "all");
+  const appsByCategory: Record<string, typeof integrations> = {};
+  for (const cat of appCategories) {
+    appsByCategory[cat.id] = integrations.filter((i) => i.category === cat.id);
+  }
+
   function toggleFramework(id: string) {
     if (frameworks.includes(id)) {
       frameworks = frameworks.filter((f) => f !== id);
     } else {
       frameworks = [...frameworks, id];
     }
+  }
+
+  function toggleApp(id: string) {
+    if (selectedApps.includes(id)) {
+      selectedApps = selectedApps.filter((a) => a !== id);
+    } else {
+      selectedApps = [...selectedApps, id];
+    }
+  }
+
+  function toggleCategory(catId: string) {
+    expandedCategories[catId] = !expandedCategories[catId];
+    expandedCategories = expandedCategories;
   }
 
   function nextStep() {
@@ -61,7 +86,7 @@
     if (step === 2 && !ownerEmail) { error = "Owner email is required"; return; }
     if (step === 2 && !ownerPassword) { error = "Password is required"; return; }
     if (step === 2 && ownerPassword.length < 8) { error = "Password must be at least 8 characters"; return; }
-    if (step < 4) step++;
+    if (step < 5) step++;
   }
 
   function prevStep() {
@@ -81,6 +106,7 @@
           industry,
           companySize,
           frameworks,
+          selectedApps,
           ownerName,
           ownerEmail,
           ownerPassword,
@@ -123,10 +149,10 @@
 
     <!-- Progress -->
     <div class="flex items-center justify-center gap-2 mb-8">
-      {#each [1, 2, 3, 4] as s}
+      {#each [1, 2, 3, 4, 5] as s}
         <div
           class="h-2 rounded-full transition-all"
-          style="width: {s <= step ? '48px' : '24px'}; background: {s <= step ? 'var(--color-accent, #3b82f6)' : 'rgba(255,255,255,0.1)'};"
+          style="width: {s <= step ? '40px' : '20px'}; background: {s <= step ? 'var(--color-accent, #3b82f6)' : 'rgba(255,255,255,0.1)'};"
         ></div>
       {/each}
     </div>
@@ -207,6 +233,65 @@
           {/each}
         </div>
 
+      {:else if step === 4}
+        <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Select Your Apps</h2>
+        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Choose the apps your organization uses (optional)</p>
+
+        <div class="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+          {#each appCategories as cat}
+            {@const catApps = appsByCategory[cat.id] || []}
+            {@const selectedInCat = catApps.filter((a) => selectedApps.includes(a.id)).length}
+            <div>
+              <button
+                type="button"
+                class="w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors"
+                style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1));"
+                on:click={() => toggleCategory(cat.id)}
+              >
+                <div class="flex items-center gap-3">
+                  <svg class="w-4 h-4" style="color: var(--color-accent, #3b82f6);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[cat.id] || iconMap.productivity} />
+                  </svg>
+                  <span class="text-sm font-medium" style="color: var(--color-text, #fff);">{cat.label}</span>
+                  {#if selectedInCat > 0}
+                    <span class="text-[10px] px-1.5 py-0.5 rounded-full" style="background: rgba(59,130,246,0.2); color: var(--color-accent, #3b82f6);">{selectedInCat}</span>
+                  {/if}
+                </div>
+                <svg class="w-4 h-4 transition-transform" class:rotate-180={expandedCategories[cat.id]} style="color: var(--color-text, #fff); opacity: 0.4;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              {#if expandedCategories[cat.id]}
+                <div class="grid grid-cols-2 gap-2 mt-2 ml-2">
+                  {#each catApps as app}
+                    <button
+                      type="button"
+                      class="text-left p-3 rounded-lg border transition-colors"
+                      style="background: {selectedApps.includes(app.id) ? 'rgba(59,130,246,0.1)' : 'var(--color-bg, #0f1923)'}; border-color: {selectedApps.includes(app.id) ? 'var(--color-accent, #3b82f6)' : 'var(--color-border, rgba(255,255,255,0.1))'};"
+                      on:click={() => toggleApp(app.id)}
+                    >
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium" style="color: var(--color-text, #fff);">{app.name}</span>
+                        <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0" style="border-color: {selectedApps.includes(app.id) ? 'var(--color-accent, #3b82f6)' : 'rgba(255,255,255,0.2)'}; background: {selectedApps.includes(app.id) ? 'var(--color-accent, #3b82f6)' : 'transparent'};">
+                          {#if selectedApps.includes(app.id)}
+                            <svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                          {/if}
+                        </div>
+                      </div>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+
+        {#if selectedApps.length > 0}
+          <div class="mt-4 text-xs" style="color: var(--color-text, #fff); opacity: 0.5;">
+            {selectedApps.length} app{selectedApps.length !== 1 ? 's' : ''} selected
+          </div>
+        {/if}
+
       {:else}
         <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Review & Create</h2>
         <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Confirm your organization setup</p>
@@ -232,6 +317,17 @@
               </div>
             </div>
           {/if}
+          {#if selectedApps.length > 0}
+            <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
+              <div class="text-xs uppercase tracking-wider mb-2" style="color: var(--color-text, #fff); opacity: 0.4;">Apps</div>
+              <div class="flex flex-wrap gap-2">
+                {#each selectedApps as appId}
+                  {@const app = integrations.find((i) => i.id === appId)}
+                  <span class="text-xs px-2 py-1 rounded" style="background: rgba(34,197,94,0.2); color: #22c55e;">{app?.name || appId}</span>
+                {/each}
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -250,9 +346,9 @@
           </a>
         {/if}
 
-        {#if step < 4}
+        {#if step < 5}
           <button type="button" on:click={nextStep} class="px-6 py-2 text-sm font-medium rounded-lg text-white" style="background: var(--color-accent, #3b82f6);">
-            Continue
+            {step === 4 ? (selectedApps.length > 0 ? "Continue" : "Skip") : "Continue"}
           </button>
         {:else}
           <button type="button" on:click={finish} disabled={loading} class="px-6 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-50" style="background: var(--color-accent, #3b82f6);">
