@@ -76,7 +76,7 @@
     loading = true;
     error = null;
     try {
-      const res = await fetch("/api/compliance/controls");
+      const res = await fetch("/api/tenant-compliance/controls");
       if (!res.ok) throw new Error(`Failed to load compliance data (${res.status})`);
       const data = await res.json();
       frameworks = data.frameworks || [];
@@ -91,7 +91,7 @@
   async function saveControls() {
     saving = true;
     try {
-      const res = await fetch("/api/compliance/controls", {
+      const res = await fetch("/api/tenant-compliance/controls", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ controls }),
