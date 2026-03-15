@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { onMount } from "svelte";
+  import { mark } from "$lib/instrumentation/ux-metrics";
 
   let mode: "login" | "register" = "login";
   let email = "";
@@ -9,6 +10,21 @@
   let orgName = "";
   let error = "";
   let loading = false;
+  let inviteParam = "";
+
+  async function trackGrowthEvent(event: string, inviteId: string) {
+    if (!inviteId) return;
+    mark(`growth:${event}`, { inviteId });
+    try {
+      await fetch("/api/analytics/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event, inviteId }),
+      });
+    } catch {
+      // non-blocking analytics
+    }
+  }
 
   async function login() {
     loading = true;
@@ -42,6 +58,7 @@
       });
       const data = await resp.json();
       if (resp.ok) {
+        if (inviteParam) await trackGrowthEvent("invite_signup_completed", inviteParam);
         // Auto-login after registration
         await login();
       } else {
@@ -59,6 +76,12 @@
   }
 
   onMount(() => {
+    inviteParam = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+    if (inviteParam) {
+      void trackGrowthEvent("invite_link_opened", inviteParam);
+      mode = "register";
+    }
+
     fetch("/api/auth/session")
       .then((r) => r.json())
       .then((data) => {
@@ -97,6 +120,13 @@
     </div>
 
     <form class="space-y-4" on:submit|preventDefault={handleSubmit}>
+
+
+    {#if inviteParam}
+      <div class="text-xs rounded-lg p-3" style="background: rgba(59,130,246,0.15); color: var(--color-text, #fff); border: 1px solid rgba(59,130,246,0.35);">
+        You were invited to join tenant <strong>{inviteParam}</strong>. Create your account to continue.
+      </div>
+    {/if}
       <div class="rounded-lg p-6 space-y-4" style="background: var(--color-surface, #1a2332);">
         {#if mode === "register"}
           <div>

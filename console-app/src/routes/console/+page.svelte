@@ -9,6 +9,8 @@
     type EvidenceSummaryItem,
   } from "$lib/components/EvidenceSummary.svelte";
   import { getRuntimeConfig } from "$lib/config";
+  import { mark } from "$lib/instrumentation/ux-metrics";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
 
   interface SnapshotRisk {
     id: string;
@@ -154,6 +156,48 @@
     URL.revokeObjectURL(url);
   }
 
+
+  let inviteCopied = false;
+
+  function tenantInviteLink() {
+    if (!snapshot?.tenantId || typeof window === "undefined") return "";
+    const url = new URL(`${window.location.origin}/console/login`);
+    url.searchParams.set("invite", snapshot.tenantId);
+    return url.toString();
+  }
+
+  async function trackGrowthEvent(event: string, inviteId: string) {
+    mark(`growth:${event}`, { inviteId });
+    try {
+      await fetch("/api/analytics/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ event, inviteId }),
+      });
+    } catch {
+      // non-blocking analytics
+    }
+  }
+
+  async function copyInviteLink() {
+    const link = tenantInviteLink();
+    if (!link || !snapshot?.tenantId) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      inviteCopied = true;
+      pushToast({
+        message: "Invite link copied. Share it with your team.",
+        variant: "success",
+      });
+      await trackGrowthEvent("invite_link_copied", snapshot.tenantId);
+    } catch {
+      pushToast({
+        message: "Could not copy link. Please copy it manually from your browser bar.",
+        variant: "error",
+      });
+    }
+  }
+
   function exportHTML() {
     if (!snapshot) return;
     const html = `<!DOCTYPE html>
@@ -226,6 +270,13 @@ ${snapshot.policies.map(p => `<tr><td>${p.id}</td><td>${p.name}</td><td><span cl
       >
         Platform Status
       </a>
+      {#if snapshot}
+        <button
+          on:click={copyInviteLink}
+          class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
+          title="Copy team invite link"
+        >{inviteCopied ? "Invite Link Copied" : "Invite Team"}</button>
+      {/if}
       {#if snapshot}
         <button
           on:click={exportCSV}
