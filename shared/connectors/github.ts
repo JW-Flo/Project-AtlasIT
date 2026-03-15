@@ -17,7 +17,8 @@ export class GitHubConnector implements Connector {
 
   constructor(credentials: Record<string, string>, oauthToken?: string | null) {
     this.org = requireField(credentials, "organization");
-    const token = oauthToken || requireField(credentials, "personal_access_token");
+    const token =
+      oauthToken || requireField(credentials, "personal_access_token");
     this.authHeader = `Bearer ${token}`;
   }
 
@@ -50,7 +51,14 @@ export class GitHubConnector implements Connector {
   }
 
   async suspendUser(params: SuspendUserParams) {
-    return this.deleteUser({ userId: params.userId });
+    // GitHub has no suspend concept — demote to outside collaborator
+    // rather than removing membership (which is destructive/irreversible)
+    return requestWithRetry(this.id, {
+      action: "suspendUser",
+      method: "PUT",
+      endpoint: `${this.baseUrl}/orgs/${encodeURIComponent(this.org)}/outside_collaborators/${encodeURIComponent(params.userId)}`,
+      headers: this.headers(),
+    });
   }
 
   async deleteUser(params: DeleteUserParams) {
@@ -89,6 +97,9 @@ export class GitHubConnector implements Connector {
       headers: this.headers(),
     });
 
-    return { ok: result.ok, message: `GitHub connection healthy (${githubResearch.api.endpoints.listOrgMembers})` };
+    return {
+      ok: result.ok,
+      message: `GitHub connection healthy (${githubResearch.api.endpoints.listOrgMembers})`,
+    };
   }
 }

@@ -14,9 +14,37 @@ export interface RequestOptions {
   maxAttempts?: number;
 }
 
+const REDACTED_KEYS = new Set([
+  "password",
+  "passwordProfile",
+  "secret",
+  "token",
+  "api_key",
+  "private_key",
+  "ssl_key",
+  "ssl_cert",
+  "client_secret",
+  "access_token",
+  "refresh_token",
+  "secret_key",
+  "credentials",
+]);
+
 function sanitizeBody(body: unknown): unknown {
   if (!body || typeof body !== "object") return body;
-  return JSON.parse(JSON.stringify(body));
+  const clone = JSON.parse(JSON.stringify(body));
+  redactSensitive(clone);
+  return clone;
+}
+
+function redactSensitive(obj: Record<string, unknown>): void {
+  for (const key of Object.keys(obj)) {
+    if (REDACTED_KEYS.has(key.toLowerCase())) {
+      obj[key] = "[REDACTED]";
+    } else if (obj[key] && typeof obj[key] === "object") {
+      redactSensitive(obj[key] as Record<string, unknown>);
+    }
+  }
 }
 
 export async function requestWithRetry<T = unknown>(
@@ -34,7 +62,8 @@ export async function requestWithRetry<T = unknown>(
           "content-type": "application/json",
           ...(options.headers || {}),
         },
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body:
+          options.body === undefined ? undefined : JSON.stringify(options.body),
       });
 
       const text = await response.text();
@@ -51,7 +80,8 @@ export async function requestWithRetry<T = unknown>(
         const error = mapHttpError(response.status, parsed || text);
         if (error.code === "RATE_LIMITED" && attempt < maxAttempts) {
           const retryAfter = Number(response.headers.get("retry-after") || "0");
-          const delay = retryAfter > 0 ? retryAfter * 1000 : 250 * 2 ** (attempt - 1);
+          const delay =
+            retryAfter > 0 ? retryAfter * 1000 : 250 * 2 ** (attempt - 1);
           await sleep(delay);
           continue;
         }
@@ -90,21 +120,40 @@ export async function requestWithRetry<T = unknown>(
     throw lastError;
   }
 
-  throw new ConnectorError("Connector request failed after retries", 500, "UPSTREAM_ERROR", lastError);
+  throw new ConnectorError(
+    "Connector request failed after retries",
+    500,
+    "UPSTREAM_ERROR",
+    lastError,
+  );
 }
 
-export function requireField(credentials: Record<string, string>, key: string): string {
+export function requireField(
+  credentials: Record<string, string>,
+  key: string,
+): string {
   const value = credentials[key];
   if (typeof value !== "string" || !value.trim()) {
-    throw new ConnectorError(`Missing required credential field: ${key}`, 400, "BAD_REQUEST");
+    throw new ConnectorError(
+      `Missing required credential field: ${key}`,
+      400,
+      "BAD_REQUEST",
+    );
   }
   return value.trim();
 }
 
-export function requireIdentifier(value: string | undefined, label: string): string {
+export function requireIdentifier(
+  value: string | undefined,
+  label: string,
+): string {
   const sanitized = (value || "").trim();
   if (!sanitized) {
-    throw new ConnectorError(`Missing required parameter: ${label}`, 400, "BAD_REQUEST");
+    throw new ConnectorError(
+      `Missing required parameter: ${label}`,
+      400,
+      "BAD_REQUEST",
+    );
   }
   return sanitized;
 }

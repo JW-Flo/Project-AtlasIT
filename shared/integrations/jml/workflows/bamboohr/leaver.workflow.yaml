@@ -15,21 +15,24 @@ inputs:
     - tenant_id
     - employee_id
     - user_id
-  optional:
-    - remove_group_ids
 
 steps:
   - id: suspend_user
     type: action
     action_ref: atlas.connectors.bamboohr.suspend_user
+    retry:
+      max_attempts: 3
+      backoff: exponential
 
-  - id: revoke_access
-    type: action
-    action_ref: atlas.connectors.bamboohr.remove_from_group
+  # BambooHR suspend sets status to Inactive via profile update.
+  # No separate delete step needed — terminated employees remain
+  # in BambooHR as inactive records for compliance.
 
-  - id: delete_account
-    type: action
-    action_ref: atlas.connectors.bamboohr.delete_user
+  - id: emit_leaver_evidence
+    type: evidence
+    producer: atlas.workflow.leaver
+    control_refs:
+      - ACCESS_REVOKED
 
 success:
   result: pass

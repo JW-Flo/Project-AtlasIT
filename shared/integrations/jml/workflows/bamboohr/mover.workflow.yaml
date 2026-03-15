@@ -18,21 +18,23 @@ inputs:
   optional:
     - department
     - title
-    - add_group_ids
-    - remove_group_ids
 
 steps:
   - id: update_profile
     type: action
     action_ref: atlas.connectors.bamboohr.update_user
+    retry:
+      max_attempts: 3
+      backoff: exponential
 
-  - id: remove_old_access
-    type: action
-    action_ref: atlas.connectors.bamboohr.revoke_access
+  # BambooHR does not support group management — role changes are
+  # reflected via profile updates (department, title, manager)
 
-  - id: assign_new_access
-    type: action
-    action_ref: atlas.connectors.bamboohr.add_to_group
+  - id: emit_mover_evidence
+    type: evidence
+    producer: atlas.workflow.mover
+    control_refs:
+      - ACCESS_ROLE_UPDATED
 
 success:
   result: pass
