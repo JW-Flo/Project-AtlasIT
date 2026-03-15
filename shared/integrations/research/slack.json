@@ -1,0 +1,84 @@
+{
+  "id": "slack",
+  "name": "Slack",
+  "category": "communication",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code"],
+    "authorizeUrl": "https://slack.com/oauth/v2/authorize",
+    "tokenUrl": "https://slack.com/api/oauth.v2.access",
+    "revokeUrl": "https://slack.com/api/auth.revoke",
+    "scopes": {
+      "joiner": ["admin"],
+      "mover": ["admin"],
+      "leaver": ["admin"]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://api.slack.com",
+    "version": "v2",
+    "endpoints": {
+      "createUser": "POST /scim/v2/Users",
+      "getUser": "GET /scim/v2/Users/{id}",
+      "updateUser": "PUT /scim/v2/Users/{id}",
+      "patchUser": "PATCH /scim/v2/Users/{id}",
+      "suspendUser": "PATCH /scim/v2/Users/{id} (set active: false)",
+      "deleteUser": "DELETE /scim/v2/Users/{id} (deactivates the user)",
+      "listUsers": "GET /scim/v2/Users",
+      "createGroup": "POST /scim/v2/Groups",
+      "getGroup": "GET /scim/v2/Groups/{id}",
+      "listGroups": "GET /scim/v2/Groups",
+      "updateGroup": "PUT /scim/v2/Groups/{id}",
+      "patchGroup": "PATCH /scim/v2/Groups/{id}",
+      "addToGroup": "PATCH /scim/v2/Groups/{id} (Operations: add members)",
+      "removeFromGroup": "PATCH /scim/v2/Groups/{id} (Operations: remove members)",
+      "deleteGroup": "DELETE /scim/v2/Groups/{id}"
+    },
+    "rateLimits": {
+      "scimApi": "Rate limited (HTTP 429 returned when exceeded, specific limits not publicly documented)",
+      "webApi": "Varies by tier: Tier 1 (1 req/min), Tier 2 (20 req/min), Tier 3 (50 req/min), Tier 4 (100 req/min)",
+      "incomingWebhooks": "1 request per second",
+      "eventsApi": "30,000 events per workspace per app per 60 minutes"
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.slack.com/scim/v2/",
+      "versions": ["1.1", "2.0"],
+      "notes": "SCIM API requires Business+ or Enterprise Grid plan. OAuth token with 'admin' scope required. Supports Users and Groups schemas."
+    }
+  },
+  "sdk": {
+    "npm": "@slack/web-api",
+    "docsUrl": "https://docs.slack.dev/tools/node-slack-sdk/",
+    "exampleImport": "import { WebClient } from '@slack/web-api'",
+    "notes": "The @slack/web-api package covers the Web API. SCIM operations are done via direct HTTP calls; there is no official npm package for the SCIM API in JavaScript."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "events_api",
+    "registrationEndpoint": "Configured via Slack App settings (Event Subscriptions)",
+    "eventTypes": [
+      "team_join",
+      "user_change",
+      "user_status_changed",
+      "member_joined_channel",
+      "member_left_channel",
+      "group_open",
+      "group_close",
+      "subteam_created",
+      "subteam_updated",
+      "subteam_members_changed"
+    ],
+    "notes": "Events API delivers events via HTTP POST to a configured Request URL. Scopes control which events you can subscribe to."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Slack Developer Program provides free Enterprise Grid sandbox environments. Up to 2 active sandboxes at a time, each with up to 3 workspaces and 8 users. Active for 6 months. No cost."
+  },
+  "needs_verification": [
+    "Exact SCIM API rate limits (not publicly documented in detail)",
+    "Whether SCIM DELETE truly deactivates or can also permanently remove users"
+  ]
+}

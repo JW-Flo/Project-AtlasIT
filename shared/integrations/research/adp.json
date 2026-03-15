@@ -1,0 +1,92 @@
+{
+  "id": "adp",
+  "name": "ADP",
+  "category": "hr",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["client_credentials"],
+    "authorizeUrl": null,
+    "tokenUrl": "https://accounts.adp.com/auth/oauth/v2/token",
+    "tokenUrlUat": "https://uat-accounts.adp.com/auth/oauth/v2/token",
+    "revokeUrl": null,
+    "scopes": {
+      "joiner": [],
+      "mover": [],
+      "leaver": []
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "certificateAuth": {
+      "required": true,
+      "certFile": ".pem certificate file",
+      "keyFile": ".key private key file",
+      "notes": "SSL certificate-based mutual TLS authentication required. Certificate is registered with ADP during app setup. Both client_id/client_secret AND certificate are needed."
+    },
+    "tokenExpiry": "1 hour",
+    "notes": "Uses OAuth 2.0 client_credentials grant with certificate-based mutual TLS. No authorize URL because it's server-to-server (no user consent flow). Scopes are configured during ADP Marketplace app registration, not in OAuth requests."
+  },
+  "api": {
+    "baseUrl": "https://api.adp.com",
+    "version": "v2 (workers), v1 (events)",
+    "endpoints": {
+      "createUser": "POST /events/hr/v1/worker.hire",
+      "getUser": "GET /hr/v2/workers/{aoid}",
+      "updateUser": "POST /events/hr/v1/worker.legal-name.change",
+      "suspendUser": "POST /events/hr/v1/worker.work-assignment.modify",
+      "deleteUser": "POST /events/hr/v1/worker.terminate",
+      "listUsers": "GET /hr/v2/workers",
+      "rehireUser": "POST /events/hr/v1/worker.rehire",
+      "cancelHire": "POST /events/hr/v1/worker.hire.cancel",
+      "cancelTerminate": "POST /events/hr/v1/worker.terminate.cancel",
+      "cancelRehire": "POST /events/hr/v1/worker.rehire.cancel",
+      "getWorkerMeta": "GET /hr/v2/workers/meta",
+      "getWorkerPhoto": "GET /hr/v2/workers/{aoid}/worker-images/photo",
+      "uploadPhoto": "POST /events/hr/v1/worker.photo.upload",
+      "updateBirthName": "POST /events/hr/v1/worker.birth-name.change",
+      "updateRemuneration": "PUT /hr/worker-profile/v1/workers/{aoid}/work-assignments/{assignmentId}/base-remuneration",
+      "onboardApplicant": "POST /hcm/v2/applicant.onboard",
+      "listGroups": null,
+      "addToGroup": "POST /hr/worker-profile/v1/workers/{aoid}/work-assignments/{assignmentId}/corporate-groups",
+      "removeFromGroup": null
+    },
+    "rateLimits": "Per-integration profile rate limiting. Rate is per-second (per-minute/60). Concurrency limits per client per integration profile. 429 returned when exceeded.",
+    "scim": {
+      "supported": false,
+      "endpoint": null
+    }
+  },
+  "sdk": {
+    "npm": null,
+    "docsUrl": "https://developers.adp.com",
+    "exampleImport": null,
+    "notes": "No official npm package. ADP provides Postman collections and sample payloads at github.com/adpllc/marketplace-sample-payloads. Use standard HTTP clients with mutual TLS."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "polling-based event notifications",
+    "eventTypes": [
+      "worker.hire",
+      "worker.rehire",
+      "worker.terminate",
+      "worker.hire.cancel",
+      "worker.rehire.cancel",
+      "worker.terminate.cancel",
+      "worker.legal-name.change",
+      "worker.birth-name.change",
+      "worker.photo.upload",
+      "worker.work-assignment.modify"
+    ],
+    "notes": "ADP uses an event-based model. Events are stored in ADP's event manager database. Consumers poll for new events rather than receiving push notifications. Subscribe to data change events via ADP Marketplace configuration."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "ADP provides a controlled UAT environment with sample data at uat-api.adp.com / uat-accounts.adp.com. Access requires ADP Marketplace partner registration."
+  },
+  "needs_verification": [
+    "Exact rate limit numbers per integration profile",
+    "Complete list of available event types beyond worker lifecycle",
+    "Whether SCIM is supported for any ADP product",
+    "Department/organization management endpoints",
+    "Whether push webhooks (vs polling) are available in newer API versions"
+  ]
+}

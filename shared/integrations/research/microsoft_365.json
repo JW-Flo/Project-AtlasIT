@@ -1,0 +1,84 @@
+{
+  "id": "microsoft_365",
+  "name": "Microsoft 365",
+  "category": "productivity",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials"],
+    "authorizeUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
+    "tokenUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+    "revokeUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout",
+    "scopes": {
+      "joiner": [
+        "User.ReadWrite.All",
+        "Directory.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ],
+      "mover": [
+        "User.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ],
+      "leaver": [
+        "User.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://graph.microsoft.com",
+    "version": "v1.0",
+    "endpoints": {
+      "createUser": "POST /v1.0/users",
+      "getUser": "GET /v1.0/users/{id | userPrincipalName}",
+      "updateUser": "PATCH /v1.0/users/{id | userPrincipalName}",
+      "suspendUser": "PATCH /v1.0/users/{id} (set accountEnabled: false)",
+      "deleteUser": "DELETE /v1.0/users/{id | userPrincipalName}",
+      "listUsers": "GET /v1.0/users",
+      "listGroups": "GET /v1.0/groups",
+      "createGroup": "POST /v1.0/groups",
+      "getGroup": "GET /v1.0/groups/{id}",
+      "addToGroup": "POST /v1.0/groups/{id}/members/$ref",
+      "removeFromGroup": "DELETE /v1.0/groups/{id}/members/{id}/$ref",
+      "listGroupMembers": "GET /v1.0/groups/{id}/members",
+      "assignLicense": "POST /v1.0/users/{id}/assignLicense"
+    },
+    "rateLimits": {
+      "global": "130,000 requests per 10 seconds per app across all tenants",
+      "perTenant": "Varies by service; user operations ~throttled at 10,000 requests per 10 minutes",
+      "teams": "4 requests per second per app per team",
+      "subscriptions": "500 write requests per 20 seconds per app per tenant"
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://graph.microsoft.com/v1.0/",
+      "notes": "Microsoft Entra ID supports SCIM 2.0 provisioning via the provisioning API. The Graph API can be used alongside SCIM for enriching user data."
+    }
+  },
+  "sdk": {
+    "npm": "@microsoft/microsoft-graph-client",
+    "typesPackage": "@microsoft/microsoft-graph-types",
+    "docsUrl": "https://learn.microsoft.com/en-us/graph/sdks/sdks-overview",
+    "exampleImport": "import { Client } from '@microsoft/microsoft-graph-client'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "change_notifications",
+    "registrationEndpoint": "POST /v1.0/subscriptions",
+    "eventTypes": ["created", "updated", "deleted"],
+    "resources": ["/users", "/groups", "/groups/{id}/members"],
+    "notes": "Microsoft Graph change notifications support webhooks, Azure Event Hubs, and Azure Event Grid as delivery methods."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Microsoft 365 Developer Program offers a free renewable E5 developer sandbox subscription with 25 user licenses for 90 days (auto-renews with dev activity). Eligibility restricted to Visual Studio subscribers and certain partner program members as of 2025."
+  },
+  "needs_verification": [
+    "Exact SCIM provisioning endpoint URL for Microsoft Entra ID (varies by app registration)",
+    "Current Microsoft 365 Developer Program eligibility criteria (policies changed in 2025)"
+  ]
+}

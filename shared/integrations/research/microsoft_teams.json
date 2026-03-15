@@ -1,0 +1,97 @@
+{
+  "id": "microsoft_teams",
+  "name": "Microsoft Teams",
+  "category": "communication",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials"],
+    "authorizeUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize",
+    "tokenUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+    "revokeUrl": "https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout",
+    "scopes": {
+      "joiner": [
+        "User.ReadWrite.All",
+        "Team.ReadBasic.All",
+        "TeamMember.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "Channel.Create"
+      ],
+      "mover": [
+        "TeamMember.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "Channel.ReadBasic.All"
+      ],
+      "leaver": [
+        "User.ReadWrite.All",
+        "TeamMember.ReadWrite.All",
+        "Group.ReadWrite.All"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://graph.microsoft.com",
+    "version": "v1.0",
+    "endpoints": {
+      "createUser": "POST /v1.0/users",
+      "getUser": "GET /v1.0/users/{id | userPrincipalName}",
+      "updateUser": "PATCH /v1.0/users/{id}",
+      "suspendUser": "PATCH /v1.0/users/{id} (set accountEnabled: false)",
+      "deleteUser": "DELETE /v1.0/users/{id}",
+      "listUsers": "GET /v1.0/users",
+      "createTeam": "POST /v1.0/teams",
+      "getTeam": "GET /v1.0/teams/{team-id}",
+      "listJoinedTeams": "GET /v1.0/me/joinedTeams",
+      "updateTeam": "PATCH /v1.0/teams/{team-id}",
+      "addTeamMember": "POST /v1.0/teams/{team-id}/members",
+      "removeTeamMember": "DELETE /v1.0/teams/{team-id}/members/{membership-id}",
+      "updateTeamMemberRole": "PATCH /v1.0/teams/{team-id}/members/{membership-id}",
+      "listTeamMembers": "GET /v1.0/teams/{team-id}/members",
+      "createChannel": "POST /v1.0/teams/{team-id}/channels",
+      "listChannels": "GET /v1.0/teams/{team-id}/channels",
+      "listGroups": "GET /v1.0/groups",
+      "addToGroup": "POST /v1.0/groups/{id}/members/$ref",
+      "removeFromGroup": "DELETE /v1.0/groups/{id}/members/{id}/$ref"
+    },
+    "rateLimits": {
+      "teams": "4 requests per second per app per team",
+      "channels": "1 request per second per app per tenant per channel",
+      "global": "130,000 requests per 10 seconds per app across all tenants",
+      "notes": "Teams APIs are no longer metered as of August 2025. Rate limits still apply for throttling."
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://graph.microsoft.com/v1.0/",
+      "notes": "User provisioning via Microsoft Entra ID SCIM. Teams-specific membership managed via Graph API team member endpoints. Same SCIM infrastructure as Microsoft 365."
+    }
+  },
+  "sdk": {
+    "npm": "@microsoft/microsoft-graph-client",
+    "teamsSpecific": "@microsoft/teams-js",
+    "docsUrl": "https://learn.microsoft.com/en-us/graph/api/resources/teams-api-overview",
+    "exampleImport": "import { Client } from '@microsoft/microsoft-graph-client'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "change_notifications",
+    "registrationEndpoint": "POST /v1.0/subscriptions",
+    "eventTypes": ["created", "updated", "deleted"],
+    "resources": [
+      "/teams/{team-id}/members",
+      "/teams/{team-id}/channels",
+      "/users",
+      "/groups",
+      "/communications/callRecords"
+    ],
+    "notes": "Uses Microsoft Graph change notifications (same infrastructure as M365). Supports webhooks, Azure Event Hubs, and Azure Event Grid. Polling limited to once per day for most resources."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Same Microsoft 365 Developer Program E5 sandbox as M365. Includes Teams with 25 user licenses. See microsoft-365.json for eligibility details."
+  },
+  "needs_verification": [
+    "Whether TeamMember.ReadWrite.All scope is sufficient or if Team.ReadBasic.All is also needed for member operations",
+    "Exact throttling behavior after August 2025 metering removal"
+  ]
+}

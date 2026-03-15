@@ -1,0 +1,96 @@
+{
+  "id": "azure_entra_id",
+  "name": "Azure Entra ID (Microsoft Graph)",
+  "category": "infrastructure",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials"],
+    "authorizeUrl": "https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize",
+    "tokenUrl": "https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token",
+    "revokeUrl": null,
+    "scopes": {
+      "joiner": [
+        "User.ReadWrite.All",
+        "Directory.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ],
+      "mover": [
+        "User.ReadWrite.All",
+        "Directory.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ],
+      "leaver": [
+        "User.ReadWrite.All",
+        "Directory.ReadWrite.All",
+        "Group.ReadWrite.All",
+        "GroupMember.ReadWrite.All"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "notes": "Application permissions (client_credentials flow) require admin consent. For user provisioning automation, use client_credentials grant type with application permissions rather than delegated permissions. No revoke endpoint; tokens expire naturally (default 1 hour). Use https://graph.microsoft.com/.default as the scope when requesting tokens."
+  },
+  "api": {
+    "baseUrl": "https://graph.microsoft.com",
+    "version": "v1.0",
+    "endpoints": {
+      "createUser": "POST /v1.0/users",
+      "getUser": "GET /v1.0/users/{id | userPrincipalName}",
+      "updateUser": "PATCH /v1.0/users/{id | userPrincipalName}",
+      "suspendUser": "PATCH /v1.0/users/{id} (set accountEnabled=false)",
+      "deleteUser": "DELETE /v1.0/users/{id | userPrincipalName}",
+      "listUsers": "GET /v1.0/users",
+      "listGroups": "GET /v1.0/groups",
+      "createGroup": "POST /v1.0/groups",
+      "getGroup": "GET /v1.0/groups/{id}",
+      "deleteGroup": "DELETE /v1.0/groups/{id}",
+      "addToGroup": "POST /v1.0/groups/{id}/members/$ref",
+      "removeFromGroup": "DELETE /v1.0/groups/{id}/members/{id}/$ref",
+      "listGroupMembers": "GET /v1.0/groups/{id}/members",
+      "listUserMemberOf": "GET /v1.0/users/{id}/memberOf",
+      "assignAppRole": "POST /v1.0/users/{id}/appRoleAssignments",
+      "listDirectoryRoles": "GET /v1.0/directoryRoles",
+      "addDirectoryRoleMember": "POST /v1.0/directoryRoles/{id}/members/$ref"
+    },
+    "rateLimits": "130,000 requests per 10 seconds per app across all tenants. Service-specific limits vary. Throttled requests return HTTP 429 with Retry-After header. Directory operations (users/groups): ~10,000 requests per 10 seconds per tenant.",
+    "scim": {
+      "supported": true,
+      "endpoint": "Entra ID acts as a SCIM client (provisioning to other apps), not a SCIM server. Use Microsoft Graph API for inbound provisioning.",
+      "notes": "Entra ID supports outbound SCIM provisioning to gallery and non-gallery applications. For inbound provisioning (provisioning into Entra ID), use the /bulkUpload API endpoint at POST /v1.0/servicePrincipals/{id}/synchronization/jobs/{id}/bulkUpload. Rate limit: 40 requests per 5 seconds, 2,000-6,000 per 24 hours depending on license."
+    }
+  },
+  "sdk": {
+    "npm": "@microsoft/microsoft-graph-client",
+    "docsUrl": "https://learn.microsoft.com/en-us/graph/sdks/sdk-installation",
+    "exampleImport": "import { Client } from '@microsoft/microsoft-graph-client'",
+    "additionalPackages": {
+      "types": "@microsoft/microsoft-graph-types",
+      "auth": "@azure/identity"
+    }
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "change_notifications",
+    "eventTypes": ["created", "updated", "deleted"],
+    "resources": [
+      "/users",
+      "/users/{id}",
+      "/groups",
+      "/groups/{id}",
+      "/groups/{id}/members"
+    ],
+    "registrationEndpoint": "POST /v1.0/subscriptions",
+    "notes": "Microsoft Graph change notifications (webhooks) support monitoring users, groups, and directory objects. Subscriptions require a publicly accessible HTTPS endpoint. Can also use Azure Event Hubs for delivery. Subscription max lifetime varies: 4,230 minutes for directory resources."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Microsoft 365 Developer Program provides a free E5 sandbox tenant with 25 user licenses, pre-configured users, groups, and mailboxes. Requires qualifying subscription (Visual Studio, ISV Success, Partner Program). Alternatively, create a free Azure account to get an Entra ID Free tier tenant with option to activate P1/P2 trial."
+  },
+  "needs_verification": [
+    "Exact per-tenant rate limits for directory operations (Microsoft does not publish precise numbers for all endpoints)",
+    "Whether Retry-After header value is in seconds or a date",
+    "Bulk upload API availability by license tier (Entra ID P1 vs P2 vs Governance)"
+  ]
+}

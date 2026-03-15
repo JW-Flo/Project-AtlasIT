@@ -1,0 +1,68 @@
+{
+  "id": "workday",
+  "name": "Workday",
+  "category": "hr",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "refresh_token"],
+    "authorizeUrl": "https://{host}/authorize",
+    "tokenUrl": "https://{host}/ccx/oauth2/token",
+    "revokeUrl": null,
+    "scopes": {
+      "joiner": ["Staffing"],
+      "mover": ["Staffing"],
+      "leaver": ["Staffing"]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "notes": "OAuth client is registered in Workday admin (Register API Client). Token and authorize endpoints are tenant-specific and found in the View API Clients tab. Non-expiring refresh tokens can be enabled. An Integration System User (ISU) must be created with appropriate domain security permissions (e.g., Worker Data, Staffing, Organization Information)."
+  },
+  "api": {
+    "baseUrl": "https://{host}/ccx/api/v1/{tenant}",
+    "version": "v1",
+    "endpoints": {
+      "createUser": "POST /workers (hire via Staffing business process)",
+      "getUser": "GET /workers/{workerId}",
+      "updateUser": "PUT /workers/{workerId}",
+      "suspendUser": "Managed via business process (Leave of Absence)",
+      "deleteUser": "Managed via business process (Terminate Employee)",
+      "listUsers": "GET /workers?limit={count}&offset={offset}",
+      "listGroups": "GET /organizations",
+      "addToGroup": "Managed via business process (Change Organization Assignment)",
+      "removeFromGroup": "Managed via business process (Change Organization Assignment)"
+    },
+    "rateLimits": "Not publicly documented. One known limit: 5 requests/second for Strategic Sourcing Projects API. Workday does not publish comprehensive rate limits.",
+    "scim": {
+      "supported": true,
+      "endpoint": "https://{host}/ccx/scim/v2/{tenant}",
+      "notes": "SCIM 2.0 support available for user provisioning. Also used by Workday Strategic Sourcing (separate SCIM endpoint)."
+    },
+    "soapApi": {
+      "notes": "Many HR operations (hire, terminate, change job) are only available via SOAP API (Human_Resources, Staffing services). REST API coverage is expanding but incomplete for full lifecycle management."
+    }
+  },
+  "sdk": {
+    "npm": null,
+    "docsUrl": "https://community.workday.com/api",
+    "exampleImport": null,
+    "notes": "No official npm package. SOAP operations can use 'strong-soap' npm module. REST calls use standard HTTP clients."
+  },
+  "webhooks": {
+    "supported": false,
+    "type": null,
+    "eventTypes": [],
+    "notes": "Workday does not natively support webhooks. Polling-based integration is required. Some third-party platforms (e.g., Knit) offer virtual webhooks. Workday PECI (Payroll Effective Change Interface) provides change feeds for payroll providers."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Sandbox (implementation) tenants are available to Workday customers. Third-party vendors typically need a partnership agreement with Workday. Workday Community site offers some free developer resources."
+  },
+  "needs_verification": [
+    "Exact OAuth authorize URL format (tenant-specific, varies by data center)",
+    "Exact SCIM endpoint path for HCM provisioning",
+    "Complete list of REST API scopes (Staffing, Public Data, Tenant Non-Configurable, Recruiting)",
+    "Whether REST API supports direct hire/terminate or requires SOAP",
+    "Comprehensive rate limit documentation",
+    "Whether revoke token endpoint exists"
+  ]
+}

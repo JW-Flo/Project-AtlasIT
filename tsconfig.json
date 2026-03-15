@@ -47,7 +47,8 @@
     "compliance-worker/src/**/*.ts",
     "src/**/*.ts",
     "dispatch-worker/src/**/*.ts",
-    "shared/services/**/*.ts"
+    "shared/services/**/*.ts",
+    "shared/integrations/**/*.ts"
   ],
   "exclude": [
     "node_modules",
