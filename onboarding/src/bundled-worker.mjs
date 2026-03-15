@@ -4784,8 +4784,34 @@ function json(data, status = 200) {
   });
 }
 
+// dist/onboarding/src/services/session-store.js
+function parseRow(row) {
+  return {
+    ...row,
+    requirements: row.requirements ? JSON.parse(row.requirements) : null,
+    answers: row.answers ? JSON.parse(row.answers) : null,
+    generated_config: row.generated_config ? JSON.parse(row.generated_config) : null
+  };
+}
+async function createSession(db, tenantId, industry, requirements) {
+  const id = crypto.randomUUID();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  await db.prepare("INSERT INTO onboarding_sessions (id, tenant_id, status, industry, requirements, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, tenantId, "started", industry, JSON.stringify(requirements), now, now).run();
+  return id;
+}
+async function updateSessionStatus(db, sessionId, status, data) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const completedAt = status === "completed" || status === "failed" ? now : null;
+  await db.prepare("UPDATE onboarding_sessions SET status = ?, answers = COALESCE(?, answers), generated_config = COALESCE(?, generated_config), error_message = COALESCE(?, error_message), completed_at = COALESCE(?, completed_at), updated_at = ? WHERE id = ?").bind(status, data?.answers !== void 0 ? JSON.stringify(data.answers) : null, data?.generatedConfig !== void 0 ? JSON.stringify(data.generatedConfig) : null, data?.errorMessage ?? null, completedAt, now, sessionId).run();
+}
+async function getSessionByTenant(db, tenantId) {
+  const result = await db.prepare("SELECT * FROM onboarding_sessions WHERE tenant_id = ? ORDER BY started_at DESC LIMIT 1").bind(tenantId).first();
+  return result ? parseRow(result) : null;
+}
+
 // dist/onboarding/src/handlers/onboarding.js
 async function handleOnboarding(request, env) {
+  let sessionId;
   try {
     const body = await request.json();
     const { tenantId, name, industry, requirements } = body;
@@ -4803,19 +4829,19 @@ async function handleOnboarding(request, env) {
     if (industry && !allowedIndustries.includes(industry.toLowerCase())) {
       return json(OnboardingErrors.UNSUPPORTED_INDUSTRY(allowedIndustries), 400);
     }
-    const existingState = await env.STATE.get(`onboarding:${tenantId}`);
-    if (existingState) {
-      const parsed = JSON.parse(existingState);
+    const existingSession = await getSessionByTenant(env.DB, tenantId);
+    if (existingSession && existingSession.status === "completed") {
       return json({
         status: "success",
         tenantId,
-        config: parsed.config,
-        template: parsed.template,
+        config: existingSession.generated_config,
+        template: null,
         idempotent: true,
         requestId,
         actor
       });
     }
+    sessionId = await createSession(env.DB, tenantId, industry, requirements || []);
     const aiConfig = new AIConfigService(env.AI_API_KEY);
     const recommendedConfig = await aiConfig.generateConfig({
       industry,
@@ -4832,21 +4858,30 @@ async function handleOnboarding(request, env) {
     } catch (e) {
       console.warn("Audit event insert failed", e, { requestId });
     }
-    await env.STATE.put(`onboarding:${tenantId}`, JSON.stringify({
-      status: "configured",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      config: recommendedConfig,
-      template
-    }));
+    await updateSessionStatus(env.DB, sessionId, "completed", {
+      generatedConfig: {
+        config: recommendedConfig,
+        template
+      }
+    });
     return json({
       status: "success",
       tenantId,
+      sessionId,
       config: recommendedConfig,
       template,
       requestId,
       actor
     }, 201);
   } catch (error) {
+    if (typeof sessionId === "string") {
+      try {
+        await updateSessionStatus(env.DB, sessionId, "failed", {
+          errorMessage: error instanceof Error ? error.message : "Unknown error"
+        });
+      } catch {
+      }
+    }
     return handleError(error);
   }
 }
@@ -4886,43 +4921,72 @@ async function generateOnboardingQuestions(industry, requirements = []) {
   return baseQuestions;
 }
 
-// ../packages/shared/src/logger.ts
-var LEVELS = ["debug", "info", "warn", "error"];
-function shouldLog(configLevel, messageLevel) {
-  return LEVELS.indexOf(messageLevel) >= LEVELS.indexOf(configLevel);
-}
-var Logger = class {
-  level;
-  service;
-  constructor(opts = {}) {
-    this.level = opts.level || (typeof globalThis.ENV !== "undefined" ? globalThis.ENV.LOG_LEVEL : "info");
-    this.service = opts.service;
-  }
-  format(level, msg, meta) {
-    const base = {
-      ts: (/* @__PURE__ */ new Date()).toISOString(),
+// ../packages/shared/src/observability/logger.ts
+var LOG_LEVELS = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3
+};
+function createLogger(context = {}, minLevel = "info") {
+  const minLevelValue = LOG_LEVELS[minLevel];
+  function log(level, message, data) {
+    if (LOG_LEVELS[level] < minLevelValue) return;
+    const entry = {
       level,
-      service: this.service,
-      msg,
-      ...meta
+      message,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...context,
+      ...data
     };
-    return JSON.stringify(base);
+    const output = JSON.stringify(entry);
+    switch (level) {
+      case "error":
+        console.error(output);
+        break;
+      case "warn":
+        console.warn(output);
+        break;
+      case "debug":
+        console.debug(output);
+        break;
+      default:
+        console.log(output);
+        break;
+    }
   }
-  debug(msg, meta) {
-    if (shouldLog(this.level, "debug"))
-      console.log(this.format("debug", msg, meta));
+  return {
+    debug: (msg, data) => log("debug", msg, data),
+    info: (msg, data) => log("info", msg, data),
+    warn: (msg, data) => log("warn", msg, data),
+    error: (msg, data) => log("error", msg, data),
+    child: (childContext) => createLogger({ ...context, ...childContext }, minLevel)
+  };
+}
+
+// ../packages/shared/src/logger.ts
+var Logger = class {
+  inner;
+  constructor(opts = {}) {
+    const level = opts.level ?? "info";
+    const context = {};
+    if (opts.service) context.service = opts.service;
+    this.inner = createLogger(context, level);
   }
-  info(msg, meta) {
-    if (shouldLog(this.level, "info"))
-      console.log(this.format("info", msg, meta));
+  debug(msg, data) {
+    this.inner.debug(msg, data);
   }
-  warn(msg, meta) {
-    if (shouldLog(this.level, "warn"))
-      console.warn(this.format("warn", msg, meta));
+  info(msg, data) {
+    this.inner.info(msg, data);
   }
-  error(msg, meta) {
-    if (shouldLog(this.level, "error"))
-      console.error(this.format("error", msg, meta));
+  warn(msg, data) {
+    this.inner.warn(msg, data);
+  }
+  error(msg, data) {
+    this.inner.error(msg, data);
+  }
+  child(context) {
+    return this.inner.child(context);
   }
 };
 var logger = new Logger({ service: "shared" });
@@ -4953,6 +5017,31 @@ function resolveCfApiToken(raw) {
 
 // ../packages/shared/src/agent-mesh.ts
 var logger2 = new Logger({ service: "agent-mesh" });
+
+// ../packages/shared/src/middleware/rate-limit.ts
+var RateLimitConfigSchema = external_exports.object({
+  tenantIdHeader: external_exports.string().min(1).default("X-Tenant-ID"),
+  keyPrefix: external_exports.string().min(1).default("ratelimit"),
+  defaultLimit: external_exports.number().int().positive(),
+  windowSeconds: external_exports.number().int().positive().default(60),
+  endpointLimits: external_exports.record(external_exports.string().min(1), external_exports.number().int().positive()).default({}),
+  namespaceBinding: external_exports.string().min(1).default("RATE_LIMIT_KV")
+});
+
+// ../packages/shared/src/middleware/security-headers.ts
+var SecurityHeadersConfigSchema = external_exports.object({
+  contentSecurityPolicy: external_exports.string().min(1).default(
+    "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+  ),
+  strictTransportSecurity: external_exports.string().min(1).default("max-age=63072000; includeSubDomains; preload"),
+  frameOptions: external_exports.enum(["DENY", "SAMEORIGIN"]).default("DENY"),
+  contentTypeOptions: external_exports.string().min(1).default("nosniff"),
+  referrerPolicy: external_exports.string().min(1).default("strict-origin-when-cross-origin")
+});
+
+// ../packages/shared/src/credentials/crypto.ts
+var HKDF_SALT = new TextEncoder().encode("atlasit-credential-vault-v1");
+var HKDF_INFO = new TextEncoder().encode("credential-encryption");
 
 // dist/onboarding/src/index.js
 var envValidated = false;
@@ -5070,7 +5159,7 @@ async function routeRequest(request, url, env, corsHeaders, requestId, actor) {
   if (url.pathname === "/health")
     return handleHealth(corsHeaders, requestId);
   if (isStart(url, request))
-    return handleStart(request, corsHeaders, requestId, actor);
+    return handleStart(request, env, corsHeaders, requestId, actor);
   if (isSubmit(url, request))
     return handleSubmit(request, env, corsHeaders, requestId, actor);
   if (isQuestions(url, request))
@@ -5092,10 +5181,16 @@ function handleHealth(cors, requestId) {
 function isStart(url, req) {
   return url.pathname === "/onboarding/start" && req.method === "POST";
 }
-async function handleStart(request, cors, requestId, actor) {
+async function handleStart(request, env, cors, requestId, actor) {
   const body = await request.json().catch(() => ({}));
-  const questions = await generateOnboardingQuestions(body.industry || "general", body.requirements || []);
-  return json2({ questions, version: "1.0.0", requestId, actor }, cors);
+  const industry = body.industry || "general";
+  const requirements = body.requirements || [];
+  const questions = await generateOnboardingQuestions(industry, requirements);
+  let sessionId;
+  if (body.tenantId) {
+    sessionId = await createSession(env.DB, body.tenantId, industry, requirements);
+  }
+  return json2({ sessionId, questions, version: "1.0.0", requestId, actor }, cors);
 }
 function isSubmit(url, req) {
   return (url.pathname === "/onboarding/submit" || url.pathname === "/api/onboarding") && req.method === "POST";
@@ -5135,10 +5230,21 @@ async function handleStatus(url, env, cors, requestId, actor) {
   const tenantId = url.pathname.split("/").pop();
   if (!tenantId)
     return json2({ ...OnboardingErrors.TENANT_ID_REQUIRED(), requestId, actor }, cors, 400);
-  const state = await env.STATE.get(`onboarding:${tenantId}`);
-  if (!state)
+  const session = await getSessionByTenant(env.DB, tenantId);
+  if (!session)
     return json2({ ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor }, cors, 404);
-  const resp = new Response(state, {
+  const payload = JSON.stringify({
+    sessionId: session.id,
+    status: session.status,
+    industry: session.industry,
+    config: session.generated_config,
+    started_at: session.started_at,
+    completed_at: session.completed_at,
+    updated_at: session.updated_at,
+    requestId,
+    actor
+  });
+  const resp = new Response(payload, {
     headers: { "Content-Type": "application/json", ...cors }
   });
   resp.headers.set("x-request-id", requestId);
