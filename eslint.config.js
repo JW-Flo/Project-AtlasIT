@@ -50,6 +50,8 @@ export default [
       "docs/servers-main/**",
       // Lambda stubs (AWS migration, deps not installed)
       "lambdas/**",
+      // Test helpers not in any tsconfig project
+      "test/**",
       // Worker with standalone TypeScript configuration
       "infra/github-proxy/**",
     ],
