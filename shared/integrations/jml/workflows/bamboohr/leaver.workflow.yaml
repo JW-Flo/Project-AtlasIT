@@ -1,0 +1,38 @@
+workflow:
+  id: jml.leaver.bamboohr.v1
+  name: "Leaver - Offboarding (bamboohr)"
+  type: leaver
+  version: 1.0.0
+  enabled: true
+
+trigger:
+  source: hris
+  event_types:
+    - employee.terminated
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - user_id
+
+steps:
+  - id: suspend_user
+    type: action
+    action_ref: atlas.connectors.bamboohr.suspend_user
+    retry:
+      max_attempts: 3
+      backoff: exponential
+
+  # BambooHR suspend sets status to Inactive via profile update.
+  # No separate delete step needed — terminated employees remain
+  # in BambooHR as inactive records for compliance.
+
+  - id: emit_leaver_evidence
+    type: evidence
+    producer: atlas.workflow.leaver
+    control_refs:
+      - ACCESS_REVOKED
+
+success:
+  result: pass

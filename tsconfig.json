@@ -49,6 +49,7 @@
     "dispatch-worker/src/**/*.ts",
     "shared/services/**/*.ts",
     "shared/integrations/**/*.ts",
+    "shared/connectors/**/*.ts",
     "lambdas/*/src/**/*.ts"
   ],
   "exclude": [

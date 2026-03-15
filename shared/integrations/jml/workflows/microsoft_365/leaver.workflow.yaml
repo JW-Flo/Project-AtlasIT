@@ -1,0 +1,35 @@
+workflow:
+  id: jml.leaver.microsoft_365.v1
+  name: "Leaver - Offboarding (microsoft_365)"
+  type: leaver
+  version: 1.0.0
+  enabled: true
+
+trigger:
+  source: hris
+  event_types:
+    - employee.terminated
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - user_id
+  optional:
+    - remove_group_ids
+
+steps:
+  - id: suspend_user
+    type: action
+    action_ref: atlas.connectors.microsoft_365.suspend_user
+
+  - id: revoke_access
+    type: action
+    action_ref: atlas.connectors.microsoft_365.remove_from_group
+
+  - id: delete_account
+    type: action
+    action_ref: atlas.connectors.microsoft_365.delete_user
+
+success:
+  result: pass
