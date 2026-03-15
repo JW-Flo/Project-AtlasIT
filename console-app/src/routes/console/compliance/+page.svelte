@@ -12,6 +12,15 @@
     notes: string;
   }
 
+  interface FrameworkScore {
+    framework: string;
+    score: number;
+    grade: string;
+    controlsTotal: number;
+    controlsImplemented: number;
+    controlsVerified: number;
+  }
+
   interface FrameworkSummary {
     name: string;
     total: number;
@@ -25,6 +34,7 @@
   let error: string | null = null;
   let frameworks: string[] = [];
   let controls: Control[] = [];
+  let scores: FrameworkScore[] = [];
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
 
@@ -42,19 +52,32 @@
     verified: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
   };
 
+  const GRADE_COLORS: Record<string, string> = {
+    A: "bg-green-500/20 text-green-300 border-green-500/30",
+    B: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+    C: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+    D: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+    F: "bg-red-500/20 text-red-300 border-red-500/30",
+  };
+
   $: frameworkSummaries = buildSummaries(frameworks, controls);
   $: filteredControls =
     filterFramework === "all"
       ? controls
       : controls.filter((c) => c.framework === filterFramework);
-  $: overallPercent =
-    controls.length > 0
-      ? Math.round(
-          (controls.filter((c) => c.status === "implemented" || c.status === "verified").length /
-            controls.length) *
-            100,
-        )
+  $: overallScore =
+    scores.length > 0
+      ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100
       : 0;
+  $: overallGrade = computeGrade(overallScore);
+
+  function computeGrade(score: number): string {
+    if (score >= 90) return "A";
+    if (score >= 80) return "B";
+    if (score >= 70) return "C";
+    if (score >= 60) return "D";
+    return "F";
+  }
 
   function buildSummaries(fws: string[], ctrls: Control[]): FrameworkSummary[] {
     return fws.map((fw) => {
@@ -72,13 +95,28 @@
     });
   }
 
+  async function loadScores() {
+    try {
+      const res = await fetch("/api/tenant-compliance/scores");
+      if (res.ok) {
+        const data = await res.json();
+        scores = data.scores || [];
+      }
+    } catch {
+      // scores fetch is non-blocking; overview falls back to empty
+    }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
     try {
-      const res = await fetch("/api/tenant-compliance/controls");
-      if (!res.ok) throw new Error(`Failed to load compliance data (${res.status})`);
-      const data = await res.json();
+      const [controlsRes] = await Promise.all([
+        fetch("/api/tenant-compliance/controls"),
+        loadScores(),
+      ]);
+      if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
+      const data = await controlsRes.json();
       frameworks = data.frameworks || [];
       controls = data.controls || [];
     } catch (e: any) {
@@ -98,6 +136,8 @@
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       pushToast({ message: "Control statuses saved", variant: "success" });
+      // Recalculate scores after saving control changes
+      await loadScores();
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save", variant: "error" });
     } finally {
@@ -183,51 +223,77 @@
     <!-- Overall posture card -->
     <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Overall Compliance Posture</h2>
-        <span class="text-2xl font-bold text-white">{overallPercent}%</span>
+        <div class="flex items-center gap-3">
+          <h2 class="text-lg font-semibold">Overall Compliance Posture</h2>
+          <span
+            class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS[overallGrade] || GRADE_COLORS.F}"
+          >
+            {overallGrade}
+          </span>
+        </div>
+        <span class="text-2xl font-bold text-white">{overallScore}%</span>
       </div>
       <div class="h-3 rounded-full bg-white/10">
         <div
-          class="h-3 rounded-full bg-blue-500 transition-all duration-500"
-          style="width: {overallPercent}%"
+          class="h-3 rounded-full transition-all duration-500
+            {overallGrade === 'A' ? 'bg-green-500' : overallGrade === 'B' ? 'bg-blue-500' : overallGrade === 'C' ? 'bg-yellow-500' : overallGrade === 'D' ? 'bg-orange-500' : 'bg-red-500'}"
+          style="width: {Math.min(overallScore, 100)}%"
         ></div>
       </div>
       <p class="text-xs text-white/40 mt-2">
-        {controls.filter((c) => c.status === "implemented" || c.status === "verified").length} of {controls.length}
-        controls implemented or verified
+        Weighted average across {scores.length} framework{scores.length !== 1 ? 's' : ''}
       </p>
     </div>
 
     <!-- Framework cards -->
     <h2 class="text-lg font-semibold mb-3">Frameworks</h2>
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
-      {#each frameworkSummaries as fw}
+      {#each scores as fw}
         <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="font-semibold text-white">{fw.name}</h3>
+            <h3 class="font-semibold text-white">{fw.framework}</h3>
             <span
-              class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border
-                {fw.status === 'Compliant'
-                ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                : fw.status === 'In Progress'
-                  ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30'
-                  : 'bg-gray-500/20 text-gray-400 border-gray-500/30'}"
+              class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS[fw.grade] || GRADE_COLORS.F}"
             >
-              {fw.status}
+              {fw.grade}
             </span>
+          </div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-white/70">{fw.score}%</span>
+            <span class="text-xs text-white/40">{fw.controlsImplemented + fw.controlsVerified}/{fw.controlsTotal} controls</span>
           </div>
           <div class="h-2 rounded-full bg-white/10 mb-2">
             <div
               class="h-2 rounded-full transition-all duration-500
-                {fw.percent === 100 ? 'bg-green-500' : fw.percent > 0 ? 'bg-yellow-500' : 'bg-gray-500'}"
-              style="width: {fw.percent}%"
+                {fw.grade === 'A' ? 'bg-green-500' : fw.grade === 'B' ? 'bg-blue-500' : fw.grade === 'C' ? 'bg-yellow-500' : fw.grade === 'D' ? 'bg-orange-500' : 'bg-red-500'}"
+              style="width: {Math.min(fw.score, 100)}%"
             ></div>
           </div>
           <p class="text-xs text-white/40">
-            {fw.implemented}/{fw.total} controls completed
+            {fw.controlsVerified} verified, {fw.controlsImplemented} implemented
           </p>
         </div>
       {/each}
+      {#if scores.length === 0}
+        {#each frameworkSummaries as fw}
+          <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold text-white">{fw.name}</h3>
+              <span
+                class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS.F}"
+              >
+                F
+              </span>
+            </div>
+            <div class="h-2 rounded-full bg-white/10 mb-2">
+              <div class="h-2 rounded-full bg-red-500" style="width: 0%"></div>
+            </div>
+            <p class="text-xs text-white/40">
+              {fw.implemented}/{fw.total} controls completed
+            </p>
+          </div>
+        {/each}
+      {/if}
     </div>
 
     <!-- Quick actions -->
