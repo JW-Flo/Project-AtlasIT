@@ -66,19 +66,22 @@
     wizardOpen = true;
   }
 
-  /** OAuth apps that should redirect to provider after saving creds */
-  const oauthApps = new Set([
-    "slack", "google_workspace", "microsoft_365", "azure", "teams",
-    "github", "zoom", "jira", "okta", "auth0", "quickbooks", "xero",
-    "workday", "discord", "crowdstrike", "adp",
-  ]);
-
   async function connectApp() {
     if (!wizardApp) return;
     wizardLoading = true;
 
     try {
-      // Step 1: Save credentials to D1
+      // For platform_oauth: redirect straight to provider (no creds needed)
+      if (wizardApp.auth === "platform_oauth") {
+        pushToast({
+          message: `Redirecting to ${wizardApp.name} for authorization...`,
+          variant: "info",
+        });
+        window.location.href = `/api/apps/oauth/start?appId=${wizardApp.id}`;
+        return;
+      }
+
+      // For tenant_oauth / api_key / service_account: save credentials first
       const payload: Record<string, any> = {
         appId: wizardApp.id,
         credentials: { ...credValues },
@@ -100,8 +103,8 @@
         return;
       }
 
-      // Step 2: For OAuth apps with client_id, redirect to OAuth flow
-      if (wizardApp.auth === "oauth" && oauthApps.has(wizardApp.id) && credValues.client_id) {
+      // For tenant_oauth: save creds then redirect to OAuth
+      if (wizardApp.auth === "tenant_oauth") {
         pushToast({
           message: `Redirecting to ${wizardApp.name} for authorization...`,
           variant: "info",
@@ -110,7 +113,7 @@
         return;
       }
 
-      // Step 3: For API key / non-OAuth apps, mark as connected
+      // For api_key / service_account: creds saved, done
       apps = apps.map((a) =>
         a.id === wizardApp!.id ? { ...a, connected: true, status: "live" } : a,
       );
@@ -145,9 +148,11 @@
   }
 
   function authLabel(auth: string): string {
-    if (auth === "oauth") return "OAuth 2.0";
-    if (auth === "api-key") return "API Key";
-    return "Access Keys";
+    if (auth === "platform_oauth") return "OAuth 2.0";
+    if (auth === "tenant_oauth") return "OAuth 2.0";
+    if (auth === "api_key") return "API Key";
+    if (auth === "service_account") return "Service Account";
+    return auth;
   }
 
   function fieldInputType(field: CredentialField): string {
@@ -450,14 +455,29 @@
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            on:click={() => (wizardStep = 2)}
-            class="w-full py-2.5 text-sm font-medium rounded text-white transition-colors"
-            style="background: var(--color-accent, #3b82f6);"
-          >
-            Continue to Credentials
-          </button>
+          {#if wizardApp.auth === "platform_oauth"}
+            <button
+              type="button"
+              on:click={connectApp}
+              disabled={wizardLoading}
+              class="w-full py-2.5 text-sm font-medium rounded text-white transition-colors disabled:opacity-50"
+              style="background: var(--color-accent, #3b82f6);"
+            >
+              {wizardLoading ? "Redirecting..." : `Authorize ${wizardApp.name}`}
+            </button>
+            <p class="text-[11px] text-center" style="color: var(--color-text, #fff); opacity: 0.35;">
+              You'll be redirected to {wizardApp.name} to grant AtlasIT access to your workspace.
+            </p>
+          {:else}
+            <button
+              type="button"
+              on:click={() => (wizardStep = 2)}
+              class="w-full py-2.5 text-sm font-medium rounded text-white transition-colors"
+              style="background: var(--color-accent, #3b82f6);"
+            >
+              Continue to Credentials
+            </button>
+          {/if}
         </div>
       {:else if wizardStep === 2}
         <!-- Step 2: Dynamic credential fields -->

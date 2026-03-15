@@ -146,9 +146,10 @@
   }
 
   function authLabel(auth: string): string {
-    if (auth === "oauth") return "OAuth 2.0";
-    if (auth === "api-key") return "API Key";
-    return "Access Keys";
+    if (auth === "platform_oauth" || auth === "tenant_oauth") return "OAuth 2.0";
+    if (auth === "api_key") return "API Key";
+    if (auth === "service_account") return "Service Account";
+    return auth;
   }
 
   function fieldInputType(field: CredentialField): string {
