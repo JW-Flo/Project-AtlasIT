@@ -6,11 +6,16 @@ import {
   listIntegrations,
 } from "./shared/integrations/registry.js";
 import { probeIntegrations } from "./shared/integrations/health.js";
+import {
+  buildLifecycleWorkflowsForApp,
+  normalizeIdpSource,
+  resolveLifecycleApps,
+} from "./shared/integrations/lifecycle.js";
 import log, { getRecentLogs, generateCorrelationId } from "./shared/log.js";
 
 // ---------- Utilities -------------------------------------------------------
 const adapterRegistry = Array.isArray(registry) ? registry : [];
-
+const LIFECYCLE_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 function isFeatureEnabled(env, flag) {
   if (!flag) return false;
   const raw = env?.[flag];
@@ -184,6 +189,180 @@ async function appsSync(request, state, correlationId, baseHeaders) {
   return appsJson(baseHeaders, { syncId, id, correlationId }, 202);
 }
 
+async function appsLifecycleMovement(
+  request,
+  state,
+  correlationId,
+  baseHeaders,
+) {
+  const payload = await request.json().catch(() => ({}));
+  if (!payload || typeof payload !== "object") {
+    return appsJson(
+      baseHeaders,
+      { error: "json payload required", correlationId },
+      400,
+    );
+  }
+
+  const type =
+    typeof payload.type === "string" ? payload.type.toLowerCase().trim() : "";
+  const email =
+    typeof payload?.user?.email === "string"
+      ? payload.user.email.trim().toLowerCase()
+      : "";
+
+  if (!["joiner", "mover", "leaver"].includes(type)) {
+    return appsJson(
+      baseHeaders,
+      { error: "invalid lifecycle type", correlationId },
+      400,
+    );
+  }
+  if (!LIFECYCLE_EMAIL_RE.test(email)) {
+    return appsJson(
+      baseHeaders,
+      { error: "valid user.email required", correlationId },
+      400,
+    );
+  }
+
+  const idpSource = normalizeIdpSource(payload.idpSource || "okta");
+  if (!idpSource) {
+    return appsJson(
+      baseHeaders,
+      { error: "unsupported idpSource", correlationId },
+      400,
+    );
+  }
+
+  const catalog = new Map(listIntegrations().map((app) => [app.id, app]));
+  const requested = resolveLifecycleApps(payload, state).filter(
+    (id, idx, arr) => arr.indexOf(id) === idx,
+  );
+  if (requested.length === 0) {
+    return appsJson(
+      baseHeaders,
+      { error: "no lifecycle targets resolved", correlationId },
+      400,
+    );
+  }
+
+  const unknownTargets = requested.filter((id) => !catalog.has(id));
+  if (unknownTargets.length > 0) {
+    return appsJson(
+      baseHeaders,
+      {
+        error: "unknown apps requested",
+        unknownApps: unknownTargets,
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  const plans = requested.map((id) => {
+    const app = catalog.get(id);
+    const workflows = buildLifecycleWorkflowsForApp(app, idpSource);
+    return {
+      appId: app.id,
+      category: app.category,
+      idpSource,
+      movement: type,
+      connected: state.connected.has(app.id),
+      connector: workflows.connector,
+      steps: workflows[type],
+      workflows: {
+        joiner: workflows.joiner,
+        mover: workflows.mover,
+        leaver: workflows.leaver,
+      },
+    };
+  });
+
+  const scope = payload.scope === "connected" ? "connected" : "all";
+  const movementId = `move-${Date.now()}`;
+  log("info", "apps.lifecycle.movement", {
+    movementId,
+    type,
+    applications: plans.length,
+    scope,
+    idpSource,
+    correlationId,
+  });
+  return appsJson(
+    baseHeaders,
+    {
+      movementId,
+      type,
+      scope,
+      user: { email },
+      idpSource,
+      applications: plans,
+      correlationId,
+    },
+    202,
+  );
+}
+
+async function appsLifecycleWorkflows(
+  request,
+  state,
+  correlationId,
+  baseHeaders,
+) {
+  const payload = await request.json().catch(() => ({}));
+  const idpSource = normalizeIdpSource(payload.idpSource || "okta");
+  if (!idpSource) {
+    return appsJson(
+      baseHeaders,
+      { error: "unsupported idpSource", correlationId },
+      400,
+    );
+  }
+
+  const catalog = new Map(listIntegrations().map((app) => [app.id, app]));
+  const requested = resolveLifecycleApps(payload, state).filter(
+    (id, idx, arr) => arr.indexOf(id) === idx,
+  );
+  if (requested.length === 0) {
+    return appsJson(
+      baseHeaders,
+      { error: "no lifecycle targets resolved", correlationId },
+      400,
+    );
+  }
+  const unknownTargets = requested.filter((id) => !catalog.has(id));
+  if (unknownTargets.length > 0) {
+    return appsJson(
+      baseHeaders,
+      {
+        error: "unknown apps requested",
+        unknownApps: unknownTargets,
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  const applications = requested.map((id) => {
+    const app = catalog.get(id);
+    return {
+      ...buildLifecycleWorkflowsForApp(app, idpSource),
+      connected: state.connected.has(app.id),
+    };
+  });
+  return appsJson(
+    baseHeaders,
+    {
+      idpSource,
+      scope: payload.scope === "connected" ? "connected" : "all",
+      count: applications.length,
+      applications,
+      correlationId,
+    },
+    200,
+  );
+}
 async function handleApps(url, request, env, correlationId, baseHeaders) {
   if (!url.pathname.startsWith("/api/v1/apps")) {
     return null;
@@ -200,6 +379,10 @@ async function handleApps(url, request, env, correlationId, baseHeaders) {
     return appsStatus(state, correlationId, baseHeaders);
   if (url.pathname === "/api/v1/apps/sync" && m === "POST")
     return appsSync(request, state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/lifecycle/movement" && m === "POST")
+    return appsLifecycleMovement(request, state, correlationId, baseHeaders);
+  if (url.pathname === "/api/v1/apps/lifecycle/workflows" && m === "POST")
+    return appsLifecycleWorkflows(request, state, correlationId, baseHeaders);
   return null;
 }
 
@@ -325,7 +508,9 @@ async function handleFetch(request, env, ctx) {
     request.headers.get("x-correlation-id") || generateCorrelationId();
   const url = new URL(request.url);
   const host = url.host;
-  const isLegacyHost = host.includes("project-ignite.workers.dev") || host.includes("project-ignite.");
+  const isLegacyHost =
+    host.includes("project-ignite.workers.dev") ||
+    host.includes("project-ignite.");
   const deprecationHeaders = isLegacyHost
     ? {
         Deprecation: "true",
