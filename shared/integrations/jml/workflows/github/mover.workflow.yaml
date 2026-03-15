@@ -1,0 +1,38 @@
+workflow:
+  id: jml.mover.github.v1
+  name: "Mover - Role and access change (github)"
+  type: mover
+  version: 1.0.0
+  enabled: true
+
+trigger:
+  source: hris
+  event_types:
+    - employee.updated
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - user_id
+  optional:
+    - department
+    - title
+    - add_group_ids
+    - remove_group_ids
+
+steps:
+  - id: update_profile
+    type: action
+    action_ref: atlas.connectors.github.update_user
+
+  - id: remove_old_access
+    type: action
+    action_ref: atlas.connectors.github.revoke_access
+
+  - id: assign_new_access
+    type: action
+    action_ref: atlas.connectors.github.add_to_group
+
+success:
+  result: pass
