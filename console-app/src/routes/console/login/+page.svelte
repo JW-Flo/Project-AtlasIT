@@ -54,7 +54,7 @@
       const resp = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, displayName, orgName }),
+        body: JSON.stringify({ ownerEmail: email, ownerPassword: password, ownerName: displayName, orgName }),
       });
       const data = await resp.json();
       if (resp.ok) {

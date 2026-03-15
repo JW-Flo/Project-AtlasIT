@@ -38,7 +38,7 @@ describe("analytics events api", () => {
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, stored: true });
-    expect(prepare).toHaveBeenCalledTimes(2);
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

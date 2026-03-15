@@ -44,18 +44,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   try {
     await db
       .prepare(
-        `CREATE TABLE IF NOT EXISTS growth_events (
-          id TEXT PRIMARY KEY,
-          event_name TEXT NOT NULL,
-          invite_id TEXT,
-          created_at TEXT NOT NULL
-        )`,
-      )
-      .bind()
-      .run();
-
-    await db
-      .prepare(
         `INSERT INTO growth_events (id, event_name, invite_id, created_at)
          VALUES (?, ?, ?, ?)`,
       )
