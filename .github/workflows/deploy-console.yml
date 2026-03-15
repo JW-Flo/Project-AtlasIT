@@ -15,8 +15,8 @@ jobs:
         permissions:
             contents: read
         env:
-            CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-            WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+            CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+            CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
             - name: Post-deploy smoke
               run: |
                   set -e
-                  DEFAULT_URL="https://atlasit-console.${CF_ACCOUNT_ID}.workers.dev"
+                  DEFAULT_URL="https://atlasit-console.${CLOUDFLARE_ACCOUNT_ID}.workers.dev"
                   FALLBACK_URL=${CONSOLE_WORKERS_DEV:-"$DEFAULT_URL"}
                   echo "Probing config endpoint: $FALLBACK_URL/api/config"
                   curl -sS "$FALLBACK_URL/api/config" || \
