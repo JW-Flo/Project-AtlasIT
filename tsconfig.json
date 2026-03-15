@@ -48,7 +48,8 @@
     "src/**/*.ts",
     "dispatch-worker/src/**/*.ts",
     "shared/services/**/*.ts",
-    "shared/integrations/**/*.ts"
+    "shared/integrations/**/*.ts",
+    "lambdas/*/src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
