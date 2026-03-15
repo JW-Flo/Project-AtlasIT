@@ -33,5 +33,14 @@ export const POST: RequestHandler = async ({ cookies, platform }) => {
     maxAge: 604800,
   });
 
+  // Clear session cache so the original session is read fresh from KV
+  cookies.set("atlas_session_cache", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+
   return json({ success: true });
 };

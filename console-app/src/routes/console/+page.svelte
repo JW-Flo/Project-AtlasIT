@@ -83,7 +83,7 @@
       sessionLoaded = true;
 
       const email = session.email || "";
-      isPlatformOwner = (email.endsWith("@atlasit.pro") || email.endsWith("@atlas.app")) && session.superAdmin === true;
+      isPlatformOwner = (email.endsWith("@atlasit.pro") || email.endsWith("@atlas.app")) && session.superAdmin === true && !session.impersonating;
 
       if (isPlatformOwner) {
         const res = await fetch("/api/platform/dashboard");

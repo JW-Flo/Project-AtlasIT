@@ -60,6 +60,15 @@ export const POST: RequestHandler = async ({
     maxAge: 3600,
   });
 
+  // Clear session cache so the impersonated session is read from KV
+  cookies.set("atlas_session_cache", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+
   await writeAudit(db, {
     tenantId: params.id!,
     actorUserId: user.userId,
