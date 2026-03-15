@@ -96,6 +96,8 @@ export default [
       "templates/worker/**",
       // Exclude standalone orchestrator tests from project-aware parsing; they use lightweight override below
       "./ai-orchestrator/*.test.ts",
+      // Exclude console-app test directory from project-aware parsing (not in tsconfig include); lightweight override below
+      "./console-app/test/**",
       // Exclude IdP packages and idp routes from project-aware parsing; they use lightweight override below
       "./packages/idp/**",
       "./packages/idp-adapters/**",
