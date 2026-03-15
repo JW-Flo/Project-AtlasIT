@@ -14,7 +14,7 @@ async function hashPassword(password: string, salt: string): Promise<string> {
     {
       name: "PBKDF2",
       salt: encoder.encode(salt),
-      iterations: 310000,
+      iterations: 100000,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -23,7 +23,7 @@ async function hashPassword(password: string, salt: string): Promise<string> {
   const hex = Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `pbkdf2$310000$${hex}`;
+  return `pbkdf2$100000$${hex}`;
 }
 
 interface RegisterBody {
