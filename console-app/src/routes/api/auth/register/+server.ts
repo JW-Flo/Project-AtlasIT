@@ -1,17 +1,14 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 
-async function hashPassword(
-  password: string,
-  salt: string
-): Promise<string> {
+async function hashPassword(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     encoder.encode(password),
     "PBKDF2",
     false,
-    ["deriveBits"]
+    ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
     {
@@ -21,7 +18,7 @@ async function hashPassword(
       hash: "SHA-256",
     },
     keyMaterial,
-    256
+    256,
   );
   const hex = Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -29,23 +26,40 @@ async function hashPassword(
   return `pbkdf2$310000$${hex}`;
 }
 
+interface RegisterBody {
+  orgName: string;
+  industry?: string;
+  companySize?: string;
+  frameworks?: string[];
+  ownerName?: string;
+  ownerEmail: string;
+  ownerPassword: string;
+}
+
 export const POST: RequestHandler = async ({ request, platform }) => {
   const env = (platform?.env as any) || {};
-  const body = await request.json().catch(() => ({}));
-  const { email, password, displayName, orgName } = body as {
-    email?: string;
-    password?: string;
-    displayName?: string;
-    orgName?: string;
-  };
+  const body: Partial<RegisterBody> = await request.json().catch(() => ({}));
 
-  if (!email || !password) {
-    return json({ error: "Email and password required" }, { status: 400 });
+  const {
+    orgName,
+    industry,
+    companySize,
+    frameworks,
+    ownerName,
+    ownerEmail,
+    ownerPassword,
+  } = body;
+
+  if (!orgName || !orgName.trim()) {
+    return json({ error: "Organization name is required" }, { status: 400 });
   }
-  if (password.length < 8) {
+  if (!ownerEmail) {
+    return json({ error: "Owner email is required" }, { status: 400 });
+  }
+  if (!ownerPassword || ownerPassword.length < 8) {
     return json(
       { error: "Password must be at least 8 characters" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -53,103 +67,125 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   if (!db) {
     return json(
       { error: "Registration unavailable (no database)" },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
+  const email = ownerEmail.toLowerCase().trim();
+  const tenantId = orgName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 32);
+
   try {
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS console_users (
-           id TEXT PRIMARY KEY,
-           email TEXT NOT NULL UNIQUE,
-           password_hash TEXT NOT NULL,
-           salt TEXT NOT NULL,
-           display_name TEXT,
-           roles TEXT NOT NULL DEFAULT '["admin"]',
-           tenant_id TEXT NOT NULL DEFAULT 'atlasit-prod',
-           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           last_login TEXT
-         )`
-      )
-      .run();
-
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS tenants (
-           id TEXT PRIMARY KEY,
-           name TEXT NOT NULL,
-           owner_email TEXT NOT NULL,
-           industry TEXT,
-           size TEXT,
-           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           status TEXT NOT NULL DEFAULT 'active'
-         )`
-      )
-      .run();
-
-    // Check if email already exists
-    const existing = await db
-      .prepare("SELECT id FROM console_users WHERE email = ? LIMIT 1")
-      .bind(email.toLowerCase())
+    // Check for existing org or user
+    const existingTenant = await db
+      .prepare("SELECT id FROM tenants WHERE id = ? LIMIT 1")
+      .bind(tenantId)
       .first();
-    if (existing) {
-      return json({ error: "Email already registered" }, { status: 409 });
+    if (existingTenant) {
+      return json(
+        { error: "An organization with this name already exists" },
+        { status: 409 },
+      );
+    }
+
+    const existingUser = await db
+      .prepare("SELECT id FROM console_users WHERE email = ? LIMIT 1")
+      .bind(email)
+      .first();
+    if (existingUser) {
+      return json(
+        { error: "This email is already registered" },
+        { status: 409 },
+      );
     }
 
     const userId = crypto.randomUUID();
-    const tenantId = orgName
-      ? orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32)
-      : `tenant-${userId.slice(0, 8)}`;
     const salt = crypto.randomUUID();
-    const passwordHash = await hashPassword(password, salt);
+    const passwordHash = await hashPassword(ownerPassword, salt);
     const now = new Date().toISOString();
 
-    // Create tenant
+    const isSuperAdmin = email === (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
+    const roles = isSuperAdmin
+      ? '["super-admin","owner","admin"]'
+      : '["owner","admin"]';
+
+    // Create tenant with all onboarding data
     await db
       .prepare(
-        `INSERT INTO tenants (id, name, owner_email, created_at)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO tenants (id, name, owner_email, industry, size, created_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'active')`,
       )
-      .bind(tenantId, orgName || email.split("@")[0], email.toLowerCase(), now)
+      .bind(
+        tenantId,
+        orgName.trim(),
+        email,
+        industry || null,
+        companySize || null,
+        now,
+      )
       .run();
 
-    // Create user
-    const isSuperAdmin =
-      email.toLowerCase() ===
-      (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
-    const roles = isSuperAdmin
-      ? '["super-admin","admin"]'
-      : '["admin"]';
-
+    // Create owner account
     await db
       .prepare(
         `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         userId,
-        email.toLowerCase(),
+        email,
         passwordHash,
         salt,
-        displayName || null,
+        ownerName || null,
         roles,
         tenantId,
-        now
+        now,
       )
       .run();
 
+    // Store framework preferences
+    if (frameworks && frameworks.length > 0) {
+      await db
+        .prepare(
+          `CREATE TABLE IF NOT EXISTS tenant_preferences (
+             tenant_id TEXT NOT NULL,
+             key TEXT NOT NULL,
+             value TEXT NOT NULL,
+             PRIMARY KEY (tenant_id, key)
+           )`,
+        )
+        .run();
+
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+           VALUES (?, 'frameworks', ?)`,
+        )
+        .bind(tenantId, JSON.stringify(frameworks))
+        .run();
+    }
+
     return json({
       success: true,
-      userId,
       tenantId,
-      email: email.toLowerCase(),
+      userId,
+      email,
+      orgName: orgName.trim(),
     });
   } catch (e: any) {
-    console.error("Registration error:", e);
+    console.error("Organization registration error:", e);
     if (e?.message?.includes("UNIQUE")) {
-      return json({ error: "Email already registered" }, { status: 409 });
+      return json(
+        { error: "Organization or email already exists" },
+        { status: 409 },
+      );
     }
-    return json({ error: "Registration failed" }, { status: 500 });
+    return json(
+      { error: "Registration failed: " + (e?.message || "unknown error") },
+      { status: 500 },
+    );
   }
 };
