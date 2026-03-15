@@ -4,11 +4,13 @@ export type Bindings = {
   AI_QUOTA: KVNamespace;
   IDEMPOTENCY_CACHE: KVNamespace;
   WORKFLOW: DurableObjectNamespace;
+  API_ALLOWED_KEYS?: string;
   ENVIRONMENT?: string;
 };
 
 export type Variables = {
   correlationId: string;
+  tenantId: string;
 };
 
 export type AppEnv = { Bindings: Bindings; Variables: Variables };

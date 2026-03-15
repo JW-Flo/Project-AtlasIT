@@ -13,13 +13,52 @@ export type { Bindings, Variables, AppEnv } from "./types";
 const app = new Hono<AppEnv>();
 
 // Global middleware
-app.use("*", cors());
+app.use(
+  "*",
+  cors({
+    origin: ["https://console.atlasit.pro", "http://localhost:5173"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-API-Key",
+      "X-Tenant-ID",
+      "X-Correlation-ID",
+    ],
+  }),
+);
 
 // Correlation ID middleware
 app.use("*", async (c, next) => {
   const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
   c.set("correlationId", correlationId);
   c.header("X-Correlation-ID", correlationId);
+  await next();
+});
+
+// Auth middleware on API routes (health stays public)
+app.use("/api/*", async (c, next) => {
+  const apiKey = c.req.header("X-API-Key");
+  const allowedKeys = (c.env.API_ALLOWED_KEYS ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+
+  if (allowedKeys.length > 0) {
+    if (!apiKey || !allowedKeys.includes(apiKey)) {
+      return c.json(
+        {
+          status: "error",
+          code: "UNAUTHORIZED",
+          message: "Missing or invalid API key",
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        401,
+      );
+    }
+    c.set("tenantId", c.req.header("X-Tenant-ID") ?? "default");
+  }
   await next();
 });
 

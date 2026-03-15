@@ -1,4 +1,6 @@
-export interface EventPublishOptions {
+// Canonical implementation — keep in sync with packages/shared/src/events/publisher.ts
+
+export interface PublishEventOptions {
   orchestratorUrl: string;
   tenantId: string;
   type: string;
@@ -9,7 +11,7 @@ export interface EventPublishOptions {
 }
 
 export async function publishEvent(
-  options: EventPublishOptions,
+  options: PublishEventOptions,
 ): Promise<{ id: string; status: string }> {
   const response = await fetch(`${options.orchestratorUrl}/api/v1/events`, {
     method: "POST",

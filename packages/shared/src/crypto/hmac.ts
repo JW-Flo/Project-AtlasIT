@@ -1,4 +1,3 @@
-// Canonical implementation — keep in sync with packages/shared/src/crypto/hmac.ts
 export async function signPayload(
   payload: string,
   secret: string,

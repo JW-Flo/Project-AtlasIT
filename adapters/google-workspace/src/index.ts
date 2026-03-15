@@ -230,14 +230,14 @@ app.post("/api/sync", async (c) => {
       .run();
 
     // Publish sync events
-    await publishEvent(
-      c.env.ORCHESTRATOR_URL,
+    await publishEvent({
+      orchestratorUrl: c.env.ORCHESTRATOR_URL,
       tenantId,
-      "directory.synced",
-      "google-workspace",
-      { users: userResult, groups: groupResult },
+      type: "directory.synced",
+      source: "google-workspace",
+      payload: { users: userResult, groups: groupResult },
       correlationId,
-    );
+    });
 
     return c.json({
       status: "synced",

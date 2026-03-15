@@ -49,7 +49,7 @@ agentRoutes.post("/", async (c) => {
   } = parsed.data;
   const id = crypto.randomUUID();
 
-  // Generate a shared secret for HMAC signing
+  // SECURITY: secret stored plaintext for HMAC signing. Consider envelope encryption.
   const secretBytes = crypto.getRandomValues(new Uint8Array(32));
   const secret = Array.from(secretBytes)
     .map((b) => b.toString(16).padStart(2, "0"))

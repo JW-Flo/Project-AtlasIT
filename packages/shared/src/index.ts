@@ -13,3 +13,5 @@ export * from "./realtime/index";
 export * from "./middleware/index";
 export * from "./feature-flags/index";
 export * from "./credentials/index";
+export * from "./events/index";
+export * from "./crypto/index";

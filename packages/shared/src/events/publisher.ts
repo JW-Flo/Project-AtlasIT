@@ -1,5 +1,3 @@
-// Canonical implementation — keep in sync with packages/shared/src/events/publisher.ts
-
 export interface PublishEventOptions {
   orchestratorUrl: string;
   tenantId: string;
