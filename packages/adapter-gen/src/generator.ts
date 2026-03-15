@@ -7,6 +7,8 @@ import {
   generatePackageJson,
   generateTsConfig,
 } from "./templates/packagejson.js";
+import { generateReadme } from "./templates/readme.js";
+import { generateInitialMigration } from "./templates/migration.js";
 
 export interface GeneratedAdapter {
   files: Map<string, string>;
@@ -22,6 +24,8 @@ export function generateAdapter(manifest: ConnectorManifest): GeneratedAdapter {
   files.set("wrangler.toml", generateWranglerTemplate(manifest));
   files.set("package.json", generatePackageJson(manifest));
   files.set("tsconfig.json", generateTsConfig());
+  files.set("README.md", generateReadme(manifest));
+  files.set("migrations/0001_initial.sql", generateInitialMigration());
 
   return { files, manifest };
 }

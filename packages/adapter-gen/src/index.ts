@@ -8,3 +8,5 @@ export {
   generatePackageJson,
   generateTsConfig,
 } from "./templates/packagejson.js";
+
+export { generateReadme } from "./templates/readme.js";

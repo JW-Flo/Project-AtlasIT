@@ -272,7 +272,34 @@ app.use("*", async (c, next) => {
   c.header("X-Correlation-ID", correlationId);
   await next();
 });
+
+// Security headers middleware
+app.use("*", async (c, next) => {
+  await next();
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "DENY");
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  c.header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';");
+});
 ${authMiddlewareUse}
+
+const requestCounters = new Map<string, { count: number; resetAt: number }>();
+app.use("/api/*", async (c, next) => {
+  const tenantId = c.req.header("X-Tenant-ID") ?? "default";
+  const endpoint = c.req.method + " " + new URL(c.req.url).pathname;
+  const key = tenantId + ":" + endpoint;
+  const now = Date.now();
+  const limit = 120;
+  const windowMs = 60_000;
+  const existing = requestCounters.get(key);
+  const current = !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
+  if (current.count >= limit) {
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
+  }
+  current.count += 1;
+  requestCounters.set(key, current);
+  await next();
+});
 
 // Health endpoint
 app.get("/health", (c) => {
