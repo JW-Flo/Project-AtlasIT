@@ -220,6 +220,21 @@
   {:else if error}
     <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{error}</div>
   {:else if activeTab === "overview"}
+    <!-- Empty state when no frameworks configured -->
+    {#if frameworks.length === 0 && controls.length === 0}
+      <div class="rounded-lg p-8 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center mb-6">
+        <svg class="w-12 h-12 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+        <h2 class="text-xl font-semibold mb-2">No compliance frameworks configured yet</h2>
+        <p class="text-white/60 mb-4 max-w-md mx-auto">Select your frameworks in the onboarding wizard or settings to get started.</p>
+        <div class="flex gap-3 justify-center">
+          <a href="/console/settings" class="text-sm bg-white/10 hover:bg-white/15 px-4 py-2 rounded text-white">Go to Settings</a>
+          <a href="/console/onboarding" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white">Setup Wizard</a>
+        </div>
+      </div>
+    {/if}
+
     <!-- Overall posture card -->
     <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
       <div class="flex items-center justify-between mb-3">

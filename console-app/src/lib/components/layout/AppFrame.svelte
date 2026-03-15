@@ -22,7 +22,7 @@
     { href: "/console/workflows", label: "Workflows" },
     { href: "/access-requests", label: "Access Requests" },
     { href: "/incidents", label: "Incidents" },
-    { href: "/notifications", label: "Notifications" },
+    { href: "/console/directory", label: "Directory" },
     { href: "/console/platform-status", label: "Platform Status" },
   ];
   export let nav: NavItem[] = navItems;
@@ -85,6 +85,20 @@
       // silent fallback
     }
   });
+  let unreadCount = 0;
+
+  onMount(async () => {
+    try {
+      const res = await fetch("/api/notifications?unread=true");
+      if (res.ok) {
+        const data = await res.json();
+        unreadCount = data.unreadCount || 0;
+      }
+    } catch {
+      unreadCount = 0;
+    }
+  });
+
   let t: "light" | "dark" = "dark";
   const unsub = theme.subscribe((v) => (t = v));
   function toggleTheme() {
@@ -120,6 +134,16 @@
       {/if}
     </div>
     <div class="grow"></div>
+    <div class="bell-area">
+      <a href="/notifications" class="bell-button" title="Notifications">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"/>
+        </svg>
+        {#if unreadCount > 0}
+          <span class="bell-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+        {/if}
+      </a>
+    </div>
     <div class="actions">
       <Button
         size="sm"
@@ -257,6 +281,10 @@
   .grow {
     flex: 1;
   }
+  .bell-area { display: flex; justify-content: center; margin-bottom: 8px; }
+  .bell-button { position: relative; padding: 6px; border-radius: 8px; color: var(--color-text-dim); transition: background 0.18s, color 0.18s; text-decoration: none; display: inline-flex; }
+  .bell-button:hover { background: var(--color-surface); color: var(--color-text); }
+  .bell-badge { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: #ef4444; color: white; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; line-height: 1; }
   .actions {
     display: flex;
     flex-wrap: wrap;

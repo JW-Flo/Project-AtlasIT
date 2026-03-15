@@ -150,22 +150,22 @@
 
     <!-- Stat cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      <a href="/console/admin" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Total Tenants</div>
         <div class="text-3xl font-bold mt-1">{platformData.tenants.total}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/admin" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Active Tenants</div>
         <div class="text-3xl font-bold mt-1">{platformData.tenants.active}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/admin" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Total Users</div>
         <div class="text-3xl font-bold mt-1">{platformData.users.total}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/workflows" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Workflows (24h)</div>
         <div class="text-3xl font-bold mt-1">{platformData.workflows.total}</div>
-      </div>
+      </a>
     </div>
 
     <!-- Recent Tenants -->
@@ -188,8 +188,8 @@
             </thead>
             <tbody>
               {#each platformData.recentTenants as tenant}
-                <tr class="border-t border-white/5 hover:bg-white/5">
-                  <td class="px-5 py-3 font-medium">{tenant.name}</td>
+                <tr class="border-t border-white/5 hover:bg-white/5 cursor-pointer" on:click={() => window.location.href = '/console/admin'}>
+                  <td class="px-5 py-3 font-medium"><a href="/console/admin" class="hover:text-indigo-400 transition-colors">{tenant.name}</a></td>
                   <td class="px-5 py-3 text-white/60">{tenant.owner || '-'}</td>
                   <td class="px-5 py-3 text-white/60">{tenant.users ?? '-'}</td>
                   <td class="px-5 py-3">
@@ -214,14 +214,17 @@
         </div>
         <div class="divide-y divide-white/5">
           {#each platformData.recentActivity as entry}
-            <div class="px-5 py-3 flex items-center justify-between">
-              <div>
-                <div class="text-sm">{entry.description || entry.action}</div>
-                {#if entry.tenant}
-                  <div class="text-xs text-white/40 mt-0.5">{entry.tenant}</div>
-                {/if}
+            <div class="px-5 py-3.5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+              <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full bg-indigo-400/60 shrink-0"></div>
+                <div>
+                  <div class="text-sm">{entry.description || entry.action}</div>
+                  {#if entry.tenant}
+                    <div class="text-xs text-white/40 mt-0.5">{entry.tenant}</div>
+                  {/if}
+                </div>
               </div>
-              <div class="text-xs text-white/30">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+              <div class="text-xs text-white/30 shrink-0 ml-4">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
             </div>
           {/each}
         </div>
@@ -265,24 +268,36 @@
       </div>
     {/if}
 
+    <!-- Getting started empty state -->
+    {#if tenantData.connectedApps === 0 && !tenantData.directory.connected}
+      <div class="rounded-lg p-8 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center mb-6">
+        <h2 class="text-xl font-semibold mb-2">Welcome to AtlasIT</h2>
+        <p class="text-white/60 mb-4 max-w-md mx-auto">Get started by connecting your identity provider and applications to automate compliance and lifecycle management.</p>
+        <div class="flex gap-3 justify-center">
+          <a href="/console/onboarding" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white">Setup Wizard</a>
+          <a href="/console/marketplace" class="text-sm bg-white/10 hover:bg-white/15 px-4 py-2 rounded text-white">Browse Marketplace</a>
+        </div>
+      </div>
+    {/if}
+
     <!-- Stat cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      <a href="/console/marketplace" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Connected Apps</div>
         <div class="text-3xl font-bold mt-1">{tenantData.connectedApps}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/directory" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Directory Users</div>
         <div class="text-3xl font-bold mt-1">{tenantData.directory.userCount}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/directory" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Active Mappings</div>
         <div class="text-3xl font-bold mt-1">{tenantData.activeMappings}</div>
-      </div>
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
+      </a>
+      <a href="/console/directory" class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-indigo-500/40 transition-colors cursor-pointer no-underline">
         <div class="text-sm text-white/50">Pending Suggestions</div>
         <div class="text-3xl font-bold mt-1">{tenantData.pendingSuggestions}</div>
-      </div>
+      </a>
     </div>
 
     <!-- Pending suggestions CTA -->
@@ -306,14 +321,17 @@
         </div>
         <div class="divide-y divide-white/5">
           {#each tenantData.recentActivity as entry}
-            <div class="px-5 py-3 flex items-center justify-between">
-              <div>
-                <div class="text-sm">{entry.description || entry.action}</div>
-                {#if entry.user}
-                  <div class="text-xs text-white/40 mt-0.5">{entry.user}</div>
-                {/if}
+            <div class="px-5 py-3.5 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+              <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full bg-indigo-400/60 shrink-0"></div>
+                <div>
+                  <div class="text-sm">{entry.description || entry.action}</div>
+                  {#if entry.user}
+                    <div class="text-xs text-white/40 mt-0.5">{entry.user}</div>
+                  {/if}
+                </div>
               </div>
-              <div class="text-xs text-white/30">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
+              <div class="text-xs text-white/30 shrink-0 ml-4">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
             </div>
           {/each}
         </div>

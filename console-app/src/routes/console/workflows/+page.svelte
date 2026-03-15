@@ -336,9 +336,18 @@
     </div>
 
     {#if filtered.length === 0}
-      <div class="text-center py-12" style="color: var(--color-text, #fff); opacity: 0.3;">
-        <p class="text-lg">No workflows found</p>
-        <p class="text-sm mt-1">Try a different search or category</p>
+      <div class="rounded-lg p-8 text-center border border-dashed" style="background: var(--color-surface, #1a2332); border-color: rgba(255,255,255,0.2);">
+        <svg class="w-12 h-12 mx-auto mb-4" style="color: rgba(255,255,255,0.2);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+        <p class="text-lg font-semibold mb-1" style="color: var(--color-text, #fff);">No workflows found</p>
+        <p class="text-sm mb-4" style="color: var(--color-text, #fff); opacity: 0.5;">Connect your applications to enable automated JML workflows, or try a different search or category.</p>
+        <div class="flex gap-3 justify-center">
+          <a href="/console/marketplace" class="text-sm px-4 py-2 rounded text-white" style="background: var(--color-accent, #3b82f6);">Connect Apps</a>
+          {#if searchQuery || activeCategory !== 'all'}
+            <button type="button" on:click={() => { searchQuery = ''; activeCategory = 'all'; }} class="text-sm px-4 py-2 rounded" style="background: rgba(255,255,255,0.1); color: var(--color-text, #fff);">Clear Filters</button>
+          {/if}
+        </div>
       </div>
     {/if}
   {/if}

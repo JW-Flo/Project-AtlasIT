@@ -209,7 +209,23 @@
             </tr>
           {:else}
             <tr>
-              <td colspan="5" class="px-4 py-6 text-center text-white/40">No users found</td>
+              <td colspan="5" class="px-4 py-10 text-center">
+                <div class="flex flex-col items-center gap-3">
+                  <svg class="w-10 h-10 text-white/15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <div>
+                    <p class="text-white/60 font-medium mb-1">Invite your first team member to get started</p>
+                    <p class="text-white/40 text-xs mb-3">Add admins or members to collaborate on your organization's IT management.</p>
+                  </div>
+                  <button
+                    on:click={openInviteModal}
+                    class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-medium"
+                  >
+                    Invite Your First User
+                  </button>
+                </div>
+              </td>
             </tr>
           {/each}
         </tbody>
