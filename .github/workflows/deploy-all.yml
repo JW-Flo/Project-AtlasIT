@@ -96,6 +96,7 @@ jobs:
       github.event.inputs.workers == 'all' ||
       contains(github.event.inputs.workers, 'dispatch')
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       contents: read
     env:
