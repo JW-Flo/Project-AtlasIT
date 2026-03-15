@@ -22,6 +22,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generate SvelteKit types
+        run: npx svelte-kit sync --project console-app
       - run: npm run lint
       - name: Secret scan
         run: npm run scan:secrets
@@ -37,6 +39,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:shared
+      - name: Generate SvelteKit types
+        run: npx svelte-kit sync --project console-app
       - run: npm run typecheck
 
   test:
@@ -50,4 +54,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:shared
-      - run: npm run test:unit
+      - name: Run unit tests
+        run: npx vitest run
