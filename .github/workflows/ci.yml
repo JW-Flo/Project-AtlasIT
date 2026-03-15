@@ -23,7 +23,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Generate SvelteKit types
-        run: npx svelte-kit sync --project console-app
+        working-directory: console-app
+        run: npx svelte-kit sync
       - run: npm run lint
       - name: Secret scan
         run: npm run scan:secrets
@@ -40,7 +41,8 @@ jobs:
       - run: npm ci
       - run: npm run build:shared
       - name: Generate SvelteKit types
-        run: npx svelte-kit sync --project console-app
+        working-directory: console-app
+        run: npx svelte-kit sync
       - run: npm run typecheck
 
   test:
@@ -55,4 +57,4 @@ jobs:
       - run: npm ci
       - run: npm run build:shared
       - name: Run unit tests
-        run: npx vitest run
+        run: npx vitest run --project unit 'packages/*/src/**/*.test.ts' 'core-api/src/**/*.test.ts'
