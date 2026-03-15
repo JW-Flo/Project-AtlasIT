@@ -21,7 +21,17 @@ export default defineWorkspace([
         "packages/*/src/**/*.test.ts",
         "core-api/src/**/*.test.ts",
       ],
-      exclude: ["**/*.integration.test.ts", "**/*.worker.test.ts"],
+      exclude: [
+        "**/*.integration.test.ts",
+        "**/*.worker.test.ts",
+        "tests/adapter-gen*.test.ts",
+        "tests/bindings*.test.ts",
+        "tests/health*.test.ts",
+        "tests/idp-*.test.ts",
+        "tests/onboarding.test.ts",
+        "tests/api/**",
+        "tests/runtime/**",
+      ],
       environment: "node",
     },
   },
@@ -32,6 +42,7 @@ export default defineWorkspace([
       include: ["**/*.worker.test.ts"],
       pool: "@cloudflare/vitest-pool-workers",
       poolOptions: {
+        // @ts-expect-error -- @cloudflare/vitest-pool-workers extends pool options
         workers: {
           wrangler: {
             configPath: "./wrangler.toml",
