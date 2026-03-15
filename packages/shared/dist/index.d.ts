@@ -10,4 +10,7 @@ export * from "./workflow/index";
 export * from "./adapters/index";
 export * from "./observability/index";
 export * from "./realtime/index";
+export * from "./middleware/index";
+export * from "./feature-flags/index";
+export * from "./credentials/index";
 //# sourceMappingURL=index.d.ts.map

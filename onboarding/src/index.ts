@@ -11,6 +11,7 @@ import {
   resolveCfApiToken,
 } from "@atlasit/shared";
 import { OnboardingErrors } from "./utils/errors";
+import { createSession, getSessionByTenant } from "./services/session-store";
 
 // NOTE: Env validation integration deferred to Phase 1 (tracked in sprint backlog)
 
@@ -169,7 +170,7 @@ async function routeRequest(
 ) {
   if (url.pathname === "/health") return handleHealth(corsHeaders, requestId);
   if (isStart(url, request))
-    return handleStart(request, corsHeaders, requestId, actor);
+    return handleStart(request, env, corsHeaders, requestId, actor);
   if (isSubmit(url, request))
     return handleSubmit(request, env, corsHeaders, requestId, actor);
   if (isQuestions(url, request))
@@ -197,20 +198,35 @@ function isStart(url: URL, req: Request) {
 }
 async function handleStart(
   request: Request,
+  env: Env,
   cors: Record<string, string>,
   requestId: string,
   actor?: string,
 ) {
   interface StartBody {
+    tenantId?: string;
     industry?: string;
     requirements?: string[];
   }
   const body = (await request.json().catch(() => ({}))) as StartBody;
-  const questions = await generateOnboardingQuestions(
-    body.industry || "general",
-    body.requirements || [],
+  const industry = body.industry || "general";
+  const requirements = body.requirements || [];
+  const questions = await generateOnboardingQuestions(industry, requirements);
+
+  let sessionId: string | undefined;
+  if (body.tenantId) {
+    sessionId = await createSession(
+      env.DB,
+      body.tenantId,
+      industry,
+      requirements,
+    );
+  }
+
+  return json(
+    { sessionId, questions, version: "1.0.0", requestId, actor },
+    cors,
   );
-  return json({ questions, version: "1.0.0", requestId, actor }, cors);
 }
 function isSubmit(url: URL, req: Request) {
   return (
@@ -279,15 +295,28 @@ async function handleStatus(
       cors,
       400,
     );
-  const state = await env.STATE.get(`onboarding:${tenantId}`);
-  if (!state)
+
+  const session = await getSessionByTenant(env.DB, tenantId);
+  if (!session)
     return json(
       { ...OnboardingErrors.ONBOARDING_NOT_FOUND(), requestId, actor },
       cors,
       404,
     );
-  // Inject requestId header into raw state response
-  const resp = new Response(state, {
+
+  const payload = JSON.stringify({
+    sessionId: session.id,
+    status: session.status,
+    industry: session.industry,
+    config: session.generated_config,
+    started_at: session.started_at,
+    completed_at: session.completed_at,
+    updated_at: session.updated_at,
+    requestId,
+    actor,
+  });
+
+  const resp = new Response(payload, {
     headers: { "Content-Type": "application/json", ...cors },
   });
   resp.headers.set("x-request-id", requestId);

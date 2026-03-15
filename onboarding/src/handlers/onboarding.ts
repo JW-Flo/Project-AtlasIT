@@ -4,6 +4,11 @@ import { validateTenantConfig } from "../utils/validation";
 import { generateTemplate } from "../services/template";
 import { AIConfigService } from "../services/ai-config";
 import { OnboardingErrors, json } from "../utils/errors";
+import {
+  createSession,
+  updateSessionStatus,
+  getSessionByTenant,
+} from "../services/session-store";
 
 interface OnboardingRequestBody {
   tenantId?: string;
@@ -16,6 +21,7 @@ export async function handleOnboarding(
   request: Request,
   env: Env,
 ): Promise<Response> {
+  let sessionId: string | undefined;
   try {
     const body: OnboardingRequestBody = await request.json(); // Typed JSON body
     const { tenantId, name, industry, requirements } = body;
@@ -42,20 +48,27 @@ export async function handleOnboarding(
       );
     }
 
-    // Idempotency: check KV state first
-    const existingState = await env.STATE.get(`onboarding:${tenantId}`);
-    if (existingState) {
-      const parsed = JSON.parse(existingState);
+    // Idempotency: check D1 session first
+    const existingSession = await getSessionByTenant(env.DB, tenantId);
+    if (existingSession && existingSession.status === "completed") {
       return json({
         status: "success",
         tenantId,
-        config: parsed.config,
-        template: parsed.template,
+        config: existingSession.generated_config,
+        template: null,
         idempotent: true,
         requestId,
         actor,
       });
     }
+
+    // Create onboarding session in D1
+    sessionId = await createSession(
+      env.DB,
+      tenantId,
+      industry,
+      requirements || [],
+    );
 
     // Initialize AI configuration service
     const aiConfig = new AIConfigService(env.AI_API_KEY);
@@ -109,21 +122,19 @@ export async function handleOnboarding(
       console.warn("Audit event insert failed", e, { requestId });
     }
 
-    // Store onboarding state
-    await env.STATE.put(
-      `onboarding:${tenantId}`,
-      JSON.stringify({
-        status: "configured",
-        timestamp: new Date().toISOString(),
+    // Update session to completed in D1
+    await updateSessionStatus(env.DB, sessionId, "completed", {
+      generatedConfig: {
         config: recommendedConfig,
         template,
-      }),
-    );
+      },
+    });
 
     return json(
       {
         status: "success",
         tenantId,
+        sessionId,
         config: recommendedConfig,
         template,
         requestId,
@@ -132,6 +143,17 @@ export async function handleOnboarding(
       201,
     );
   } catch (error) {
+    // Best-effort: mark session as failed if we have a sessionId
+    if (typeof sessionId === "string") {
+      try {
+        await updateSessionStatus(env.DB, sessionId, "failed", {
+          errorMessage:
+            error instanceof Error ? error.message : "Unknown error",
+        });
+      } catch {
+        // Non-fatal; proceed with error response
+      }
+    }
     return handleError(error);
   }
 }

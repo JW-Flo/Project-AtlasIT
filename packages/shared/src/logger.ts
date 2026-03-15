@@ -1,56 +1,48 @@
-/* Lightweight logger abstraction */
-export type LogLevel = "debug" | "info" | "warn" | "error";
+/* Lightweight logger — delegates to observability/logger createLogger */
+import { createLogger } from "./observability/logger.js";
+import type {
+  LogLevel,
+  LogContext,
+  Logger as ILogger,
+} from "./observability/logger.js";
 
 interface LoggerOptions {
   level?: LogLevel;
   service?: string;
 }
 
-const LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
-
-function shouldLog(configLevel: LogLevel, messageLevel: LogLevel) {
-  return LEVELS.indexOf(messageLevel) >= LEVELS.indexOf(configLevel);
-}
-
-export class Logger {
-  private readonly level: LogLevel;
-  private readonly service?: string;
+/**
+ * @deprecated Use createLogger() from observability/logger instead.
+ * Kept for backward compatibility with existing `new Logger()` call sites.
+ */
+export class Logger implements ILogger {
+  private readonly inner: ILogger;
 
   constructor(opts: LoggerOptions = {}) {
-    this.level =
-      opts.level ||
-      (typeof (globalThis as any).ENV !== "undefined"
-        ? ((globalThis as any).ENV.LOG_LEVEL as LogLevel)
-        : "info");
-    this.service = opts.service;
+    const level: LogLevel = opts.level ?? "info";
+    const context: LogContext = {};
+    if (opts.service) context.service = opts.service;
+    this.inner = createLogger(context, level);
   }
 
-  private format(level: LogLevel, msg: string, meta?: any) {
-    const base = {
-      ts: new Date().toISOString(),
-      level,
-      service: this.service,
-      msg,
-      ...meta,
-    };
-    return JSON.stringify(base);
+  debug(msg: string, data?: Record<string, unknown>): void {
+    this.inner.debug(msg, data);
   }
 
-  debug(msg: string, meta?: any) {
-    if (shouldLog(this.level, "debug"))
-      console.log(this.format("debug", msg, meta));
+  info(msg: string, data?: Record<string, unknown>): void {
+    this.inner.info(msg, data);
   }
-  info(msg: string, meta?: any) {
-    if (shouldLog(this.level, "info"))
-      console.log(this.format("info", msg, meta));
+
+  warn(msg: string, data?: Record<string, unknown>): void {
+    this.inner.warn(msg, data);
   }
-  warn(msg: string, meta?: any) {
-    if (shouldLog(this.level, "warn"))
-      console.warn(this.format("warn", msg, meta));
+
+  error(msg: string, data?: Record<string, unknown>): void {
+    this.inner.error(msg, data);
   }
-  error(msg: string, meta?: any) {
-    if (shouldLog(this.level, "error"))
-      console.error(this.format("error", msg, meta));
+
+  child(context: LogContext): ILogger {
+    return this.inner.child(context);
   }
 }
 

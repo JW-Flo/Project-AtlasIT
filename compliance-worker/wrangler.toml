@@ -11,7 +11,8 @@ routes = [
 ]
 
 [vars]
-# Future environment variables (COMPLIANCE_FEATURE_FLAGS, etc.)
+ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
+# WEBHOOK_SECRET — set via `wrangler secret put WEBHOOK_SECRET`
 
 [[d1_databases]]
 binding = "D1_COMPLIANCE"

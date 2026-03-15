@@ -10,6 +10,12 @@ export default defineConfig({
       "@atlasit/idp-okta": fileURLToPath(
         new URL("./packages/idp-adapters/okta/src", import.meta.url),
       ),
+      "@atlasit/shared-types": fileURLToPath(
+        new URL("./packages/shared-types/src", import.meta.url),
+      ),
+      "@atlasit/shared": fileURLToPath(
+        new URL("./packages/shared/src", import.meta.url),
+      ),
     },
   },
   test: {
@@ -18,10 +24,10 @@ export default defineConfig({
     coverage: {
       reporter: ["text", "lcov"],
       thresholds: {
-        lines: 40,
-        functions: 40,
-        branches: 30,
-        statements: 40,
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80,
       },
     },
   },

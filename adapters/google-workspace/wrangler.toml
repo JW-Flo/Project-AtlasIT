@@ -1,0 +1,22 @@
+name = "atlasit-google-workspace"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+CONNECTOR_ID = "google-workspace"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+# Secrets (set via wrangler secret put):
+# GOOGLE_CLIENT_ID — Google OAuth2 client ID
+# GOOGLE_CLIENT_SECRET — Google OAuth2 client secret
+# CRED_ENCRYPTION_KEY — AES-GCM encryption key for token storage
+
+[observability.logs]
+enabled = true

@@ -1,0 +1,37 @@
+name = "atlasit-core-api"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
+[env.staging]
+name = "atlasit-core-api-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+[env.production]
+name = "atlasit-core-api"
+routes = ["api.atlasit.pro/api/*"]
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[observability.logs]
+enabled = true

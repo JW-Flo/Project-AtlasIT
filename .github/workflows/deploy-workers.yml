@@ -1,0 +1,124 @@
+name: Deploy Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      service:
+        description: 'Service to deploy (or all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - core-api
+          - onboarding
+          - compliance-worker
+          - console-app
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    name: CI Check
+    uses: ./.github/workflows/ci.yml
+
+  deploy-core-api:
+    name: Deploy Core API
+    needs: ci
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.inputs.service == 'all' || github.event.inputs.service == 'core-api')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy Core API
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: core-api
+          command: deploy --env ${{ github.event.inputs.environment || 'staging' }}
+
+  deploy-onboarding:
+    name: Deploy Onboarding
+    needs: ci
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.inputs.service == 'all' || github.event.inputs.service == 'onboarding')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy Onboarding
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: onboarding
+          command: deploy
+
+  deploy-compliance:
+    name: Deploy Compliance Worker
+    needs: ci
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.inputs.service == 'all' || github.event.inputs.service == 'compliance-worker')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy Compliance Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: compliance-worker
+          command: deploy
+
+  deploy-console:
+    name: Deploy Console App
+    needs: ci
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.inputs.service == 'all' || github.event.inputs.service == 'console-app')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - run: npm run build:console
+      - name: Deploy Console
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy --config console-app/wrangler.toml

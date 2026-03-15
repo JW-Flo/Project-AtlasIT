@@ -1,0 +1,332 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import type { AppEnv, AgentSubscription } from "../types";
+import { signPayload } from "../lib/hmac";
+import { moveToDeadLetter } from "../lib/dead-letter";
+
+const PublishEventSchema = z.object({
+  tenantId: z.string().min(1),
+  type: z.string().min(1),
+  source: z.string().min(1),
+  payload: z.unknown().optional(),
+  idempotencyKey: z.string().optional(),
+});
+
+export const eventRoutes = new Hono<AppEnv>();
+
+// POST /api/v1/events -- publish event and fan out
+eventRoutes.post("/", async (c) => {
+  const body = await c.req.json();
+  const parsed = PublishEventSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      {
+        status: "error",
+        code: "VALIDATION_FAILED",
+        message: "Invalid event",
+        details: parsed.error.flatten(),
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      400,
+    );
+  }
+
+  const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
+
+  // Idempotency check via KV (24h TTL)
+  if (idempotencyKey) {
+    const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyKey);
+    if (existing) {
+      return c.json({
+        status: "success",
+        data: JSON.parse(existing),
+        deduplicated: true,
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  const eventId = crypto.randomUUID();
+
+  // Store event in D1
+  await c.env.DB.prepare(
+    "INSERT INTO events (id, tenant_id, type, source, payload, status, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  )
+    .bind(
+      eventId,
+      tenantId,
+      type,
+      source,
+      payload ? JSON.stringify(payload) : null,
+      "pending",
+      idempotencyKey ?? null,
+    )
+    .run();
+
+  // Cache idempotency key
+  if (idempotencyKey) {
+    await c.env.IDEMPOTENCY_CACHE.put(
+      idempotencyKey,
+      JSON.stringify({ id: eventId, status: "pending" }),
+      { expirationTtl: 86400 },
+    );
+  }
+
+  // Fan out to subscribed agents (async, non-blocking)
+  const subscribers = await c.env.DB.prepare(
+    `SELECT ar.id as agent_id, ar.name as agent_name, ar.webhook_url, ar.secret, es.event_type
+     FROM agent_registry ar
+     JOIN event_subscriptions es ON ar.id = es.agent_id
+     WHERE es.event_type = ? AND ar.status = 'active'`,
+  )
+    .bind(type)
+    .all();
+
+  if (subscribers.results.length > 0) {
+    // Use waitUntil for non-blocking delivery
+    const ctx = c.executionCtx;
+    ctx.waitUntil(
+      fanOutToAgents(
+        c.env,
+        eventId,
+        tenantId,
+        type,
+        source,
+        payload,
+        subscribers.results as unknown as AgentSubscription[],
+        c.get("correlationId"),
+      ),
+    );
+  }
+
+  // Mark event as processing
+  await c.env.DB.prepare("UPDATE events SET status = 'processing' WHERE id = ?")
+    .bind(eventId)
+    .run();
+
+  return c.json(
+    {
+      status: "success",
+      data: {
+        id: eventId,
+        type,
+        source,
+        status: "processing",
+        subscriberCount: subscribers.results.length,
+      },
+      correlationId: c.get("correlationId"),
+      timestamp: new Date().toISOString(),
+    },
+    201,
+  );
+});
+
+// GET /api/v1/events -- list events
+eventRoutes.get("/", async (c) => {
+  const status = c.req.query("status");
+  const type = c.req.query("type");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
+  const offset = parseInt(c.req.query("offset") ?? "0");
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (status) {
+    conditions.push("status = ?");
+    params.push(status);
+  }
+  if (type) {
+    conditions.push("type = ?");
+    params.push(type);
+  }
+  const where =
+    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const results = await c.env.DB.prepare(
+    `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+  )
+    .bind(...params, limit, offset)
+    .all();
+
+  return c.json({
+    status: "success",
+    data: results.results,
+    meta: { limit, offset },
+    correlationId: c.get("correlationId"),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// GET /api/v1/events/:id -- get event with delivery status
+eventRoutes.get("/:id", async (c) => {
+  const { id } = c.req.param();
+  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ?")
+    .bind(id)
+    .first();
+
+  if (!event) {
+    return c.json(
+      {
+        status: "error",
+        code: "NOT_FOUND",
+        message: "Event not found",
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      404,
+    );
+  }
+
+  const deliveries = await c.env.DB.prepare(
+    "SELECT * FROM event_deliveries WHERE event_id = ?",
+  )
+    .bind(id)
+    .all();
+
+  return c.json({
+    status: "success",
+    data: { ...event, deliveries: deliveries.results },
+    correlationId: c.get("correlationId"),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+async function fanOutToAgents(
+  env: AppEnv["Bindings"],
+  eventId: string,
+  tenantId: string,
+  type: string,
+  source: string,
+  payload: unknown,
+  agents: AgentSubscription[],
+  correlationId: string,
+): Promise<void> {
+  const eventBody = JSON.stringify({
+    eventId,
+    tenantId,
+    type,
+    source,
+    payload,
+    timestamp: new Date().toISOString(),
+  });
+
+  const deliveryPromises = agents.map(async (agent) => {
+    const deliveryId = crypto.randomUUID();
+
+    // Record delivery attempt
+    await env.DB.prepare(
+      "INSERT INTO event_deliveries (id, event_id, agent_id, status, attempts) VALUES (?, ?, ?, ?, ?)",
+    )
+      .bind(deliveryId, eventId, agent.agentId, "pending", 0)
+      .run();
+
+    try {
+      const signature = await signPayload(eventBody, agent.secret);
+
+      const response = await fetch(agent.webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Correlation-ID": correlationId,
+          "X-Event-ID": eventId,
+          "X-Signature": signature,
+        },
+        body: eventBody,
+      });
+
+      if (response.ok) {
+        await env.DB.prepare(
+          "UPDATE event_deliveries SET status = 'delivered', attempts = 1, last_attempt_at = datetime('now') WHERE id = ?",
+        )
+          .bind(deliveryId)
+          .run();
+      } else {
+        const errorText = await response.text().catch(() => "Unknown error");
+        const errorMsg = `HTTP ${response.status}: ${errorText.slice(0, 500)}`;
+        await env.DB.prepare(
+          "UPDATE event_deliveries SET status = 'failed', attempts = 1, last_attempt_at = datetime('now'), last_error = ? WHERE id = ?",
+        )
+          .bind(errorMsg, deliveryId)
+          .run();
+
+        // Check if max attempts reached — move to dead letter queue
+        const delivery = await env.DB.prepare(
+          "SELECT attempts, max_attempts, created_at FROM event_deliveries WHERE id = ?",
+        )
+          .bind(deliveryId)
+          .first();
+        if (
+          delivery &&
+          (delivery.attempts as number) >= (delivery.max_attempts as number)
+        ) {
+          await moveToDeadLetter(env.DB, {
+            eventId,
+            agentId: agent.agentId,
+            deliveryId,
+            tenantId,
+            eventType: type,
+            eventSource: source,
+            eventPayload: eventBody,
+            errorMessage: errorMsg,
+            totalAttempts: delivery.attempts as number,
+            firstAttemptAt: delivery.created_at as string,
+            lastAttemptAt: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      await env.DB.prepare(
+        "UPDATE event_deliveries SET status = 'failed', attempts = 1, last_attempt_at = datetime('now'), last_error = ? WHERE id = ?",
+      )
+        .bind(errorMessage, deliveryId)
+        .run();
+
+      // Check if max attempts reached — move to dead letter queue
+      const delivery = await env.DB.prepare(
+        "SELECT attempts, max_attempts, created_at FROM event_deliveries WHERE id = ?",
+      )
+        .bind(deliveryId)
+        .first();
+      if (
+        delivery &&
+        (delivery.attempts as number) >= (delivery.max_attempts as number)
+      ) {
+        await moveToDeadLetter(env.DB, {
+          eventId,
+          agentId: agent.agentId,
+          deliveryId,
+          tenantId,
+          eventType: type,
+          eventSource: source,
+          eventPayload: eventBody,
+          errorMessage,
+          totalAttempts: delivery.attempts as number,
+          firstAttemptAt: delivery.created_at as string,
+          lastAttemptAt: new Date().toISOString(),
+        });
+      }
+    }
+  });
+
+  await Promise.allSettled(deliveryPromises);
+
+  // Check if all deliveries completed
+  const allDeliveries = await env.DB.prepare(
+    "SELECT status FROM event_deliveries WHERE event_id = ?",
+  )
+    .bind(eventId)
+    .all();
+
+  const allDone = allDeliveries.results.every(
+    (d: Record<string, unknown>) => d.status === "delivered",
+  );
+  const finalStatus = allDone ? "completed" : "failed";
+
+  await env.DB.prepare(
+    "UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?",
+  )
+    .bind(finalStatus, eventId)
+    .run();
+}

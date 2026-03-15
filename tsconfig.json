@@ -31,7 +31,9 @@
       "@atlasit/shared": ["./packages/shared/src"],
       "@atlasit/idp": ["./packages/idp/src"],
       "@atlasit/idp-okta": ["./packages/idp-adapters/okta/src"],
-      "@atlasit/edge-utils": ["./packages/edge-utils/src"]
+      "@atlasit/edge-utils": ["./packages/edge-utils/src"],
+      "@atlasit/shared-types": ["./packages/shared-types/src"],
+      "@atlasit/connector-schema": ["./packages/connector-schema/src"]
     }
   },
   "include": [
@@ -50,7 +52,13 @@
     "shared/services/**/*.ts",
     "shared/integrations/**/*.ts",
     "shared/connectors/**/*.ts",
-    "lambdas/*/src/**/*.ts"
+    "lambdas/*/src/**/*.ts",
+    "core-api/src/**/*.ts",
+    "marketplace/src/**/*.ts",
+    "agents/*/src/**/*.ts",
+    "adapters/*/src/**/*.ts",
+    "test/**/*.ts",
+    "vitest.workspace.ts"
   ],
   "exclude": [
     "node_modules",
@@ -60,11 +68,8 @@
     "auth",
     "context",
     "docs/servers-main",
-    "marketplace",
     "documentation-worker/dist",
     "packages/**/dist",
-    "**/*.test.ts",
-    "**/*.test.tsx",
     "**/*.spec.ts",
     "**/*.spec.tsx"
   ]
