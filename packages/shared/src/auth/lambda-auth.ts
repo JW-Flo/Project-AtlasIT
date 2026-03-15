@@ -1,8 +1,12 @@
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import type { AuthContext } from "./types.js";
 import { authenticate, AuthError } from "./middleware.js";
 import { JwtVerifier } from "./jwt-verifier.js";
 import type { AuthRepository } from "../data/interfaces.js";
+
+interface LambdaEvent {
+  headers?: Record<string, string | undefined>;
+  requestContext: Record<string, unknown>;
+}
 
 let verifier: JwtVerifier | null = null;
 
@@ -15,13 +19,14 @@ function getVerifier(): JwtVerifier {
 }
 
 export async function extractAuth(
-  event: APIGatewayProxyEventV2,
+  event: LambdaEvent,
   authRepo?: AuthRepository,
 ): Promise<AuthContext> {
   // API Gateway Cognito authorizer may have already validated;
   // check for authorizer claims first
-  const authorizer = (event.requestContext as Record<string, unknown>)
-    .authorizer as Record<string, unknown> | undefined;
+  const authorizer = event.requestContext.authorizer as
+    | Record<string, unknown>
+    | undefined;
   const jwtClaims = authorizer?.jwt as
     | { claims: Record<string, string> }
     | undefined;
