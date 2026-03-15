@@ -129,7 +129,7 @@
 
     {#if inviteParam}
       <div class="text-xs rounded-lg p-3" style="background: rgba(59,130,246,0.15); color: var(--color-text, #fff); border: 1px solid rgba(59,130,246,0.35);">
-        You were invited to join tenant <strong>{inviteParam}</strong>. Create your account to continue.
+        You received an invite to Atlas Console (reference: <strong>{inviteParam}</strong>). Create your account to continue. This registration will create a new organization for you.
       </div>
     {/if}
       <div class="rounded-lg p-6 space-y-4" style="background: var(--color-surface, #1a2332);">
