@@ -26,6 +26,21 @@
   ];
   export let nav: NavItem[] = navItems;
 
+  let userRoles: string[] = [];
+  let isImpersonating = false;
+  let impersonatedBy = "";
+
+  $: computedNav = [
+    ...nav,
+    { href: "/console/settings", label: "Settings" },
+    ...(userRoles.includes("super-admin") ? [{ href: "/console/admin", label: "Admin" }] : []),
+  ];
+
+  async function exitImpersonation() {
+    await fetch("/api/admin/impersonate/exit", { method: "POST" });
+    location.href = "/console/admin";
+  }
+
   let resolvedBase: string | null = null;
   let complianceBase: string | null = null;
   let usingFallback = false;
@@ -56,6 +71,18 @@
     } catch {
       // silent fallback
     }
+
+    try {
+      const sessionRes = await fetch("/api/auth/session");
+      if (sessionRes.ok) {
+        const session = await sessionRes.json();
+        userRoles = session.roles || [];
+        isImpersonating = session.impersonating || false;
+        impersonatedBy = session.impersonatedBy || "";
+      }
+    } catch {
+      // silent fallback
+    }
   });
   let t: "light" | "dark" = "dark";
   const unsub = theme.subscribe((v) => (t = v));
@@ -69,8 +96,14 @@
   <a href="#main" class="skip-link">Skip to content</a>
   <aside class="sidebar">
     <div class="logo">AtlasIT</div>
+    {#if isImpersonating}
+      <div class="impersonation-banner">
+        <span>Viewing as tenant</span>
+        <button on:click={exitImpersonation}>Exit</button>
+      </div>
+    {/if}
     <nav>
-      {#each nav as item}
+      {#each computedNav as item}
         <a href={item.href} class:item-active={isActive(item.href, current)}
           >{item.label}</a
         >
@@ -174,6 +207,28 @@
     background: rgba(59, 130, 246, 0.12);
     color: #93c5fd;
     border: 1px solid rgba(59, 130, 246, 0.4);
+  }
+  .impersonation-banner {
+    background: #dc2626;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .impersonation-banner button {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .impersonation-banner button:hover {
+    background: rgba(255, 255, 255, 0.35);
   }
   .badge-warning {
     background: rgba(251, 191, 36, 0.16);
