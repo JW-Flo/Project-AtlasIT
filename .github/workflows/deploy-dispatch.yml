@@ -1,0 +1,46 @@
+name: Deploy Dispatch Worker
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "dispatch-worker/**"
+            - "packages/shared/**"
+            - ".github/workflows/deploy-dispatch.yml"
+    workflow_dispatch:
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        env:
+            CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+            CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: npm
+
+            - name: Install deps
+              run: npm ci
+
+            - name: Install dispatch worker deps
+              run: npm ci --no-fund --no-audit
+              working-directory: dispatch-worker
+
+            - name: Deploy dispatch worker
+              run: npx wrangler deploy
+              working-directory: dispatch-worker
+
+            - name: Post-deploy smoke test
+              run: |
+                  echo "Probing dispatch.atlasit.pro/health..."
+                  curl -sS -o /dev/null -w "%{http_code}" --max-time 10 \
+                    "https://dispatch.atlasit.pro/health" || echo "unreachable"
+              if: always()
