@@ -16,6 +16,7 @@
   const navItems: NavItem[] = [
     { href: "/console", label: "Dashboard" },
     { href: "/console/policies", label: "Policy Generator" },
+    { href: "/console/compliance", label: "Compliance" },
     { href: "/console/marketplace", label: "Marketplace" },
     { href: "/console/integrations", label: "API Manager" },
     { href: "/console/workflows", label: "Workflows" },
