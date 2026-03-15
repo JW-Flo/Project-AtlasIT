@@ -426,6 +426,169 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     );
   }
 
+  // --- v1 tenant-scoped evidence routes ---
+
+  if (url.pathname === "/api/v1/evidence" && method === "GET") {
+    const tenantId =
+      url.searchParams.get("tenant_id") || request.headers.get("x-tenant-id");
+    if (!tenantId) {
+      return errorResponse(400, requestId, headers, "tenant_id required");
+    }
+    const db = resolveD1(env);
+    if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
+    await ensureSchema(env);
+
+    const limit = Math.min(
+      Math.max(Number(url.searchParams.get("limit")) || 50, 1),
+      200,
+    );
+    const cursorParam = url.searchParams.get("cursor");
+    const conditions: string[] = ["tenant_id = ?"];
+    const bindings: (string | number)[] = [tenantId];
+
+    if (cursorParam) {
+      const cursor = Number(cursorParam);
+      if (!Number.isFinite(cursor) || cursor <= 0) {
+        return errorResponse(400, requestId, headers, "Invalid cursor");
+      }
+      conditions.push("id < ?");
+      bindings.push(cursor);
+    }
+
+    const where = conditions.join(" AND ");
+    const fetchLimit = limit + 1;
+
+    try {
+      const { results: rows } = await db
+        .prepare(
+          `SELECT id, hash, tenant_id, pack, subject_ref, created_at
+           FROM evidence_index WHERE ${where} ORDER BY id DESC LIMIT ?`,
+        )
+        .bind(...bindings, fetchLimit)
+        .all();
+
+      const results = rows ?? [];
+      const hasNext = results.length > limit;
+      const sliced = hasNext ? results.slice(0, limit) : results;
+      const items = sliced.map((row: any) => ({
+        id: Number(row.id),
+        hash: String(row.hash),
+        tenantId: String(row.tenant_id),
+        pack: String(row.pack),
+        subject: row.subject_ref != null ? String(row.subject_ref) : null,
+        createdAt: String(row.created_at),
+      }));
+      const nextCursor = hasNext
+        ? String((sliced[sliced.length - 1] as any).id)
+        : null;
+
+      return jsonResponse(
+        { items, nextCursor, count: items.length },
+        200,
+        headers,
+      );
+    } catch (e) {
+      log("error", "evidence.v1.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return errorResponse(500, requestId, headers, "Failed to list evidence");
+    }
+  }
+
+  if (url.pathname === "/api/v1/evidence" && method === "POST") {
+    return handleEvidenceIngest(request, env, requestId, headers);
+  }
+
+  // POST /api/v1/evidence/:id/link
+  const evidenceLinkMatch = url.pathname.match(
+    /^\/api\/v1\/evidence\/(\d+)\/link$/,
+  );
+  if (evidenceLinkMatch && method === "POST") {
+    const evidenceId = Number(evidenceLinkMatch[1]);
+
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, requestId, headers, "Invalid JSON");
+    }
+
+    const controlKey =
+      typeof body?.controlKey === "string" ? body.controlKey.trim() : "";
+    if (!controlKey) {
+      return errorResponse(400, requestId, headers, "controlKey required");
+    }
+
+    const resolvedTenantId =
+      body?.tenantId || request.headers.get("x-tenant-id");
+    if (!resolvedTenantId) {
+      return errorResponse(400, requestId, headers, "tenant_id required");
+    }
+
+    const db = resolveD1(env);
+    if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
+    await ensureSchema(env);
+
+    const evidence = await db
+      .prepare(
+        "SELECT hash, tenant_id FROM evidence_index WHERE id = ? LIMIT 1",
+      )
+      .bind(evidenceId)
+      .first<{ hash: string; tenant_id: string }>();
+
+    if (!evidence) {
+      return errorResponse(404, requestId, headers, "Evidence not found");
+    }
+    if (evidence.tenant_id !== resolvedTenantId) {
+      return errorResponse(
+        403,
+        requestId,
+        headers,
+        "Evidence not available for tenant",
+      );
+    }
+
+    try {
+      const result = await manualControlEvidenceLink(db, {
+        tenantId: resolvedTenantId,
+        controlKey,
+        evidenceHash: evidence.hash,
+      });
+
+      log("info", "evidence.v1.link", {
+        requestId,
+        tenantId: resolvedTenantId,
+        evidenceId,
+        controlKey,
+      });
+
+      return jsonResponse(
+        {
+          evidenceId,
+          controlKey,
+          evidenceHash: evidence.hash,
+          linked: true,
+          createdAt: result.createdAt,
+        },
+        result.created ? 201 : 200,
+        headers,
+      );
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message === "control.not_found")
+          return errorResponse(404, requestId, headers, "Control not found");
+        if (err.message === "evidence.not_found")
+          return errorResponse(404, requestId, headers, "Evidence not found");
+      }
+      log("error", "evidence.v1.link.error", {
+        requestId,
+        error: (err as Error).message,
+      });
+      return errorResponse(500, requestId, headers, "Failed to link evidence");
+    }
+  }
+
   return null;
 }
 

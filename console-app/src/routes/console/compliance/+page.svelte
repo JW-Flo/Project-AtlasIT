@@ -172,6 +172,115 @@
   let evaluating = false;
   let lastEvaluation: { tenantState: Record<string, boolean>; evaluations: any[] } | null = null;
 
+  interface EvidenceItem {
+    id: number;
+    hash: string;
+    tenantId: string;
+    pack: string;
+    subject: string | null;
+    createdAt: string;
+    linkedControl?: string;
+  }
+
+  let evidenceItems: EvidenceItem[] = [];
+  let evidenceLoading = false;
+  let evidenceError: string | null = null;
+  let showRecordForm = false;
+  let recordingEvidence = false;
+  let newEvidenceDescription = "";
+  let newEvidencePack = "manual";
+  let linkingEvidenceId: number | null = null;
+  let linkControlKey = "";
+
+  const INTERNAL_CONTROLS = [
+    { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
+    { key: "SOC2_CC2.2", framework: "SOC2", title: "Communication and information" },
+    { key: "SOC2_CC6.1", framework: "SOC2", title: "Logical access" },
+    { key: "ISO27001_A.8", framework: "ISO27001", title: "Asset management" },
+    { key: "ISO27001_A.9", framework: "ISO27001", title: "Access control" },
+    { key: "ISO27001_A.10", framework: "ISO27001", title: "Cryptography" },
+    { key: "ISO27001_A.16", framework: "ISO27001", title: "Incident management" },
+    { key: "NIST_ID", framework: "NIST CSF", title: "Identify" },
+    { key: "NIST_PR", framework: "NIST CSF", title: "Protect" },
+    { key: "NIST_DE", framework: "NIST CSF", title: "Detect" },
+    { key: "NIST_RS", framework: "NIST CSF", title: "Respond" },
+    { key: "NIST_RC", framework: "NIST CSF", title: "Recover" },
+  ];
+
+  function shortHash(hash: string): string {
+    if (!hash || hash.length <= 16) return hash;
+    return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
+  }
+
+  async function loadEvidence() {
+    evidenceLoading = true;
+    evidenceError = null;
+    try {
+      const res = await fetch("/api/tenant-compliance/evidence");
+      if (!res.ok) throw new Error(`Failed to load evidence (${res.status})`);
+      const data = await res.json();
+      evidenceItems = data.items || [];
+    } catch (e: any) {
+      evidenceError = e?.message || "Failed to load evidence";
+    } finally {
+      evidenceLoading = false;
+    }
+  }
+
+  async function recordEvidence() {
+    if (!newEvidenceDescription.trim()) return;
+    recordingEvidence = true;
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(newEvidenceDescription);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+      const res = await fetch("/api/tenant-compliance/evidence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payload: { description: newEvidenceDescription, hash: hashHex },
+          pack: newEvidencePack,
+          subject: "manual-upload",
+        }),
+      });
+      if (!res.ok) throw new Error(`Failed to record evidence (${res.status})`);
+      pushToast({ message: "Evidence recorded", variant: "success" });
+      newEvidenceDescription = "";
+      showRecordForm = false;
+      await loadEvidence();
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Failed to record evidence", variant: "error" });
+    } finally {
+      recordingEvidence = false;
+    }
+  }
+
+  async function linkEvidence(evidenceId: number) {
+    if (!linkControlKey) return;
+    try {
+      const res = await fetch(`/api/tenant-compliance/evidence/${evidenceId}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ controlKey: linkControlKey }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Link failed (${res.status})`);
+      }
+      pushToast({ message: `Evidence linked to ${linkControlKey}`, variant: "success" });
+      linkingEvidenceId = null;
+      linkControlKey = "";
+      const item = evidenceItems.find((e) => e.id === evidenceId);
+      if (item) item.linkedControl = linkControlKey;
+      evidenceItems = [...evidenceItems];
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Failed to link evidence", variant: "error" });
+    }
+  }
+
   async function runEvaluation() {
     evaluating = true;
     try {
@@ -190,6 +299,10 @@
     } finally {
       evaluating = false;
     }
+  }
+
+  $: if (activeTab === "evidence" && evidenceItems.length === 0 && !evidenceLoading && !evidenceError) {
+    loadEvidence();
   }
 
   onMount(loadData);
@@ -484,17 +597,137 @@
     </div>
 
   {:else if activeTab === "evidence"}
-    <!-- Evidence tab (placeholder) -->
-    <div class="rounded-lg p-12 bg-[var(--color-surface,#1a2332)] border border-white/10 text-center">
-      <svg class="w-16 h-16 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-      </svg>
-      <h3 class="text-lg font-semibold text-white/60 mb-2">Evidence Locker</h3>
-      <p class="text-sm text-white/40 max-w-md mx-auto">
-        Upload and manage compliance evidence documents. Attach evidence to controls to demonstrate
-        compliance during audits. Coming soon.
-      </p>
+    <!-- Evidence tab -->
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Evidence Locker</h2>
+      <button
+        on:click={() => (showRecordForm = !showRecordForm)}
+        class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white transition-colors"
+      >
+        {showRecordForm ? "Cancel" : "Record Evidence"}
+      </button>
     </div>
+
+    {#if showRecordForm}
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-4">
+        <h3 class="text-sm font-semibold mb-3">Record New Evidence</h3>
+        <div class="flex flex-col gap-3">
+          <div>
+            <label for="ev-desc" class="text-xs text-white/60 block mb-1">Description</label>
+            <textarea
+              id="ev-desc"
+              bind:value={newEvidenceDescription}
+              rows="3"
+              placeholder="Describe the evidence (e.g., screenshot of MFA configuration, access review export)..."
+              class="w-full bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-blue-500 resize-none"
+            ></textarea>
+          </div>
+          <div>
+            <label for="ev-pack" class="text-xs text-white/60 block mb-1">Evidence Pack</label>
+            <select
+              id="ev-pack"
+              bind:value={newEvidencePack}
+              class="bg-[#0f1923] border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+            >
+              <option value="manual">Manual Upload</option>
+              <option value="access-review">Access Review</option>
+              <option value="config-snapshot">Configuration Snapshot</option>
+              <option value="audit-log">Audit Log</option>
+              <option value="policy-doc">Policy Document</option>
+            </select>
+          </div>
+          <button
+            on:click={recordEvidence}
+            disabled={recordingEvidence || !newEvidenceDescription.trim()}
+            class="self-start text-sm bg-green-600 hover:bg-green-500 disabled:bg-green-600/50 px-4 py-1.5 rounded text-white transition-colors"
+          >
+            {recordingEvidence ? "Recording..." : "Submit Evidence"}
+          </button>
+        </div>
+      </div>
+    {/if}
+
+    {#if evidenceLoading}
+      <div class="flex flex-col gap-3">
+        <div class="h-12 bg-white/5 rounded-lg animate-pulse"></div>
+        <div class="h-12 bg-white/5 rounded-lg animate-pulse"></div>
+      </div>
+    {:else if evidenceError}
+      <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{evidenceError}</div>
+    {:else if evidenceItems.length === 0}
+      <div class="rounded-lg p-12 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center">
+        <svg class="w-12 h-12 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <h3 class="text-lg font-semibold text-white/60 mb-2">No evidence recorded yet</h3>
+        <p class="text-sm text-white/40 max-w-md mx-auto">
+          Record evidence to demonstrate compliance during audits. Click "Record Evidence" above to get started.
+        </p>
+      </div>
+    {:else}
+      <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-white/50 text-xs uppercase tracking-wider">
+              <th class="px-4 py-3 font-medium">Hash</th>
+              <th class="px-4 py-3 font-medium">Pack</th>
+              <th class="px-4 py-3 font-medium">Subject</th>
+              <th class="px-4 py-3 font-medium">Date</th>
+              <th class="px-4 py-3 font-medium">Link to Control</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each evidenceItems as item (item.id)}
+              <tr class="border-t border-white/10 hover:bg-white/[0.02]">
+                <td class="px-4 py-3">
+                  <span class="font-mono text-xs text-white/80" title={item.hash}>{shortHash(item.hash)}</span>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                    {item.pack}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-white/60 text-xs">{item.subject || "-"}</td>
+                <td class="px-4 py-3 text-white/50 text-xs">{new Date(item.createdAt).toLocaleString()}</td>
+                <td class="px-4 py-3">
+                  {#if item.linkedControl}
+                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-500/30">
+                      {item.linkedControl}
+                    </span>
+                  {:else if linkingEvidenceId === item.id}
+                    <div class="flex items-center gap-2">
+                      <select
+                        bind:value={linkControlKey}
+                        class="bg-[#0f1923] border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">Select control...</option>
+                        {#each INTERNAL_CONTROLS as ctrl}
+                          <option value={ctrl.key}>{ctrl.key} - {ctrl.title}</option>
+                        {/each}
+                      </select>
+                      <button
+                        on:click={() => linkEvidence(item.id)}
+                        disabled={!linkControlKey}
+                        class="text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 px-2 py-1 rounded text-white"
+                      >Link</button>
+                      <button
+                        on:click={() => { linkingEvidenceId = null; linkControlKey = ""; }}
+                        class="text-xs text-white/40 hover:text-white/60"
+                      >Cancel</button>
+                    </div>
+                  {:else}
+                    <button
+                      on:click={() => { linkingEvidenceId = item.id; linkControlKey = ""; }}
+                      class="text-xs text-blue-400 hover:text-blue-300 underline"
+                    >Link</button>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   {/if}
 </div>
 

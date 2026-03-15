@@ -52,7 +52,7 @@ ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
 # CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
 # CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)
 CF_ACCESS_TEAM_DOMAIN = "https://atlasit.cloudflareaccess.com"
-CF_ACCESS_AUD = "" # TODO: set this to your Access Application AUD tag before deploying
+CF_ACCESS_AUD = "" # ACTION REQUIRED: Create an Access Application in Zero Trust > Access > Applications for the console, then paste its AUD tag here
 SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
 ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
 TENANT_ID = "atlasit-prod"
