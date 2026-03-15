@@ -27,7 +27,11 @@
       const res = await fetch("/api/apps/status");
       if (res.ok) {
         const data = await res.json();
-        const connected: Record<string, boolean> = data.connected || {};
+        const statusApps: any[] = data.applications || [];
+        const connected: Record<string, boolean> = {};
+        for (const sa of statusApps) {
+          connected[sa.id] = !!sa.connected;
+        }
         apps = apps.map((a) => ({ ...a, connected: !!connected[a.id] }));
       }
     } catch {
