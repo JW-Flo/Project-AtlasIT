@@ -1,9 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { coreFetch } from "$lib/api";
+import { saveCredentials } from "$lib/server/credentials";
 
 export const POST: RequestHandler = async ({ request, platform }) => {
-  const env = (platform?.env as any) || {};
-
   let body: any;
   try {
     body = await request.json();
@@ -14,21 +12,27 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     });
   }
 
-  try {
-    const res = await coreFetch(env, "/api/v1/apps/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
+  const appId = body.appId;
+  if (!appId) {
+    return new Response(JSON.stringify({ error: "appId is required" }), {
+      status: 400,
       headers: { "Content-Type": "application/json" },
     });
-  } catch {
+  }
+
+  const credentials: Record<string, string> = body.credentials || {};
+
+  const result = await saveCredentials(platform, appId, credentials);
+
+  if (!result.ok) {
     return new Response(
-      JSON.stringify({ error: "App connect service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
+      JSON.stringify({ error: result.error || "Failed to save credentials" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  return new Response(JSON.stringify({ connected: true, id: appId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 };

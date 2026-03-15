@@ -11,9 +11,13 @@ declare global {
       env: {
         // D1
         ATLAS_CORE_DB: D1Database;
+        ATLAS_SHARED_DB: D1Database;
         ATLAS_AUDIT_DB: D1Database;
         D1_COMPLIANCE?: D1Database; // optional placeholders
         D1_AUDIT?: D1Database;
+        // Secrets
+        CRED_ENCRYPTION_KEY?: string;
+        TENANT_ID?: string;
         // KV
         KV_SESSIONS: KVNamespace;
         KV_CACHE: KVNamespace;

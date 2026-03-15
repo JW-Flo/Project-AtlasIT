@@ -66,11 +66,19 @@
     wizardOpen = true;
   }
 
+  /** OAuth apps that should redirect to provider after saving creds */
+  const oauthApps = new Set([
+    "slack", "google_workspace", "microsoft_365", "azure", "teams",
+    "github", "zoom", "jira", "okta", "auth0", "quickbooks", "xero",
+    "workday", "discord", "crowdstrike", "adp",
+  ]);
+
   async function connectApp() {
     if (!wizardApp) return;
     wizardLoading = true;
 
     try {
+      // Step 1: Save credentials to D1
       const payload: Record<string, any> = {
         appId: wizardApp.id,
         credentials: { ...credValues },
@@ -82,34 +90,39 @@
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        apps = apps.map((a) =>
-          a.id === wizardApp!.id ? { ...a, connected: true, status: "live" } : a,
-        );
-        wizardStep = 3;
+      if (!res.ok) {
+        const data: any = await res.json().catch(() => ({}));
         pushToast({
-          message: `${wizardApp.name} connected successfully!`,
-          variant: "success",
+          message: data.error || "Failed to save credentials",
+          variant: "error",
         });
-      } else {
-        // MVP: mark connected even if backend unavailable
-        apps = apps.map((a) =>
-          a.id === wizardApp!.id ? { ...a, connected: true, status: "live" } : a,
-        );
-        wizardStep = 3;
+        wizardLoading = false;
+        return;
+      }
+
+      // Step 2: For OAuth apps with client_id, redirect to OAuth flow
+      if (wizardApp.auth === "oauth" && oauthApps.has(wizardApp.id) && credValues.client_id) {
         pushToast({
-          message: `${wizardApp.name} connected (MVP mode)`,
+          message: `Redirecting to ${wizardApp.name} for authorization...`,
           variant: "info",
         });
+        window.location.href = `/api/apps/oauth/start?appId=${wizardApp.id}`;
+        return;
       }
-    } catch {
+
+      // Step 3: For API key / non-OAuth apps, mark as connected
       apps = apps.map((a) =>
         a.id === wizardApp!.id ? { ...a, connected: true, status: "live" } : a,
       );
       wizardStep = 3;
       pushToast({
-        message: `${wizardApp.name} connected (offline mode)`,
-        variant: "info",
+        message: `${wizardApp.name} connected!`,
+        variant: "success",
+      });
+    } catch (e: any) {
+      pushToast({
+        message: e?.message || "Connection failed",
+        variant: "error",
       });
     }
     wizardLoading = false;

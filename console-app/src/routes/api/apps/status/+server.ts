@@ -1,20 +1,20 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { coreFetch } from "$lib/api";
+import { listConnectedApps } from "$lib/server/credentials";
 
 export const GET: RequestHandler = async ({ platform }) => {
-  const env = (platform?.env as any) || {};
+  const connected = await listConnectedApps(platform);
 
-  try {
-    const res = await coreFetch(env, "/api/v1/apps/status");
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(
-      JSON.stringify({ error: "App status service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
-  }
+  const applications = connected.map((c) => ({
+    id: c.app_id,
+    connected: true,
+    connectedAt: c.connected_at,
+    lastSync: c.updated_at,
+    healthy: c.healthy,
+    lastTestAt: c.last_test_at,
+  }));
+
+  return new Response(JSON.stringify({ applications }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 };
