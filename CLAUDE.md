@@ -1,0 +1,75 @@
+# CLAUDE.md
+
+## General Preferences
+
+- Keep code clean and modular: well-structured, separated concerns, reusable components
+- Make changes with minimal explanation — focus on output over commentary
+- Follow TDD: write tests first, then implementation
+- Prefer simple, direct solutions over clever or over-engineered ones
+- Avoid unnecessary abstractions — don't create helpers or wrappers for one-time use
+
+## Languages & Frameworks
+
+- **TypeScript/JavaScript**: Prefer TypeScript over plain JS. Use strict mode. Prefer `const` over `let`. Use modern ES features and async/await.
+- **Python**: Use type hints. Follow PEP 8. Prefer f-strings. Use `pathlib` over `os.path`.
+- **Go**: Follow standard Go conventions. Use `error` returns over panics. Keep interfaces small.
+
+## Code Style
+
+- Meaningful variable and function names over comments
+- Small, focused functions with single responsibilities
+- Explicit over implicit — avoid magic values and hidden behavior
+- Keep files focused — split when a file handles multiple unrelated concerns
+
+## Testing
+
+- Write tests before implementation (TDD)
+- Test behavior, not implementation details
+- Use descriptive test names that explain the expected behavior
+- Keep tests independent and isolated
+
+## Git
+
+- Write concise commit messages focused on "why" not "what"
+- Prefer small, focused commits
+
+## Secrets
+
+- Secrets are managed in 1Password (vault: AWW_SHARED). Use `op` CLI with service account token.
+- Never commit secrets to repo files. Use `wrangler secret put` for worker secrets.
+- CF API token: 1Password item "Cloudflare - Personal : Actual" > CLOUDFLARE_ACCOUNT_ADMIN_API_TOKEN
+- Groq: 1Password item "Groq Atlas IT API Credentials"
+- GH_PAT: 1Password item "GH_PAT" or "GitHub PAT - Atlas IT"
+
+## Project Architecture
+
+AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
+
+### Components
+
+- `console-app/` — SvelteKit + Tailwind (Cloudflare Pages). Primary UI with onboarding, compliance, directory, marketplace, workflows, policies, incidents, access requests, admin panel
+- `compliance-worker/` — Compliance scoring, evidence hashing, policy templates
+- `ai-orchestrator/` — Task queue, cron, workflow execution
+- `onboarding/` — Tenant provisioning
+- `packages/shared/` — Common types, auth, logging
+
+### Storage (Cloudflare D1/KV/R2)
+
+- D1 `ATLAS_SHARED_DB` — tenants, users, preferences, directory, compliance, audit
+- KV `KV_SESSIONS` — session management
+- R2 — policies, evidence, artifacts
+
+### Console App Conventions
+
+- API routes in `console-app/src/routes/api/` — all require auth guard (`locals.user` check)
+- Proxy routes use `_proxy-helpers.ts` for upstream worker calls with `x-tenant-id` header
+- Tenant preferences stored as JSON in `tenant_preferences` table (key/value per tenant)
+- Compliance frameworks: SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR
+- Shared session store at `$lib/stores/session.ts` — fetch once, consume everywhere
+
+### Key Patterns
+
+- Auth: CF Access JWT → `UserPrincipal` via `$lib/auth/provider.ts`
+- Tenant isolation: all data queries scoped by `tenant_id` from authenticated session
+- Scoring: weighted status (not_started=0, in_progress=0.25, implemented=0.75, verified=1.0)
+- Integrations catalog: `$lib/data/integrations.ts` (AuthModel: platform_oauth | tenant_oauth | api_key | service_account)

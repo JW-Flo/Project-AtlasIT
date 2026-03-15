@@ -169,6 +169,29 @@
     pushToast({ message: "Compliance report exported", variant: "success" });
   }
 
+  let evaluating = false;
+  let lastEvaluation: { tenantState: Record<string, boolean>; evaluations: any[] } | null = null;
+
+  async function runEvaluation() {
+    evaluating = true;
+    try {
+      const res = await fetch("/api/tenant-compliance/evaluate", { method: "POST" });
+      if (!res.ok) throw new Error(`Evaluation failed (${res.status})`);
+      const data: { tenantState: Record<string, boolean>; evaluations: any[]; controlsUpdated: boolean } = await res.json();
+      lastEvaluation = data;
+      if (data.controlsUpdated) {
+        pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
+        await loadData();
+      } else {
+        pushToast({ message: "Evaluation complete — no changes needed", variant: "success" });
+      }
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
+    } finally {
+      evaluating = false;
+    }
+  }
+
   onMount(loadData);
 </script>
 
@@ -181,12 +204,21 @@
         Track frameworks, controls, and overall compliance posture.
       </p>
     </div>
-    <a
-      href="/console"
-      class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
-    >
-      Back to Dashboard
-    </a>
+    <div class="flex items-center gap-2">
+      <button
+        on:click={runEvaluation}
+        disabled={evaluating}
+        class="text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 px-3 py-1.5 rounded text-white"
+      >
+        {evaluating ? "Evaluating..." : "Evaluate Configuration"}
+      </button>
+      <a
+        href="/console"
+        class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
+      >
+        Back to Dashboard
+      </a>
+    </div>
   </div>
 
   <!-- Sub-navigation tabs -->
@@ -259,6 +291,20 @@
         Weighted average across {scores.length} framework{scores.length !== 1 ? 's' : ''}
       </p>
     </div>
+
+    {#if lastEvaluation}
+      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
+        <h2 class="text-lg font-semibold mb-3">Configuration Assessment</h2>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {#each Object.entries(lastEvaluation.tenantState) as [key, met]}
+            <div class="flex items-center gap-2">
+              <div class="w-2 h-2 rounded-full {met ? 'bg-green-400' : 'bg-red-400'}"></div>
+              <span class="text-xs text-white/60">{key.replace(/_/g, ' ')}</span>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     <!-- Framework cards -->
     <h2 class="text-lg font-semibold mb-3">Frameworks</h2>
