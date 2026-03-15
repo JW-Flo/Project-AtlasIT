@@ -345,23 +345,79 @@ async function callAI(prompt, env, opts = {}) {
   });
 }
 
-// Stub: run terminal command (simulate for now)
-async function runCommand(command) {
-  try {
-    // In production, this would dispatch to a secure runner or agent
-    const result = await fetch("/run-command", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command }),
-    });
-    if (!result.ok)
-      throw new Error("Command execution error: " + result.status);
-    const data = await result.json();
-    return { output: data.output };
-  } catch (error) {
-    console.error("Failed to execute command:", error);
-    throw error;
+function createCommandRunnerError(status, code, message) {
+  const error = new Error(message);
+  error.status = status;
+  error.code = code;
+  return error;
+}
+
+function resolveCommandRunner(env) {
+  const serviceBinding = env?.COMMAND_RUNNER;
+  if (serviceBinding && typeof serviceBinding.fetch === "function") {
+    return {
+      execute: (command) =>
+        serviceBinding.fetch("https://command-runner.internal/run-command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command }),
+        }),
+    };
   }
+
+  const configuredUrl = env?.COMMAND_RUNNER_URL;
+  if (typeof configuredUrl === "string" && configuredUrl.trim()) {
+    let parsed;
+    try {
+      parsed = new URL(configuredUrl);
+    } catch {
+      throw createCommandRunnerError(
+        503,
+        "COMMAND_RUNNER_URL_INVALID",
+        "COMMAND_RUNNER_URL is invalid",
+      );
+    }
+
+    if (!(parsed.protocol === "https:" || parsed.protocol === "http:")) {
+      throw createCommandRunnerError(
+        503,
+        "COMMAND_RUNNER_URL_INVALID",
+        "COMMAND_RUNNER_URL must use http or https",
+      );
+    }
+
+    return {
+      execute: (command) =>
+        fetch(parsed.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command }),
+        }),
+    };
+  }
+
+  throw createCommandRunnerError(
+    503,
+    "COMMAND_RUNNER_UNCONFIGURED",
+    "No command runner configured",
+  );
+}
+
+async function runCommand(command, env) {
+  const runner = resolveCommandRunner(env);
+  const response = await runner.execute(command);
+  if (!response.ok) {
+    throw createCommandRunnerError(
+      502,
+      "COMMAND_RUNNER_EXECUTION_FAILED",
+      `Command runner returned status ${response.status}`,
+    );
+  }
+  const data = await response.json().catch(() => ({}));
+  return {
+    output: typeof data.output === "string" ? data.output : "",
+    exitCode: Number.isInteger(data.exitCode) ? data.exitCode : 0,
+  };
 }
 
 // Stub: check active deployments (simulate)
@@ -438,7 +494,7 @@ async function monitorProjectState() {
 }
 
 // Execute terminal command with MCP approval
-async function executeTerminalCommand(command, context) {
+async function executeTerminalCommand(command, context, env) {
   const commandId = Date.now().toString();
   terminalCommands.set(commandId, { command, status: "pending", context });
 
@@ -451,7 +507,7 @@ async function executeTerminalCommand(command, context) {
 
   try {
     // Execute command (implement actual execution logic)
-    const result = await runCommand(command);
+    const result = await runCommand(command, env);
     terminalCommands.set(commandId, {
       command,
       status: "completed",
@@ -466,7 +522,14 @@ async function executeTerminalCommand(command, context) {
       context,
       error,
     });
-    return { success: false, error };
+    return {
+      success: false,
+      error: {
+        code: error?.code || "COMMAND_RUNNER_ERROR",
+        message: error?.message || "Command execution failed",
+      },
+      status: Number.isInteger(error?.status) ? error.status : 500,
+    };
   }
 }
 
@@ -694,13 +757,31 @@ app.post("/task", async (c) => {
 // Terminal command endpoint
 app.post("/terminal", async (c) => {
   const { command, context } = await c.req.json();
+  if (typeof command !== "string" || !command.trim()) {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: "INVALID_COMMAND",
+          message: "command must be a non-empty string",
+        },
+        requestId: c.get("requestId"),
+        actor: c.get("actor"),
+      },
+      400,
+    );
+  }
 
-  const result = await executeTerminalCommand(command, context);
-  return c.json({
-    ...result,
-    requestId: c.get("requestId"),
-    actor: c.get("actor"),
-  });
+  const result = await executeTerminalCommand(command, context, c.env || {});
+  const status = result.success ? 200 : result.status || 500;
+  return c.json(
+    {
+      ...result,
+      requestId: c.get("requestId"),
+      actor: c.get("actor"),
+    },
+    status,
+  );
 });
 
 // Simple AI inference endpoint (POST /ai/infer) { prompt, model? }

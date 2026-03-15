@@ -41,7 +41,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.43.1",
-    "hono": "4.7.7",
+    "hono": "4.12.7",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.503.0",
     "react": "19.0.0",
@@ -54,20 +54,19 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.0.8",
+    "@cloudflare/vite-plugin": "1.28.0",
     "@tanstack/react-query-devtools": "^5.75.7",
     "@tanstack/react-router-devtools": "^1.120.3",
     "@tanstack/router-plugin": "^1.120.3",
     "@types/node": "22.14.1",
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
-    "@vitejs/plugin-react": "4.4.1",
+    "@vitejs/plugin-react": "5.2.0",
     "drizzle-kit": "^0.31.1",
     "globals": "15.15.0",
     "tw-animate-css": "^1.2.9",
     "typescript": "5.8.3",
     "vite": "^7.1.7",
     "wrangler": "^4.14.4"
-  },
-  "packageManager": "bun@1.2.12"
+  }
 }

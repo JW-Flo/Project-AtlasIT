@@ -17,6 +17,7 @@
     { href: "/console", label: "Dashboard" },
     { href: "/console/policies", label: "Policy Generator" },
     { href: "/console/marketplace", label: "Marketplace" },
+    { href: "/console/workflows", label: "Workflows" },
     { href: "/access-requests", label: "Access Requests" },
     { href: "/incidents", label: "Incidents" },
     { href: "/notifications", label: "Notifications" },
