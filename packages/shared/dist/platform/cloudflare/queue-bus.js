@@ -6,18 +6,18 @@
  * touches CF-specific APIs directly.
  */
 export class CloudflareQueueBus {
-  queues;
-  constructor(queues) {
-    this.queues = queues;
-  }
-  async publish(queue, msg, opts) {
-    const producer = this.queues[queue];
-    if (!producer) {
-      throw new Error(`Queue not bound: ${queue}`);
+    queues;
+    constructor(queues) {
+        this.queues = queues;
     }
-    await producer.send(msg, {
-      delaySeconds: opts?.delaySec,
-    });
-  }
+    async publish(queue, msg, opts) {
+        const producer = this.queues[queue];
+        if (!producer) {
+            throw new Error(`Queue not bound: ${queue}`);
+        }
+        await producer.send(msg, {
+            delaySeconds: opts?.delaySec,
+        });
+    }
 }
 //# sourceMappingURL=queue-bus.js.map

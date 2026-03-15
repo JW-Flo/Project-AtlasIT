@@ -6,37 +6,37 @@
  * feeds into subsequent steps via the run context.
  */
 const JOINER_STEPS = [
-  { id: "validate-profile", action: "validate_profile" },
-  { id: "provision-primary-account", action: "provision_primary_account" },
-  { id: "synchronize-access", action: "synchronize_access" },
-  { id: "notify-stakeholders", action: "notify_stakeholders" },
+    { id: "validate-profile", action: "validate_profile" },
+    { id: "provision-primary-account", action: "provision_primary_account" },
+    { id: "synchronize-access", action: "synchronize_access" },
+    { id: "notify-stakeholders", action: "notify_stakeholders" },
 ];
 const MOVER_STEPS = [
-  { id: "validate-profile", action: "validate_profile" },
-  { id: "apply-role-change", action: "apply_role_change" },
-  { id: "reconcile-entitlements", action: "reconcile_entitlements" },
-  { id: "notify-stakeholders", action: "notify_stakeholders" },
+    { id: "validate-profile", action: "validate_profile" },
+    { id: "apply-role-change", action: "apply_role_change" },
+    { id: "reconcile-entitlements", action: "reconcile_entitlements" },
+    { id: "notify-stakeholders", action: "notify_stakeholders" },
 ];
 const LEAVER_STEPS = [
-  { id: "validate-profile", action: "validate_profile" },
-  { id: "collect-artifacts", action: "collect_artifacts" },
-  { id: "revoke-access", action: "revoke_access" },
-  { id: "notify-stakeholders", action: "notify_stakeholders" },
+    { id: "validate-profile", action: "validate_profile" },
+    { id: "collect-artifacts", action: "collect_artifacts" },
+    { id: "revoke-access", action: "revoke_access" },
+    { id: "notify-stakeholders", action: "notify_stakeholders" },
 ];
 const REGISTRY = {
-  joiner: JOINER_STEPS,
-  mover: MOVER_STEPS,
-  leaver: LEAVER_STEPS,
+    joiner: JOINER_STEPS,
+    mover: MOVER_STEPS,
+    leaver: LEAVER_STEPS,
 };
 /**
  * Return the ordered step definitions for a workflow type.
  * Throws if the type is unknown.
  */
 export function getStepDefinitions(type) {
-  const steps = REGISTRY[type];
-  if (!steps) {
-    throw new Error(`Unknown workflow type: ${type}`);
-  }
-  return steps;
+    const steps = REGISTRY[type];
+    if (!steps) {
+        throw new Error(`Unknown workflow type: ${type}`);
+    }
+    return steps;
 }
 //# sourceMappingURL=step-registry.js.map

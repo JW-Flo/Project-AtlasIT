@@ -14,77 +14,100 @@ export declare const BACKOFF_BASE_MS = 2000;
 /** Maximum delay cap in milliseconds. */
 export declare const BACKOFF_MAX_MS = 120000;
 export type WorkflowType = "joiner" | "mover" | "leaver";
-export type StepStatus = "pending" | "running" | "completed" | "failed" | "dlq";
-export type RunStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed"
-  | "compensating";
+export type StepStatus = "pending" | "running" | "completed" | "failed" | "dlq" | "skipped";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "compensating";
 export interface StepDefinition {
-  id: string;
-  action: string;
-  /** If true, a failure in this step is non-blocking. */
-  optional?: boolean;
+    id: string;
+    action: string;
+    /** If true, a failure in this step is non-blocking. */
+    optional?: boolean;
 }
 export interface StepState {
-  stepId: string;
-  action: string;
-  status: StepStatus;
-  attempts: number;
-  startedAt?: string;
-  completedAt?: string;
-  output?: unknown;
-  error?: string;
+    stepId: string;
+    action: string;
+    status: StepStatus;
+    attempts: number;
+    startedAt?: string;
+    completedAt?: string;
+    output?: unknown;
+    error?: string;
+    durationMs?: number;
 }
 export interface HistoryEntry {
-  stepId: string;
-  action: string;
-  status: string;
-  timestamp: string;
-  attemptNumber: number;
-  output?: unknown;
-  error?: string;
+    stepId: string;
+    action: string;
+    status: string;
+    timestamp: string;
+    attemptNumber: number;
+    output?: unknown;
+    error?: string;
 }
 export interface DLQEntry {
-  runId: string;
-  stepId: string;
-  action: string;
-  attempts: number;
-  lastError: string;
-  payload: unknown;
-  createdAt: string;
+    runId: string;
+    stepId: string;
+    action: string;
+    attempts: number;
+    lastError: string;
+    payload: unknown;
+    createdAt: string;
 }
 export interface RunState {
-  /** Schema version for forward-compatible deserialization. */
-  schemaVersion: number;
-  id: string;
-  type: WorkflowType;
-  status: RunStatus;
-  tenantId: string;
-  userId: string;
-  createdAt: string;
-  completedAt?: string;
-  steps: StepState[];
-  history: HistoryEntry[];
-  context: Record<string, unknown>;
-  /** Number of alarm wake-ups processed (diagnostic). */
-  alarmCount: number;
+    /** Schema version for forward-compatible deserialization. */
+    schemaVersion: number;
+    id: string;
+    type: WorkflowType;
+    status: RunStatus;
+    tenantId: string;
+    userId: string;
+    /** Actor identity for evidence attribution. */
+    actor: string;
+    createdAt: string;
+    completedAt?: string;
+    steps: StepState[];
+    history: HistoryEntry[];
+    context: Record<string, unknown>;
+    /** Number of alarm wake-ups processed (diagnostic). */
+    alarmCount: number;
+}
+export interface EvidenceArtifact {
+    kind: string;
+    uri: string;
+    sha256: string;
+}
+export interface EvidencePolicy {
+    bundleRevision: string;
+    decisionId: string;
+    query: string;
+}
+export interface EvidenceEnvelope {
+    tenantId: string;
+    workflowRunId: string;
+    stepId: string;
+    actor: string;
+    eventType: string;
+    createdAt: string;
+    hash: string;
+    outcome?: "success" | "failure" | "skipped";
+    error?: string;
+    durationMs?: number;
+    artifacts?: EvidenceArtifact[];
+    policy?: EvidencePolicy;
+    metadata?: Record<string, unknown>;
 }
 export interface StepTaskMessage {
-  kind: "step-task";
-  runId: string;
-  stepId: string;
-  attempt: number;
+    kind: "step-task";
+    runId: string;
+    stepId: string;
+    attempt: number;
 }
 export interface StepResultMessage {
-  kind: "step-result";
-  runId: string;
-  stepId: string;
-  attempt: number;
-  success: boolean;
-  output?: unknown;
-  error?: string;
+    kind: "step-result";
+    runId: string;
+    stepId: string;
+    attempt: number;
+    success: boolean;
+    output?: unknown;
+    error?: string;
 }
 /**
  * Produce canonical JSON: sorted keys, no extra whitespace.

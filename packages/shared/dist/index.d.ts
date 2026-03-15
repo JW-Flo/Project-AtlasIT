@@ -7,4 +7,6 @@ export * from "./agent-mesh";
 export * from "./compliance/types";
 export * from "./platform/index";
 export * from "./workflow/index";
+export * from "./adapters/index";
+export * from "./observability/index";
 //# sourceMappingURL=index.d.ts.map

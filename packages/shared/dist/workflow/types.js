@@ -21,27 +21,27 @@ export const BACKOFF_MAX_MS = 120_000;
  * Used for deterministic hashing of state and evidence envelopes.
  */
 export function canonicalJson(value) {
-  return JSON.stringify(value, (_key, val) => {
-    if (val && typeof val === "object" && !Array.isArray(val)) {
-      return Object.keys(val)
-        .sort()
-        .reduce((sorted, k) => {
-          sorted[k] = val[k];
-          return sorted;
-        }, {});
-    }
-    return val;
-  });
+    return JSON.stringify(value, (_key, val) => {
+        if (val && typeof val === "object" && !Array.isArray(val)) {
+            return Object.keys(val)
+                .sort()
+                .reduce((sorted, k) => {
+                sorted[k] = val[k];
+                return sorted;
+            }, {});
+        }
+        return val;
+    });
 }
 /**
  * Compute SHA-256 hex digest of a string.
  * Works in both Workers (crypto.subtle) and Node (globalThis.crypto).
  */
 export async function sha256Hex(input) {
-  const data = new TextEncoder().encode(input);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+    const data = new TextEncoder().encode(input);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 }
 //# sourceMappingURL=types.js.map
