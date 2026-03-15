@@ -160,9 +160,8 @@
   let inviteCopied = false;
 
   function tenantInviteLink() {
-    if (!snapshot?.tenantId || typeof window === "undefined") return "";
+    if (typeof window === "undefined") return "";
     const url = new URL(`${window.location.origin}/console/login`);
-    url.searchParams.set("invite", snapshot.tenantId);
     return url.toString();
   }
 
@@ -181,12 +180,12 @@
 
   async function copyInviteLink() {
     const link = tenantInviteLink();
-    if (!link || !snapshot?.tenantId) return;
+    if (!link) return;
     try {
       await navigator.clipboard.writeText(link);
       inviteCopied = true;
       pushToast({
-        message: "Invite link copied. Share it with your team.",
+        message: "Console link copied. Share this URL with others.",
         variant: "success",
       });
       await trackGrowthEvent("invite_link_copied", snapshot.tenantId);
