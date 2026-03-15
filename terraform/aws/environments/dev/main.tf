@@ -136,10 +136,12 @@ module "lambda_compliance_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME      = module.dynamodb.table_name
-    EVIDENCE_BUCKET = aws_s3_bucket.evidence.bucket
-    SSM_PREFIX      = "/atlasit/${var.env}"
-    NODE_OPTIONS    = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    EVIDENCE_BUCKET    = aws_s3_bucket.evidence.bucket
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -155,10 +157,24 @@ module "lambda_policy_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
+}
+
+resource "aws_iam_policy" "automation_api_sfn" {
+  name = "atlasit-automation-api-sfn-${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["states:StartExecution"]
+      Resource = [module.step_functions.state_machine_arn]
+    }]
+  })
 }
 
 module "lambda_automation_api" {
@@ -172,10 +188,15 @@ module "lambda_automation_api" {
   enable_dynamodb    = true
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
+  additional_policies = [aws_iam_policy.automation_api_sfn.arn]
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME            = module.dynamodb.table_name
+    SSM_PREFIX            = "/atlasit/${var.env}"
+    SFN_STATE_MACHINE_ARN = module.step_functions.state_machine_arn
+    WORKFLOW_QUEUE_URL    = module.sqs.queue_urls["workflow"]
+    COGNITO_ISSUER_URL    = module.cognito.issuer_url
+    COGNITO_CLIENT_ID     = module.cognito.api_client_id
+    NODE_OPTIONS          = "--enable-source-maps"
   }
 }
 
@@ -191,9 +212,11 @@ module "lambda_security_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -209,9 +232,11 @@ module "lambda_core_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -228,8 +253,47 @@ module "lambda_orchestrator" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
+  }
+}
+
+module "lambda_workflow_executor" {
+  source             = "../../modules/lambda"
+  env                = var.env
+  function_name      = "workflow-executor"
+  source_dir         = "${path.module}/../../../../lambdas/workflow-executor/dist"
+  memory_size        = 256
+  timeout            = 60
+  layer_arns         = [module.lambda_layer.layer_arn]
+  dynamodb_table_arn = module.dynamodb.table_arn
+  enable_dynamodb    = true
+  s3_bucket_arn      = aws_s3_bucket.evidence.arn
+  enable_s3          = true
+  ssm_prefix         = "/atlasit/${var.env}"
+  enable_ssm         = true
+  environment_variables = {
+    TABLE_NAME      = module.dynamodb.table_name
+    EVIDENCE_BUCKET = aws_s3_bucket.evidence.bucket
+    SSM_PREFIX      = "/atlasit/${var.env}"
+    NODE_OPTIONS    = "--enable-source-maps"
+  }
+}
+
+module "lambda_dlq_processor" {
+  source             = "../../modules/lambda"
+  env                = var.env
+  function_name      = "dlq-processor"
+  source_dir         = "${path.module}/../../../../lambdas/dlq-processor/dist"
+  memory_size        = 128
+  layer_arns         = [module.lambda_layer.layer_arn]
+  dynamodb_table_arn = module.dynamodb.table_arn
+  enable_dynamodb    = true
+  environment_variables = {
     TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
     NODE_OPTIONS = "--enable-source-maps"
   }
 }
@@ -244,8 +308,9 @@ module "lambda_scheduler" {
   dynamodb_table_arn = module.dynamodb.table_arn
   enable_dynamodb    = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME           = module.dynamodb.table_name
+    COMPLIANCE_QUEUE_URL = module.sqs.queue_urls["workflow"]
+    NODE_OPTIONS         = "--enable-source-maps"
   }
 }
 
@@ -268,17 +333,22 @@ module "lambda_slack_handler" {
 }
 
 module "lambda_github_proxy" {
-  source         = "../../modules/lambda"
-  env            = var.env
-  function_name  = "github-proxy"
-  source_dir     = "${path.module}/../../../../lambdas/github-proxy/dist"
-  memory_size    = 128
-  layer_arns     = [module.lambda_layer.layer_arn]
-  ssm_prefix     = "/atlasit/${var.env}"
-  enable_ssm     = true
+  source             = "../../modules/lambda"
+  env                = var.env
+  function_name      = "github-proxy"
+  source_dir         = "${path.module}/../../../../lambdas/github-proxy/dist"
+  memory_size        = 128
+  layer_arns         = [module.lambda_layer.layer_arn]
+  dynamodb_table_arn = module.dynamodb.table_arn
+  enable_dynamodb    = true
+  ssm_prefix         = "/atlasit/${var.env}"
+  enable_ssm         = true
   environment_variables = {
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -294,9 +364,11 @@ module "lambda_onboarding_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -312,9 +384,11 @@ module "lambda_mcp_api" {
   ssm_prefix         = "/atlasit/${var.env}"
   enable_ssm         = true
   environment_variables = {
-    TABLE_NAME   = module.dynamodb.table_name
-    SSM_PREFIX   = "/atlasit/${var.env}"
-    NODE_OPTIONS = "--enable-source-maps"
+    TABLE_NAME         = module.dynamodb.table_name
+    SSM_PREFIX         = "/atlasit/${var.env}"
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 
@@ -388,7 +462,7 @@ module "eventbridge_rules" {
 module "step_functions" {
   source                      = "../../modules/step-functions"
   env                         = var.env
-  workflow_executor_lambda_arn = module.lambda_orchestrator.function_arn
+  workflow_executor_lambda_arn = module.lambda_workflow_executor.function_arn
   dlq_arn                     = module.sqs.dlq_arns["workflow"]
 }
 
@@ -401,7 +475,8 @@ module "observability" {
   env    = var.env
   lambda_function_names = [
     "compliance-api", "policy-api", "automation-api", "security-api",
-    "core-api", "orchestrator", "scheduler", "slack-handler",
+    "core-api", "orchestrator", "workflow-executor", "dlq-processor",
+    "scheduler", "slack-handler",
     "github-proxy", "onboarding-api", "mcp-api", "console-ssr",
     "ws-connect", "ws-disconnect", "ws-broadcast",
   ]
@@ -506,9 +581,13 @@ module "lambda_ws_connect" {
   layer_arns         = [module.lambda_layer.layer_arn]
   dynamodb_table_arn = aws_dynamodb_table.ws_connections.arn
   enable_dynamodb    = true
+  ssm_prefix  = "/atlasit/${var.env}"
+  enable_ssm  = true
   environment_variables = {
-    CONNECTIONS_TABLE = aws_dynamodb_table.ws_connections.name
-    NODE_OPTIONS      = "--enable-source-maps"
+    CONNECTIONS_TABLE  = aws_dynamodb_table.ws_connections.name
+    COGNITO_ISSUER_URL = module.cognito.issuer_url
+    COGNITO_CLIENT_ID  = module.cognito.api_client_id
+    NODE_OPTIONS       = "--enable-source-maps"
   }
 }
 

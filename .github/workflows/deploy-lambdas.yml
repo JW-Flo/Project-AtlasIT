@@ -1,0 +1,83 @@
+name: Deploy Lambdas
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lambdas/**"
+      - "packages/shared/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: "20"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build:shared
+
+      - name: Build shared layer zip
+        run: |
+          cd packages/shared
+          mkdir -p dist/nodejs/node_modules/@atlasit/shared
+          cp -r dist/*.js dist/*.d.ts dist/nodejs/node_modules/@atlasit/shared/
+          cd dist && zip -r layer.zip nodejs/
+
+      - name: Build all lambdas
+        run: npm run build:lambdas
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy lambda layer
+        run: |
+          LAYER_ARN=$(aws lambda publish-layer-version \
+            --layer-name atlasit-shared-dev \
+            --zip-file fileb://packages/shared/dist/layer.zip \
+            --compatible-runtimes nodejs20.x \
+            --query 'LayerVersionArn' --output text)
+          echo "LAYER_ARN=${LAYER_ARN}" >> "$GITHUB_ENV"
+
+      - name: Deploy lambda functions
+        run: |
+          for dir in lambdas/*/dist; do
+            name=$(basename "$(dirname "$dir")")
+            func="atlasit-${name}-dev"
+            echo "Deploying ${func}..."
+            (cd "${dir}" && zip -r "/tmp/${name}.zip" .)
+            aws lambda update-function-code \
+              --function-name "${func}" \
+              --zip-file "fileb:///tmp/${name}.zip" \
+              --query 'FunctionName' --output text || echo "WARN: ${func} not found"
+          done
+
+      - name: Update layer references
+        run: |
+          for dir in lambdas/*/dist; do
+            name=$(basename "$(dirname "$dir")")
+            func="atlasit-${name}-dev"
+            aws lambda update-function-configuration \
+              --function-name "${func}" \
+              --layers "${LAYER_ARN}" \
+              --query 'FunctionName' --output text 2>/dev/null || true
+          done

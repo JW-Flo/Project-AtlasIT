@@ -39,6 +39,7 @@
     "build:console": "cd console-app && npm run build",
     "preview:console": "cd console-app && npm run preview",
     "build:shared": "cd packages/shared && npm run build",
+    "build:lambdas": "node scripts/build-lambdas.mjs",
     "test": "node --loader ts-node/esm tests/run-tests.mjs",
     "test:onboarding": "cd onboarding && npm test",
     "test:marketplace": "cd marketplace && npm test",
