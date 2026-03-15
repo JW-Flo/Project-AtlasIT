@@ -13,7 +13,7 @@
     "@sveltejs/adapter-cloudflare": "^7.2.3",
     "@sveltejs/kit": "^2.43.7",
     "esbuild": "^0.25.10",
-    "hono": "^4.10.3"
+    "hono": "^4.12.8"
   },
   "devDependencies": {
     "vitest": "^3.2.4",

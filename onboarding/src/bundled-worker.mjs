@@ -4939,7 +4939,7 @@ function validateEnv(spec, raw) {
 }
 var commonEnvSpec = {
   LOG_LEVEL: external_exports.enum(["debug", "info", "warn", "error"]).default("info"),
-  AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai"]).optional()
+  AI_PROVIDER: external_exports.enum(["cloudflare", "together", "openai", "groq"]).optional()
 };
 function resolveCfApiToken(raw) {
   const target = raw ? raw : typeof process !== "undefined" ? process.env : void 0;
@@ -4950,6 +4950,9 @@ function resolveCfApiToken(raw) {
   }
   return preferred;
 }
+
+// ../packages/shared/src/agent-mesh.ts
+var logger2 = new Logger({ service: "agent-mesh" });
 
 // dist/onboarding/src/index.js
 var envValidated = false;

@@ -3,27 +3,20 @@ import { json } from "@sveltejs/kit";
 import {
   coreFetch,
   dispatchFetch,
-  complianceFetch,
   orchestratorFetch,
 } from "$lib/api";
+import { getWorkerBase, proxyFetch } from "../_proxy-helpers";
 import type { PlatformHealthResponse } from "$lib/types/platform";
 
 async function checkService(
-  fetchFn: (path: string) => Promise<Response>,
-  path: string,
+  fn: () => Promise<Response>,
 ): Promise<{ ok: boolean; latencyMs: number | null; status: number | null }> {
   const start = Date.now();
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-    const resp = await fetchFn(path).then((r) => {
-      clearTimeout(timeoutId);
-      return r;
-    });
+    const resp = await fn();
     const latency = Date.now() - start;
     return { ok: resp.ok, latencyMs: latency, status: resp.status };
-  } catch (e) {
-    console.error("Service check failed:", e);
+  } catch {
     return { ok: false, latencyMs: null, status: null };
   }
 }
@@ -31,11 +24,14 @@ async function checkService(
 export const GET: RequestHandler = async ({ platform }) => {
   const env = (platform?.env as any) || {};
 
+  // Compliance worker health is at /health (root), not under /api/compliance
+  const complianceBase = getWorkerBase(platform);
+
   const [core, dispatch, compliance, orchestrator] = await Promise.all([
-    checkService((p) => coreFetch(env, p), "/health"),
-    checkService((p) => dispatchFetch(env, p), "/__health"),
-    checkService((p) => complianceFetch(env, p), "/health"),
-    checkService((p) => orchestratorFetch(env, p), "/health"),
+    checkService(() => coreFetch(env, "/health")),
+    checkService(() => dispatchFetch(env, "/__health")),
+    checkService(() => proxyFetch(platform, `${complianceBase}/health`)),
+    checkService(() => orchestratorFetch(env, "/health")),
   ]);
 
   const services = { core, dispatch, compliance, orchestrator };
@@ -51,7 +47,7 @@ export const GET: RequestHandler = async ({ platform }) => {
       orchestrator: { ...orchestrator, lastChecked: new Date().toISOString() },
     },
     usage: {
-      recentInvocations: 0, // Will be merged from usage endpoint
+      recentInvocations: 0,
       breakerOpenScripts: 0,
     },
   };

@@ -17,10 +17,14 @@ routes = [
 	"www.atlasit.pro/api/mock/*",
 	"www.atlasit.pro/api/auth/*",
 	"www.atlasit.pro/api/tenants/*",
-	"www.atlasit.pro/api/policies/*",
-	"www.atlasit.pro/api/incidents/*",
-	"www.atlasit.pro/api/access-requests/*",
-	"www.atlasit.pro/api/notifications/*",
+	"www.atlasit.pro/api/policies*",
+	"www.atlasit.pro/api/incidents*",
+	"www.atlasit.pro/api/access-requests*",
+	"www.atlasit.pro/api/notifications*",
+	"www.atlasit.pro/api/health*",
+	"www.atlasit.pro/api/platform*",
+	"www.atlasit.pro/_app/*",
+	"www.atlasit.pro/favicon.png",
 	"www.atlasit.pro/" # root catch for redirect
 ]
 
@@ -29,7 +33,7 @@ directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
 [build]
-command = "npm run build"
+command = "npm install --no-fund --no-audit --ignore-scripts && npm run build"
 
 [vars]
 APP_NAME = "AtlasIT Console"
@@ -37,11 +41,15 @@ COMPLIANCE_BASE = "https://atlasit-compliance-worker.kd8jc7v8cd.workers.dev/api/
 CORE_API_BASE = "https://atlasit-core.kd8jc7v8cd.workers.dev"
 DISPATCH_BASE = "https://atlasit-dispatch.kd8jc7v8cd.workers.dev"
 ORCHESTRATOR_BASE = "https://atlasit-orchestrator.kd8jc7v8cd.workers.dev"
-DISABLE_CONSOLE_AUTH = "true" # temporary bypass for login requirement
+# Auth: Cloudflare Access JWT validation (required in production)
+# CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
+# CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)
+CF_ACCESS_TEAM_DOMAIN = "https://atlasit.cloudflareaccess.com"
+CF_ACCESS_AUD = "" # TODO: set this to your Access Application AUD tag before deploying
 SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
-USE_CF_ACCESS = "true" # When true, trusts Cloudflare Access headers for auth (CF-Access-Authenticated-User-Email)
 ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
 TENANT_ID = "atlasit-prod"
+# DEV_AUTH_BYPASS must NEVER be set here — only in local dev env vars alongside NODE_ENV=development
 
 [observability]
 enabled = true

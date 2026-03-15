@@ -12,13 +12,13 @@ export async function fetchPlatformStatus(): Promise<{
     fetch("/api/platform/usage"),
   ]);
 
-  const health =
+  const health: PlatformHealthResponse | null =
     healthRes.status === "fulfilled" && healthRes.value.ok
-      ? await healthRes.value.json()
+      ? ((await healthRes.value.json()) as PlatformHealthResponse)
       : null;
-  const usage =
+  const usage: PlatformUsageSummary | null =
     usageRes.status === "fulfilled" && usageRes.value.ok
-      ? await usageRes.value.json()
+      ? ((await usageRes.value.json()) as PlatformUsageSummary)
       : null;
 
   if (health && usage) {

@@ -1,17 +1,15 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 
-export const POST: RequestHandler = async ({ request, platform, cookies }) => {
+export const POST: RequestHandler = async ({ platform, cookies }) => {
   const env = platform?.env as any;
   const sessionId = cookies.get("atlas_session");
 
   if (sessionId) {
     try {
-      const csrf = request.headers.get("x-atlas-csrf");
-      if (csrf !== sessionId) {
-        return json({ error: "CSRF mismatch" }, { status: 403 });
+      if (env?.KV_SESSIONS) {
+        await env.KV_SESSIONS.delete(sessionId);
       }
-      await env.KV_SESSIONS.delete(sessionId);
       console.log(`Logout for session ${sessionId}`);
     } catch (e) {
       console.error("KV delete failed:", e);

@@ -1,0 +1,77 @@
+name: Deploy with Vault OIDC
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        description: "Worker to deploy (compliance-worker, console-app, ai-orchestrator)"
+        required: true
+        type: choice
+        options:
+          - compliance-worker
+          - console-app
+          - ai-orchestrator
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC token
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # Authenticate to Vault using GitHub OIDC
+      # Vault JWT auth role should be configured with:
+      #   bound_issuer: https://token.actions.githubusercontent.com
+      #   bound_audiences: https://github.com/JW-Flo
+      #   bound_claims.repository: JW-Flo/Project-AtlasIT
+      #   bound_claims.ref: refs/heads/main
+      #   token_ttl: 900 (15 minutes)
+      - name: Authenticate to Vault
+        id: vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: jwt
+          role: atlasit-deploy
+          jwtGithubAudience: https://github.com/JW-Flo
+          secrets: |
+            kv/data/atlasit/prod/cloudflare api_token | WRANGLER_API_TOKEN ;
+            kv/data/atlasit/prod/cloudflare account_id | CF_ACCOUNT_ID ;
+            kv/data/atlasit/prod/third-party groq_api_key | GROQ_API_KEY
+
+      - name: Install dependencies
+        run: npm ci --no-fund --no-audit
+        working-directory: ${{ inputs.worker }}
+
+      - name: Deploy worker
+        env:
+          WRANGLER_API_TOKEN: ${{ steps.vault.outputs.WRANGLER_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ steps.vault.outputs.CF_ACCOUNT_ID }}
+        run: npx wrangler deploy
+        working-directory: ${{ inputs.worker }}
+
+      - name: Set runtime secrets
+        env:
+          WRANGLER_API_TOKEN: ${{ steps.vault.outputs.WRANGLER_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ steps.vault.outputs.CF_ACCOUNT_ID }}
+        run: |
+          if [ -n "${{ steps.vault.outputs.GROQ_API_KEY }}" ]; then
+            echo "${{ steps.vault.outputs.GROQ_API_KEY }}" | npx wrangler secret put GROQ_API_KEY
+          fi
+        working-directory: ${{ inputs.worker }}
+        if: inputs.worker == 'compliance-worker' || inputs.worker == 'ai-orchestrator'
+
+      - name: Deployment summary
+        run: |
+          echo "Deployed ${{ inputs.worker }} using Vault OIDC (no long-lived secrets)"
+          echo "Vault token TTL: 15 minutes (expired by now)"

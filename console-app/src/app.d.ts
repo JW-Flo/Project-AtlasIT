@@ -6,6 +6,9 @@ declare global {
       user?: {
         userId: string;
         email: string;
+        roles: string[];
+        superAdmin?: boolean;
+        provider: string;
         createdAt: string;
         lastSeenAt: string;
       } | null;

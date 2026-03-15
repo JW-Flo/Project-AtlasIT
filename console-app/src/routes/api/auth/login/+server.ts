@@ -1,13 +1,55 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 
-async function hashPassword(password: string, salt: string): Promise<string> {
+// PBKDF2 hash — stored as "pbkdf2$310000$<hex>"
+async function hashPasswordPBKDF2(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: encoder.encode(salt),
+      iterations: 310000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  const hex = Array.from(new Uint8Array(bits))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `pbkdf2$310000$${hex}`;
+}
+
+// Legacy SHA-256 hash (salt + password) — used only during migration verification
+async function hashPasswordLegacy(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(salt + password);
   const hash = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// Verify a password against a stored hash (supports both legacy SHA-256 and PBKDF2 formats)
+async function verifyPassword(
+  password: string,
+  salt: string,
+  storedHash: string
+): Promise<boolean> {
+  if (storedHash.startsWith("pbkdf2$")) {
+    const candidate = await hashPasswordPBKDF2(password, salt);
+    return candidate === storedHash;
+  }
+  // Legacy: plain hex SHA-256 hash
+  const candidate = await hashPasswordLegacy(password, salt);
+  return candidate === storedHash;
 }
 
 export const POST: RequestHandler = async ({ request, platform, cookies }) => {
@@ -23,10 +65,16 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   const kv = env.KV_SESSIONS;
 
   if (!db) {
-    // Fallback: allow super admin login with env-configured password
+    // Fallback: allow super admin login only when ADMIN_PASSWORD is explicitly configured
     const superEmail = (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
-    const superPass = env.ADMIN_PASSWORD || "atlasit-admin-2024";
+    const superPass = env.ADMIN_PASSWORD;
+    if (!superPass) {
+      return json({ error: "Authentication service unavailable" }, { status: 503 });
+    }
     if (email.toLowerCase() === superEmail && password === superPass) {
+      if (!kv) {
+        return json({ error: "Session store unavailable" }, { status: 503 });
+      }
       const sid = crypto.randomUUID();
       const user = {
         userId: email.toLowerCase(),
@@ -37,9 +85,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
         createdAt: new Date().toISOString(),
         lastSeenAt: new Date().toISOString(),
       };
-      if (kv) {
-        await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
-      }
+      await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
       cookies.set("atlas_session", sid, {
         httpOnly: true,
         secure: true,
@@ -87,9 +133,18 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       return json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    const inputHash = await hashPassword(password, row.salt);
-    if (inputHash !== row.password_hash) {
+    const valid = await verifyPassword(password, row.salt, row.password_hash);
+    if (!valid) {
       return json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    // If the stored hash is a legacy SHA-256, re-hash with PBKDF2 transparently
+    if (!row.password_hash.startsWith("pbkdf2$")) {
+      const newHash = await hashPasswordPBKDF2(password, row.salt);
+      await db
+        .prepare("UPDATE console_users SET password_hash = ? WHERE id = ?")
+        .bind(newHash, row.id)
+        .run();
     }
 
     // Update last login
@@ -98,7 +153,18 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       .bind(new Date().toISOString(), row.id)
       .run();
 
-    const roles = JSON.parse(row.roles || '["admin"]');
+    let roles: string[];
+    try {
+      roles = JSON.parse(row.roles || '["admin"]');
+      if (!Array.isArray(roles)) roles = ["admin"];
+    } catch {
+      roles = ["admin"];
+    }
+
+    if (!kv) {
+      return json({ error: "Session store unavailable" }, { status: 503 });
+    }
+
     const sid = crypto.randomUUID();
     const user = {
       userId: row.id,
@@ -112,9 +178,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       lastSeenAt: new Date().toISOString(),
     };
 
-    if (kv) {
-      await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
-    }
+    await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
 
     cookies.set("atlas_session", sid, {
       httpOnly: true,
@@ -130,3 +194,4 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Authentication service error" }, { status: 500 });
   }
 };
+

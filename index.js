@@ -325,7 +325,9 @@ async function handleFetch(request, env, ctx) {
     request.headers.get("x-correlation-id") || generateCorrelationId();
   const url = new URL(request.url);
   const host = url.host;
-  const isLegacyHost = host.includes("project-ignite.workers.dev") || host.includes("project-ignite.");
+  const isLegacyHost =
+    host.includes("project-ignite.workers.dev") ||
+    host.includes("project-ignite.");
   const deprecationHeaders = isLegacyHost
     ? {
         Deprecation: "true",
@@ -366,33 +368,9 @@ async function handleFetch(request, env, ctx) {
 
 export default { fetch: traceFetch(handleFetch) };
 
-// --- Compatibility Shim ----------------------------------------------------
-// Some ancillary modules (e.g., compliance-worker executor) import { JMLEngine }
-// from the root index. The refactor removed the previous class; we provide a
-// minimal backward-compatible shim implementing the subset of behavior relied upon
-// (handleEnqueue returning a Response containing a runId and runState skeleton).
-export class JMLEngine {
-  constructor(state = {}, env = {}) {
-    this.state = state;
-    this.env = env;
-  }
-  async handleEnqueue(context = {}) {
-    const runId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const runState = {
-      id: runId,
-      type: context.type || "unknown",
-      status: "queued",
-      tenantId: context.tenantId || "unknown",
-      userId: context.user?.id || context.subjectRef || "user-unknown",
-      createdAt: now,
-      steps: [],
-      history: [],
-      context,
-    };
-    return new Response(JSON.stringify({ runId, runState }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-}
+// --- JMLEngine Re-export ---------------------------------------------------
+// The full Durable Object workflow orchestrator now lives in
+// packages/shared/src/workflow/jml-engine.ts. This re-export preserves
+// backward compatibility for consumers that import { JMLEngine } from the
+// root index (e.g., compliance-worker executor).
+export { JMLEngine } from "./packages/shared/src/workflow/jml-engine.js";

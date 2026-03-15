@@ -21,6 +21,7 @@
   class={`${base} ${vClass} ${sClass}`}
   {disabled}
   aria-label={ariaLabel}
+  on:click
 >
   <slot />
 </button>

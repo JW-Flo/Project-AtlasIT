@@ -34,13 +34,6 @@ jobs:
             --trigger-http \
             --allow-unauthenticated
 
-      - name: Revert repository to desired state
-        run: |
-          git revert --no-commit <commit-hash>
-          git commit -m "Revert to desired state"
-          git push origin main
-
-      - name: Verify revert
-        run: |
-          git checkout <commit-hash>
-          # Add any additional verification steps here
+      - name: Failure notification
+        if: failure()
+        run: echo "Deployment failed"

@@ -106,6 +106,18 @@
     }
   }
 
+  function escapeCSV(value: string | number | null | undefined): string {
+    if (value == null) return "";
+    const str = String(value);
+    // Mitigate formula/CSV injection by prefixing risky leading characters
+    const safe = /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
+    // Wrap in double quotes if field contains comma, double quote, or newline
+    if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r")) {
+      return '"' + safe.replace(/"/g, '""') + '"';
+    }
+    return safe;
+  }
+
   function exportCSV() {
     if (!snapshot) return;
     const lines: string[] = [];
@@ -114,7 +126,7 @@
     lines.push("=== Framework Coverage ===");
     lines.push("Framework,Coverage %,Passing,Failing,Total");
     for (const fw of snapshot.frameworkSummary) {
-      lines.push(`${fw.framework},${fw.coveragePercent},${fw.passing},${fw.failing},${fw.total}`);
+      lines.push([fw.framework, fw.coveragePercent, fw.passing, fw.failing, fw.total].map(escapeCSV).join(","));
     }
 
     // Risks
@@ -122,7 +134,7 @@
     lines.push("=== Risk Register ===");
     lines.push("ID,Title,Severity,Likelihood,Impact,Owner");
     for (const r of snapshot.risks) {
-      lines.push(`${r.id},"${r.title}",${r.severity},${r.likelihood},${r.impact},${r.owner || "unassigned"}`);
+      lines.push([r.id, r.title, r.severity, r.likelihood, r.impact, r.owner || "unassigned"].map(escapeCSV).join(","));
     }
 
     // Policies
@@ -130,7 +142,7 @@
     lines.push("=== Policies ===");
     lines.push("ID,Name,Status,Updated");
     for (const p of snapshot.policies) {
-      lines.push(`${p.id},"${p.name}",${p.status},${p.updated}`);
+      lines.push([p.id, p.name, p.status, p.updated].map(escapeCSV).join(","));
     }
 
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
