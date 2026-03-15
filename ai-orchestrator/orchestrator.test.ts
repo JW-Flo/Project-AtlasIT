@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { handleRequest } from "./index.js";
 
 // Helper to build an Env object matching what's used in the worker.
@@ -42,6 +42,76 @@ describe("ai-orchestrator worker", () => {
       const body = await res.json();
       expect(body.requestId).toBeDefined();
       expect(body.actor).toBe("test-key");
+    }
+  });
+});
+
+describe("/terminal command runner configuration", () => {
+  it("returns 503 with stable error when runner is unconfigured", async () => {
+    globalThis.TEST_MCP_APPROVE_ALL = true;
+    try {
+      const res = await invoke(
+        "/terminal",
+        {
+          method: "POST",
+          headers: {
+            "x-api-key": "test-key",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ command: "echo hi" }),
+        },
+        {},
+      );
+
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.error).toEqual({
+        code: "COMMAND_RUNNER_UNCONFIGURED",
+        message: "No command runner configured",
+      });
+    } finally {
+      globalThis.TEST_MCP_APPROVE_ALL = false;
+    }
+  });
+
+  it("executes via configured COMMAND_RUNNER_URL and returns structured result", async () => {
+    globalThis.TEST_MCP_APPROVE_ALL = true;
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async (input, init) => {
+      expect(String(input)).toBe("https://runner.example/execute");
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(String(init?.body || "{}"));
+      expect(body.command).toBe("echo secure");
+      return new Response(JSON.stringify({ output: "ok", exitCode: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = fetchMock;
+
+    try {
+      const res = await invoke(
+        "/terminal",
+        {
+          method: "POST",
+          headers: {
+            "x-api-key": "test-key",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ command: "echo secure" }),
+        },
+        { COMMAND_RUNNER_URL: "https://runner.example/execute" },
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.result).toEqual({ output: "ok", exitCode: 0 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      globalThis.TEST_MCP_APPROVE_ALL = false;
     }
   });
 });
