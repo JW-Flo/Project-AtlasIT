@@ -12,9 +12,18 @@
     appId: string;
     appName: string;
     category: string;
+    connected: boolean;
     joiner: WorkflowStep[];
     mover: WorkflowStep[];
     leaver: WorkflowStep[];
+  }
+
+  function humanize(slug: string): string {
+    return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function toSteps(names: string[]): WorkflowStep[] {
+    return names.map((n) => ({ name: humanize(n), description: n }));
   }
 
   interface ExecutionResult {
@@ -57,70 +66,67 @@
   async function fetchWorkflows() {
     loading = true;
     try {
-      const [wfRes, statusRes] = await Promise.all([
-        fetch("/api/apps/lifecycle/workflows", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ scope: "all", idpSource }),
-        }),
-        fetch("/api/apps/status"),
-      ]);
+      const res = await fetch("/api/apps/lifecycle/workflows", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scope: "all", idpSource }),
+      });
 
-      if (wfRes.ok) {
-        const data = await wfRes.json();
-        workflows = data.workflows || data || [];
+      if (res.ok) {
+        const data = await res.json();
+        const apps = data.applications || data.workflows || [];
+        if (Array.isArray(apps) && apps.length > 0) {
+          workflows = apps.map((a: any) => {
+            const name = integrations.find((i) => i.id === a.appId)?.name || humanize(a.appId);
+            return {
+              appId: a.appId,
+              appName: name,
+              category: a.category || "productivity",
+              connected: !!a.connected,
+              joiner: Array.isArray(a.joiner) ? toSteps(a.joiner) : [],
+              mover: Array.isArray(a.mover) ? toSteps(a.mover) : [],
+              leaver: Array.isArray(a.leaver) ? toSteps(a.leaver) : [],
+            };
+          });
+          // Build connected map from response
+          connectedApps = {};
+          for (const a of apps) {
+            connectedApps[a.appId] = !!a.connected;
+          }
+        } else {
+          useFallback();
+        }
       } else {
-        // Fallback: generate workflow definitions from integrations list
-        workflows = integrations.map((app) => ({
-          appId: app.id,
-          appName: app.name,
-          category: app.category,
-          joiner: [
-            { name: "Provision account", description: `Create ${app.name} account for new user` },
-            { name: "Assign license", description: `Assign appropriate ${app.name} license` },
-            { name: "Set permissions", description: `Configure default ${app.name} permissions based on role` },
-          ],
-          mover: [
-            { name: "Review access", description: `Audit current ${app.name} access and permissions` },
-            { name: "Update permissions", description: `Adjust ${app.name} permissions for new role` },
-            { name: "Transfer ownership", description: `Transfer ${app.name} resources if needed` },
-          ],
-          leaver: [
-            { name: "Revoke access", description: `Disable ${app.name} account and revoke sessions` },
-            { name: "Backup data", description: `Archive user data from ${app.name}` },
-            { name: "Remove license", description: `Deallocate ${app.name} license` },
-          ],
-        }));
-      }
-
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
-        connectedApps = statusData.connected || {};
+        useFallback();
       }
     } catch {
-      // Use fallback data on error
-      workflows = integrations.map((app) => ({
-        appId: app.id,
-        appName: app.name,
-        category: app.category,
-        joiner: [
-          { name: "Provision account", description: `Create ${app.name} account for new user` },
-          { name: "Assign license", description: `Assign appropriate ${app.name} license` },
-          { name: "Set permissions", description: `Configure default ${app.name} permissions based on role` },
-        ],
-        mover: [
-          { name: "Review access", description: `Audit current ${app.name} access and permissions` },
-          { name: "Update permissions", description: `Adjust ${app.name} permissions for new role` },
-          { name: "Transfer ownership", description: `Transfer ${app.name} resources if needed` },
-        ],
-        leaver: [
-          { name: "Revoke access", description: `Disable ${app.name} account and revoke sessions` },
-          { name: "Backup data", description: `Archive user data from ${app.name}` },
-          { name: "Remove license", description: `Deallocate ${app.name} license` },
-        ],
-      }));
+      useFallback();
     }
     loading = false;
+  }
+
+  function useFallback() {
+    workflows = integrations.map((app) => ({
+      appId: app.id,
+      appName: app.name,
+      category: app.category,
+      connected: false,
+      joiner: [
+        { name: "Provision account", description: `Create ${app.name} account for new user` },
+        { name: "Assign license", description: `Assign appropriate ${app.name} license` },
+        { name: "Set permissions", description: `Configure default ${app.name} permissions based on role` },
+      ],
+      mover: [
+        { name: "Review access", description: `Audit current ${app.name} access and permissions` },
+        { name: "Update permissions", description: `Adjust ${app.name} permissions for new role` },
+        { name: "Transfer ownership", description: `Transfer ${app.name} resources if needed` },
+      ],
+      leaver: [
+        { name: "Revoke access", description: `Disable ${app.name} account and revoke sessions` },
+        { name: "Backup data", description: `Archive user data from ${app.name}` },
+        { name: "Remove license", description: `Deallocate ${app.name} license` },
+      ],
+    }));
   }
 
   function toggleSection(appId: string, section: "joiner" | "mover" | "leaver") {
@@ -156,14 +162,15 @@
         }),
       });
 
-      if (res.ok) {
-        executionResult = await res.json();
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.steps) {
+        executionResult = data;
       } else {
         // Show simulated result for MVP
         const steps = modalApp[modalType] || [];
         executionResult = {
           success: true,
-          steps: steps.map((s) => ({ name: s.name, status: "success" as const })),
+          steps: steps.map((s: WorkflowStep) => ({ name: s.name, status: "success" as const })),
           message: `${modalType} workflow executed for ${modalEmail}`,
         };
       }
@@ -179,11 +186,14 @@
     executing = false;
   }
 
+  let mounted = false;
   onMount(() => {
+    mounted = true;
     fetchWorkflows();
   });
 
-  $: if (idpSource) {
+  // Re-fetch when IDP source changes (skip initial — onMount handles it)
+  $: if (mounted && idpSource) {
     fetchWorkflows();
   }
 
