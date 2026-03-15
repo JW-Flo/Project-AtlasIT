@@ -97,15 +97,26 @@ export const oauthProviders: Record<string, OAuthProviderConfig> = {
     authorizeUrl: "https://auth.atlassian.com/authorize",
     tokenUrl: "https://auth.atlassian.com/oauth/token",
     scopes: [
+      // Jira platform REST API (classic)
+      "read:jira-work",
       "read:jira-user",
       "write:jira-work",
       "manage:jira-configuration",
       "manage:jira-webhook",
+      // Jira Service Management API (classic)
       "read:servicedesk-request",
       "write:servicedesk-request",
       "manage:servicedesk-customer",
       "read:servicemanagement-insight-objects",
+      // Jira API (granular)
+      "read:user:jira",
+      "write:webhook:jira",
+      "write:customer:jira-service-management",
+      "write:work-item-info:jira",
+      // User identity + personal data
       "read:me",
+      "read:account",
+      "report:personal-data",
       "offline_access",
     ],
     extraParams: { audience: "api.atlassian.com", prompt: "consent" },
@@ -116,10 +127,19 @@ export const oauthProviders: Record<string, OAuthProviderConfig> = {
     authorizeUrl: "https://auth.atlassian.com/authorize",
     tokenUrl: "https://auth.atlassian.com/oauth/token",
     scopes: [
-      "read:confluence-space.summary",
-      "write:confluence-space",
+      // Confluence API (classic)
       "read:confluence-user",
+      "read:confluence-groups",
+      "write:confluence-groups",
+      // Confluence API (granular)
+      "write:content:confluence",
+      "write:space:confluence",
+      "write:space.permission:confluence",
+      "write:space.setting:confluence",
+      "read:permission:confluence",
+      // User identity
       "read:me",
+      "read:account",
       "offline_access",
     ],
     extraParams: { audience: "api.atlassian.com", prompt: "consent" },
