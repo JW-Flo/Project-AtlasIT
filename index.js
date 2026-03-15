@@ -310,7 +310,41 @@ async function appsLifecycleWorkflows(
   correlationId,
   baseHeaders,
 ) {
-  const payload = await request.json().catch(() => ({}));
+  let payload;
+  try {
+    payload = await request.json();
+  } catch (_) {
+    return appsJson(
+      baseHeaders,
+      { error: "invalid JSON payload", correlationId },
+      400,
+    );
+  }
+
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    Array.isArray(payload)
+  ) {
+    return appsJson(
+      baseHeaders,
+      { error: "payload must be a JSON object", correlationId },
+      400,
+    );
+  }
+
+  const hasExplicitTargets =
+    (Array.isArray(payload.apps) && payload.apps.length > 0) ||
+    typeof payload.scope === "string";
+
+  if (!hasExplicitTargets) {
+    return appsJson(
+      baseHeaders,
+      { error: "no explicit lifecycle scope provided", correlationId },
+      400,
+    );
+  }
+
   const idpSource = normalizeIdpSource(payload.idpSource || "okta");
   if (!idpSource) {
     return appsJson(
