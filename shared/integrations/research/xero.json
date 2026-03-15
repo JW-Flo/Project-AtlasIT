@@ -1,0 +1,111 @@
+{
+  "id": "xero",
+  "name": "Xero",
+  "category": "finance",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "refresh_token", "pkce"],
+    "authorizeUrl": "https://login.xero.com/identity/connect/authorize",
+    "tokenUrl": "https://identity.xero.com/connect/token",
+    "revokeUrl": "https://identity.xero.com/connect/revocation",
+    "scopes": {
+      "joiner": ["payroll.employees", "payroll.settings"],
+      "mover": ["payroll.employees", "payroll.settings"],
+      "leaver": ["payroll.employees"]
+    },
+    "additionalScopes": [
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "accounting.transactions",
+      "accounting.contacts",
+      "accounting.settings",
+      "payroll.employees",
+      "payroll.employees.read",
+      "payroll.payruns",
+      "payroll.payruns.read",
+      "payroll.payslip",
+      "payroll.payslip.read",
+      "payroll.settings",
+      "payroll.settings.read",
+      "payroll.timesheets",
+      "payroll.timesheets.read",
+      "files",
+      "assets"
+    ],
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "Supports both standard authorization code flow and PKCE flow (for native/mobile apps). Scopes are additive once authorized. Broad scopes being replaced by granular scopes from March 2, 2026 for new apps (existing apps until September 2027). Refresh tokens expire after 60 days of inactivity."
+  },
+  "api": {
+    "baseUrl": "https://api.xero.com",
+    "version": "2.0",
+    "endpoints": {
+      "createUser": "POST /payroll.xro/1.0/Employees",
+      "getUser": "GET /payroll.xro/1.0/Employees/{EmployeeId}",
+      "updateUser": "POST /payroll.xro/1.0/Employees/{EmployeeId}",
+      "suspendUser": null,
+      "deleteUser": null,
+      "listUsers": "GET /payroll.xro/1.0/Employees",
+      "listGroups": null,
+      "addToGroup": null,
+      "removeFromGroup": null
+    },
+    "accountingEmployeeEndpoints": {
+      "notes": "The Accounting API Employee endpoint (GET/POST /api.xro/2.0/Employees) is being deprecated in early 2026. Use the Payroll API instead.",
+      "deprecated": true
+    },
+    "payrollUkEndpoints": {
+      "createUser": "POST /payroll.xro/2.0/Employees",
+      "getUser": "GET /payroll.xro/2.0/Employees/{EmployeeId}",
+      "updateUser": "PUT /payroll.xro/2.0/Employees/{EmployeeId}",
+      "listUsers": "GET /payroll.xro/2.0/Employees"
+    },
+    "rateLimits": "5 concurrent requests per connection. 60 calls per minute per connection. 5,000 calls per day per connection. 10,000 calls per minute per organization (across all apps). Headers: X-DayLimit-Remaining, X-MinLimit-Remaining, X-AppMinLimit-Remaining.",
+    "scim": {
+      "supported": false,
+      "endpoint": null
+    }
+  },
+  "sdk": {
+    "npm": "xero-node",
+    "docsUrl": "https://developer.xero.com/documentation/sdks-and-tools/sdks/node/",
+    "exampleImport": "import { XeroClient } from 'xero-node'",
+    "notes": "Official Xero Node.js SDK generated from OpenAPI spec. Also available: xero-python, xero-ruby, xero-php-oauth2, Xero-NetStandard."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push",
+    "eventTypes": [
+      "CONTACT.CREATE",
+      "CONTACT.UPDATE",
+      "INVOICE.CREATE",
+      "INVOICE.UPDATE",
+      "CREDITNOTE.CREATE",
+      "CREDITNOTE.UPDATE",
+      "SUBSCRIPTION.CREATE",
+      "SUBSCRIPTION.UPDATE"
+    ],
+    "registrationEndpoint": "Configured in Xero Developer Portal (My Apps > Webhooks)",
+    "security": {
+      "signatureHeader": "x-xero-signature",
+      "algorithm": "HMACSHA256",
+      "notes": "Webhook key provided during setup. Must validate signature on every request. Intent to receive validation required during setup."
+    },
+    "limitations": "Webhooks are limited to Contacts, Invoices, Credit Notes, and Subscriptions. No employee/payroll webhook events available.",
+    "notes": "Credit Note webhooks are in closed beta as of 2025."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free Xero demo company available with signup. Demo companies expire after 28 days and must be re-created. Your regular Xero user account doubles as your developer account."
+  },
+  "needs_verification": [
+    "Exact Payroll AU vs Payroll UK vs Payroll NZ endpoint differences",
+    "Whether employee DELETE endpoint exists in Payroll API",
+    "Whether employee suspend/terminate endpoint exists",
+    "Complete list of granular scopes replacing broad scopes",
+    "Whether payroll webhook events will be added in future",
+    "Credit Note webhook beta status and GA timeline"
+  ]
+}

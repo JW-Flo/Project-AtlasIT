@@ -1,0 +1,95 @@
+{
+  "id": "crowdstrike",
+  "name": "CrowdStrike",
+  "category": "security",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["client_credentials"],
+    "authorizeUrl": null,
+    "tokenUrl": "https://{baseUrl}/oauth2/token",
+    "revokeUrl": "https://{baseUrl}/oauth2/revoke",
+    "scopes": {
+      "joiner": ["user-management:write"],
+      "mover": ["user-management:write"],
+      "leaver": ["user-management:write"],
+      "readOnly": ["user-management:read"]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "tokenLifetime": "30 minutes",
+    "notes": "OAuth2 client_credentials only (no authorize URL). API client ID and secret are generated in Falcon console. Token must be refreshed every 30 minutes. Unauthenticated requests limited to 15/min per source IP."
+  },
+  "api": {
+    "baseUrl": "https://api.crowdstrike.com",
+    "regionalBaseUrls": {
+      "us-1": "https://api.crowdstrike.com",
+      "us-2": "https://api.us-2.crowdstrike.com",
+      "eu-1": "https://api.eu-1.crowdstrike.com",
+      "us-gov-1": "https://api.laggar.gcw.crowdstrike.com"
+    },
+    "version": "v1",
+    "endpoints": {
+      "createUser": "POST /user-management/entities/users/v1",
+      "getUser": "POST /user-management/entities/users/GET/v1",
+      "getUserByEmail": "GET /users/queries/users-by-email/v1",
+      "updateUser": "PUT /users/entities/users/v1",
+      "deleteUser": "DELETE /users/entities/users/v1",
+      "listUsers": "GET /user-management/queries/users/v1",
+      "assignRoles": "POST /user-roles/entities/user-roles/v1",
+      "revokeRoles": "DELETE /user-roles/entities/user-roles/v1",
+      "getUserRoles": "GET /user-roles/queries/user-role-ids-by-user-uuid/v1",
+      "listAvailableRoles": "GET /user-roles/queries/user-role-ids-by-cid/v1",
+      "userActions": "POST /user-management/entities/user-actions/v1",
+      "createHostGroup": "POST /devices/entities/host-groups/v1",
+      "updateHostGroup": "PATCH /devices/entities/host-groups/v1",
+      "deleteHostGroup": "DELETE /devices/entities/host-groups/v1",
+      "listHostGroups": "GET /devices/queries/host-groups/v1",
+      "queryHostGroupMembers": "GET /devices/queries/host-group-members/v1"
+    },
+    "rateLimits": {
+      "global": "6000 requests per minute per customer account",
+      "unauthenticated": "15 requests per minute per source IP",
+      "headers": "x-ratelimit-limit, x-ratelimit-remaining",
+      "notes": "Sliding window enforcement. 429 Too Many Requests returned when exceeded. Rate limit is shared across all API clients and endpoints within a customer account."
+    },
+    "scim": {
+      "supported": false,
+      "notes": "CrowdStrike does not natively expose a SCIM endpoint. SCIM provisioning is available through IdP integrations (e.g., Okta, PingOne) that map to the Falcon User Management API."
+    }
+  },
+  "sdk": {
+    "npm": "crowdstrike-falcon",
+    "docsUrl": "https://github.com/CrowdStrike/falconjs",
+    "githubUrl": "https://github.com/CrowdStrike/falconjs",
+    "exampleImport": "import { FalconClient } from 'crowdstrike-falcon'",
+    "notes": "falconjs is an open source community project (MIT license), not an official CrowdStrike product. No formal support. Uses fetch API internally."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "event_streams",
+    "eventTypes": [
+      "DetectionSummaryEvent",
+      "AuthActivityAuditEvent",
+      "UserActivityAuditEvent",
+      "RemoteResponseSessionStartEvent",
+      "RemoteResponseSessionEndEvent"
+    ],
+    "endpoints": {
+      "listStreams": "GET /sensors/entities/datafeed/v2",
+      "refreshStream": "POST /sensors/entities/datafeed-actions/v1/{partition}"
+    },
+    "requiredScope": "event-streams:read",
+    "notes": "Event Streams provide continuous real-time security events. Also supports Falcon Fusion workflows with webhook actions for sending data to third-party endpoints."
+  },
+  "sandbox": {
+    "available": false,
+    "notes": "No free developer sandbox for the Falcon platform API. Falcon Sandbox (hybrid-analysis.com) is available for malware analysis only, not user management APIs. A CrowdStrike Falcon subscription is required to access user management APIs."
+  },
+  "needs_verification": [
+    "Exact API scopes required for user management (user-management:read/write assumed from documentation patterns)",
+    "Whether oauth2/revoke endpoint exists (common OAuth2 pattern but not explicitly confirmed)",
+    "Exact host group API paths (may vary between v1/v2)",
+    "Complete list of Event Stream event types",
+    "Whether suspendUser operation exists (may be handled via deleteUser or role revocation)"
+  ]
+}

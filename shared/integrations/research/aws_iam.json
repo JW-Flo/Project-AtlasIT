@@ -1,0 +1,111 @@
+{
+  "id": "aws_iam",
+  "name": "AWS IAM",
+  "category": "infrastructure",
+  "auth": {
+    "type": "iam_keys",
+    "grantTypes": ["iam_access_keys", "sts_assume_role", "sts_session_token"],
+    "authorizeUrl": null,
+    "tokenUrl": null,
+    "revokeUrl": null,
+    "scopes": {
+      "joiner": [
+        "iam:CreateUser",
+        "iam:CreateLoginProfile",
+        "iam:AddUserToGroup",
+        "iam:AttachUserPolicy",
+        "iam:TagUser",
+        "iam:CreateAccessKey"
+      ],
+      "mover": [
+        "iam:UpdateUser",
+        "iam:AddUserToGroup",
+        "iam:RemoveUserFromGroup",
+        "iam:AttachUserPolicy",
+        "iam:DetachUserPolicy",
+        "iam:TagUser",
+        "iam:UntagUser"
+      ],
+      "leaver": [
+        "iam:DeleteUser",
+        "iam:DeleteLoginProfile",
+        "iam:RemoveUserFromGroup",
+        "iam:DetachUserPolicy",
+        "iam:DeleteAccessKey",
+        "iam:ListAccessKeys",
+        "iam:ListMFADevices",
+        "iam:DeactivateMFADevice",
+        "iam:DeleteVirtualMFADevice",
+        "iam:ListSigningCertificates",
+        "iam:DeleteSigningCertificate",
+        "iam:ListSSHPublicKeys",
+        "iam:DeleteSSHPublicKey",
+        "iam:ListServiceSpecificCredentials",
+        "iam:DeleteServiceSpecificCredential"
+      ]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "Authentication uses IAM access keys (access key ID + secret access key). STS AssumeRole provides temporary credentials. All API calls are signed with AWS Signature Version 4."
+  },
+  "api": {
+    "baseUrl": "https://iam.amazonaws.com/",
+    "version": "2010-05-08",
+    "protocol": "AWS Query API (POST with Action parameter, not REST)",
+    "endpoints": {
+      "createUser": "POST / Action=CreateUser&UserName={username}&Version=2010-05-08",
+      "getUser": "POST / Action=GetUser&UserName={username}&Version=2010-05-08",
+      "updateUser": "POST / Action=UpdateUser&UserName={username}&Version=2010-05-08",
+      "suspendUser": "POST / Action=DeleteLoginProfile&UserName={username}&Version=2010-05-08 (removes console access; no native suspend)",
+      "deleteUser": "POST / Action=DeleteUser&UserName={username}&Version=2010-05-08",
+      "listUsers": "POST / Action=ListUsers&Version=2010-05-08",
+      "listGroups": "GET / Action=ListGroups&Version=2010-05-08",
+      "addToGroup": "POST / Action=AddUserToGroup&GroupName={groupName}&UserName={username}&Version=2010-05-08",
+      "removeFromGroup": "POST / Action=RemoveUserFromGroup&GroupName={groupName}&UserName={username}&Version=2010-05-08",
+      "createGroup": "POST / Action=CreateGroup&GroupName={groupName}&Version=2010-05-08",
+      "deleteGroup": "POST / Action=DeleteGroup&GroupName={groupName}&Version=2010-05-08",
+      "listGroupsForUser": "POST / Action=ListGroupsForUser&UserName={username}&Version=2010-05-08",
+      "createRole": "POST / Action=CreateRole&Version=2010-05-08",
+      "deleteRole": "POST / Action=DeleteRole&RoleName={roleName}&Version=2010-05-08",
+      "listRoles": "POST / Action=ListRoles&Version=2010-05-08",
+      "attachUserPolicy": "POST / Action=AttachUserPolicy&UserName={username}&PolicyArn={arn}&Version=2010-05-08",
+      "detachUserPolicy": "POST / Action=DetachUserPolicy&UserName={username}&PolicyArn={arn}&Version=2010-05-08"
+    },
+    "rateLimits": "Token bucket algorithm; not publicly documented per-action limits. Throttling returns HTTP 429. IAM is a global service so limits are not region-aware.",
+    "scim": {
+      "supported": true,
+      "endpoint": "https://scim.{region}.amazonaws.com/{tenant-id}/scim/v2/",
+      "notes": "SCIM is available via AWS IAM Identity Center (formerly AWS SSO). The SCIM endpoint URL and access token are generated in the IAM Identity Center console under Settings > Automatic provisioning."
+    }
+  },
+  "sdk": {
+    "npm": "@aws-sdk/client-iam",
+    "docsUrl": "https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/iam/",
+    "exampleImport": "import { IAMClient, CreateUserCommand, DeleteUserCommand } from '@aws-sdk/client-iam'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "event_bridge",
+    "eventTypes": [
+      "AWS API Call via CloudTrail",
+      "CreateUser",
+      "DeleteUser",
+      "AddUserToGroup",
+      "RemoveUserFromGroup",
+      "AttachUserPolicy",
+      "DetachUserPolicy",
+      "CreateLoginProfile",
+      "DeleteLoginProfile",
+      "UpdateUser"
+    ],
+    "notes": "AWS does not have native webhooks for IAM. Use CloudTrail + EventBridge rules to trigger Lambda/SNS/SQS on IAM events."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "AWS Free Tier includes 12 months of free usage for many services. IAM itself is always free. Create a dedicated AWS account for dev/test purposes."
+  },
+  "needs_verification": [
+    "Exact per-action rate limits for IAM API (AWS does not publicly document specific thresholds)",
+    "SCIM endpoint regional availability"
+  ]
+}

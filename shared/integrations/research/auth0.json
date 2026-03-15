@@ -1,0 +1,110 @@
+{
+  "id": "auth0",
+  "name": "Auth0",
+  "category": "security",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["client_credentials"],
+    "authorizeUrl": "https://{tenant}.auth0.com/authorize",
+    "tokenUrl": "https://{tenant}.auth0.com/oauth/token",
+    "revokeUrl": "https://{tenant}.auth0.com/oauth/revoke",
+    "audience": "https://{tenant}.auth0.com/api/v2/",
+    "scopes": {
+      "joiner": [
+        "create:users",
+        "read:users",
+        "create:roles",
+        "read:roles",
+        "create:role_members",
+        "read:organizations",
+        "create:organization_members",
+        "create:organization_member_roles"
+      ],
+      "mover": [
+        "update:users",
+        "read:users",
+        "read:roles",
+        "create:role_members",
+        "delete:role_members",
+        "read:organizations",
+        "create:organization_members",
+        "delete:organization_members",
+        "create:organization_member_roles",
+        "delete:organization_member_roles"
+      ],
+      "leaver": [
+        "delete:users",
+        "update:users",
+        "read:users",
+        "read:user_idp_tokens",
+        "create:user_blocks",
+        "delete:role_members",
+        "delete:organization_members"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "notes": "Management API tokens are obtained via client_credentials grant with the Management API audience. Tokens are short-lived (24h by default). Each endpoint requires specific scopes."
+  },
+  "api": {
+    "baseUrl": "https://{tenant}.auth0.com/api/v2",
+    "version": "v2",
+    "endpoints": {
+      "createUser": "POST /api/v2/users",
+      "getUser": "GET /api/v2/users/{id}",
+      "updateUser": "PATCH /api/v2/users/{id}",
+      "blockUser": "PATCH /api/v2/users/{id} (set blocked: true)",
+      "unblockUser": "DELETE /api/v2/user-blocks/{id}",
+      "deleteUser": "DELETE /api/v2/users/{id}",
+      "listUsers": "GET /api/v2/users",
+      "listRoles": "GET /api/v2/roles",
+      "createRole": "POST /api/v2/roles",
+      "assignRolesToUser": "POST /api/v2/users/{id}/roles",
+      "removeRolesFromUser": "DELETE /api/v2/users/{id}/roles",
+      "listOrganizations": "GET /api/v2/organizations",
+      "addMemberToOrganization": "POST /api/v2/organizations/{id}/members",
+      "removeMemberFromOrganization": "DELETE /api/v2/organizations/{id}/members",
+      "addRolesToOrgMember": "POST /api/v2/organizations/{id}/members/{user_id}/roles",
+      "removeRolesFromOrgMember": "DELETE /api/v2/organizations/{id}/members/{user_id}/roles"
+    },
+    "rateLimits": {
+      "freeTenant": "2 requests per second (burst up to 10)",
+      "paidTenant": "15 requests per second (burst up to 50)",
+      "headers": "X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+      "notes": "429 Too Many Requests returned when exceeded. Limits are per-tenant."
+    },
+    "scim": {
+      "supported": true,
+      "direction": "inbound_only",
+      "endpoint": "Connection-specific SCIM endpoint configured in Auth0 Dashboard",
+      "supportedConnections": ["SAML", "OpenID Connect Enterprise"],
+      "limitations": "No /groups endpoint support. Auth0 only receives SCIM requests (inbound), does not send them outbound.",
+      "notes": "Each enterprise connection gets a connection-specific SCIM endpoint and token. Supports SCIM 2.0 core schema and Enterprise schema."
+    }
+  },
+  "sdk": {
+    "npm": "auth0",
+    "docsUrl": "https://auth0.github.io/node-auth0/",
+    "githubUrl": "https://github.com/auth0/node-auth0",
+    "exampleImport": "import { ManagementClient } from 'auth0'",
+    "nodeVersions": "^20.19.0 || ^22.12.0 || ^24.0.0"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "event_streams",
+    "deliveryMethods": ["webhooks", "amazon_eventbridge"],
+    "eventTypes": ["user.created", "user.updated", "user.deleted"],
+    "legacyMethod": "Log Streams (custom webhook log streams)",
+    "notes": "Event Streams is the newer mechanism for user lifecycle events. Log Streams provide broader event delivery to custom webhooks, AWS EventBridge, Datadog, Splunk, etc."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free Auth0 tenant available at https://auth0.com/signup. Multiple free tenants can be created for dev/sandbox/test purposes. No credit card required."
+  },
+  "needs_verification": [
+    "Complete list of Management API scopes for all user/role/org endpoints",
+    "Exact SCIM endpoint URL format for enterprise connections",
+    "Whether Event Streams event types beyond user.created/updated/deleted are available",
+    "Management API token default expiry (believed to be 24 hours)"
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "id": "gcp_identity",
+  "name": "GCP Cloud Identity / IAM",
+  "category": "infrastructure",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "service_account"],
+    "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "revokeUrl": "https://oauth2.googleapis.com/revoke",
+    "scopes": {
+      "joiner": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group",
+        "https://www.googleapis.com/auth/admin.directory.group.member",
+        "https://www.googleapis.com/auth/cloud-identity.groups"
+      ],
+      "mover": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group.member",
+        "https://www.googleapis.com/auth/cloud-identity.groups"
+      ],
+      "leaver": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group.member",
+        "https://www.googleapis.com/auth/cloud-identity.groups"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": true,
+    "notes": "Service accounts require domain-wide delegation enabled in Google Workspace Admin console. The service account impersonates an admin user. OAuth client credentials are not supported; use service account JWT assertion flow."
+  },
+  "api": {
+    "baseUrl": "https://admin.googleapis.com",
+    "version": "directory/v1",
+    "secondaryApi": {
+      "baseUrl": "https://cloudidentity.googleapis.com",
+      "version": "v1"
+    },
+    "endpoints": {
+      "createUser": "POST /admin/directory/v1/users",
+      "getUser": "GET /admin/directory/v1/users/{userKey}",
+      "updateUser": "PUT /admin/directory/v1/users/{userKey}",
+      "patchUser": "PATCH /admin/directory/v1/users/{userKey}",
+      "suspendUser": "PATCH /admin/directory/v1/users/{userKey} (set suspended=true)",
+      "deleteUser": "DELETE /admin/directory/v1/users/{userKey}",
+      "undeleteUser": "POST /admin/directory/v1/users/{userKey}/undelete",
+      "listUsers": "GET /admin/directory/v1/users",
+      "makeAdmin": "POST /admin/directory/v1/users/{userKey}/makeAdmin",
+      "signOut": "POST /admin/directory/v1/users/{userKey}/signOut",
+      "watchUsers": "POST /admin/directory/v1/users/watch",
+      "listGroups": "GET /admin/directory/v1/groups",
+      "createGroup": "POST /admin/directory/v1/groups",
+      "deleteGroup": "DELETE /admin/directory/v1/groups/{groupKey}",
+      "addToGroup": "POST /admin/directory/v1/groups/{groupKey}/members",
+      "removeFromGroup": "DELETE /admin/directory/v1/groups/{groupKey}/members/{memberKey}",
+      "listMembers": "GET /admin/directory/v1/groups/{groupKey}/members",
+      "cloudIdentityCreateGroup": "POST /v1/groups (Cloud Identity API)",
+      "cloudIdentityListGroups": "GET /v1/groups (Cloud Identity API)",
+      "cloudIdentityCreateMembership": "POST /v1/{parent=groups/*}/memberships (Cloud Identity API)",
+      "cloudIdentityDeleteMembership": "DELETE /v1/{name=groups/*/memberships/*} (Cloud Identity API)"
+    },
+    "rateLimits": "Admin SDK Directory API: 15 requests/second, 150,000 transactions/day per project (courtesy limit). Can be increased via Google Cloud Console quota management.",
+    "scim": {
+      "supported": true,
+      "endpoint": "Workforce Identity Federation SCIM: https://cloud.google.com/iam/docs/workforce-identity-federation-scim",
+      "notes": "SCIM provisioning is supported through Workforce Identity Federation for syncing users/groups from external IdPs. Supports /Users and /Groups endpoints. Group provisioning via SCIM requires Gemini Enterprise. API returns max 100 resources per response."
+    }
+  },
+  "sdk": {
+    "npm": "@google-cloud/iam",
+    "docsUrl": "https://cloud.google.com/iam/docs/reference/libraries",
+    "exampleImport": "import { IAMClient } from '@google-cloud/iam'",
+    "additionalPackages": {
+      "adminSdk": "googleapis",
+      "adminSdkImport": "import { google } from 'googleapis'; const admin = google.admin('directory_v1')",
+      "cloudIdentity": "@google-cloud/iam",
+      "cloudIdentityImport": "import { IAMClient } from '@google-cloud/iam'"
+    },
+    "notes": "For user provisioning, the primary SDK is the 'googleapis' npm package which provides access to the Admin SDK Directory API. @google-cloud/iam is for IAM policy management, not user provisioning."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push_notifications",
+    "eventTypes": [
+      "user.created",
+      "user.updated",
+      "user.deleted",
+      "group.created",
+      "group.updated",
+      "group.deleted",
+      "member.added",
+      "member.removed"
+    ],
+    "registrationEndpoint": "POST /admin/directory/v1/users/watch",
+    "notes": "Admin SDK supports push notifications via the watch mechanism. You register a webhook URL and receive notifications when users/groups change. Cloud Audit Logs can also be used with Pub/Sub for event-driven workflows."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Google Cloud offers a free tier with $300 in credits for 90 days. Cloud Identity Free edition supports up to 50 users. Google Workspace also offers a 14-day free trial."
+  },
+  "needs_verification": [
+    "Exact Cloud Identity API rate limits (separate from Admin SDK)",
+    "Whether @google-cloud/iam package covers Cloud Identity group/membership operations or if googleapis is required",
+    "SCIM endpoint URL format for Workforce Identity Federation",
+    "Push notification webhook event type names (may differ from listed names)"
+  ]
+}

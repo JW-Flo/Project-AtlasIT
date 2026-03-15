@@ -1,0 +1,106 @@
+{
+  "id": "stripe",
+  "name": "Stripe",
+  "category": "finance",
+  "auth": {
+    "type": "api_key",
+    "grantTypes": [],
+    "authorizeUrl": null,
+    "tokenUrl": null,
+    "revokeUrl": null,
+    "apiKeyAuth": {
+      "method": "Bearer token",
+      "headerFormat": "Authorization: Bearer {sk_...}",
+      "keyTypes": [
+        "secret key (sk_live_...)",
+        "publishable key (pk_live_...)",
+        "restricted key (rk_live_...)"
+      ],
+      "testKeyPrefix": "sk_test_...",
+      "notes": "Secret key used for server-side requests. Test mode vs live mode determined by key used. Restricted keys recommended for limited-scope access."
+    },
+    "connectOAuth": {
+      "type": "oauth2",
+      "authorizeUrl": "https://connect.stripe.com/oauth/authorize",
+      "tokenUrl": "https://connect.stripe.com/oauth/token",
+      "deauthorizeUrl": "https://connect.stripe.com/oauth/deauthorize",
+      "notes": "OAuth is used only for Stripe Connect (Standard accounts). Custom and Express accounts use the Accounts API directly."
+    },
+    "scopes": {
+      "joiner": ["read_write"],
+      "mover": ["read_write"],
+      "leaver": ["read_write"]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "Primary auth is API key. Stripe Connect uses OAuth for Standard account onboarding. For Connected accounts, use Stripe-Account header with the account ID (acct_...)."
+  },
+  "api": {
+    "baseUrl": "https://api.stripe.com",
+    "version": "Rolling (account-specific). Latest versions released continuously.",
+    "endpoints": {
+      "createUser": "POST /v1/accounts/{accountId}/persons",
+      "getUser": "GET /v1/accounts/{accountId}/persons/{personId}",
+      "updateUser": "POST /v1/accounts/{accountId}/persons/{personId}",
+      "suspendUser": null,
+      "deleteUser": "DELETE /v1/accounts/{accountId}/persons/{personId}",
+      "listUsers": "GET /v1/accounts/{accountId}/persons",
+      "createAccount": "POST /v1/accounts",
+      "getAccount": "GET /v1/accounts/{accountId}",
+      "updateAccount": "POST /v1/accounts/{accountId}",
+      "deleteAccount": "DELETE /v1/accounts/{accountId}",
+      "listAccounts": "GET /v1/accounts",
+      "listGroups": null,
+      "addToGroup": null,
+      "removeFromGroup": null
+    },
+    "rateLimits": "Live mode: 100 requests/second (global), 25 requests/second (per endpoint default). Sandbox: 25 requests/second. Files API: 20 read + 20 write/second. Search API: 20 read/second. Connect account creation: 30/second (live), 5/second (sandbox). 429 status with Stripe-Rate-Limited-Reason header.",
+    "scim": {
+      "supported": false,
+      "endpoint": null
+    },
+    "notes": "Stripe is primarily a payments API. Person management is for connected account identity verification (KYC), not traditional employee provisioning. Team member management (Dashboard users) is not available via API."
+  },
+  "sdk": {
+    "npm": "stripe",
+    "docsUrl": "https://docs.stripe.com/api",
+    "exampleImport": "import Stripe from 'stripe'",
+    "notes": "Official Stripe Node.js SDK. ~7.5M weekly npm downloads. Includes automatic retry for rate limit (429) errors. TypeScript types included."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push (thin events)",
+    "registrationEndpoint": "POST /v1/webhook_endpoints",
+    "eventTypes": [
+      "person.created",
+      "person.updated",
+      "person.deleted",
+      "account.updated",
+      "account.application.authorized",
+      "account.application.deauthorized",
+      "account.external_account.created",
+      "account.external_account.deleted",
+      "account.external_account.updated"
+    ],
+    "connectWebhooks": {
+      "notes": "Connect webhooks listen for events on connected accounts. Configure with 'Listen to: Events on Connected accounts' in Dashboard, or set connect=true via API.",
+      "testCommand": "stripe listen --forward-connect-to localhost:{PORT}/webhook"
+    },
+    "security": {
+      "signatureHeader": "Stripe-Signature",
+      "algorithm": "HMAC-SHA256",
+      "notes": "Verify webhook signatures using the endpoint's signing secret."
+    }
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free test mode available with every Stripe account. Use test API keys (sk_test_...) to access sandbox. No separate environment needed - same API, different keys. Test clocks available for simulating time-based scenarios."
+  },
+  "needs_verification": [
+    "Whether Stripe Dashboard team member management is available via any API",
+    "Accounts v2 API changes and Person Tokensv2 availability",
+    "Exact list of all person-related webhook events",
+    "Whether rate limits differ by account type or plan",
+    "Current API version identifier format"
+  ]
+}

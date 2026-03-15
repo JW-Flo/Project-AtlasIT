@@ -1,0 +1,106 @@
+{
+  "id": "pagerduty",
+  "name": "PagerDuty",
+  "category": "security",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code"],
+    "authorizeUrl": "https://app.pagerduty.com/oauth/authorize",
+    "tokenUrl": "https://identity.pagerduty.com/oauth/token",
+    "revokeUrl": null,
+    "alternativeAuth": {
+      "type": "api_key",
+      "headerFormat": "Authorization: Token token={apiKey}",
+      "notes": "Account-level API keys and user-level API keys are available. API keys provide broad read/write access."
+    },
+    "scopes": {
+      "joiner": ["users.write", "teams.write"],
+      "mover": ["users.write", "teams.write"],
+      "leaver": ["users.write", "teams.write"],
+      "readOnly": ["users.read", "teams.read"]
+    },
+    "oauthTypes": {
+      "scopedOAuth": "Granular resource-level permissions (recommended for new integrations)",
+      "classicUserOAuth": "Broad read/write access acting on behalf of users"
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "notes": "App Registration required via Integrations > Developer Tools. Only account admins can create Scoped OAuth apps. Each REST API object has read and optionally write scopes."
+  },
+  "api": {
+    "baseUrl": "https://api.pagerduty.com",
+    "version": "v2",
+    "endpoints": {
+      "createUser": "POST /users",
+      "getUser": "GET /users/{id}",
+      "updateUser": "PUT /users/{id}",
+      "deleteUser": "DELETE /users/{id}",
+      "listUsers": "GET /users",
+      "listTeams": "GET /teams",
+      "getTeam": "GET /teams/{id}",
+      "createTeam": "POST /teams",
+      "updateTeam": "PUT /teams/{id}",
+      "deleteTeam": "DELETE /teams/{id}",
+      "addToTeam": "PUT /teams/{id}/users/{user_id}",
+      "removeFromTeam": "DELETE /teams/{id}/users/{user_id}"
+    },
+    "rateLimits": {
+      "perApiKey": "960 requests per minute per API key",
+      "perUser": "960 requests per minute per user (for user API keys)",
+      "headers": "ratelimit-limit, ratelimit-remaining, ratelimit-reset",
+      "notes": "429 Too Many Requests returned when exceeded."
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.pagerduty.com/scim/v2",
+      "supportedResources": ["Users"],
+      "limitations": "PagerDuty does not currently support provisioning groups via SCIM.",
+      "supportedIdPs": ["Okta", "Microsoft Entra ID", "OneLogin"],
+      "notes": "Available on all plans. Automates user provisioning and role synchronization. Uses API token for SCIM authentication."
+    }
+  },
+  "sdk": {
+    "npm": "@pagerduty/pdjs",
+    "docsUrl": "https://github.com/PagerDuty/pdjs",
+    "githubUrl": "https://github.com/PagerDuty/pdjs",
+    "exampleImport": "import { api } from '@pagerduty/pdjs'",
+    "notes": "Official PagerDuty SDK. Supports Node and Browser. Supports REST API and Events API v2. Supports both offset and cursor based pagination."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "webhook_subscriptions_v3",
+    "eventTypes": [
+      "incident.acknowledged",
+      "incident.annotated",
+      "incident.delegated",
+      "incident.escalated",
+      "incident.priority_updated",
+      "incident.reassigned",
+      "incident.reopened",
+      "incident.resolved",
+      "incident.responder.added",
+      "incident.responder.replied",
+      "incident.status_update_published",
+      "incident.triggered",
+      "incident.unacknowledged"
+    ],
+    "scopeFilters": [
+      "service_reference",
+      "team_reference",
+      "account_reference"
+    ],
+    "registrationEndpoint": "POST /webhook_subscriptions",
+    "notes": "V3 webhooks support subscribing to specific event types and filtering by service, team, or account scope. Additional event types may be added over time."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free developer account limited to 3 users at https://developer.pagerduty.com/sign-up/. Also a 14-day free trial with full features at https://www.pagerduty.com/sign-up/. Developer account is not intended for production use."
+  },
+  "needs_verification": [
+    "Exact OAuth2 scope names for users and teams (users.read/write, teams.read/write are inferred from documentation patterns)",
+    "Whether a revoke token endpoint exists for PagerDuty OAuth2",
+    "Whether PagerDuty supports suspending/disabling a user without deleting (may require role change)",
+    "Complete list of webhook v3 event types beyond incident events",
+    "Whether token URL is identity.pagerduty.com or app.pagerduty.com (both referenced in docs)"
+  ]
+}

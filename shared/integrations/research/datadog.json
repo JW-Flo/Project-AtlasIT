@@ -1,0 +1,81 @@
+{
+  "id": "datadog",
+  "name": "Datadog",
+  "category": "infrastructure",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials"],
+    "authorizeUrl": "https://app.datadoghq.com/oauth2/v1/authorize",
+    "tokenUrl": "https://api.datadoghq.com/oauth2/v1/token",
+    "revokeUrl": null,
+    "scopes": {
+      "joiner": ["user_access_invite", "user_access_manage"],
+      "mover": ["user_access_manage", "user_access_read"],
+      "leaver": ["user_access_manage"]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "Datadog also supports API key + application key authentication (header-based: DD-API-KEY and DD-APPLICATION-KEY). OAuth2 is used for Datadog marketplace integrations. For direct API access, API/app keys are the primary authentication method. Access tokens have a 1-hour TTL. Regional API domains: api.datadoghq.com (US1), api.datadoghq.eu (EU), api.us3.datadoghq.com (US3), api.us5.datadoghq.com (US5), api.ddog-gov.com (US1-FED), api.ap1.datadoghq.com (AP1)."
+  },
+  "api": {
+    "baseUrl": "https://api.datadoghq.com",
+    "version": "v2",
+    "endpoints": {
+      "createUser": "POST /api/v2/users",
+      "getUser": "GET /api/v2/users/{user_id}",
+      "updateUser": "PATCH /api/v2/users/{user_id}",
+      "disableUser": "DELETE /api/v2/users/{user_id}",
+      "listUsers": "GET /api/v2/users",
+      "sendInvitations": "POST /api/v2/user_invitations",
+      "getInvitation": "GET /api/v2/user_invitations/{user_invitation_uuid}",
+      "listUserOrganizations": "GET /api/v2/users/{user_id}/orgs",
+      "listUserPermissions": "GET /api/v2/users/{user_id}/permissions",
+      "listRoles": "GET /api/v2/roles",
+      "createRole": "POST /api/v2/roles",
+      "getRole": "GET /api/v2/roles/{role_id}",
+      "updateRole": "PATCH /api/v2/roles/{role_id}",
+      "deleteRole": "DELETE /api/v2/roles/{role_id}",
+      "addUserToRole": "POST /api/v2/roles/{role_id}/users",
+      "removeUserFromRole": "DELETE /api/v2/roles/{role_id}/users",
+      "listRoleUsers": "GET /api/v2/roles/{role_id}/users",
+      "listPermissions": "GET /api/v2/permissions"
+    },
+    "rateLimits": "Varies by endpoint. Response headers include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Period. Returns HTTP 429 when exceeded. Can be increased by contacting Datadog support. Example limits: Events submission 250,000/min, Graph snapshot 60/hour, Log query 300/hour, Metric retrieval 100/hour.",
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.datadoghq.com/api/v2/scim/Users",
+      "notes": "SCIM provisioning is available on Infrastructure Pro and Infrastructure Enterprise plans. Supports user provisioning via /Users endpoint. Team provisioning via SCIM is in limited availability (contact Datadog support). Regional SCIM endpoints follow regional API domains. Supports Okta and Microsoft Entra ID as identity providers. Use a service account application key for SCIM configuration."
+    }
+  },
+  "sdk": {
+    "npm": "@datadog/datadog-api-client",
+    "docsUrl": "https://datadoghq.dev/datadog-api-client-typescript/",
+    "exampleImport": "import { client, v2 } from '@datadog/datadog-api-client'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "webhooks_integration",
+    "eventTypes": [
+      "alert",
+      "recovery",
+      "no_data",
+      "warn",
+      "warn_recovery",
+      "no_data_recovery",
+      "renotify"
+    ],
+    "registrationEndpoint": "Configured via Datadog Webhooks integration tile or POST /api/v1/integration/webhooks/configuration/webhooks",
+    "notes": "Datadog webhooks are triggered by monitor alerts and notifications, not by user/IAM lifecycle events. The webhook sends a POST request with JSON payload containing event details. Payloads include fields: host, title, body, alert_metric, alert_status, alert_transition, tags, event_type, priority, link, date, email, org. Retry: up to 5 retries on 5XX responses, 15-second timeout per request."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Datadog offers a 14-day free trial of the Pro plan. Free tier includes limited monitoring for up to 5 hosts. Trial includes full access to all features including user management APIs."
+  },
+  "needs_verification": [
+    "Exact rate limits for user management endpoints (not documented separately from general rate limits)",
+    "SCIM team provisioning availability and endpoint",
+    "Whether DELETE /api/v2/users/{user_id} truly disables (soft delete) or permanently removes the user",
+    "OAuth2 scope names for user management beyond user_access_invite and user_access_manage",
+    "Webhook registration API endpoint exact path"
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "id": "quickbooks",
+  "name": "QuickBooks Online",
+  "category": "finance",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "refresh_token"],
+    "authorizeUrl": "https://appcenter.intuit.com/connect/oauth2",
+    "tokenUrl": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    "revokeUrl": "https://developer.api.intuit.com/v2/oauth2/tokens/revoke",
+    "scopes": {
+      "joiner": ["com.intuit.quickbooks.accounting"],
+      "mover": ["com.intuit.quickbooks.accounting"],
+      "leaver": ["com.intuit.quickbooks.accounting"]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "OAuth 2.0 authorization code flow. Access tokens expire in 1 hour, refresh tokens in 100 days. The realmId (company ID) is returned as a query parameter after authorization. Intuit introduced tiered API pricing in 2025 distinguishing Core (free) and CorePlus (metered) API calls."
+  },
+  "api": {
+    "baseUrl": "https://quickbooks.api.intuit.com/v3/company/{realmId}",
+    "sandboxBaseUrl": "https://sandbox-quickbooks.api.intuit.com/v3/company/{realmId}",
+    "version": "v3",
+    "endpoints": {
+      "createUser": "POST /employee",
+      "getUser": "GET /employee/{employeeId}",
+      "updateUser": "POST /employee?operation=update",
+      "suspendUser": null,
+      "deleteUser": null,
+      "listUsers": "GET /query?query=SELECT * FROM Employee",
+      "listGroups": "GET /query?query=SELECT * FROM Department",
+      "addToGroup": null,
+      "removeFromGroup": null
+    },
+    "rateLimits": "500 requests per minute per realmId. Max 10 simultaneous requests per company per app. Batch operations: 40 requests per minute per realmId. 429 status code when exceeded.",
+    "scim": {
+      "supported": false,
+      "endpoint": null
+    }
+  },
+  "sdk": {
+    "npm": "node-quickbooks",
+    "docsUrl": "https://developer.intuit.com/app/developer/qbo/docs/develop",
+    "exampleImport": "import QuickBooks from 'node-quickbooks'",
+    "notes": "node-quickbooks is a community-maintained package (npm: node-quickbooks, GitHub: mcohen01/node-quickbooks). Intuit provides official SDKs for PHP, Java, .NET, and Ruby but not an official Node.js SDK."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push",
+    "eventTypes": [
+      "Employee.Create",
+      "Employee.Update",
+      "Employee.Delete",
+      "Customer.Create",
+      "Customer.Update",
+      "Customer.Delete",
+      "Customer.Merge",
+      "Vendor.Create",
+      "Vendor.Update",
+      "Vendor.Delete",
+      "Vendor.Merge",
+      "Account.Create",
+      "Account.Update",
+      "Account.Delete",
+      "Account.Merge",
+      "Invoice.Create",
+      "Invoice.Update",
+      "Invoice.Delete",
+      "Invoice.Void",
+      "Payment.Create",
+      "Payment.Update",
+      "Payment.Delete",
+      "Payment.Void",
+      "Bill.Create",
+      "Bill.Update",
+      "Bill.Delete",
+      "Item.Create",
+      "Item.Update",
+      "Item.Delete",
+      "Item.Merge"
+    ],
+    "registrationEndpoint": "Configured in Intuit Developer Portal (dashboard), not via API",
+    "payloadFormat": "JSON POST with entity name, id, operation, lastUpdated",
+    "notes": "Webhook notifications do not count toward API rate limits. Available for both sandbox and production environments."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free sandbox accounts with sample data available at https://developer.intuit.com. Sandbox available in multiple regions: US, UK, Canada, France, Australia, India. Uses separate base URL: sandbox-quickbooks.api.intuit.com."
+  },
+  "needs_verification": [
+    "Whether Employee.Delete webhook event is actually supported (employees may only be made inactive)",
+    "Exact list of Employee fields supported for create/update",
+    "Whether there is an official Intuit Node.js SDK beyond the community package",
+    "CorePlus API call pricing details introduced in 2025",
+    "Whether POST /employee with operation=update is the correct update pattern vs full POST"
+  ]
+}

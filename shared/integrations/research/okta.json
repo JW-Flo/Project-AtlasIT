@@ -1,0 +1,103 @@
+{
+  "id": "okta",
+  "name": "Okta",
+  "category": "security",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": [
+      "authorization_code",
+      "authorization_code_with_pkce",
+      "client_credentials"
+    ],
+    "authorizeUrl": "https://{yourOktaDomain}/oauth2/v1/authorize",
+    "tokenUrl": "https://{yourOktaDomain}/oauth2/v1/token",
+    "revokeUrl": "https://{yourOktaDomain}/oauth2/v1/revoke",
+    "alternativeAuth": {
+      "type": "api_token",
+      "headerScheme": "SSWS",
+      "headerFormat": "Authorization: SSWS {apiToken}"
+    },
+    "scopes": {
+      "joiner": ["okta.users.manage", "okta.groups.manage"],
+      "mover": ["okta.users.manage", "okta.groups.manage"],
+      "leaver": ["okta.users.manage", "okta.groups.manage"],
+      "readOnly": ["okta.users.read", "okta.groups.read"]
+    },
+    "scopeFormat": "okta.<resource>.<operation>",
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "tokenLifetime": "1 hour",
+    "notes": "Only the org authorization server can mint access tokens with Okta API scopes. Only Super Admin role can grant scopes to an app."
+  },
+  "api": {
+    "baseUrl": "https://{yourOktaDomain}/api/v1",
+    "version": "v1",
+    "endpoints": {
+      "createUser": "POST /api/v1/users?activate={activate}",
+      "getUser": "GET /api/v1/users/{userId}",
+      "updateUser": "PUT /api/v1/users/{userId}",
+      "suspendUser": "POST /api/v1/users/{userId}/lifecycle/suspend",
+      "unsuspendUser": "POST /api/v1/users/{userId}/lifecycle/unsuspend",
+      "deactivateUser": "POST /api/v1/users/{userId}/lifecycle/deactivate",
+      "activateUser": "POST /api/v1/users/{userId}/lifecycle/activate",
+      "deleteUser": "DELETE /api/v1/users/{userId}",
+      "listUsers": "GET /api/v1/users",
+      "listGroups": "GET /api/v1/groups",
+      "getGroup": "GET /api/v1/groups/{groupId}",
+      "createGroup": "POST /api/v1/groups",
+      "updateGroup": "PUT /api/v1/groups/{groupId}",
+      "deleteGroup": "DELETE /api/v1/groups/{groupId}",
+      "addToGroup": "PUT /api/v1/groups/{groupId}/users/{userId}",
+      "removeFromGroup": "DELETE /api/v1/groups/{groupId}/users/{userId}",
+      "listGroupMembers": "GET /api/v1/groups/{groupId}/users"
+    },
+    "rateLimits": {
+      "usersEndpoint": "1000 requests per minute for /api/v1/users",
+      "perClient": "60 requests per minute per client",
+      "perUserDashboard": "40 requests per user per 10 seconds per endpoint",
+      "authEndpoint": "4 requests per second for /api/v1/authn",
+      "tokenEndpoint": "4 requests per second for /oauth2/v1/token",
+      "notes": "Rate limits vary by subscription plan, HTTP method, license count, and DynamicScale add-on. 429 Too Many Requests returned when exceeded."
+    },
+    "scim": {
+      "supported": true,
+      "versions": ["1.1", "2.0"],
+      "recommendedVersion": "2.0",
+      "endpoint": "https://{yourScimServer}/scim/v2",
+      "notes": "Okta acts as a SCIM client that provisions to downstream apps. The SCIM base URL is configured per app integration. Supports /Users and /Groups endpoints per RFC 7644."
+    }
+  },
+  "sdk": {
+    "npm": "@okta/okta-sdk-nodejs",
+    "docsUrl": "https://developer.okta.com/okta-sdk-nodejs/jsdocs/",
+    "githubUrl": "https://github.com/okta/okta-sdk-nodejs",
+    "exampleImport": "import { Client } from '@okta/okta-sdk-nodejs'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "event_hooks",
+    "maxActiveHooks": 25,
+    "eventTypes": [
+      "user.lifecycle.create",
+      "user.lifecycle.activate",
+      "user.lifecycle.deactivate",
+      "user.lifecycle.suspend",
+      "user.lifecycle.unsuspend",
+      "user.lifecycle.delete.initiated",
+      "user.account.update_profile",
+      "group.user_membership.add",
+      "group.user_membership.remove"
+    ],
+    "registrationEndpoint": "POST /api/v1/eventHooks",
+    "notes": "Event hooks are outbound async calls from Okta. Only a subset of System Log event types are eligible for event hooks. Filter by 'event-hook-eligible' in the Event Types catalog."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free Okta Developer Edition account at https://developer.okta.com/signup/. No credit card required. Also an Okta Integrator Free Plan for building and testing integrations."
+  },
+  "needs_verification": [
+    "Exact rate limits for /api/v1/groups endpoints (vary by plan)",
+    "Complete list of event-hook-eligible event types for user/group lifecycle",
+    "Whether service app client_credentials grant requires separate setup"
+  ]
+}

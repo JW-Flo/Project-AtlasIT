@@ -1,0 +1,82 @@
+{
+  "id": "google_workspace",
+  "name": "Google Workspace",
+  "category": "productivity",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "service_account"],
+    "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "revokeUrl": "https://oauth2.googleapis.com/revoke",
+    "scopes": {
+      "joiner": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group",
+        "https://www.googleapis.com/auth/admin.directory.group.member"
+      ],
+      "mover": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group.member"
+      ],
+      "leaver": [
+        "https://www.googleapis.com/auth/admin.directory.user",
+        "https://www.googleapis.com/auth/admin.directory.group.member"
+      ]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": true
+  },
+  "api": {
+    "baseUrl": "https://admin.googleapis.com",
+    "version": "directory_v1",
+    "endpoints": {
+      "createUser": "POST /admin/directory/v1/users",
+      "getUser": "GET /admin/directory/v1/users/{userKey}",
+      "updateUser": "PUT /admin/directory/v1/users/{userKey}",
+      "patchUser": "PATCH /admin/directory/v1/users/{userKey}",
+      "suspendUser": "PUT /admin/directory/v1/users/{userKey} (set suspended: true)",
+      "deleteUser": "DELETE /admin/directory/v1/users/{userKey}",
+      "listUsers": "GET /admin/directory/v1/users",
+      "signOutUser": "POST /admin/directory/v1/users/{userKey}/signOut",
+      "listGroups": "GET /admin/directory/v1/groups",
+      "createGroup": "POST /admin/directory/v1/groups",
+      "getGroup": "GET /admin/directory/v1/groups/{groupKey}",
+      "deleteGroup": "DELETE /admin/directory/v1/groups/{groupKey}",
+      "addToGroup": "POST /admin/directory/v1/groups/{groupKey}/members",
+      "removeFromGroup": "DELETE /admin/directory/v1/groups/{groupKey}/members/{memberKey}",
+      "listGroupMembers": "GET /admin/directory/v1/groups/{groupKey}/members"
+    },
+    "rateLimits": {
+      "userCreation": "10 users per domain per second",
+      "queries": "2400 queries per minute per user per project",
+      "usersPerPage": "max 500 entries",
+      "groupsPerPage": "max 200 entries"
+    },
+    "scim": {
+      "supported": false,
+      "endpoint": null,
+      "notes": "Google Workspace does not natively expose a SCIM endpoint; user provisioning is done via the Admin SDK Directory API. Third-party IdPs can provision via the API."
+    }
+  },
+  "sdk": {
+    "npm": "googleapis",
+    "alternativeNpm": "@googleapis/admin",
+    "docsUrl": "https://developers.google.com/workspace/admin/directory/reference/rest",
+    "exampleImport": "import { google } from 'googleapis'"
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push_notifications",
+    "registrationEndpoint": "POST /admin/directory/v1/users/watch",
+    "eventTypes": ["user.created", "user.updated", "user.deleted"],
+    "notes": "Uses Google Push Notifications (watch channels) on the Users resource. Set up via POST to the watch endpoint with a webhook callback URL."
+  },
+  "sandbox": {
+    "available": false,
+    "notes": "No free developer sandbox. Google offers a paid Cloud Developer sandbox ($75/month) with $150/month credits. A demo domain for Education is available for Classroom API testing via the Google Cloud Partner Advantage Program."
+  },
+  "needs_verification": [
+    "Exact webhook event type names for push notifications (Google uses sync/change notifications, not named event types)",
+    "Whether the Google Cloud Developer Program sandbox includes full Admin SDK access"
+  ]
+}

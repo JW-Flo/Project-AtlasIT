@@ -1,0 +1,96 @@
+{
+  "id": "jira",
+  "name": "Jira (Atlassian Cloud)",
+  "category": "project_management",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code"],
+    "authorizeUrl": "https://auth.atlassian.com/authorize",
+    "tokenUrl": "https://auth.atlassian.com/oauth/token",
+    "revokeUrl": "https://auth.atlassian.com/oauth/revoke",
+    "scopes": {
+      "joiner": ["read:me", "manage:jira-configuration", "write:jira-work"],
+      "mover": [
+        "manage:jira-configuration",
+        "write:jira-work",
+        "manage:jira-project"
+      ],
+      "leaver": ["manage:jira-configuration"]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://api.atlassian.com",
+    "version": "SCIM 2.0",
+    "jiraRestApi": {
+      "baseUrl": "https://your-domain.atlassian.net",
+      "version": "v3",
+      "notes": "Jira Cloud REST API (v3) handles project/issue management. User provisioning is done via the SCIM API at the organization level."
+    },
+    "endpoints": {
+      "createUser": "POST /scim/directory/{directoryId}/Users",
+      "getUser": "GET /scim/directory/{directoryId}/Users/{id}",
+      "updateUser": "PUT /scim/directory/{directoryId}/Users/{id}",
+      "patchUser": "PATCH /scim/directory/{directoryId}/Users/{id}",
+      "deactivateUser": "PATCH /scim/directory/{directoryId}/Users/{id} (set active: false)",
+      "deleteUser": "DELETE /scim/directory/{directoryId}/Users/{id} (deactivates, does not permanently delete)",
+      "listUsers": "GET /scim/directory/{directoryId}/Users",
+      "createGroup": "POST /scim/directory/{directoryId}/Groups",
+      "getGroup": "GET /scim/directory/{directoryId}/Groups/{id}",
+      "listGroups": "GET /scim/directory/{directoryId}/Groups",
+      "updateGroup": "PUT /scim/directory/{directoryId}/Groups/{id}",
+      "patchGroup": "PATCH /scim/directory/{directoryId}/Groups/{id}",
+      "deleteGroup": "DELETE /scim/directory/{directoryId}/Groups/{id}",
+      "addToGroup": "PATCH /scim/directory/{directoryId}/Groups/{id} (Operations: add members)",
+      "removeFromGroup": "PATCH /scim/directory/{directoryId}/Groups/{id} (Operations: remove members)"
+    },
+    "rateLimits": {
+      "notes": "Rate limits apply per API token. Specific limits are not publicly detailed for the SCIM API. Jira REST API uses a 'token bucket' algorithm.",
+      "userLimit": "150,000 users per directory",
+      "groupMemberLimit": "35,000 users per group"
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.atlassian.com/scim/directory/{directoryId}/",
+      "version": "2.0",
+      "authentication": "Bearer token (Directory API token generated in Atlassian admin)",
+      "notes": "SCIM provisioning requires Atlassian Guard (formerly Atlassian Access). Supports Users and Groups schemas. DELETE deactivates rather than permanently deleting."
+    }
+  },
+  "sdk": {
+    "npm": "jira.js",
+    "docsUrl": "https://developer.atlassian.com/cloud/jira/platform/rest/v3/",
+    "exampleImport": "import { Version3Client } from 'jira.js'",
+    "notes": "jira.js is the most popular community TypeScript/JavaScript SDK for Jira Cloud REST API. There is no official Atlassian npm SDK for the SCIM API; use direct HTTP calls."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "webhooks",
+    "registrationEndpoint": "POST /rest/api/3/webhook (dynamic) or via Jira admin UI (static)",
+    "eventTypes": [
+      "jira:issue_created",
+      "jira:issue_updated",
+      "jira:issue_deleted",
+      "user_created",
+      "user_updated",
+      "user_deleted",
+      "sprint_created",
+      "sprint_updated",
+      "sprint_deleted",
+      "project_created",
+      "project_updated",
+      "project_deleted"
+    ],
+    "notes": "Jira Cloud supports both static webhooks (configured in admin UI) and dynamic webhooks (registered via REST API by Connect/Forge apps). User lifecycle events may be limited to Atlassian organization-level events."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Free Jira Cloud instances available (up to 10 users). Atlassian Marketplace developers get free development instances. Full sandbox environments require Premium or Enterprise plans."
+  },
+  "needs_verification": [
+    "Exact user lifecycle webhook event names (user_created, user_updated, user_deleted) - may only be available via Atlassian organization audit log, not Jira webhooks",
+    "OAuth scopes needed specifically for SCIM provisioning (SCIM uses directory API tokens, not OAuth)",
+    "Revoke URL for Atlassian OAuth 2.0 (3LO)"
+  ]
+}
