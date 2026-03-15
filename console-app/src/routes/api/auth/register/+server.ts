@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { buildDefaultControls } from "$lib/compliance/framework-controls";
 
 async function hashPassword(password: string, salt: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -170,6 +171,18 @@ export const POST: RequestHandler = async ({ request, platform }) => {
            VALUES (?, 'frameworks', ?)`,
         )
         .bind(tenantId, JSON.stringify(frameworks))
+        .run();
+    }
+
+    // Auto-seed compliance controls for selected frameworks
+    if (frameworks && frameworks.length > 0) {
+      const controls = buildDefaultControls(frameworks);
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+           VALUES (?, 'compliance_controls', ?)`,
+        )
+        .bind(tenantId, JSON.stringify(controls))
         .run();
     }
 

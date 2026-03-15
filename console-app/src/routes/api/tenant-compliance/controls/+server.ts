@@ -1,62 +1,9 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-
-interface Control {
-  id: string;
-  framework: string;
-  name: string;
-  status: "not_started" | "in_progress" | "implemented" | "verified";
-  notes: string;
-}
-
-const FRAMEWORK_CONTROLS: Record<string, string[]> = {
-  SOC2: [
-    "Access Control",
-    "Change Management",
-    "Incident Response",
-    "Risk Assessment",
-    "Vendor Management",
-  ],
-  ISO27001: [
-    "Information Security Policy",
-    "Asset Management",
-    "Access Control",
-    "Cryptography",
-    "Physical Security",
-  ],
-  "NIST CSF": ["Identify", "Protect", "Detect", "Respond", "Recover"],
-  HIPAA: [
-    "Privacy Rule",
-    "Security Rule",
-    "Breach Notification",
-    "Administrative Safeguards",
-  ],
-  GDPR: [
-    "Data Mapping",
-    "Consent Management",
-    "Data Subject Rights",
-    "DPO Appointment",
-    "Breach Notification",
-  ],
-};
-
-function buildDefaultControls(frameworks: string[]): Control[] {
-  const controls: Control[] = [];
-  for (const fw of frameworks) {
-    const names = FRAMEWORK_CONTROLS[fw];
-    if (!names) continue;
-    for (const name of names) {
-      controls.push({
-        id: `${fw.toLowerCase().replace(/\s+/g, "_")}_${name.toLowerCase().replace(/\s+/g, "_")}`,
-        framework: fw,
-        name,
-        status: "not_started",
-        notes: "",
-      });
-    }
-  }
-  return controls;
-}
+import {
+  buildDefaultControls,
+  type Control,
+} from "$lib/compliance/framework-controls";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
