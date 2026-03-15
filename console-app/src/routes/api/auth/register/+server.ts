@@ -35,6 +35,8 @@ interface RegisterBody {
   ownerName?: string;
   ownerEmail: string;
   ownerPassword: string;
+  selectedIdp?: "okta" | "google_workspace" | "microsoft_365";
+  selectedIdpDomain?: string;
 }
 
 export const POST: RequestHandler = async ({ request, platform }) => {
@@ -180,6 +182,37 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         )
         .bind(tenantId, JSON.stringify(selectedApps))
         .run();
+    }
+
+    // Create directory connection if IdP was selected
+    const selectedIdp = body.selectedIdp;
+    const selectedIdpDomain = body.selectedIdpDomain;
+    if (
+      selectedIdp &&
+      ["okta", "google_workspace", "microsoft_365"].includes(selectedIdp)
+    ) {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO directory_connections (tenant_id, provider, status)
+           VALUES (?, ?, 'pending')`,
+        )
+        .bind(tenantId, selectedIdp)
+        .run();
+
+      // Store Okta domain in app_credentials for the OAuth flow
+      if (selectedIdp === "okta" && selectedIdpDomain?.trim()) {
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO app_credentials (tenant_id, app_id, credentials, created_at)
+             VALUES (?, 'okta', ?, ?)`,
+          )
+          .bind(
+            tenantId,
+            JSON.stringify({ domain: selectedIdpDomain.trim() }),
+            now,
+          )
+          .run();
+      }
     }
 
     return json({
