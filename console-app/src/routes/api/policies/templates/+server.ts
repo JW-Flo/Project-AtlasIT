@@ -47,7 +47,13 @@ export const GET: RequestHandler = async ({ platform, locals }) => {
 
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
-  const tenantId = user.tenantId || env.TENANT_ID || "atlasit-prod";
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const upstream = `${base}/api/v1/policies/templates`;

@@ -94,6 +94,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
         roles: ["super-admin"],
         superAdmin: true,
         provider: "password",
+        tenantId: env.DEFAULT_TENANT_ID || "default",
         createdAt: new Date().toISOString(),
         lastSeenAt: new Date().toISOString(),
       };

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import { integrations, categories, iconMap } from "$lib/data/integrations";
+  import { integrations, iconMap } from "$lib/data/integrations";
 
   interface WorkflowStep {
     name: string;
@@ -18,6 +18,12 @@
     leaver: WorkflowStep[];
   }
 
+  interface ExecutionResult {
+    success: boolean;
+    steps: { name: string; status: "success" | "failed" | "skipped" }[];
+    message?: string;
+  }
+
   function humanize(slug: string): string {
     return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
@@ -26,16 +32,8 @@
     return names.map((n) => ({ name: humanize(n), description: n }));
   }
 
-  interface ExecutionResult {
-    success: boolean;
-    steps: { name: string; status: "success" | "failed" | "skipped" }[];
-    message?: string;
-  }
-
   let workflows: AppWorkflow[] = [];
-  let connectedApps: Record<string, boolean> = {};
   let loading = true;
-  let activeCategory = "all";
   let idpSource = "okta";
   let searchQuery = "";
 
@@ -47,8 +45,8 @@
   let executing = false;
   let executionResult: ExecutionResult | null = null;
 
-  // Collapsible state per app
-  let expanded: Record<string, { joiner: boolean; mover: boolean; leaver: boolean }> = {};
+  // Section collapse
+  let collapsed: Record<string, boolean> = {};
 
   const idpSources = [
     { id: "okta", label: "Okta" },
@@ -57,15 +55,31 @@
     { id: "entra_id", label: "Entra ID" },
   ];
 
-  $: filtered = workflows.filter((w) => {
-    if (activeCategory !== "all" && w.category !== activeCategory) return false;
-    if (searchQuery && !w.appName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
+  // Only show connected apps
+  $: connectedWorkflows = workflows.filter((w) => w.connected);
+  $: filtered = connectedWorkflows.filter(
+    (w) => !searchQuery || w.appName.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+  $: hasConnected = connectedWorkflows.length > 0;
+
+  const sections: { type: "joiner" | "mover" | "leaver"; label: string; color: string; accent: string }[] = [
+    { type: "joiner", label: "Joiner", color: "rgba(34,197,94,0.15)", accent: "#22c55e" },
+    { type: "mover", label: "Mover", color: "rgba(59,130,246,0.15)", accent: "#3b82f6" },
+    { type: "leaver", label: "Leaver", color: "rgba(239,68,68,0.15)", accent: "#ef4444" },
+  ];
 
   async function fetchWorkflows() {
     loading = true;
     try {
+      // Fetch connected app status
+      const statusRes = await fetch("/api/apps/status");
+      const statusData = statusRes.ok ? await statusRes.json() : { applications: [] };
+      const connectedMap: Record<string, boolean> = {};
+      for (const a of statusData.applications || []) {
+        if (a.connected) connectedMap[a.id] = true;
+      }
+
+      // Fetch lifecycle workflows
       const res = await fetch("/api/apps/lifecycle/workflows", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -82,35 +96,30 @@
               appId: a.appId,
               appName: name,
               category: a.category || "productivity",
-              connected: !!a.connected,
+              connected: !!connectedMap[a.appId] || !!a.connected,
               joiner: Array.isArray(a.joiner) ? toSteps(a.joiner) : [],
               mover: Array.isArray(a.mover) ? toSteps(a.mover) : [],
               leaver: Array.isArray(a.leaver) ? toSteps(a.leaver) : [],
             };
           });
-          // Build connected map from response
-          connectedApps = {};
-          for (const a of apps) {
-            connectedApps[a.appId] = !!a.connected;
-          }
         } else {
-          useFallback();
+          useFallback(connectedMap);
         }
       } else {
-        useFallback();
+        useFallback(connectedMap);
       }
     } catch {
-      useFallback();
+      useFallback({});
     }
     loading = false;
   }
 
-  function useFallback() {
+  function useFallback(connectedMap: Record<string, boolean>) {
     workflows = integrations.map((app) => ({
       appId: app.id,
       appName: app.name,
       category: app.category,
-      connected: false,
+      connected: !!connectedMap[app.id],
       joiner: [
         { name: "Provision account", description: `Create ${app.name} account for new user` },
         { name: "Assign license", description: `Assign appropriate ${app.name} license` },
@@ -129,17 +138,9 @@
     }));
   }
 
-  function toggleSection(appId: string, section: "joiner" | "mover" | "leaver") {
-    if (!expanded[appId]) {
-      expanded[appId] = { joiner: false, mover: false, leaver: false };
-    }
-    expanded[appId][section] = !expanded[appId][section];
-    expanded = expanded;
-  }
-
-  function openRunModal(app: AppWorkflow) {
+  function openRunModal(app: AppWorkflow, type: "joiner" | "mover" | "leaver") {
     modalApp = app;
-    modalType = "joiner";
+    modalType = type;
     modalEmail = "";
     executionResult = null;
     showModal = true;
@@ -166,7 +167,6 @@
       if (res.ok && data?.steps) {
         executionResult = data;
       } else {
-        // Show simulated result for MVP
         const steps = modalApp[modalType] || [];
         executionResult = {
           success: true,
@@ -192,7 +192,6 @@
     fetchWorkflows();
   });
 
-  // Re-fetch when IDP source changes (skip initial — onMount handles it)
   $: if (mounted && idpSource) {
     fetchWorkflows();
   }
@@ -204,12 +203,12 @@
   };
 </script>
 
-<div class="px-5 py-5 max-w-[1400px] mx-auto">
+<div class="px-5 py-5 max-w-[1200px] mx-auto">
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-3xl font-semibold mb-1" style="color: var(--color-text, #fff);">Workflows</h1>
       <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
-        Browse and trigger JML (Joiner/Mover/Leaver) workflows per application
+        Joiner / Mover / Leaver workflows for connected applications
       </p>
     </div>
     <a href="/console" class="text-sm px-3 py-1.5 rounded" style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);">
@@ -218,7 +217,7 @@
   </div>
 
   <!-- Controls -->
-  <div class="flex flex-wrap items-center gap-4 mb-4">
+  <div class="flex flex-wrap items-end gap-4 mb-6">
     <div>
       <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.5;">IDP Source</label>
       <select
@@ -231,125 +230,113 @@
         {/each}
       </select>
     </div>
-    <div class="flex-1 max-w-md">
+    <div class="flex-1 max-w-sm">
       <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.5;">Search</label>
       <input
         type="text"
         bind:value={searchQuery}
-        placeholder="Search apps..."
+        placeholder="Filter apps..."
         class="w-full px-3 py-2 rounded text-sm"
         style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
       />
     </div>
   </div>
 
-  <!-- Categories -->
-  <div class="flex flex-wrap gap-2 mb-6">
-    {#each categories as cat}
-      <button
-        type="button"
-        class="px-3 py-1.5 text-xs font-medium rounded-full transition-colors"
-        style="background: {activeCategory === cat.id ? 'var(--color-accent, #3b82f6)' : 'rgba(255,255,255,0.05)'}; color: {activeCategory === cat.id ? '#fff' : 'var(--color-text, #fff)'}; opacity: {activeCategory === cat.id ? 1 : 0.6};"
-        on:click={() => activeCategory = cat.id}
-      >
-        {cat.label}
-      </button>
-    {/each}
-  </div>
-
   {#if loading}
-    <div class="text-center py-12" style="color: var(--color-text, #fff); opacity: 0.4;">
+    <div class="text-center py-16" style="color: var(--color-text, #fff); opacity: 0.4;">
       <p>Loading workflows...</p>
     </div>
+  {:else if !hasConnected}
+    <!-- Empty state: no connected apps -->
+    <div class="rounded-lg p-10 text-center border border-dashed" style="background: var(--color-surface, #1a2332); border-color: rgba(255,255,255,0.15);">
+      <svg class="w-12 h-12 mx-auto mb-4" style="color: rgba(255,255,255,0.2);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+      </svg>
+      <p class="text-lg font-semibold mb-1" style="color: var(--color-text, #fff);">No connected apps</p>
+      <p class="text-sm mb-5" style="color: var(--color-text, #fff); opacity: 0.5;">Connect applications from the Marketplace to enable JML workflows.</p>
+      <a href="/console/marketplace" class="text-sm px-5 py-2.5 rounded text-white" style="background: var(--color-accent, #3b82f6);">
+        Browse Marketplace
+      </a>
+    </div>
   {:else}
-    <!-- Workflow cards -->
-    <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3 items-start">
-      {#each filtered as app}
-        <div class="rounded-lg p-5 flex flex-col" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-          <!-- Header -->
-          <div class="flex items-start justify-between mb-3">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
-                <svg class="w-5 h-5" style="color: var(--color-accent, #3b82f6);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
-                </svg>
-              </div>
-              <div>
-                <h3 class="text-sm font-semibold" style="color: var(--color-text, #fff);">{app.appName}</h3>
-                <span class="text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">{app.category}</span>
-              </div>
-            </div>
-            <span
-              class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full"
-              style="background: {connectedApps[app.appId] ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)'}; color: {connectedApps[app.appId] ? '#22c55e' : 'rgba(255,255,255,0.4)'};"
-            >
-              {connectedApps[app.appId] ? "Connected" : "Not Connected"}
+    <!-- JML sections -->
+    {#each sections as section}
+      {@const apps = filtered.filter((w) => (w[section.type] || []).length > 0)}
+      <div class="mb-6">
+        <!-- Section header -->
+        <button
+          type="button"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-t-lg"
+          style="background: {section.color};"
+          on:click={() => { collapsed[section.type] = !collapsed[section.type]; collapsed = collapsed; }}
+        >
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-semibold uppercase tracking-wide" style="color: {section.accent};">
+              {section.label}
+            </span>
+            <span class="text-xs px-2 py-0.5 rounded-full" style="background: rgba(0,0,0,0.2); color: {section.accent};">
+              {apps.length} app{apps.length !== 1 ? "s" : ""}
             </span>
           </div>
+          <svg class="w-4 h-4 transition-transform" class:rotate-180={!collapsed[section.type]} style="color: {section.accent};" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
 
-          <!-- Workflow sections -->
-          {#each ["joiner", "mover", "leaver"] as type}
-            {@const steps = app[type] || []}
-            {@const colors = typeColors[type]}
-            {@const isExpanded = expanded[app.appId]?.[type] || false}
-            <div class="mb-2">
-              <button
-                type="button"
-                class="w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium"
-                style="background: {colors.bg}; color: {colors.text};"
-                on:click={() => toggleSection(app.appId, type)}
-              >
-                <span class="capitalize">{type} ({steps.length} steps)</span>
-                <svg class="w-3.5 h-3.5 transition-transform" class:rotate-180={isExpanded} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                </svg>
-              </button>
-              {#if isExpanded}
-                <div class="mt-1 ml-3 space-y-1">
-                  {#each steps as step, i}
-                    <div class="flex items-start gap-2 py-1">
-                      <span class="text-[10px] font-mono mt-0.5 shrink-0" style="color: {colors.text};">{i + 1}.</span>
-                      <div>
-                        <div class="text-xs font-medium" style="color: var(--color-text, #fff);">{step.name}</div>
-                        <div class="text-[11px]" style="color: var(--color-text, #fff); opacity: 0.4;">{step.description}</div>
-                      </div>
-                    </div>
+        {#if !collapsed[section.type]}
+          <div class="rounded-b-lg overflow-hidden" style="border: 1px solid var(--color-border, rgba(255,255,255,0.1)); border-top: none;">
+            {#if apps.length === 0}
+              <div class="px-4 py-6 text-center text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">
+                No matching apps
+              </div>
+            {:else}
+              <table class="w-full">
+                <thead>
+                  <tr style="background: rgba(255,255,255,0.02);">
+                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Application</th>
+                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Category</th>
+                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Steps</th>
+                    <th class="text-right text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each apps as app}
+                    <tr style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06));">
+                      <td class="px-4 py-3">
+                        <div class="flex items-center gap-3">
+                          <div class="w-8 h-8 rounded flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
+                            <svg class="w-4 h-4" style="color: var(--color-accent, #3b82f6);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
+                            </svg>
+                          </div>
+                          <span class="text-sm font-medium" style="color: var(--color-text, #fff);">{app.appName}</span>
+                        </div>
+                      </td>
+                      <td class="px-4 py-3">
+                        <span class="text-xs capitalize" style="color: var(--color-text, #fff); opacity: 0.5;">{app.category}</span>
+                      </td>
+                      <td class="px-4 py-3">
+                        <span class="text-xs" style="color: {section.accent};">{(app[section.type] || []).length} steps</span>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          on:click={() => openRunModal(app, section.type)}
+                          class="text-xs font-medium px-3 py-1.5 rounded transition-colors"
+                          style="background: {section.color}; color: {section.accent};"
+                        >
+                          Run
+                        </button>
+                      </td>
+                    </tr>
                   {/each}
-                </div>
-              {/if}
-            </div>
-          {/each}
-
-          <!-- Run button -->
-          <div class="mt-auto pt-2">
-            <button
-              type="button"
-              on:click={() => openRunModal(app)}
-              class="w-full py-2 text-xs font-medium rounded transition-colors"
-              style="background: var(--color-accent, #3b82f6); color: #fff;"
-            >
-              Run Workflow
-            </button>
+                </tbody>
+              </table>
+            {/if}
           </div>
-        </div>
-      {/each}
-    </div>
-
-    {#if filtered.length === 0}
-      <div class="rounded-lg p-8 text-center border border-dashed" style="background: var(--color-surface, #1a2332); border-color: rgba(255,255,255,0.2);">
-        <svg class="w-12 h-12 mx-auto mb-4" style="color: rgba(255,255,255,0.2);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-        </svg>
-        <p class="text-lg font-semibold mb-1" style="color: var(--color-text, #fff);">No workflows found</p>
-        <p class="text-sm mb-4" style="color: var(--color-text, #fff); opacity: 0.5;">Connect your applications to enable automated JML workflows, or try a different search or category.</p>
-        <div class="flex gap-3 justify-center">
-          <a href="/console/marketplace" class="text-sm px-4 py-2 rounded text-white" style="background: var(--color-accent, #3b82f6);">Connect Apps</a>
-          {#if searchQuery || activeCategory !== 'all'}
-            <button type="button" on:click={() => { searchQuery = ''; activeCategory = 'all'; }} class="text-sm px-4 py-2 rounded" style="background: rgba(255,255,255,0.1); color: var(--color-text, #fff);">Clear Filters</button>
-          {/if}
-        </div>
+        {/if}
       </div>
-    {/if}
+    {/each}
   {/if}
 </div>
 
@@ -392,6 +379,22 @@
               style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
             />
           </div>
+
+          <!-- Steps preview -->
+          {#if modalApp[modalType]?.length}
+            <div>
+              <p class="text-xs mb-2" style="color: var(--color-text, #fff); opacity: 0.5;">Steps ({modalApp[modalType].length})</p>
+              <div class="space-y-1">
+                {#each modalApp[modalType] as step, i}
+                  <div class="flex items-center gap-2 text-xs px-2 py-1.5 rounded" style="background: rgba(255,255,255,0.03); color: var(--color-text, #fff); opacity: 0.7;">
+                    <span class="font-mono text-[10px] shrink-0" style="opacity: 0.4;">{i + 1}.</span>
+                    {step.name}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
           <button
             type="button"
             on:click={executeWorkflow}
@@ -403,7 +406,6 @@
           </button>
         </div>
       {:else}
-        <!-- Execution result -->
         <div class="space-y-3">
           <div class="flex items-center gap-2 mb-2">
             {#if executionResult.success}
