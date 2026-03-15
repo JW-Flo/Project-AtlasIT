@@ -24,5 +24,14 @@ export const POST: RequestHandler = async ({ platform, cookies }) => {
     maxAge: 0,
   });
 
+  // Clear session cache cookie
+  cookies.set("atlas_session_cache", "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+
   return json({ success: true });
 };

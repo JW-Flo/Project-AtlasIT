@@ -2,6 +2,33 @@ import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { activeProviders, type UserPrincipal } from "./lib/auth/provider";
 
+/** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
+const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
+
+/** Max age (seconds) for the session cache cookie before we re-read KV. */
+const SESSION_CACHE_MAX_AGE = 300; // 5 minutes
+
+/**
+ * Encode user principal into a base64url cache cookie.
+ * Not a security boundary — the atlas_session KV sid is the real auth token.
+ * This just avoids a KV read on every request.
+ */
+function encodeSessionCache(user: UserPrincipal): string {
+  return btoa(JSON.stringify(user))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function decodeSessionCache(cookie: string): UserPrincipal | null {
+  try {
+    const padded = cookie.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(padded)) as UserPrincipal;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns true only when running in a real local dev environment.
  * This check intentionally cannot be satisfied in production because:
@@ -90,30 +117,69 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // ------------------------------------------------------------------
-  // 2. Session lookup (user already authenticated in a prior request)
+  // 2. Session lookup — use cache cookie to avoid KV reads
   // ------------------------------------------------------------------
   if (!user && !devBypass && sessionId) {
-    try {
-      const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-      if (kv) {
-        const sessionData = await kv.get(sessionId);
-        if (sessionData) {
-          user = JSON.parse(sessionData) as UserPrincipal;
-          // Refresh lastSeenAt
-          user.lastSeenAt = new Date().toISOString();
-          await kv.put(sessionId, JSON.stringify(user), {
-            expirationTtl: 604800,
-          });
+    // Try the cache cookie first (no KV read)
+    const cachedSession = event.cookies.get("atlas_session_cache");
+    if (cachedSession) {
+      user = decodeSessionCache(cachedSession);
+    }
+
+    // If no cache or cache is stale, fall back to KV
+    if (!user) {
+      try {
+        const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
+        if (kv) {
+          const sessionData = await kv.get(sessionId);
+          if (sessionData) {
+            user = JSON.parse(sessionData) as UserPrincipal;
+            // Set cache cookie so next requests skip KV
+            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
+              httpOnly: true,
+              secure: true,
+              sameSite: "lax",
+              path: "/",
+              maxAge: SESSION_CACHE_MAX_AGE,
+            });
+          }
+        }
+      } catch (e) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "auth.session_lookup_failed",
+            err: String(e),
+          }),
+        );
+      }
+    }
+
+    // Throttle lastSeenAt refresh — only write to KV every 5 minutes
+    if (user) {
+      const lastSeen = new Date(user.lastSeenAt).getTime();
+      const now = Date.now();
+      if (now - lastSeen > SESSION_REFRESH_INTERVAL_MS) {
+        user.lastSeenAt = new Date().toISOString();
+        try {
+          const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
+          if (kv) {
+            await kv.put(sessionId, JSON.stringify(user), {
+              expirationTtl: 604800,
+            });
+            // Refresh the cache cookie too
+            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
+              httpOnly: true,
+              secure: true,
+              sameSite: "lax",
+              path: "/",
+              maxAge: SESSION_CACHE_MAX_AGE,
+            });
+          }
+        } catch {
+          // Non-blocking — session is still valid
         }
       }
-    } catch (e) {
-      console.error(
-        JSON.stringify({
-          level: "error",
-          event: "auth.session_lookup_failed",
-          err: String(e),
-        }),
-      );
     }
   }
 
