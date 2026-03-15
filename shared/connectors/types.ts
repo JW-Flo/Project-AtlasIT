@@ -28,7 +28,7 @@ export interface ConnectorParamsBase {
   attributes?: Record<string, unknown>;
 }
 
-export interface CreateUserParams extends ConnectorParamsBase {}
+export type CreateUserParams = ConnectorParamsBase;
 
 export interface UpdateUserParams extends ConnectorParamsBase {
   userId?: string;

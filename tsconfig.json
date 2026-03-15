@@ -71,6 +71,7 @@
     "documentation-worker/dist",
     "packages/**/dist",
     "**/*.spec.ts",
-    "**/*.spec.tsx"
+    "**/*.spec.tsx",
+    "ai-orchestrator/**/*.test.ts"
   ]
 }
