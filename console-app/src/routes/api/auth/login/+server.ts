@@ -1,34 +1,41 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 
-// PBKDF2 hash — stored as "pbkdf2$310000$<hex>"
-async function hashPasswordPBKDF2(password: string, salt: string): Promise<string> {
+// PBKDF2 hash — stored as "pbkdf2$<iterations>$<hex>"
+async function hashPasswordPBKDF2(
+  password: string,
+  salt: string,
+  iterations = 100000,
+): Promise<string> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     encoder.encode(password),
     "PBKDF2",
     false,
-    ["deriveBits"]
+    ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
       salt: encoder.encode(salt),
-      iterations: 310000,
+      iterations,
       hash: "SHA-256",
     },
     keyMaterial,
-    256
+    256,
   );
   const hex = Array.from(new Uint8Array(bits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `pbkdf2$310000$${hex}`;
+  return `pbkdf2$${iterations}$${hex}`;
 }
 
 // Legacy SHA-256 hash (salt + password) — used only during migration verification
-async function hashPasswordLegacy(password: string, salt: string): Promise<string> {
+async function hashPasswordLegacy(
+  password: string,
+  salt: string,
+): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(salt + password);
   const hash = await crypto.subtle.digest("SHA-256", data);
@@ -41,10 +48,12 @@ async function hashPasswordLegacy(password: string, salt: string): Promise<strin
 async function verifyPassword(
   password: string,
   salt: string,
-  storedHash: string
+  storedHash: string,
 ): Promise<boolean> {
   if (storedHash.startsWith("pbkdf2$")) {
-    const candidate = await hashPasswordPBKDF2(password, salt);
+    const parts = storedHash.split("$");
+    const iterations = parseInt(parts[1], 10) || 100000;
+    const candidate = await hashPasswordPBKDF2(password, salt, iterations);
     return candidate === storedHash;
   }
   // Legacy: plain hex SHA-256 hash
@@ -69,7 +78,10 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     const superEmail = (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
     const superPass = env.ADMIN_PASSWORD;
     if (!superPass) {
-      return json({ error: "Authentication service unavailable" }, { status: 503 });
+      return json(
+        { error: "Authentication service unavailable" },
+        { status: 503 },
+      );
     }
     if (email.toLowerCase() === superEmail && password === superPass) {
       if (!kv) {
@@ -112,7 +124,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
            tenant_id TEXT NOT NULL DEFAULT 'atlasit-prod',
            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
            last_login TEXT
-         )`
+         )`,
       )
       .run();
 
@@ -194,4 +206,3 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Authentication service error" }, { status: 500 });
   }
 };
-

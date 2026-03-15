@@ -9,4 +9,5 @@ export * from "./platform/index";
 export * from "./workflow/index";
 export * from "./adapters/index";
 export * from "./observability/index";
+export * from "./realtime/index";
 //# sourceMappingURL=index.d.ts.map

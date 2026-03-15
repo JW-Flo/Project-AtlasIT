@@ -1,0 +1,140 @@
+name: Deploy All Workers
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: "Comma-separated workers to deploy (or 'all')"
+        required: false
+        default: "all"
+
+jobs:
+  deploy-core:
+    if: >-
+      github.event.inputs.workers == 'all' ||
+      contains(github.event.inputs.workers, 'core')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx wrangler deploy --config wrangler.toml
+
+  deploy-console:
+    if: >-
+      github.event.inputs.workers == 'all' ||
+      contains(github.event.inputs.workers, 'console')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-fund --no-audit
+        working-directory: console-app
+      - run: npm run build && touch .svelte-kit/cloudflare/.assetsignore
+        working-directory: console-app
+      - run: npx wrangler deploy --config console-app/wrangler.toml
+
+  deploy-compliance:
+    if: >-
+      github.event.inputs.workers == 'all' ||
+      contains(github.event.inputs.workers, 'compliance')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm ci --no-fund --no-audit
+        working-directory: compliance-worker
+      - run: npx wrangler deploy --config compliance-worker/wrangler.toml
+
+  deploy-orchestrator:
+    if: >-
+      github.event.inputs.workers == 'all' ||
+      contains(github.event.inputs.workers, 'orchestrator')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
+
+  deploy-dispatch:
+    if: >-
+      github.event.inputs.workers == 'all' ||
+      contains(github.event.inputs.workers, 'dispatch')
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm ci --no-fund --no-audit
+        working-directory: dispatch-worker
+      - run: npx wrangler deploy --config dispatch-worker/wrangler.toml
+
+  smoke-test:
+    needs: [deploy-core, deploy-console, deploy-compliance, deploy-orchestrator, deploy-dispatch]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke test all endpoints
+        run: |
+          echo "=== Core (api.atlasit.pro) ==="
+          curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "https://api.atlasit.pro/health" || echo "unreachable"
+
+          echo ""
+          echo "=== Console (www.atlasit.pro) ==="
+          curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "https://www.atlasit.pro" || echo "unreachable"
+
+          echo ""
+          echo "=== Compliance (compliance.atlasit.pro) ==="
+          curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "https://compliance.atlasit.pro/api/compliance/health" || echo "unreachable"
+
+          echo ""
+          echo "=== Orchestrator (orchestrator.atlasit.pro) ==="
+          curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "https://orchestrator.atlasit.pro/health" || echo "unreachable"
+
+          echo ""
+          echo "=== Dispatch (dispatch.atlasit.pro) ==="
+          curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "https://dispatch.atlasit.pro/health" || echo "unreachable"

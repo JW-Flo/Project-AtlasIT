@@ -33,6 +33,35 @@ const IGNORE_DIRS = new Set([
   ".wrangler",
   ".venv",
 ]);
+
+const BINARY_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".webp",
+  ".svg",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".zip",
+  ".tar",
+  ".gz",
+  ".bz2",
+  ".pdf",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".mp3",
+  ".mp4",
+  ".wav",
+  ".ogg",
+  ".wasm",
+  ".pack",
+]);
 let findings = [];
 
 function isAllowlisted(file) {
@@ -42,8 +71,13 @@ function isAllowlisted(file) {
   );
 }
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // skip files larger than 50 MB
+
 function scanFile(file) {
   if (isAllowlisted(file)) return; // skip docs and known safe reference files
+  if (BINARY_EXTENSIONS.has(path.extname(file).toLowerCase())) return;
+  const stat = fs.statSync(file);
+  if (stat.size > MAX_FILE_SIZE) return; // skip very large files
   const content = fs.readFileSync(file, "utf8");
   for (const rx of BLOCKLIST_REGEXES) {
     if (rx.test(content)) {

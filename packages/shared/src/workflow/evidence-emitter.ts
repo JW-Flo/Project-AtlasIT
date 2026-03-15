@@ -9,7 +9,10 @@
  * is a no-op. This makes replays safe.
  */
 
-import type { EvidenceStore, EvidenceWriteResult } from "../platform/interfaces";
+import type {
+  EvidenceStore,
+  EvidenceWriteResult,
+} from "../platform/interfaces";
 import type {
   StepState,
   RunState,
@@ -66,14 +69,8 @@ function toHex(buffer: ArrayBuffer): string {
 
 async function sha256Hex(data: string): Promise<string> {
   const bytes = new TextEncoder().encode(data);
-  // Prefer Web Crypto (works on CF Workers and Node 20+)
-  if (globalThis.crypto?.subtle) {
-    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-    return toHex(digest);
-  }
-  // Fallback for Node.js environments without globalThis.crypto.subtle
-  const { webcrypto } = await import("node:crypto");
-  const digest = await (webcrypto as any).subtle.digest("SHA-256", bytes);
+  // Use Web Crypto API (works on CF Workers, Node 18+, and all modern runtimes)
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return toHex(digest);
 }
 
@@ -147,13 +144,7 @@ export class EvidenceEmitter {
 
     // Serialize and persist
     const body = JSON.stringify(envelope);
-    return this.store.put(
-      run.tenantId,
-      run.id,
-      step.stepId,
-      hash,
-      body,
-    );
+    return this.store.put(run.tenantId, run.id, step.stepId, hash, body);
   }
 
   private deriveEventType(step: StepState): string {

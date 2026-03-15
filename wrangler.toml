@@ -38,8 +38,8 @@ database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
 
 [[d1_databases]]
 binding = "ATLAS_COMPLIANCE_DB"
-database_name = "atlas_compliance"
-database_id = "f14bde38-795d-46b5-b174-fe4d559f2ac7"
+database_name = "atlasit_compliance"
+database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5"
 
 [[d1_databases]]
 binding = "ATLAS_AUDIT_SHADOW"
@@ -133,8 +133,8 @@ database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
 
 [[env.core.d1_databases]]
 binding = "ATLAS_COMPLIANCE_DB"
-database_name = "atlas_compliance"
-database_id = "f14bde38-795d-46b5-b174-fe4d559f2ac7"
+database_name = "atlasit_compliance"
+database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5"
 
 [[env.core.d1_databases]]
 binding = "ATLAS_AUDIT_SHADOW"

@@ -15,8 +15,8 @@ jobs:
         permissions:
             contents: read
         env:
-            CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-            WRANGLER_API_TOKEN: ${{ secrets.WRANGLER_API_TOKEN }}
+            CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+            CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -43,35 +43,12 @@ jobs:
                       echo "No tests or tests failed"
                   fi
 
-            - name: Wrangler publish
-              run: |
-                  npx wrangler deploy \
-                    ai-orchestrator/index.js \
-                    --name ai-orchestrator
-              env:
-                  AI_MAX_REQUESTS_PER_DAY: 5000
-                  AI_ALLOWED_MODELS: openai:gpt-4o-mini,anthropic:claude-3-haiku
-                  AI_RATE_WINDOW_SECONDS: 60
-                  AI_RATE_MAX_REQUESTS: 120
-                  AI_RATE_BLOCK_SECONDS: 30
-                  WORKFLOW_MAX_STEPS: 40
-                  AI_LOG_LEVEL: info
-                  API_ALLOWED_KEYS: placeholder-key
+            - name: Deploy orchestrator
+              run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
 
-            - name: Post-deploy /health probe
+            - name: Post-deploy smoke test
               run: |
-                  set -e
-                  # Derive worker URL if using custom domain adjust accordingly
-                  BASE_URL="https://ai-orchestrator.${CF_ACCOUNT_ID}.workers.dev"
-                  WORKER_URL="${BASE_URL}" || true
-                  echo "Probing $WORKER_URL/health"
-                  curl -sS "$WORKER_URL/health" || \
-                    echo "Health endpoint probe failed (URL may differ)."
+                  echo "Probing orchestrator.atlasit.pro/health..."
+                  curl -sS -o /dev/null -w "%{http_code}" --max-time 10 \
+                    "https://orchestrator.atlasit.pro/health" || echo "unreachable"
               if: always()
-
-            - name: Guidance
-              run: |
-                  echo "Ensure secrets CF_ACCOUNT_ID and"
-                  echo "WRANGLER_API_TOKEN are configured."
-                  echo "Optional: set AI_* vars in dashboard"
-                  echo "for production overrides."

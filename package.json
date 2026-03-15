@@ -59,7 +59,7 @@
     "test:coverage": "vitest run --coverage",
     "migrate:onboarding": "cd onboarding && wrangler d1 migrations apply ATLAS_ONBOARDING_DB",
     "schema:hash": "node scripts/schema-hash.js",
-    "prepare": "husky install",
+    "prepare": "husky || true",
     "build:adapter-gen": "cd packages/adapter-gen && npm run build",
     "build:adapter-sim": "cd packages/adapter-sim && npm run build",
     "test:adapter-gen": "vitest run tests/adapter-gen.test.ts",
@@ -149,7 +149,8 @@
     "cookie": "^0.7.2",
     "form-data": "^4.0.1",
     "axios": "^1.7.9",
-    "tar-fs": "^3.1.1"
+    "tar-fs": "^3.1.1",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4"
   },
   "engines": {
     "node": ">=18.0.0"

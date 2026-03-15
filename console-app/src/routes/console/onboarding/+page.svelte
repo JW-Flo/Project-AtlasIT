@@ -11,10 +11,10 @@
   let industry = "";
   let companySize = "";
 
-  // Step 2: Admin user
-  let adminName = "";
-  let adminEmail = "";
-  let adminPassword = "";
+  // Step 2: Owner account
+  let ownerName = "";
+  let ownerEmail = "";
+  let ownerPassword = "";
 
   // Step 3: Compliance frameworks
   let frameworks: string[] = [];
@@ -56,9 +56,11 @@
 
   function nextStep() {
     error = "";
-    if (step === 1 && !orgName) { error = "Organization name is required"; return; }
-    if (step === 2 && (!adminEmail || !adminPassword)) { error = "Email and password are required"; return; }
-    if (step === 2 && adminPassword.length < 8) { error = "Password must be at least 8 characters"; return; }
+    if (step === 1 && !orgName.trim()) { error = "Organization name is required"; return; }
+    if (step === 1 && !industry) { error = "Please select an industry"; return; }
+    if (step === 2 && !ownerEmail) { error = "Owner email is required"; return; }
+    if (step === 2 && !ownerPassword) { error = "Password is required"; return; }
+    if (step === 2 && ownerPassword.length < 8) { error = "Password must be at least 8 characters"; return; }
     if (step < 4) step++;
   }
 
@@ -71,52 +73,38 @@
     loading = true;
     error = "";
     try {
-      // Register user + create tenant
-      const regRes = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          email: adminEmail,
-          password: adminPassword,
-          displayName: adminName,
           orgName,
+          industry,
+          companySize,
+          frameworks,
+          ownerName,
+          ownerEmail,
+          ownerPassword,
         }),
       });
-      const regData = await regRes.json();
-      if (!regRes.ok) {
-        error = regData.error || "Registration failed";
+      const data = await res.json();
+      if (!res.ok) {
+        error = data.error || "Registration failed";
         loading = false;
         return;
-      }
-
-      // Save tenant preferences
-      try {
-        await fetch("/api/tenants/preferences", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            tenantId: regData.tenantId,
-            industry,
-            companySize,
-            frameworks,
-          }),
-        });
-      } catch {
-        // Non-critical, continue
       }
 
       // Auto-login
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+        body: JSON.stringify({ email: ownerEmail, password: ownerPassword }),
       });
 
       if (loginRes.ok) {
-        pushToast({ message: "Welcome to AtlasIT!", variant: "success" });
+        pushToast({ message: `Welcome to AtlasIT! ${data.orgName} is ready.`, variant: "success" });
         goto("/console");
       } else {
-        pushToast({ message: "Account created. Please sign in.", variant: "info" });
+        pushToast({ message: "Organization created. Please sign in.", variant: "info" });
         goto("/console/login");
       }
     } catch (e: any) {
@@ -154,7 +142,7 @@
             <input type="text" bind:value={orgName} placeholder="Acme Corp" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
           </div>
           <div>
-            <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Industry</label>
+            <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Industry *</label>
             <select bind:value={industry} class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);">
               <option value="">Select industry...</option>
               {#each industries as ind}
@@ -174,21 +162,21 @@
         </div>
 
       {:else if step === 2}
-        <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Admin Account</h2>
-        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Create your administrator account</p>
+        <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Owner Account</h2>
+        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Create the organization owner account</p>
 
         <div class="space-y-4">
           <div>
             <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Full Name</label>
-            <input type="text" bind:value={adminName} placeholder="Jane Smith" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
+            <input type="text" bind:value={ownerName} placeholder="Jane Smith" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
           </div>
           <div>
             <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Email *</label>
-            <input type="email" bind:value={adminEmail} placeholder="jane@acme.com" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
+            <input type="email" bind:value={ownerEmail} placeholder="jane@acme.com" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
           </div>
           <div>
             <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Password *</label>
-            <input type="password" bind:value={adminPassword} placeholder="Min 8 characters" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
+            <input type="password" bind:value={ownerPassword} placeholder="Min 8 characters" class="w-full px-3 py-2 rounded text-sm" style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
           </div>
         </div>
 
@@ -221,7 +209,7 @@
 
       {:else}
         <h2 class="text-xl font-semibold mb-1" style="color: var(--color-text, #fff);">Review & Create</h2>
-        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Confirm your setup details</p>
+        <p class="text-sm mb-6" style="color: var(--color-text, #fff); opacity: 0.5;">Confirm your organization setup</p>
 
         <div class="space-y-4">
           <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
@@ -230,9 +218,9 @@
             {#if industry}<div class="text-xs mt-1" style="color: var(--color-text, #fff); opacity: 0.5;">{industry} {companySize ? `- ${companySize}` : ''}</div>{/if}
           </div>
           <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
-            <div class="text-xs uppercase tracking-wider mb-2" style="color: var(--color-text, #fff); opacity: 0.4;">Admin</div>
-            <div class="text-sm" style="color: var(--color-text, #fff);">{adminName || adminEmail}</div>
-            <div class="text-xs mt-1" style="color: var(--color-text, #fff); opacity: 0.5;">{adminEmail}</div>
+            <div class="text-xs uppercase tracking-wider mb-2" style="color: var(--color-text, #fff); opacity: 0.4;">Owner</div>
+            <div class="text-sm" style="color: var(--color-text, #fff);">{ownerName || ownerEmail}</div>
+            <div class="text-xs mt-1" style="color: var(--color-text, #fff); opacity: 0.5;">{ownerEmail}</div>
           </div>
           {#if frameworks.length > 0}
             <div class="rounded-lg p-4" style="background: var(--color-bg, #0f1923);">
