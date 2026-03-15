@@ -44,7 +44,7 @@ async function processEvent(
 
   try {
     const fullUser = await getUser(
-      env.ORCHESTRATOR_URL.replace("/api/v1/events", ""),
+      env.OKTA_ORG_URL,
       env.OKTA_API_TOKEN,
       targetUser.id,
     );
@@ -90,6 +90,11 @@ export async function handleVerification(
 export async function handleEventHook(
   c: Context<{ Bindings: Bindings }>,
 ): Promise<Response> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || authHeader !== c.env.OKTA_WEBHOOK_SECRET) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
   const tenantId = c.req.header("X-Tenant-ID");
   if (!tenantId) {
     return c.json({ error: "Missing X-Tenant-ID header" }, 400);

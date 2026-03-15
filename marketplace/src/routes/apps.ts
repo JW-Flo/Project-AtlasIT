@@ -61,8 +61,8 @@ export const appRoutes = new Hono<AppEnv>();
 
 // GET /api/v1/apps — list marketplace apps
 appRoutes.get("/", async (c) => {
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
   const category = c.req.query("category");
   const status = c.req.query("status");
 

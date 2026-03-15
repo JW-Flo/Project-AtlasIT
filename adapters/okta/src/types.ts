@@ -1,6 +1,8 @@
 export interface Bindings {
   DB: D1Database;
   OKTA_API_TOKEN: string;
+  OKTA_ORG_URL: string;
+  OKTA_WEBHOOK_SECRET: string;
   ORCHESTRATOR_URL: string;
   CONNECTOR_ID: string;
 }

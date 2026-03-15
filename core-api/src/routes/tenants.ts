@@ -27,8 +27,8 @@ export const tenantRoutes = new Hono<AppEnv>();
 
 // GET /api/v1/tenants — list tenants
 tenantRoutes.get("/", async (c) => {
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
 
   const results = await c.env.DB.prepare(
     "SELECT * FROM tenants ORDER BY created_at DESC LIMIT ? OFFSET ?",

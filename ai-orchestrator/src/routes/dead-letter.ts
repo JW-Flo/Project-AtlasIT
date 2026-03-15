@@ -8,8 +8,8 @@ export const deadLetterRoutes = new Hono<AppEnv>();
 deadLetterRoutes.get("/", async (c) => {
   const tenantId = c.req.query("tenantId");
   const agentId = c.req.query("agentId");
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
 
   const conditions: string[] = [];
   const params: unknown[] = [];

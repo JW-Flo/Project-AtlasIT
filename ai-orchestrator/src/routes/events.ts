@@ -76,7 +76,7 @@ eventRoutes.post("/", async (c) => {
 
   // Fan out to subscribed agents (async, non-blocking)
   const subscribers = await c.env.DB.prepare(
-    `SELECT ar.id as agent_id, ar.name as agent_name, ar.webhook_url, ar.secret, es.event_type
+    `SELECT ar.id as agentId, ar.name as agentName, ar.webhook_url as webhookUrl, ar.secret, es.event_type as eventType
      FROM agent_registry ar
      JOIN event_subscriptions es ON ar.id = es.agent_id
      WHERE es.event_type = ? AND ar.status = 'active'`,
@@ -127,8 +127,8 @@ eventRoutes.post("/", async (c) => {
 eventRoutes.get("/", async (c) => {
   const status = c.req.query("status");
   const type = c.req.query("type");
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
 
   const conditions: string[] = [];
   const params: unknown[] = [];

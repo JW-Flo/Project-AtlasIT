@@ -121,8 +121,8 @@ installRoutes.post("/", async (c) => {
 
 // GET /api/v1/installs — list installs (filter by tenantId)
 installRoutes.get("/", async (c) => {
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "50"), 100);
-  const offset = parseInt(c.req.query("offset") ?? "0");
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
+  const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
   const tenantId = c.req.query("tenantId");
 
   const conditions: string[] = ["i.status != 'uninstalled'"];
