@@ -68,6 +68,5 @@
     "typescript": "5.8.3",
     "vite": "^7.1.7",
     "wrangler": "^4.14.4"
-  },
-  "packageManager": "bun@1.2.12"
+  }
 }
