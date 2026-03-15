@@ -25,6 +25,7 @@ routes = [
 	"www.atlasit.pro/api/workflows*",
 	"www.atlasit.pro/api/admin/*",
 	"www.atlasit.pro/api/tenant/*",
+	"www.atlasit.pro/api/compliance/*",
 	"www.atlasit.pro/api/directory/*",
 	"www.atlasit.pro/api/analytics/*",
 	"www.atlasit.pro/api/health*",
