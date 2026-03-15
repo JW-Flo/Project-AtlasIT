@@ -75,8 +75,8 @@
         }),
       });
       if (!res.ok) throw new Error("Failed to invite user");
-      const data = await res.json();
-      tempPassword = data.tempPassword;
+      const data: { tempPassword?: string } = await res.json();
+      tempPassword = data.tempPassword || "";
       pushToast({ message: "User invited successfully", variant: "success" });
       await loadUsers();
     } catch (e: any) {
@@ -218,73 +218,73 @@
   {/if}
 </div>
 
-{#if inviteModalOpen}
-  <Modal open={inviteModalOpen} title="Invite User" close={closeInviteModal}>
-    {#if tempPassword}
-      <div class="space-y-3">
-        <p class="text-sm text-white/80">User invited. Share this temporary password:</p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white font-mono">{tempPassword}</code>
-          <button
-            on:click={copyTempPassword}
-            class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
-          >
-            Copy
-          </button>
-        </div>
-      </div>
-      <svelte:fragment slot="footer">
-        <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Done</button>
-      </svelte:fragment>
-    {:else}
-      <div class="space-y-4">
-        <div>
-          <label for="invite-email" class="block text-sm text-white/60 mb-1.5">Email <span class="text-red-400">*</span></label>
-          <input
-            id="invite-email"
-            type="email"
-            bind:value={inviteEmail}
-            data-autofocus
-            class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label for="invite-name" class="block text-sm text-white/60 mb-1.5">Display Name</label>
-          <input
-            id="invite-name"
-            type="text"
-            bind:value={inviteDisplayName}
-            class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-        <div>
-          <label for="invite-role" class="block text-sm text-white/60 mb-1.5">Role</label>
-          <select
-            id="invite-role"
-            bind:value={inviteRole}
-            class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-      </div>
-      <svelte:fragment slot="footer">
-        <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Cancel</button>
+{#if inviteModalOpen && tempPassword}
+  <Modal open={true} title="Invite User" ariaLabel="Invite result" close={closeInviteModal}>
+    <div class="space-y-3">
+      <p class="text-sm text-white/80">User invited. Share this temporary password:</p>
+      <div class="flex items-center gap-2">
+        <code class="flex-1 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white font-mono">{tempPassword}</code>
         <button
-          on:click={inviteUser}
-          disabled={!inviteEmail || inviting}
-          class="text-sm px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+          on:click={copyTempPassword}
+          class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
         >
-          {inviting ? "Inviting..." : "Send Invite"}
+          Copy
         </button>
-      </svelte:fragment>
-    {/if}
+      </div>
+    </div>
+    <svelte:fragment slot="footer">
+      <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Done</button>
+    </svelte:fragment>
+  </Modal>
+{:else if inviteModalOpen}
+  <Modal open={true} title="Invite User" ariaLabel="Invite user form" close={closeInviteModal}>
+    <div class="space-y-4">
+      <div>
+        <label for="invite-email" class="block text-sm text-white/60 mb-1.5">Email <span class="text-red-400">*</span></label>
+        <input
+          id="invite-email"
+          type="email"
+          bind:value={inviteEmail}
+          data-autofocus
+          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+        />
+      </div>
+      <div>
+        <label for="invite-name" class="block text-sm text-white/60 mb-1.5">Display Name</label>
+        <input
+          id="invite-name"
+          type="text"
+          bind:value={inviteDisplayName}
+          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+        />
+      </div>
+      <div>
+        <label for="invite-role" class="block text-sm text-white/60 mb-1.5">Role</label>
+        <select
+          id="invite-role"
+          bind:value={inviteRole}
+          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <svelte:fragment slot="footer">
+      <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Cancel</button>
+      <button
+        on:click={inviteUser}
+        disabled={!inviteEmail || inviting}
+        class="text-sm px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+      >
+        {inviting ? "Inviting..." : "Send Invite"}
+      </button>
+    </svelte:fragment>
   </Modal>
 {/if}
 
 {#if deleteModalOpen}
-  <Modal open={deleteModalOpen} title="Remove User" close={closeDeleteModal}>
+  <Modal open={true} title="Remove User" ariaLabel="Confirm user removal" close={closeDeleteModal}>
     <p class="text-sm text-white/80">
       Are you sure you want to remove <strong class="text-white">{userToDelete?.email}</strong>? They will lose access immediately.
     </p>

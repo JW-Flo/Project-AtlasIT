@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   export let open: boolean = false;
   export let title: string | undefined;
-  export let ariaLabel: string | undefined;
+  export let ariaLabel: string = "";
   export let close!: () => void;
   let el: HTMLDivElement | null = null;
   let lastFocused: HTMLElement | null = null;

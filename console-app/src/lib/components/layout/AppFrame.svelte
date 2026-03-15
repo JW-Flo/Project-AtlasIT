@@ -75,7 +75,7 @@
     try {
       const sessionRes = await fetch("/api/auth/session");
       if (sessionRes.ok) {
-        const session = await sessionRes.json();
+        const session: { roles?: string[]; impersonating?: boolean; impersonatedBy?: string } = await sessionRes.json();
         userRoles = session.roles || [];
         isImpersonating = session.impersonating || false;
         impersonatedBy = session.impersonatedBy || "";

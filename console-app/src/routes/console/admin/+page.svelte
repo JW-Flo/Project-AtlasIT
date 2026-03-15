@@ -156,7 +156,7 @@
 </div>
 
 {#if deleteModalOpen}
-  <Modal open={deleteModalOpen} title="Delete Tenant" close={closeDeleteModal}>
+  <Modal open={true} title="Delete Tenant" ariaLabel="Confirm tenant deletion" close={closeDeleteModal}>
     <p class="text-sm text-white/80">
       Are you sure you want to delete tenant <strong class="text-white">{tenantToDelete?.name}</strong>? This cannot be undone.
     </p>

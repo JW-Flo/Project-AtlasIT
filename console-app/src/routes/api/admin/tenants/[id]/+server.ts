@@ -17,7 +17,7 @@ export const PATCH: RequestHandler = async ({
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
-  const body = await request.json().catch(() => ({}) as any);
+  const body: Record<string, unknown> = await request.json().catch(() => ({}));
   const status = body.status as string | undefined;
   if (!status || !["active", "disabled"].includes(status)) {
     return json({ error: "Invalid status" }, { status: 400 });

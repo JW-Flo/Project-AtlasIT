@@ -31,7 +31,7 @@
     try {
       const res = await fetch(`/api/tenant/audit-log?limit=${limit}&offset=${offset}`);
       if (!res.ok) throw new Error(`Failed to load audit log (${res.status})`);
-      const data = await res.json();
+      const data: { entries?: AuditEntry[]; total?: number } = await res.json();
       entries = data.entries || [];
       total = data.total || 0;
     } catch (e: any) {

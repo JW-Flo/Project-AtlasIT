@@ -27,7 +27,7 @@
     try {
       const res = await fetch("/api/tenant/settings");
       if (!res.ok) throw new Error(`Failed to load settings (${res.status})`);
-      const data = await res.json();
+      const data: { name?: string; industry?: string; size?: string } = await res.json();
       name = data.name || "";
       industry = data.industry || "";
       size = data.size || "";
