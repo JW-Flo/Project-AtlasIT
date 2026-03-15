@@ -7,6 +7,8 @@ const ALLOWED_EVENTS = new Set([
   "invite_signup_completed",
 ]);
 
+const INVITE_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
+
 function sanitizeString(value: unknown, maxLen: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -24,6 +26,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
   if (!event || !ALLOWED_EVENTS.has(event)) {
     return json({ ok: false, error: "invalid_event" }, { status: 400 });
+  }
+
+  if (!inviteId || !INVITE_ID_PATTERN.test(inviteId)) {
+    return json({ ok: false, error: "invalid_invite_id" }, { status: 400 });
   }
 
   const env = (platform?.env as Record<string, unknown>) || {};
