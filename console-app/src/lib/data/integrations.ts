@@ -7,14 +7,28 @@ export interface CredentialField {
   helpText?: string;
 }
 
+/**
+ * Auth model determines the onboarding UX:
+ * - "platform_oauth": We own the app registration. Tenant just clicks Authorize. No fields.
+ * - "tenant_oauth": Tenant provides their IdP domain, we handle the OAuth flow.
+ * - "api_key": Tenant enters their API key(s).
+ * - "service_account": Tenant provides service account / IAM keys.
+ */
+export type AuthModel =
+  | "platform_oauth"
+  | "tenant_oauth"
+  | "api_key"
+  | "service_account";
+
 export interface Integration {
   id: string;
   category: string;
   name: string;
   status: string;
-  auth: "oauth" | "api-key" | "keys";
+  auth: AuthModel;
   tier: string;
   connected?: boolean;
+  /** Fields the tenant must fill in. Empty for platform_oauth apps. */
   credentialFields: CredentialField[];
   /** Brief description of what connecting this app enables */
   description: string;
@@ -27,124 +41,43 @@ export const integrations: Integration[] = [
     category: "productivity",
     name: "Google Workspace",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description:
       "Automate user provisioning, group membership, and suspension via Admin SDK.",
-    credentialFields: [
-      {
-        key: "client_email",
-        label: "Service Account Email",
-        type: "text",
-        required: true,
-        placeholder: "sa@project.iam.gserviceaccount.com",
-        helpText: "Service account with domain-wide delegation enabled",
-      },
-      {
-        key: "private_key",
-        label: "Service Account Key (JSON)",
-        type: "textarea",
-        required: true,
-        helpText: "Paste the full JSON key file contents",
-      },
-      {
-        key: "admin_email",
-        label: "Admin Email",
-        type: "text",
-        required: true,
-        placeholder: "admin@yourdomain.com",
-        helpText: "Super Admin email to impersonate for API calls",
-      },
-      {
-        key: "domain",
-        label: "Domain",
-        type: "text",
-        required: true,
-        placeholder: "yourdomain.com",
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "microsoft_365",
     category: "productivity",
     name: "Microsoft 365",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description: "Manage users, groups, and licenses via Microsoft Graph API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Application (Client) ID",
-        type: "text",
-        required: true,
-        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-        helpText: "From Azure AD App Registration",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-      {
-        key: "tenant_id",
-        label: "Tenant ID",
-        type: "text",
-        required: true,
-        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "slack",
     category: "productivity",
     name: "Slack",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description:
       "Provision and deprovision Slack users via SCIM. Requires Business+ or Enterprise Grid.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Slack App settings",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "jira",
     category: "productivity",
     name: "Jira",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description:
       "Manage Atlassian Cloud users and project access via SCIM and REST API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Atlassian Developer Console",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   // HR
   {
@@ -179,24 +112,11 @@ export const integrations: Integration[] = [
     category: "hr",
     name: "Workday",
     status: "planned",
-    auth: "oauth",
+    auth: "tenant_oauth",
     tier: "extended",
     description:
       "Connect to Workday HCM for worker lifecycle events and org structure.",
     credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Workday > Register API Client",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
       {
         key: "tenant_url",
         label: "Tenant URL",
@@ -218,30 +138,18 @@ export const integrations: Integration[] = [
     category: "hr",
     name: "ADP",
     status: "planned",
-    auth: "oauth",
+    auth: "api_key",
     tier: "extended",
     description:
       "Sync worker hire, terminate, and rehire events via ADP APIs with mTLS.",
     credentialFields: [
       {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From ADP Developer Portal",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-      {
         key: "ssl_cert",
         label: "SSL Certificate (PEM)",
         type: "textarea",
         required: true,
-        helpText: "Mutual TLS certificate for API authentication",
+        helpText:
+          "Mutual TLS certificate provided by ADP for API authentication",
       },
       {
         key: "ssl_key",
@@ -257,49 +165,21 @@ export const integrations: Integration[] = [
     category: "finance",
     name: "QuickBooks",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "extended",
     description:
       "Manage employee records in QuickBooks Online via Intuit OAuth.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Intuit Developer Portal > App settings",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "xero",
     category: "finance",
     name: "Xero",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "extended",
     description: "Manage payroll employees and contacts via Xero Payroll API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Xero Developer Portal > My Apps",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "stripe",
@@ -327,7 +207,7 @@ export const integrations: Integration[] = [
     category: "security",
     name: "Okta",
     status: "beta",
-    auth: "oauth",
+    auth: "tenant_oauth",
     tier: "core",
     description:
       "Full user lifecycle management — create, suspend, deactivate, and group membership.",
@@ -340,19 +220,6 @@ export const integrations: Integration[] = [
         placeholder: "https://your-org.okta.com",
         helpText: "Your Okta organization URL",
       },
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Okta Admin > Applications > API Services",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
     ],
   },
   {
@@ -360,7 +227,7 @@ export const integrations: Integration[] = [
     category: "security",
     name: "Auth0",
     status: "planned",
-    auth: "oauth",
+    auth: "tenant_oauth",
     tier: "extended",
     description:
       "Manage users, roles, and organizations via Auth0 Management API.",
@@ -371,19 +238,7 @@ export const integrations: Integration[] = [
         type: "url",
         required: true,
         placeholder: "your-tenant.auth0.com",
-      },
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "Machine-to-Machine application credentials",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
+        helpText: "e.g. your-tenant.auth0.com",
       },
     ],
   },
@@ -392,7 +247,7 @@ export const integrations: Integration[] = [
     category: "security",
     name: "CrowdStrike",
     status: "planned",
-    auth: "oauth",
+    auth: "api_key",
     tier: "extended",
     description: "Manage Falcon console users and roles for endpoint security.",
     credentialFields: [
@@ -445,7 +300,7 @@ export const integrations: Integration[] = [
     category: "infrastructure",
     name: "AWS",
     status: "planned",
-    auth: "keys",
+    auth: "service_account",
     tier: "core",
     description:
       "Manage IAM users, groups, roles, and policies for AWS accounts.",
@@ -486,7 +341,7 @@ export const integrations: Integration[] = [
     category: "infrastructure",
     name: "GCP",
     status: "planned",
-    auth: "keys",
+    auth: "service_account",
     tier: "extended",
     description:
       "Manage Cloud Identity users and groups via Admin SDK with domain-wide delegation.",
@@ -527,55 +382,21 @@ export const integrations: Integration[] = [
     category: "infrastructure",
     name: "Azure",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description: "Manage Entra ID users and groups via Microsoft Graph API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Application (Client) ID",
-        type: "text",
-        required: true,
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-      {
-        key: "tenant_id",
-        label: "Tenant ID",
-        type: "text",
-        required: true,
-        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "github",
     category: "infrastructure",
     name: "GitHub",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "core",
     description:
       "Manage organization members and team assignments via GitHub REST API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From GitHub OAuth App or GitHub App settings",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "datadog",
@@ -617,95 +438,33 @@ export const integrations: Integration[] = [
     category: "communication",
     name: "Zoom",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "extended",
     description:
       "Provision and manage Zoom users, including activation and deactivation.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Client ID",
-        type: "text",
-        required: true,
-        helpText: "From Zoom Marketplace app",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-      {
-        key: "account_id",
-        label: "Account ID",
-        type: "text",
-        required: true,
-        helpText: "Required for Server-to-Server OAuth",
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "teams",
     category: "communication",
     name: "Microsoft Teams",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "extended",
     description:
       "Manage Teams memberships and channels via Microsoft Graph API.",
-    credentialFields: [
-      {
-        key: "client_id",
-        label: "Application (Client) ID",
-        type: "text",
-        required: true,
-        helpText: "Same Azure AD app as M365 (Microsoft Graph)",
-      },
-      {
-        key: "client_secret",
-        label: "Client Secret",
-        type: "password",
-        required: true,
-      },
-      {
-        key: "tenant_id",
-        label: "Tenant ID",
-        type: "text",
-        required: true,
-      },
-    ],
+    credentialFields: [],
   },
   {
     id: "discord",
     category: "communication",
     name: "Discord",
     status: "planned",
-    auth: "oauth",
+    auth: "platform_oauth",
     tier: "experimental",
     description:
       "Manage Discord server members and role assignments via Bot API.",
-    credentialFields: [
-      {
-        key: "bot_token",
-        label: "Bot Token",
-        type: "password",
-        required: true,
-        helpText: "From Discord Developer Portal > Bot settings",
-      },
-      {
-        key: "client_id",
-        label: "Application ID",
-        type: "text",
-        required: true,
-      },
-      {
-        key: "guild_id",
-        label: "Server (Guild) ID",
-        type: "text",
-        required: true,
-        helpText: "Right-click server > Copy Server ID (enable Developer Mode)",
-      },
-    ],
+    credentialFields: [],
   },
 ];
 

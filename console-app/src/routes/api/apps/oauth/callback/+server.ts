@@ -4,13 +4,13 @@ import {
   saveOAuthTokens,
   saveCredentials,
 } from "$lib/server/credentials";
-import { oauthProviders } from "$lib/server/oauth-configs";
+import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
 
 /**
  * OAuth callback handler.
- * Exchanges the authorization code for tokens and stores them in D1.
- *
- * The provider redirects here: GET /api/apps/oauth/callback?code=xxx&state=yyy
+ * Exchanges the authorization code for tokens using platform client
+ * credentials (from wrangler secrets), then stores the resulting
+ * workspace-scoped tokens in D1.
  */
 export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   const code = url.searchParams.get("code");
@@ -47,29 +47,32 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   const provider = oauthProviders[appId];
   if (!provider) return redirectToMarketplace(`Unknown provider: ${appId}`);
 
-  // Get client credentials from D1
-  const creds = await getCredentials(platform, appId);
-  if (!creds?.client_id || !creds?.client_secret) {
+  // Get client credentials from wrangler secrets (NOT from tenant D1)
+  const env = (platform?.env as Record<string, unknown>) || {};
+  const clientCreds = getOAuthClientCreds(env, provider);
+  if (!clientCreds) {
     return redirectToMarketplace(
-      "Missing client credentials for token exchange",
+      `OAuth not configured: missing ${provider.envPrefix}_CLIENT_ID secret`,
     );
   }
 
-  // Resolve template vars in token URL
+  // For tenant_domain apps, resolve template vars in token URL
   let tokenUrl = provider.tokenUrl;
-  if (creds.domain) tokenUrl = tokenUrl.replace("{domain}", creds.domain);
-  if (creds.tenant_url)
-    tokenUrl = tokenUrl.replace("{tenant_url}", creds.tenant_url);
-  if (creds.tenant_id)
-    tokenUrl = tokenUrl.replace("{tenantId}", creds.tenant_id);
+  if (provider.model === "tenant_domain") {
+    const tenantCreds = await getCredentials(platform, appId);
+    if (tenantCreds?.domain)
+      tokenUrl = tokenUrl.replace("{domain}", tenantCreds.domain);
+    if (tenantCreds?.tenant_url)
+      tokenUrl = tokenUrl.replace("{tenant_url}", tenantCreds.tenant_url);
+  }
 
   const origin = url.origin;
   const redirectUri = `${origin}/api/apps/oauth/callback`;
 
-  // Exchange code for tokens
+  // Exchange code for tokens using platform client credentials
   const tokenBody: Record<string, string> = {
-    client_id: creds.client_id,
-    client_secret: creds.client_secret,
+    client_id: clientCreds.clientId,
+    client_secret: clientCreds.clientSecret,
     code,
     redirect_uri: redirectUri,
     grant_type: "authorization_code",
@@ -77,7 +80,6 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
 
   let tokenRes: Response;
   try {
-    // GitHub expects Accept: application/json
     const headers: Record<string, string> = {
       "Content-Type": "application/x-www-form-urlencoded",
     };
@@ -106,7 +108,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
 
   // Standard OAuth: check for access_token
   const accessToken =
-    tokenData.access_token || tokenData.authed_user?.access_token; // Slack v2 format
+    tokenData.access_token || tokenData.authed_user?.access_token;
 
   if (!accessToken) {
     return redirectToMarketplace(
@@ -114,7 +116,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
     );
   }
 
-  // Store the OAuth tokens in D1 (encrypted)
+  // Store the workspace-scoped OAuth tokens in D1 (encrypted)
   await saveOAuthTokens(platform, appId, {
     access_token: accessToken,
     refresh_token: tokenData.refresh_token,
@@ -124,11 +126,10 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
     raw: tokenData,
   });
 
-  // Ensure app is marked as connected (in case they went straight to OAuth)
+  // Ensure app is marked as connected
   const existingCreds = (await getCredentials(platform, appId)) || {};
   await saveCredentials(platform, appId, existingCreds);
 
-  // Redirect to marketplace with success
   return new Response(null, {
     status: 302,
     headers: {

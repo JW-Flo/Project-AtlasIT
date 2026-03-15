@@ -1,45 +1,50 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getCredentials } from "$lib/server/credentials";
-import { oauthProviders } from "$lib/server/oauth-configs";
+import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
 
 /**
  * Initiates the OAuth authorization_code flow for a given app.
- * Reads client_id from stored credentials, builds the authorize URL,
- * and redirects the user to the provider.
+ *
+ * For "platform" OAuth apps (Slack, GitHub, etc.): client ID/secret come from
+ * wrangler secrets (e.g. SLACK_CLIENT_ID). Tenant doesn't provide anything.
+ *
+ * For "tenant_domain" apps (Okta, Auth0): client creds come from wrangler
+ * secrets, but the tenant provides their domain in app_credentials so we can
+ * build the correct authorize/token URLs.
  *
  * Usage: GET /api/apps/oauth/start?appId=slack
  */
 export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   const appId = url.searchParams.get("appId");
   if (!appId) {
-    return new Response(
-      JSON.stringify({ error: "appId query param required" }),
-      {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
+    return jsonError("appId query param required", 400);
   }
 
   const provider = oauthProviders[appId];
   if (!provider) {
-    return new Response(
-      JSON.stringify({ error: `No OAuth config for ${appId}` }),
-      {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      },
+    return jsonError(`No OAuth config for ${appId}`, 400);
+  }
+
+  // Get client credentials from wrangler secrets
+  const env = (platform?.env as Record<string, unknown>) || {};
+  const clientCreds = getOAuthClientCreds(env, provider);
+  if (!clientCreds) {
+    return jsonError(
+      `OAuth not configured for ${appId}. Missing ${provider.envPrefix}_CLIENT_ID / ${provider.envPrefix}_CLIENT_SECRET secrets.`,
+      500,
     );
   }
 
-  // Get stored credentials to find client_id
-  const creds = await getCredentials(platform, appId);
-  const clientId = creds?.client_id;
-  if (!clientId) {
-    return new Response(
-      JSON.stringify({ error: "No client_id found. Save credentials first." }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+  // For tenant_domain apps, load the tenant's domain from D1
+  let tenantCreds: Record<string, string> | null = null;
+  if (provider.model === "tenant_domain") {
+    tenantCreds = await getCredentials(platform, appId);
+    if (!tenantCreds?.domain && !tenantCreds?.tenant_url) {
+      return jsonError(
+        `${appId} requires your organization's domain. Please enter it in the marketplace first.`,
+        400,
+      );
+    }
   }
 
   // Build callback URL
@@ -53,21 +58,19 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 600, // 10 min
+    maxAge: 600,
   });
 
-  // Resolve template vars in authorize URL (e.g. {domain})
+  // Resolve template vars in authorize URL for tenant-domain apps
   let authorizeUrl = provider.authorizeUrl;
-  if (creds.domain)
-    authorizeUrl = authorizeUrl.replace("{domain}", creds.domain);
-  if (creds.tenant_url)
-    authorizeUrl = authorizeUrl.replace("{tenant_url}", creds.tenant_url);
-  if (creds.tenant_id)
-    authorizeUrl = authorizeUrl.replace("{tenantId}", creds.tenant_id);
+  if (tenantCreds?.domain)
+    authorizeUrl = authorizeUrl.replace("{domain}", tenantCreds.domain);
+  if (tenantCreds?.tenant_url)
+    authorizeUrl = authorizeUrl.replace("{tenant_url}", tenantCreds.tenant_url);
 
   // Build the full authorization URL
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: clientCreds.clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     state,
@@ -88,3 +91,10 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
     headers: { Location: fullUrl },
   });
 };
+
+function jsonError(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
