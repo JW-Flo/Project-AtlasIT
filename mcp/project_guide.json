@@ -26,13 +26,25 @@
       }
     ],
     "departments": [
-      {"name": "DevOps", "head": "DevOps Head", "agents": ["devops-agent-1"]},
-      {"name": "Infra", "head": "Infra Head", "agents": ["infra-agent-1"]},
-      {"name": "QA", "head": "QA Head", "agents": ["qa-agent-1"]},
-      {"name": "SOC", "head": "SOC Head", "agents": ["soc-agent-1"]},
-      {"name": "Compliance", "head": "Compliance Head", "agents": ["compliance-agent-1"]},
-      {"name": "Production", "head": "Production Head", "agents": ["production-agent-1"]},
-      {"name": "IT Support", "head": "IT Support Head", "agents": ["it-support-agent-1"]}
+      { "name": "DevOps", "head": "DevOps Head", "agents": ["devops-agent-1"] },
+      { "name": "Infra", "head": "Infra Head", "agents": ["infra-agent-1"] },
+      { "name": "QA", "head": "QA Head", "agents": ["qa-agent-1"] },
+      { "name": "SOC", "head": "SOC Head", "agents": ["soc-agent-1"] },
+      {
+        "name": "Compliance",
+        "head": "Compliance Head",
+        "agents": ["compliance-agent-1"]
+      },
+      {
+        "name": "Production",
+        "head": "Production Head",
+        "agents": ["production-agent-1"]
+      },
+      {
+        "name": "IT Support",
+        "head": "IT Support Head",
+        "agents": ["it-support-agent-1"]
+      }
     ]
   },
   "escalation_policy": {
@@ -48,7 +60,12 @@
   },
   "slack_notifications": {
     "webhook_url": "YOUR_SLACK_WEBHOOK_URL",
-    "notify_on": ["CRITICAL", "project_summary", "completion", "unrecoverable_error"]
+    "notify_on": [
+      "CRITICAL",
+      "project_summary",
+      "completion",
+      "unrecoverable_error"
+    ]
   },
   "completion_criteria": [
     "All tasks complete or properly escalated",
@@ -93,14 +110,14 @@
   },
   "auth_sources": {
     "gcp": "Workload-Identity Federation (OIDC)",
-    "aws": "Cross-account ignite-deploy role (MFA enforced)",
+    "aws": "Cross-account atlasit-deploy role (MFA enforced)",
     "slack": "Bot OAuth – token stored in 1Password",
     "github": "GitHub Actions OIDC → Cloudflare",
     "password_policy": "No long-lived creds; env-vars or secrets-manager only"
   },
   "documentation": {
     "auto_doc_function": "cloud_functions/autoDoc.js",
-    "confluence_space": "IGNITE",
+    "confluence_space": "ATLASIT",
     "required_headings": ["What changed?", "Troubleshooting", "Rollback"],
     "health_endpoint": "/healthz",
     "metrics_endpoint": "/metrics"
@@ -125,4 +142,4 @@
     "mfa_required": true,
     "static_scan_tools": ["Checkov", "tfsec", "ESLint", "tflint"]
   }
-} 
+}

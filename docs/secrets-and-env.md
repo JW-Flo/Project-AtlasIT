@@ -9,15 +9,15 @@
 
 ## Required (Current Workers)
 
-| Worker                | Secret                      | Purpose                                   |
-| --------------------- | --------------------------- | ----------------------------------------- |
-| root / project-ignite | SLACK_WEBHOOK_URL           | Slack notification integration (optional) |
-| onboarding            | AI_API_KEY                  | AI generation for config recommendations  |
-| ai-orchestrator       | AI_GATEWAY_TOKEN            | Cloudflare AI gateway token               |
-| ai-orchestrator       | TOGETHER_API_KEY (optional) | Alt AI provider                           |
-| ai-orchestrator       | OPENAI_API_KEY (optional)   | Alt AI provider                           |
-| mcp-idp               | JWT_SECRET                  | Token signing                             |
-| mcp-mobile            | JWT_SECRET                  | Mobile auth                               |
+| Worker                 | Secret                      | Purpose                                   |
+| ---------------------- | --------------------------- | ----------------------------------------- |
+| root / atlasit-console | SLACK_WEBHOOK_URL           | Slack notification integration (optional) |
+| onboarding             | AI_API_KEY                  | AI generation for config recommendations  |
+| ai-orchestrator        | AI_GATEWAY_TOKEN            | Cloudflare AI gateway token               |
+| ai-orchestrator        | TOGETHER_API_KEY (optional) | Alt AI provider                           |
+| ai-orchestrator        | OPENAI_API_KEY (optional)   | Alt AI provider                           |
+| mcp-idp                | JWT_SECRET                  | Token signing                             |
+| mcp-mobile             | JWT_SECRET                  | Mobile auth                               |
 
 ## Adding a Secret
 
