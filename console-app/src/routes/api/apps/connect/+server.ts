@@ -1,7 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import { saveCredentials } from "$lib/server/credentials";
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
   let body: any;
   try {
     body = await request.json();
@@ -31,8 +34,11 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     );
   }
 
-  return new Response(JSON.stringify({ connected: true, id: appId }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ success: true, connected: true, id: appId }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
+  );
 };

@@ -49,7 +49,7 @@ export const POST: RequestHandler = async ({
 
   const newSessionId = crypto.randomUUID();
   await kv.put(newSessionId, JSON.stringify(sessionData), {
-    expirationTtl: 3600,
+    expirationTtl: 900,
   });
 
   cookies.set("atlas_session", newSessionId, {
@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 3600,
+    maxAge: 900,
   });
 
   // Clear session cache so the impersonated session is read from KV

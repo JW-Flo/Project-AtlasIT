@@ -4,6 +4,7 @@
     createAccessRequest,
     transitionAccessRequest,
   } from "$lib/api/accessRequests";
+  import { onMount } from "svelte";
   import type { AccessRequest } from "$lib/api/types";
   let items: AccessRequest[] = [];
   let loading = true;
@@ -28,7 +29,7 @@
       loading = false;
     }
   }
-  load(true);
+  onMount(() => { load(true); });
 
   async function submit() {
     formError = "";

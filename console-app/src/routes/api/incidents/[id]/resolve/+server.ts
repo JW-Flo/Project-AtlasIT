@@ -1,9 +1,18 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-export const POST: RequestHandler = async ({ params, platform }) => {
+export const POST: RequestHandler = async ({ params, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
+  const tenantId = user.tenantId || env.TENANT_ID || "atlasit-prod";
   const { id } = params;
 
   try {
@@ -13,7 +22,7 @@ export const POST: RequestHandler = async ({ params, platform }) => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": env.COMPLIANCE_API_KEY,
-        "x-tenant-id": env.TENANT_ID || "atlasit-prod",
+        "x-tenant-id": tenantId,
       },
     });
     const data = await res.json();

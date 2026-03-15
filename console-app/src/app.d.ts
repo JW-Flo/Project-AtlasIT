@@ -15,6 +15,7 @@ declare global {
         lastSeenAt: string;
         impersonating?: boolean;
         impersonatedBy?: string;
+        originalSessionId?: string;
       } | null;
     }
     // interface PageData {}

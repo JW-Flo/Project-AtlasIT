@@ -3,9 +3,18 @@ import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
 const ALLOWED_ACTIONS = new Set(["approve", "deny", "fulfill"]);
 
-export const POST: RequestHandler = async ({ params, platform }) => {
+export const POST: RequestHandler = async ({ params, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
+  const tenantId = user.tenantId || env.TENANT_ID || "atlasit-prod";
   const { id, action } = params;
 
   if (!action || !ALLOWED_ACTIONS.has(action)) {
@@ -22,7 +31,7 @@ export const POST: RequestHandler = async ({ params, platform }) => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": env.COMPLIANCE_API_KEY,
-        "x-tenant-id": env.TENANT_ID || "atlasit-prod",
+        "x-tenant-id": tenantId,
       },
     });
     const data = await res.json();

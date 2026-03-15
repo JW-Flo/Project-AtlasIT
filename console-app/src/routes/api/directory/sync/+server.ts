@@ -120,6 +120,15 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     .run();
 
   try {
+    // MVP-only: synthetic directory data for demo/development
+    const env = (platform?.env as any) || {};
+    if (env.SYNTHETIC_DIRECTORY !== "true" && connection.provider_token) {
+      return json(
+        { error: "Real IdP sync not yet implemented" },
+        { status: 501 },
+      );
+    }
+
     const tenantDomain = user.email?.split("@")[1] || "example.com";
     const { users, groups, memberships } = generateSyntheticData(tenantDomain);
 

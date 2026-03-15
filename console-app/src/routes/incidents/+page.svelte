@@ -4,6 +4,7 @@
     createIncident,
     resolveIncident,
   } from "$lib/api/incidents";
+  import { onMount } from "svelte";
   import type { IncidentRecord } from "$lib/api/types";
   let items: IncidentRecord[] = [];
   let loading = true;
@@ -26,7 +27,7 @@
       loading = false;
     }
   }
-  load(true);
+  onMount(() => { load(true); });
   async function submit() {
     if (!form.title) return;
     submitting = true;

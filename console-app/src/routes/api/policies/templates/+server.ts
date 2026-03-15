@@ -36,16 +36,25 @@ function fallbackResponse() {
   });
 }
 
-export const GET: RequestHandler = async ({ platform }) => {
+export const GET: RequestHandler = async ({ platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
+  const tenantId = user.tenantId || env.TENANT_ID || "atlasit-prod";
 
   try {
     const upstream = `${base}/api/v1/policies/templates`;
     const res = await proxyFetch(platform, upstream, {
       headers: {
         "x-api-key": env.COMPLIANCE_API_KEY,
-        "x-tenant-id": env.TENANT_ID || "atlasit-prod",
+        "x-tenant-id": tenantId,
       },
     });
     if (!res.ok) {

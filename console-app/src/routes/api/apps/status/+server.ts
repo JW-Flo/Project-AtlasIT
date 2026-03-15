@@ -1,7 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import { listConnectedApps } from "$lib/server/credentials";
 
-export const GET: RequestHandler = async ({ platform }) => {
+export const GET: RequestHandler = async ({ platform, locals }) => {
+  const user = locals.user;
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
   const connected = await listConnectedApps(platform);
 
   const applications = connected.map((c) => ({

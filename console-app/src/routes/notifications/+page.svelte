@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
 
   interface NotificationRecord {
@@ -94,7 +95,7 @@
     }
   }
 
-  load();
+  onMount(() => { load(); });
 </script>
 
 <div class="p-6 max-w-5xl mx-auto flex flex-col gap-6">
