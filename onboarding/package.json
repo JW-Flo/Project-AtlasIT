@@ -16,6 +16,7 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
+    "@atlasit/shared": "workspace:*",
     "@cloudflare/workers-types": "^4.20241218.0",
     "@sveltejs/adapter-cloudflare": "^7.2.3",
     "@sveltejs/kit": "^2.43.7",
