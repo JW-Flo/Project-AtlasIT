@@ -1,0 +1,33 @@
+name = "op-connect-oidc-exchange"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+RATE_LIMIT_RPM = "10"
+
+# Production: restrict to internal routing only
+[env.production]
+route = "exchange.atlasit.internal/*"
+usage_model = "bundled"
+
+[env.production.vars]
+RATE_LIMIT_RPM = "10"
+# Set via wrangler secret put:
+# OP_CONNECT_HOST
+# ALLOWED_REPOS (e.g. "JW-Flo/Project-AtlasIT")
+# ALLOWED_ORGS (e.g. "JW-Flo")
+
+[[env.production.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = ""  # Fill with actual KV namespace ID
+
+[env.dev]
+[env.dev.vars]
+OP_CONNECT_HOST = "http://localhost:8080"
+ALLOWED_REPOS = "JW-Flo/Project-AtlasIT"
+ALLOWED_ORGS = "JW-Flo"
+RATE_LIMIT_RPM = "100"
+
+[[env.dev.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = ""  # Fill with actual KV namespace ID

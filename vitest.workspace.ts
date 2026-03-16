@@ -32,6 +32,7 @@ export default defineWorkspace([
         "tests/**/*.test.ts",
         "packages/*/src/**/*.test.ts",
         "core-api/src/**/*.test.ts",
+        "adapters/*/src/**/*.test.ts",
       ],
       exclude: [
         "**/*.integration.test.ts",

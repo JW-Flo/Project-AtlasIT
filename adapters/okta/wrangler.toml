@@ -17,6 +17,7 @@ database_id = "placeholder-replace-with-actual-id"
 # OKTA_API_TOKEN - Okta API token (SSWS)
 # OKTA_ORG_URL - Okta org URL (e.g., https://company.okta.com)
 # OKTA_WEBHOOK_SECRET - Secret for verifying Okta event hook Authorization header
+# SCIM_API_TOKEN - Bearer token for SCIM 2.0 provisioning endpoints (configured in Okta SCIM app)
 
 [observability.logs]
 enabled = true

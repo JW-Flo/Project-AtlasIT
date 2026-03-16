@@ -2,8 +2,12 @@ import { Hono } from "hono";
 import type { Bindings, SyncResult } from "./types.js";
 import { syncDirectory } from "./sync.js";
 import { handleVerification, handleEventHook } from "./webhooks.js";
+import { scimRouter } from "./scim/router.js";
 
 const app = new Hono<{ Bindings: Bindings }>();
+
+// Mount SCIM 2.0 provisioning endpoints
+app.route("/scim/v2", scimRouter);
 
 app.get("/health", (c) => {
   return c.json({

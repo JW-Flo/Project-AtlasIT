@@ -5,6 +5,7 @@ export interface Bindings {
   OKTA_WEBHOOK_SECRET: string;
   ORCHESTRATOR_URL: string;
   CONNECTOR_ID: string;
+  SCIM_API_TOKEN: string;
 }
 
 export interface OktaUserProfile {
