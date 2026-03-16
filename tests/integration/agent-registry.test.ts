@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import app from "../../ai-orchestrator/src/index";
+import { app } from "../../ai-orchestrator/src/index";
 
 type Row = Record<string, unknown>;
 

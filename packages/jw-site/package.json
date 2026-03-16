@@ -8,6 +8,6 @@
     "dev": "echo 'placeholder dev'"
   },
   "dependencies": {
-    "@atlasit/auth": "*"
+    "@atlasit/auth": "workspace:*"
   }
 }

@@ -1,9 +1,14 @@
 packages:
   - packages/*
   - packages/**
+  - '!packages/idp-adapters/**'
+  - '!packages/idp-sim'
+  - '!packages/idp'
+  - '!packages/jw-site'
   - routes/**
   - onboarding
   - ai-orchestrator
+  - core-api
   - mcp*
   - documentation-worker
   - slack-approval-worker

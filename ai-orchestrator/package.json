@@ -10,6 +10,7 @@
     "test": "vitest run || echo 'No orchestrator tests defined'"
   },
   "dependencies": {
+    "@atlasit/shared": "workspace:*",
     "@sveltejs/adapter-cloudflare": "^7.2.3",
     "@sveltejs/kit": "^2.43.7",
     "esbuild": "^0.25.10",

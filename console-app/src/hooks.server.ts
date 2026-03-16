@@ -83,6 +83,7 @@ export const handle: Handle = async ({ event, resolve }) => {
             SUPER_ADMIN_EMAIL: envRaw?.["SUPER_ADMIN_EMAIL"],
           },
           kv: envAny?.["KV_SESSIONS"] as KVNamespace | undefined,
+          db: envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined,
         });
         if (resolved) {
           user = resolved;

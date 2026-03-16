@@ -9,6 +9,9 @@ import type {
   QueueBus,
   PublishOptions,
   WorkflowStateStore,
+  EvidenceStore,
+  EvidenceWriteResult,
+  EvidenceReadResult,
 } from "./interfaces.js";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +69,61 @@ export class InMemoryWorkflowStateStore implements WorkflowStateStore {
   /** Diagnostic: return all stored run IDs. */
   getAllRunIds(): string[] {
     return Array.from(this.store.keys());
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// InMemoryEvidenceStore
+// ---------------------------------------------------------------------------
+
+export interface StoredEvidence {
+  tenantId: string;
+  runId: string;
+  stepId: string;
+  hash: string;
+  body: string;
+}
+
+export class InMemoryEvidenceStore implements EvidenceStore {
+  private readonly store = new Map<string, StoredEvidence>();
+
+  async exists(key: string): Promise<boolean> {
+    return this.store.has(key);
+  }
+
+  async put(
+    tenantId: string,
+    runId: string,
+    stepId: string,
+    hash: string,
+    body: string,
+  ): Promise<EvidenceWriteResult> {
+    const key = `evidence/${tenantId}/${runId}/${stepId}/${hash}.json`;
+    const alreadyExists = this.store.has(key);
+    if (!alreadyExists) {
+      this.store.set(key, { tenantId, runId, stepId, hash, body });
+    }
+    return { key, uri: `mem://${key}`, alreadyExists };
+  }
+
+  async get(key: string): Promise<EvidenceReadResult | null> {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    return { body: entry.body };
+  }
+
+  /** Return all stored evidence entries for inspection in tests. */
+  getAll(): StoredEvidence[] {
+    return Array.from(this.store.values());
+  }
+
+  /** Return evidence entries for a specific run. */
+  getByRun(runId: string): StoredEvidence[] {
+    return this.getAll().filter((e) => e.runId === runId);
   }
 
   clear(): void {

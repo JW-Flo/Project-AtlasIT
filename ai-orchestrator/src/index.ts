@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { authMiddleware as sharedAuthMiddleware } from "@atlasit/shared";
+import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "./types";
 import { eventRoutes } from "./routes/events";
 import { agentRoutes } from "./routes/agents";
@@ -32,31 +34,26 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-// Auth middleware on API routes (health stays public)
-app.use("/api/*", async (c, next) => {
-  const apiKey = c.req.header("X-API-Key");
-  const allowedKeys = (c.env.API_ALLOWED_KEYS ?? "")
+// Auth middleware on API routes (health stays public).
+// Thin wrapper: delegates to shared authMiddleware when API keys are configured,
+// sets tenantId from header when no keys are configured (dev/unconfigured).
+const apiAuth: MiddlewareHandler = async (c, next) => {
+  const allowedKeys = ((c.env as Record<string, string>).API_ALLOWED_KEYS ?? "")
     .split(",")
     .map((k) => k.trim())
     .filter(Boolean);
 
-  if (allowedKeys.length > 0) {
-    if (!apiKey || !allowedKeys.includes(apiKey)) {
-      return c.json(
-        {
-          status: "error",
-          code: "UNAUTHORIZED",
-          message: "Missing or invalid API key",
-          correlationId: c.get("correlationId"),
-          timestamp: new Date().toISOString(),
-        },
-        401,
-      );
-    }
-    c.set("tenantId", c.req.header("X-Tenant-ID") ?? "default");
+  if (
+    allowedKeys.length > 0 ||
+    c.req.header("Authorization")?.startsWith("Bearer ")
+  ) {
+    return sharedAuthMiddleware({ allowApiKey: true })(c, next);
   }
+  // No API keys configured and no Bearer token — pass through with default tenant
+  c.set("tenantId", c.req.header("X-Tenant-ID") ?? "default");
   await next();
-});
+};
+app.use("/api/*", apiAuth);
 
 // Error handler
 app.onError((err, c) => {
@@ -98,4 +95,75 @@ app.route("/api/v1/workflows", workflowRoutes);
 app.route("/api/v1/dead-letter", deadLetterRoutes);
 
 export { WorkflowDO } from "./workflow/workflow-do";
-export default app;
+export { app };
+
+// ---------------------------------------------------------------------------
+// Queue consumer handler for step-result messages
+// ---------------------------------------------------------------------------
+
+interface StepResultMessage {
+  kind: "step-result";
+  runId: string;
+  stepId: string;
+  attempt: number;
+  success: boolean;
+  output?: unknown;
+  error?: string;
+}
+
+interface QueueMessage<T = unknown> {
+  body: T;
+  ack(): void;
+  retry(): void;
+}
+
+interface QueueBatch<T = unknown> {
+  messages: QueueMessage<T>[];
+}
+
+const worker = {
+  fetch: app.fetch,
+  async queue(
+    batch: QueueBatch<StepResultMessage>,
+    env: { WORKFLOW: DurableObjectNamespace },
+  ): Promise<void> {
+    for (const message of batch.messages) {
+      const msg = message.body;
+      if (msg.kind !== "step-result") {
+        message.ack();
+        continue;
+      }
+
+      try {
+        const doId = env.WORKFLOW.idFromName(msg.runId);
+        const stub = env.WORKFLOW.get(doId);
+
+        const endpoint = msg.success
+          ? `http://workflow/step/${msg.stepId}/complete`
+          : `http://workflow/step/${msg.stepId}/fail`;
+
+        const body = msg.success
+          ? JSON.stringify({ output: msg.output })
+          : JSON.stringify({ error: msg.error ?? "Unknown error" });
+
+        const response = await stub.fetch(
+          new Request(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+          }),
+        );
+
+        if (response.ok || response.status === 409) {
+          message.ack();
+        } else {
+          message.retry();
+        }
+      } catch {
+        message.retry();
+      }
+    }
+  },
+};
+
+export default worker;
