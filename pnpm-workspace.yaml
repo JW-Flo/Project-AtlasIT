@@ -12,4 +12,5 @@ packages:
   - mcp*
   - documentation-worker
   - slack-approval-worker
+  - slack-notification-agent
   - console-app

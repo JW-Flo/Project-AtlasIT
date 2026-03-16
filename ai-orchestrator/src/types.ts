@@ -8,6 +8,10 @@ export type Bindings = {
   EVIDENCE: R2Bucket;
   API_ALLOWED_KEYS?: string;
   ENVIRONMENT?: string;
+  /** JSON map of sourceId → HMAC secret for inbound event signature verification */
+  EVENT_SOURCE_SECRETS?: string;
+  /** When "true", reject events without a valid X-Signature header */
+  REQUIRE_EVENT_SIGNATURES?: string;
 };
 
 export type Variables = {

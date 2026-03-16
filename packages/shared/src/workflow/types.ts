@@ -28,7 +28,13 @@ export type WorkflowType = "joiner" | "mover" | "leaver";
 // Step status lifecycle
 // ---------------------------------------------------------------------------
 
-export type StepStatus = "pending" | "running" | "completed" | "failed" | "dlq" | "skipped";
+export type StepStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "dlq"
+  | "skipped";
 
 // ---------------------------------------------------------------------------
 // Run status lifecycle
@@ -66,6 +72,10 @@ export interface StepState {
   output?: unknown;
   error?: string;
   durationMs?: number;
+  /** Absolute timestamp (ms since epoch) when this step should be considered timed out. */
+  stepDeadline?: number;
+  /** True if this step is a compensation (onFailure) step. */
+  compensation?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +170,8 @@ export interface StepTaskMessage {
   runId: string;
   stepId: string;
   attempt: number;
+  /** True if this task is a compensation (onFailure) step. */
+  compensation?: boolean;
 }
 
 export interface StepResultMessage {

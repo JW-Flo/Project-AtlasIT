@@ -138,6 +138,8 @@ export default [
           path.join(rootDir, "apps/atlasit-web/tsconfig.app.json"),
           // Dispatch worker (Workers for Platforms)
           path.join(rootDir, "dispatch-worker/tsconfig.json"),
+          // Slack notification MCP agent
+          path.join(rootDir, "slack-notification-agent/tsconfig.json"),
           // Temporarily ignoring dispatch-worker to suppress ESLint parser error
         ],
       },

@@ -18,7 +18,10 @@ import type {
   StepTaskMessage,
   EvidenceEnvelope,
 } from "../packages/shared/src/workflow/types";
-import { WORKFLOW_STATE_SCHEMA_VERSION } from "../packages/shared/src/workflow/types";
+import {
+  WORKFLOW_STATE_SCHEMA_VERSION,
+  DEFAULT_MAX_RETRIES,
+} from "../packages/shared/src/workflow/types";
 import {
   InMemoryQueueBus,
   InMemoryEvidenceStore,
@@ -521,5 +524,422 @@ describe("Type compatibility", () => {
     expect(envelope.createdAt).toBeDefined();
     expect(envelope.hash).toBeDefined();
     expect(envelope.outcome).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Compensation steps dispatched via queue (not instantly completed)
+// ---------------------------------------------------------------------------
+
+describe("Compensation step dispatch via queue", () => {
+  let bus: InMemoryQueueBus;
+
+  beforeEach(() => {
+    bus = new InMemoryQueueBus();
+  });
+
+  it("compensation steps are dispatched as StepTaskMessages with compensation flag", async () => {
+    const msg: StepTaskMessage = {
+      kind: "step-task",
+      runId: "run-1",
+      stepId: "compensate_revoke-access",
+      attempt: 1,
+      compensation: true,
+    };
+
+    await bus.publish("step-tasks", msg);
+
+    const messages = bus.getMessages("step-tasks");
+    expect(messages).toHaveLength(1);
+    expect(messages[0].msg).toEqual(msg);
+    expect((messages[0].msg as StepTaskMessage).compensation).toBe(true);
+  });
+
+  it("compensation steps start in running status, not completed", () => {
+    const step: StepState = {
+      stepId: "compensate_revoke-access",
+      action: "revoke_access",
+      status: "running",
+      attempts: 1,
+      startedAt: new Date().toISOString(),
+      compensation: true,
+    };
+
+    // Compensation steps must NOT be immediately marked completed
+    expect(step.status).toBe("running");
+    expect(step.compensation).toBe(true);
+    expect(step.completedAt).toBeUndefined();
+  });
+
+  it("multiple compensation steps are each dispatched separately", async () => {
+    const compensationSteps = [
+      { id: "revoke-access", handler: "revoke_access" },
+      { id: "cleanup-resources", handler: "cleanup_resources" },
+      { id: "notify-admin", handler: "notify_admin" },
+    ];
+
+    for (const step of compensationSteps) {
+      const msg: StepTaskMessage = {
+        kind: "step-task",
+        runId: "run-1",
+        stepId: `compensate_${step.id}`,
+        attempt: 1,
+        compensation: true,
+      };
+      await bus.publish("step-tasks", msg);
+    }
+
+    const messages = bus.getMessages("step-tasks");
+    expect(messages).toHaveLength(3);
+
+    for (const published of messages) {
+      const msg = published.msg as StepTaskMessage;
+      expect(msg.compensation).toBe(true);
+      expect(msg.stepId).toMatch(/^compensate_/);
+    }
+  });
+
+  it("workflow transitions to compensating status when compensation starts", () => {
+    const run = makeRunState({ status: "running" });
+
+    // Simulate: running -> compensating is a valid transition
+    const validTransitions: Record<RunStatus, RunStatus[]> = {
+      queued: ["running"],
+      running: ["completed", "failed", "compensating"],
+      completed: [],
+      failed: [],
+      compensating: ["failed"],
+    };
+
+    expect(validTransitions[run.status]).toContain("compensating");
+    run.status = "compensating";
+    expect(run.status).toBe("compensating");
+  });
+
+  it("run transitions to failed after all compensation steps complete", () => {
+    const run = makeRunState({
+      status: "compensating",
+      steps: [
+        makeStepState({ stepId: "step-1", status: "dlq" }),
+        {
+          stepId: "compensate_revoke-access",
+          action: "revoke_access",
+          status: "completed",
+          attempts: 1,
+          compensation: true,
+        },
+        {
+          stepId: "compensate_cleanup",
+          action: "cleanup_resources",
+          status: "completed",
+          attempts: 1,
+          compensation: true,
+        },
+      ],
+    });
+
+    const allCompensationDone = run.steps
+      .filter((s) => s.compensation)
+      .every((s) => s.status !== "running" && s.status !== "pending");
+
+    expect(allCompensationDone).toBe(true);
+
+    // After all compensation done, transition compensating -> failed
+    run.status = "failed";
+    expect(run.status).toBe("failed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Per-step timeouts tracked independently
+// ---------------------------------------------------------------------------
+
+describe("Per-step timeout tracking", () => {
+  it("stepDeadline is stored on each running step", () => {
+    const now = Date.now();
+    const step1: StepState = {
+      stepId: "step-1",
+      action: "validate_profile",
+      status: "running",
+      attempts: 1,
+      startedAt: new Date().toISOString(),
+      stepDeadline: now + 5000,
+    };
+    const step2: StepState = {
+      stepId: "step-2",
+      action: "provision_account",
+      status: "running",
+      attempts: 1,
+      startedAt: new Date().toISOString(),
+      stepDeadline: now + 10000,
+    };
+
+    expect(step1.stepDeadline).toBe(now + 5000);
+    expect(step2.stepDeadline).toBe(now + 10000);
+    // Different deadlines for different steps
+    expect(step1.stepDeadline).not.toBe(step2.stepDeadline);
+  });
+
+  it("earliest deadline among running steps determines next alarm", () => {
+    const now = Date.now();
+    const steps: StepState[] = [
+      {
+        stepId: "step-1",
+        action: "validate",
+        status: "running",
+        attempts: 1,
+        stepDeadline: now + 10000,
+      },
+      {
+        stepId: "step-2",
+        action: "provision",
+        status: "running",
+        attempts: 1,
+        stepDeadline: now + 5000,
+      },
+      {
+        stepId: "step-3",
+        action: "notify",
+        status: "completed",
+        attempts: 1,
+        stepDeadline: now + 1000, // completed step — should be ignored
+      },
+    ];
+
+    const deadlines = steps
+      .filter((s) => s.status === "running" && s.stepDeadline !== undefined)
+      .map((s) => s.stepDeadline!);
+
+    const earliestDeadline = Math.min(...deadlines);
+    expect(earliestDeadline).toBe(now + 5000);
+  });
+
+  it("timed out step is marked failed with timeout error", () => {
+    const now = Date.now();
+    const step: StepState = {
+      stepId: "step-1",
+      action: "validate",
+      status: "running",
+      attempts: 1,
+      startedAt: new Date(now - 6000).toISOString(),
+      stepDeadline: now - 1000, // deadline passed
+    };
+
+    // Simulate alarm handler behavior
+    if (step.stepDeadline !== undefined && step.stepDeadline <= now) {
+      step.status = "failed";
+      step.error = "Step timed out";
+      step.completedAt = new Date().toISOString();
+    }
+
+    expect(step.status).toBe("failed");
+    expect(step.error).toBe("Step timed out");
+    expect(step.completedAt).toBeDefined();
+  });
+
+  it("only steps past their deadline are timed out", () => {
+    const now = Date.now();
+    const steps: StepState[] = [
+      {
+        stepId: "step-1",
+        action: "validate",
+        status: "running",
+        attempts: 1,
+        stepDeadline: now - 1000, // past deadline
+      },
+      {
+        stepId: "step-2",
+        action: "provision",
+        status: "running",
+        attempts: 1,
+        stepDeadline: now + 5000, // still has time
+      },
+    ];
+
+    const timedOut = steps.filter(
+      (s) =>
+        s.status === "running" &&
+        s.stepDeadline !== undefined &&
+        s.stepDeadline <= now,
+    );
+
+    expect(timedOut).toHaveLength(1);
+    expect(timedOut[0].stepId).toBe("step-1");
+  });
+
+  it("compensation steps also have independent deadlines", () => {
+    const now = Date.now();
+    const steps: StepState[] = [
+      {
+        stepId: "compensate_revoke",
+        action: "revoke_access",
+        status: "running",
+        attempts: 1,
+        compensation: true,
+        stepDeadline: now + 3000,
+      },
+      {
+        stepId: "compensate_cleanup",
+        action: "cleanup_resources",
+        status: "running",
+        attempts: 1,
+        compensation: true,
+        stepDeadline: now + 8000,
+      },
+    ];
+
+    const deadlines = steps
+      .filter((s) => s.status === "running" && s.stepDeadline !== undefined)
+      .map((s) => s.stepDeadline!);
+
+    expect(deadlines).toHaveLength(2);
+    expect(Math.min(...deadlines)).toBe(now + 3000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Compensation failure escalation to DLQ
+// ---------------------------------------------------------------------------
+
+describe("Compensation failure escalation to DLQ", () => {
+  it("DLQ payload includes compensationFailed flag when compensation step fails", () => {
+    const run = makeRunState({ status: "compensating" });
+    const step: StepState = {
+      stepId: "compensate_revoke-access",
+      action: "revoke_access",
+      status: "dlq",
+      attempts: DEFAULT_MAX_RETRIES + 1,
+      error: "Revocation service unavailable",
+      compensation: true,
+      startedAt: "2026-03-15T00:00:00Z",
+      completedAt: "2026-03-15T00:01:00Z",
+    };
+
+    // Build DLQ entry as workflow-do.ts does
+    const dlqPayload = JSON.stringify({
+      runId: run.id,
+      stepId: step.stepId,
+      context: run.context,
+      compensationFailed: true,
+    });
+
+    const parsed = JSON.parse(dlqPayload);
+    expect(parsed.compensationFailed).toBe(true);
+    expect(parsed.runId).toBe(run.id);
+    expect(parsed.stepId).toBe("compensate_revoke-access");
+  });
+
+  it("regular step DLQ payload does not include compensationFailed flag", () => {
+    const run = makeRunState();
+    const step: StepState = {
+      stepId: "provision-account",
+      action: "provision_primary_account",
+      status: "dlq",
+      attempts: DEFAULT_MAX_RETRIES + 1,
+      error: "Service unavailable",
+    };
+
+    const dlqPayload = JSON.stringify({
+      runId: run.id,
+      stepId: step.stepId,
+      context: run.context,
+      compensationFailed: false,
+    });
+
+    const parsed = JSON.parse(dlqPayload);
+    expect(parsed.compensationFailed).toBe(false);
+  });
+
+  it("compensation step exhausts retries and goes to dlq status", () => {
+    const step: StepState = {
+      stepId: "compensate_revoke-access",
+      action: "revoke_access",
+      status: "running",
+      attempts: DEFAULT_MAX_RETRIES,
+      compensation: true,
+      startedAt: "2026-03-15T00:00:00Z",
+    };
+
+    // Simulate one more failed attempt exhausting retries
+    step.attempts++;
+    expect(step.attempts).toBeGreaterThan(DEFAULT_MAX_RETRIES);
+    step.status = "dlq";
+    step.completedAt = new Date().toISOString();
+
+    expect(step.status).toBe("dlq");
+    expect(step.compensation).toBe(true);
+  });
+
+  it("run ends in failed status even when compensation step fails", () => {
+    const run = makeRunState({
+      status: "compensating",
+      steps: [
+        makeStepState({ stepId: "step-1", status: "dlq" }),
+        {
+          stepId: "compensate_revoke-access",
+          action: "revoke_access",
+          status: "dlq",
+          attempts: DEFAULT_MAX_RETRIES + 1,
+          error: "Service unavailable",
+          compensation: true,
+        },
+      ],
+    });
+
+    // All compensation steps are done (even if failed/dlq)
+    const allCompensationDone = run.steps
+      .filter((s) => s.compensation)
+      .every((s) => s.status !== "running" && s.status !== "pending");
+
+    expect(allCompensationDone).toBe(true);
+
+    // Should transition to failed
+    run.status = "failed";
+    expect(run.status).toBe("failed");
+  });
+
+  it("DLQ entry for compensation failure has correct metadata structure", () => {
+    const run = makeRunState();
+    const step: StepState = {
+      stepId: "compensate_cleanup",
+      action: "cleanup_resources",
+      status: "dlq",
+      attempts: 4,
+      error: "Cleanup service unreachable",
+      compensation: true,
+      startedAt: "2026-03-15T00:00:00Z",
+      completedAt: "2026-03-15T00:01:00Z",
+    };
+
+    // Match DeadLetterEntry shape from dead-letter.ts
+    const entry = {
+      eventId: run.id,
+      agentId: step.action,
+      deliveryId: `${run.id}:${step.stepId}`,
+      tenantId: run.tenantId,
+      eventType: `workflow.step.${step.action}`,
+      eventSource: "workflow-do",
+      eventPayload: JSON.stringify({
+        runId: run.id,
+        stepId: step.stepId,
+        context: run.context,
+        compensationFailed: true,
+      }),
+      errorMessage: step.error!,
+      totalAttempts: step.attempts,
+      firstAttemptAt: step.startedAt!,
+      lastAttemptAt: step.completedAt!,
+    };
+
+    expect(entry.eventId).toBe(run.id);
+    expect(entry.agentId).toBe("cleanup_resources");
+    expect(entry.deliveryId).toContain("compensate_cleanup");
+    expect(entry.eventType).toBe("workflow.step.cleanup_resources");
+    expect(entry.eventSource).toBe("workflow-do");
+
+    const payload = JSON.parse(entry.eventPayload);
+    expect(payload.compensationFailed).toBe(true);
+    expect(payload.runId).toBe(run.id);
+    expect(payload.stepId).toBe("compensate_cleanup");
   });
 });

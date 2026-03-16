@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv, AgentSubscription } from "../types";
-import { signPayload } from "../lib/hmac";
+import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
 
 const PublishEventSchema = z.object({
@@ -12,12 +12,121 @@ const PublishEventSchema = z.object({
   idempotencyKey: z.string().optional(),
 });
 
+/** Parse EVENT_SOURCE_SECRETS env var (JSON map of sourceId → secret). */
+function getSourceSecrets(
+  env: AppEnv["Bindings"],
+): Record<string, string> | null {
+  if (!env.EVENT_SOURCE_SECRETS) return null;
+  try {
+    return JSON.parse(env.EVENT_SOURCE_SECRETS) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
 export const eventRoutes = new Hono<AppEnv>();
 
 // POST /api/v1/events -- publish event and fan out
 eventRoutes.post("/", async (c) => {
-  const body = await c.req.json();
-  const parsed = PublishEventSchema.safeParse(body);
+  // --- Inbound HMAC verification ---
+  const signature = c.req.header("X-Signature");
+  const requireSignatures = c.env.REQUIRE_EVENT_SIGNATURES === "true";
+  const sourceSecrets = getSourceSecrets(c.env);
+
+  if (signature) {
+    // Signature present — verify it
+    const rawBody = await c.req.text();
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(rawBody);
+    } catch {
+      return c.json(
+        {
+          status: "error",
+          code: "INVALID_BODY",
+          message: "Request body is not valid JSON",
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        400,
+      );
+    }
+
+    const source = (body as Record<string, unknown>).source as
+      | string
+      | undefined;
+    const secret = source ? sourceSecrets?.[source] : undefined;
+
+    if (!secret) {
+      return c.json(
+        {
+          status: "error",
+          code: "UNAUTHORIZED",
+          message: "No secret configured for event source",
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        401,
+      );
+    }
+
+    const valid = await verifySignature(rawBody, signature, secret);
+    if (!valid) {
+      return c.json(
+        {
+          status: "error",
+          code: "UNAUTHORIZED",
+          message: "Invalid event signature",
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        401,
+      );
+    }
+
+    // Signature valid — continue with already-parsed body
+    const parsed = PublishEventSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          status: "error",
+          code: "VALIDATION_FAILED",
+          message: "Invalid event",
+          details: parsed.error.flatten(),
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        400,
+      );
+    }
+    // Proceed below with parsed.data via c._parsedEvent
+    (c as unknown as Record<string, unknown>)._parsedEvent = parsed.data;
+  } else if (requireSignatures) {
+    // No signature and signatures required — reject
+    return c.json(
+      {
+        status: "error",
+        code: "UNAUTHORIZED",
+        message: "Event signature required",
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      401,
+    );
+  }
+
+  // Parse body (only if not already parsed from signature path)
+  const alreadyParsed = (c as unknown as Record<string, unknown>)._parsedEvent;
+  let parsed;
+  if (alreadyParsed) {
+    parsed = {
+      success: true as const,
+      data: alreadyParsed as z.infer<typeof PublishEventSchema>,
+    };
+  } else {
+    const body = await c.req.json();
+    parsed = PublishEventSchema.safeParse(body);
+  }
   if (!parsed.success) {
     return c.json(
       {

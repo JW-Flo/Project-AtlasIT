@@ -255,7 +255,24 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     // Emit evidence for step completion
     await this.emitEvidence(step);
 
-    // Check if all steps are done
+    // Handle compensation step completion
+    if (step.compensation) {
+      const allCompensationDone = this.state.steps
+        .filter((s) => s.compensation)
+        .every((s) => s.status !== "running" && s.status !== "pending");
+
+      if (allCompensationDone) {
+        this.transition("failed");
+        this.state.completedAt = new Date().toISOString();
+        await this.ctx.storage.put("state", this.state);
+        await this.ctx.storage.deleteAlarm();
+      }
+      return this.jsonResponse({
+        status: allCompensationDone ? "failed" : "compensating",
+      });
+    }
+
+    // Check if all regular steps are done
     const nextPendingIndex = this.state.steps.findIndex(
       (s) => s.status === "pending",
     );
@@ -293,7 +310,16 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       return this.jsonResponse({ error: "Unknown step" }, 404);
 
     const step = this.state.steps[stepIndex];
-    const defStep = this.definition.steps.find((s) => s.id === stepId);
+    const isCompensation = !!step.compensation;
+
+    // Look up step definition: for compensation steps, strip the compensate_ prefix
+    const defStepId = isCompensation
+      ? stepId.replace(/^compensate_/, "")
+      : stepId;
+    const defStepList = isCompensation
+      ? (this.definition.onFailure ?? [])
+      : this.definition.steps;
+    const defStep = defStepList.find((s) => s.id === defStepId);
     if (!defStep)
       return this.jsonResponse({ error: "Step definition not found" }, 404);
 
@@ -346,19 +372,42 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       error: body.error,
     });
 
-    this.transition("failed");
-    this.state.completedAt = new Date().toISOString();
-    await this.ctx.storage.put("state", this.state);
-    await this.ctx.storage.deleteAlarm();
-
     // Emit evidence for the failed step
     await this.emitEvidence(step);
 
-    // Move to dead letter queue
-    await this.sendToDeadLetter(step, body.error);
+    // Move to dead letter queue (flag compensationFailed for compensation steps)
+    await this.sendToDeadLetter(step, body.error, isCompensation);
 
+    if (isCompensation) {
+      // Compensation step failed — check if all compensation steps are done
+      const allCompensationDone = this.state.steps
+        .filter((s) => s.compensation)
+        .every((s) => s.status !== "running" && s.status !== "pending");
+
+      if (allCompensationDone) {
+        this.transition("failed");
+        this.state.completedAt = new Date().toISOString();
+        await this.ctx.storage.deleteAlarm();
+      }
+      await this.ctx.storage.put("state", this.state);
+
+      return this.jsonResponse({
+        status: "failed",
+        error: `Compensation step ${stepId} failed: ${body.error}`,
+        compensationFailed: true,
+      });
+    }
+
+    // Regular step: run compensations or transition to failed
     if (this.definition.onFailure?.length) {
+      await this.ctx.storage.put("state", this.state);
+      await this.ctx.storage.deleteAlarm();
       await this.runCompensations();
+    } else {
+      this.transition("failed");
+      this.state.completedAt = new Date().toISOString();
+      await this.ctx.storage.put("state", this.state);
+      await this.ctx.storage.deleteAlarm();
     }
 
     return this.jsonResponse({
@@ -408,31 +457,68 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
     this.state.alarmCount = (this.state.alarmCount ?? 0) + 1;
 
-    if (this.state.status === "running") {
-      // Find the current running step and check if it timed out
-      const currentStep = this.state.steps.find((s) => s.status === "running");
-      if (currentStep) {
-        currentStep.status = "failed";
-        currentStep.error = "Step timed out";
-        currentStep.completedAt = new Date().toISOString();
+    const now = Date.now();
+
+    if (
+      this.state.status === "running" ||
+      this.state.status === "compensating"
+    ) {
+      // Check ALL running steps against their deadlines
+      const timedOutSteps = this.state.steps.filter(
+        (s) =>
+          s.status === "running" &&
+          s.stepDeadline !== undefined &&
+          s.stepDeadline <= now,
+      );
+
+      for (const step of timedOutSteps) {
+        step.status = "failed";
+        step.error = "Step timed out";
+        step.completedAt = new Date().toISOString();
 
         this.state.history.push({
-          stepId: currentStep.stepId,
-          action: currentStep.action,
+          stepId: step.stepId,
+          action: step.action,
           status: "failed",
-          timestamp: currentStep.completedAt,
-          attemptNumber: currentStep.attempts,
+          timestamp: step.completedAt,
+          attemptNumber: step.attempts,
           error: "Step timed out",
         });
+
+        if (step.compensation) {
+          // Compensation step timed out — escalate to DLQ
+          await this.sendToDeadLetter(step, "Step timed out", true);
+        }
       }
 
-      this.transition("failed");
-      this.state.completedAt = new Date().toISOString();
+      if (this.state.status === "running" && timedOutSteps.length > 0) {
+        if (this.definition.onFailure?.length) {
+          await this.ctx.storage.put("state", this.state);
+          await this.runCompensations();
+        } else {
+          this.transition("failed");
+          this.state.completedAt = new Date().toISOString();
+          await this.ctx.storage.put("state", this.state);
+        }
+        return;
+      }
+
+      if (this.state.status === "compensating") {
+        // Check if all compensation steps are done (completed or failed)
+        const allCompensationDone = this.state.steps
+          .filter((s) => s.compensation)
+          .every((s) => s.status !== "running" && s.status !== "pending");
+
+        if (allCompensationDone) {
+          this.transition("failed");
+          this.state.completedAt = new Date().toISOString();
+        } else {
+          // Schedule next alarm for remaining running steps
+          this.scheduleNextDeadlineAlarm();
+        }
+      }
+
       await this.ctx.storage.put("state", this.state);
-
-      if (this.definition.onFailure?.length) {
-        await this.runCompensations();
-      }
     }
   }
 
@@ -460,6 +546,10 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     nextStep.startedAt = new Date().toISOString();
     nextStep.attempts = 1;
 
+    if (defStep.timeoutMs > 0) {
+      nextStep.stepDeadline = Date.now() + defStep.timeoutMs;
+    }
+
     this.state.history.push({
       stepId: nextStep.stepId,
       action: nextStep.action,
@@ -470,9 +560,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
     await this.ctx.storage.put("state", this.state);
 
-    if (defStep.timeoutMs > 0) {
-      await this.ctx.storage.setAlarm(Date.now() + defStep.timeoutMs);
-    }
+    this.scheduleNextDeadlineAlarm();
 
     // Dispatch step task via queue
     const bus = this.getQueueBus();
@@ -505,6 +593,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
   private async sendToDeadLetter(
     step: StepState,
     error: string,
+    compensationFailed = false,
   ): Promise<void> {
     if (!this.state) return;
     try {
@@ -522,6 +611,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
           runId: this.state.id,
           stepId: step.stepId,
           context: this.state.context,
+          compensationFailed,
         }),
         errorMessage: error,
         totalAttempts: step.attempts,
@@ -540,18 +630,65 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
   private async runCompensations(): Promise<void> {
     if (!this.definition?.onFailure || !this.state) return;
+
+    this.transition("compensating");
+
+    const now = new Date().toISOString();
+    const bus = this.getQueueBus();
+
     for (const step of this.definition.onFailure) {
       const compensationStep: StepState = {
         stepId: `compensate_${step.id}`,
         action: step.handler,
-        status: "completed",
+        status: "running",
         attempts: 1,
-        startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
+        startedAt: now,
+        compensation: true,
       };
+
+      if (step.timeoutMs > 0) {
+        compensationStep.stepDeadline = Date.now() + step.timeoutMs;
+      }
+
       this.state.steps.push(compensationStep);
+
+      this.state.history.push({
+        stepId: compensationStep.stepId,
+        action: compensationStep.action,
+        status: "running",
+        timestamp: now,
+        attemptNumber: 1,
+      });
+
+      if (bus) {
+        const msg: StepTaskMessage = {
+          kind: "step-task",
+          runId: this.state.id,
+          stepId: compensationStep.stepId,
+          attempt: 1,
+          compensation: true,
+        };
+        await bus.publish("step-tasks", msg);
+      }
     }
+
+    // Set alarm to earliest compensation deadline
+    this.scheduleNextDeadlineAlarm();
     await this.ctx.storage.put("state", this.state);
+  }
+
+  private scheduleNextDeadlineAlarm(): void {
+    if (!this.state) return;
+
+    const deadlines = this.state.steps
+      .filter((s) => s.status === "running" && s.stepDeadline !== undefined)
+      .map((s) => s.stepDeadline!);
+
+    if (deadlines.length > 0) {
+      const earliest = Math.min(...deadlines);
+      // setAlarm is async but we fire-and-forget here; caller persists state after
+      void this.ctx.storage.setAlarm(earliest);
+    }
   }
 
   private getCurrentStepId(): string | null {

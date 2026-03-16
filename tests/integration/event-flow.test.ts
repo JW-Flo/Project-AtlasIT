@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { app } from "../../ai-orchestrator/src/index";
+import { signPayload } from "../../ai-orchestrator/src/lib/hmac";
 
 type Row = Record<string, unknown>;
 
@@ -392,6 +393,140 @@ describe("Event flow integration", () => {
       const body = await res.json();
       expect(body.status).toBe("error");
       expect(body.code).toBe("NOT_FOUND");
+    });
+  });
+
+  describe("POST /api/v1/events — HMAC signature verification", () => {
+    const sourceSecret = "source-hmac-secret-for-tests";
+
+    function createSignedEnv(
+      mockDB: MockDB,
+      opts: {
+        requireSignatures?: boolean;
+        sourceSecrets?: Record<string, string>;
+      } = {},
+    ) {
+      return {
+        DB: mockDB.db as unknown as D1Database,
+        TASKS: createMockKV(),
+        AI_QUOTA: createMockKV(),
+        IDEMPOTENCY_CACHE: createMockKV(),
+        WORKFLOW: {} as DurableObjectNamespace,
+        EVENT_SOURCE_SECRETS: opts.sourceSecrets
+          ? JSON.stringify(opts.sourceSecrets)
+          : undefined,
+        REQUIRE_EVENT_SIGNATURES: opts.requireSignatures ? "true" : undefined,
+      };
+    }
+
+    it("accepts event with valid HMAC signature", async () => {
+      const signedEnv = createSignedEnv(mockDB, {
+        sourceSecrets: { "core-api": sourceSecret },
+      });
+
+      const eventPayload = JSON.stringify({
+        tenantId: "tenant-1",
+        type: "user.created",
+        source: "core-api",
+        payload: { userId: "u-1" },
+      });
+
+      const signature = await signPayload(eventPayload, sourceSecret);
+
+      const res = await app.request(
+        "/api/v1/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Signature": signature,
+          },
+          body: eventPayload,
+        },
+        signedEnv,
+      );
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.status).toBe("success");
+      expect(body.data.type).toBe("user.created");
+    });
+
+    it("rejects event with invalid HMAC signature", async () => {
+      const signedEnv = createSignedEnv(mockDB, {
+        sourceSecrets: { "core-api": sourceSecret },
+      });
+
+      const eventPayload = JSON.stringify({
+        tenantId: "tenant-1",
+        type: "user.created",
+        source: "core-api",
+      });
+
+      const res = await app.request(
+        "/api/v1/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Signature": "deadbeef".repeat(8),
+          },
+          body: eventPayload,
+        },
+        signedEnv,
+      );
+
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.code).toBe("UNAUTHORIZED");
+      expect(body.message).toContain("Invalid event signature");
+    });
+
+    it("rejects event without signature when signatures are required", async () => {
+      const signedEnv = createSignedEnv(mockDB, {
+        requireSignatures: true,
+        sourceSecrets: { "core-api": sourceSecret },
+      });
+
+      const res = await app.request(
+        "/api/v1/events",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: "tenant-1",
+            type: "user.created",
+            source: "core-api",
+          }),
+        },
+        signedEnv,
+      );
+
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.code).toBe("UNAUTHORIZED");
+      expect(body.message).toContain("Event signature required");
+    });
+
+    it("accepts event without signature when signatures are not required", async () => {
+      // No REQUIRE_EVENT_SIGNATURES set, no X-Signature header
+      const res = await app.request(
+        "/api/v1/events",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: "tenant-1",
+            type: "user.created",
+            source: "core-api",
+          }),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.status).toBe("success");
     });
   });
 });
