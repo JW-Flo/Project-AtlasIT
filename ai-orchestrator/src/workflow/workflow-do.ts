@@ -1,15 +1,118 @@
 import { DurableObject } from "cloudflare:workers";
 import type {
-  WorkflowDefinition,
-  WorkflowState,
-  WorkflowStatus,
-  StepResult,
-} from "./types";
-import { VALID_TRANSITIONS } from "./types";
+  RunState,
+  StepState,
+  RunStatus,
+  StepStatus,
+  StepTaskMessage,
+  WorkflowType,
+} from "../../../packages/shared/src/workflow/types";
+import {
+  WORKFLOW_STATE_SCHEMA_VERSION,
+  DEFAULT_MAX_RETRIES,
+  BACKOFF_BASE_MS,
+  BACKOFF_MAX_MS,
+} from "../../../packages/shared/src/workflow/types";
+import { EvidenceEmitter } from "../../../packages/shared/src/workflow/evidence-emitter";
+import type {
+  QueueBus,
+  EvidenceStore,
+} from "../../../packages/shared/src/platform/interfaces";
+import { CloudflareEvidenceStore } from "../../../packages/shared/src/platform/cloudflare/evidence-store";
+import { CloudflareQueueBus } from "../../../packages/shared/src/platform/cloudflare/queue-bus";
+import { moveToDeadLetter } from "../lib/dead-letter";
+import type { DeadLetterEntry } from "../lib/dead-letter";
 
-export class WorkflowDO extends DurableObject {
-  private state: WorkflowState | null = null;
+// ---------------------------------------------------------------------------
+// Env bindings expected by WorkflowDO
+// ---------------------------------------------------------------------------
+
+export interface WorkflowDOEnv {
+  STEP_TASKS: {
+    send(msg: unknown, opts?: { delaySeconds?: number }): Promise<void>;
+  };
+  EVIDENCE: {
+    head(key: string): Promise<{ key: string } | null>;
+    put(
+      key: string,
+      value: string | ArrayBuffer | ReadableStream,
+      options?: unknown,
+    ): Promise<unknown>;
+    get(key: string): Promise<{ text(): Promise<string> } | null>;
+  };
+  DB: D1Database;
+}
+
+// ---------------------------------------------------------------------------
+// Legacy WorkflowDefinition shape (kept for API compatibility)
+// ---------------------------------------------------------------------------
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  steps: WorkflowStep[];
+  onFailure?: WorkflowStep[];
+  globalTimeoutMs: number;
+}
+
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  handler: string;
+  timeoutMs: number;
+  retryConfig?: { maxRetries: number; backoffMs: number };
+  compensate?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Valid status transitions (using shared RunStatus)
+// ---------------------------------------------------------------------------
+
+const VALID_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
+  queued: ["running"],
+  running: ["completed", "failed", "compensating"],
+  completed: [],
+  failed: [],
+  compensating: ["failed"],
+};
+
+// ---------------------------------------------------------------------------
+// WorkflowDO
+// ---------------------------------------------------------------------------
+
+export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
+  private state: RunState | null = null;
   private definition: WorkflowDefinition | null = null;
+  private evidenceEmitter: EvidenceEmitter | null = null;
+  private queueBus: QueueBus | null = null;
+
+  private getEvidenceEmitter(): EvidenceEmitter | null {
+    if (this.evidenceEmitter) return this.evidenceEmitter;
+    if (!this.env?.EVIDENCE) return null;
+    const store: EvidenceStore = new CloudflareEvidenceStore(this.env.EVIDENCE);
+    this.evidenceEmitter = new EvidenceEmitter(store);
+    return this.evidenceEmitter;
+  }
+
+  private getQueueBus(): QueueBus | null {
+    if (this.queueBus) return this.queueBus;
+    if (!this.env?.STEP_TASKS) return null;
+    this.queueBus = new CloudflareQueueBus({
+      "step-tasks": this.env.STEP_TASKS,
+    });
+    return this.queueBus;
+  }
+
+  /**
+   * Inject test doubles for evidence and queue. Used in tests only.
+   */
+  _injectDeps(deps: {
+    evidenceEmitter?: EvidenceEmitter;
+    queueBus?: QueueBus;
+  }): void {
+    if (deps.evidenceEmitter) this.evidenceEmitter = deps.evidenceEmitter;
+    if (deps.queueBus) this.queueBus = deps.queueBus;
+  }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -56,31 +159,35 @@ export class WorkflowDO extends DurableObject {
     };
 
     this.definition = body.definition;
-    this.state = {
-      definitionId: body.definition.id,
-      definitionName: body.definition.name,
-      status: "CREATED",
-      currentStepIndex: 0,
-      stepResults: {},
-      context: body.context ?? {},
-      tenantId: body.tenantId,
-      correlationId: body.correlationId,
-      startedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
 
-    for (const step of body.definition.steps) {
-      this.state.stepResults[step.id] = {
-        stepId: step.id,
-        status: "pending",
-        attempts: 0,
-      };
-    }
+    const now = new Date().toISOString();
+    const runId = crypto.randomUUID();
+    const steps: StepState[] = body.definition.steps.map((step) => ({
+      stepId: step.id,
+      action: step.handler,
+      status: "pending" as StepStatus,
+      attempts: 0,
+    }));
+
+    this.state = {
+      schemaVersion: WORKFLOW_STATE_SCHEMA_VERSION,
+      id: runId,
+      type: (body.context?.workflowType as WorkflowType) ?? "joiner",
+      status: "queued",
+      tenantId: body.tenantId,
+      userId: (body.context?.userId as string) ?? "unknown",
+      actor: (body.context?.actor as string) ?? "atlas.workflow-do",
+      createdAt: now,
+      steps,
+      history: [],
+      context: body.context ?? {},
+      alarmCount: 0,
+    };
 
     await this.ctx.storage.put("state", this.state);
     await this.ctx.storage.put("definition", this.definition);
 
-    this.transition("RUNNING");
+    this.transition("running");
     await this.ctx.storage.put("state", this.state);
 
     await this.ctx.storage.setAlarm(
@@ -92,6 +199,7 @@ export class WorkflowDO extends DurableObject {
     return this.jsonResponse(
       {
         status: "started",
+        runId,
         workflowStatus: this.state.status,
         currentStep: this.getCurrentStepId(),
       },
@@ -110,28 +218,49 @@ export class WorkflowDO extends DurableObject {
     const stepId = path.split("/step/")[1].split("/complete")[0];
     const body = (await request.json()) as { output?: unknown };
 
-    const stepResult = this.state.stepResults[stepId];
-    if (!stepResult) return this.jsonResponse({ error: "Unknown step" }, 404);
-    if (stepResult.status !== "running")
+    const stepIndex = this.state.steps.findIndex((s) => s.stepId === stepId);
+    if (stepIndex === -1)
+      return this.jsonResponse({ error: "Unknown step" }, 404);
+
+    const step = this.state.steps[stepIndex];
+    if (step.status !== "running")
       return this.jsonResponse(
-        { error: `Step is ${stepResult.status}, not running` },
+        { error: `Step is ${step.status}, not running` },
         409,
       );
 
-    stepResult.status = "completed";
-    stepResult.output = body.output;
-    stepResult.completedAt = new Date().toISOString();
-    this.state.updatedAt = new Date().toISOString();
+    step.status = "completed";
+    step.output = body.output;
+    step.completedAt = new Date().toISOString();
+    step.durationMs = step.startedAt
+      ? Date.now() - new Date(step.startedAt).getTime()
+      : undefined;
+
+    // Record in history
+    this.state.history.push({
+      stepId: step.stepId,
+      action: step.action,
+      status: "completed",
+      timestamp: step.completedAt,
+      attemptNumber: step.attempts,
+      output: body.output,
+    });
 
     if (body.output && typeof body.output === "object") {
       Object.assign(this.state.context, body.output);
     }
 
-    this.state.currentStepIndex++;
     await this.ctx.storage.put("state", this.state);
 
-    if (this.state.currentStepIndex >= this.definition.steps.length) {
-      this.transition("COMPLETED");
+    // Emit evidence for step completion
+    await this.emitEvidence(step);
+
+    // Check if all steps are done
+    const nextPendingIndex = this.state.steps.findIndex(
+      (s) => s.status === "pending",
+    );
+    if (nextPendingIndex === -1) {
+      this.transition("completed");
       this.state.completedAt = new Date().toISOString();
       await this.ctx.storage.put("state", this.state);
       await this.ctx.storage.deleteAlarm();
@@ -159,50 +288,83 @@ export class WorkflowDO extends DurableObject {
     const stepId = path.split("/step/")[1].split("/fail")[0];
     const body = (await request.json()) as { error: string };
 
-    const stepResult = this.state.stepResults[stepId];
-    if (!stepResult) return this.jsonResponse({ error: "Unknown step" }, 404);
+    const stepIndex = this.state.steps.findIndex((s) => s.stepId === stepId);
+    if (stepIndex === -1)
+      return this.jsonResponse({ error: "Unknown step" }, 404);
 
-    const step = this.definition.steps.find((s) => s.id === stepId);
-    if (!step)
+    const step = this.state.steps[stepIndex];
+    const defStep = this.definition.steps.find((s) => s.id === stepId);
+    if (!defStep)
       return this.jsonResponse({ error: "Step definition not found" }, 404);
 
-    stepResult.attempts++;
+    step.attempts++;
+    step.error = body.error;
 
-    const maxRetries = step.retryConfig?.maxRetries ?? 0;
-    if (stepResult.attempts <= maxRetries) {
-      stepResult.status = "running";
-      stepResult.error = body.error;
-      this.state.updatedAt = new Date().toISOString();
+    // Record failure attempt in history
+    this.state.history.push({
+      stepId: step.stepId,
+      action: step.action,
+      status: "failed",
+      timestamp: new Date().toISOString(),
+      attemptNumber: step.attempts,
+      error: body.error,
+    });
+
+    const maxRetries = defStep.retryConfig?.maxRetries ?? DEFAULT_MAX_RETRIES;
+    if (step.attempts <= maxRetries) {
+      step.status = "running";
       await this.ctx.storage.put("state", this.state);
 
-      const backoff =
-        (step.retryConfig?.backoffMs ?? 1000) *
-        Math.pow(2, stepResult.attempts - 1);
+      const backoff = Math.min(
+        (defStep.retryConfig?.backoffMs ?? BACKOFF_BASE_MS) *
+          Math.pow(2, step.attempts - 1),
+        BACKOFF_MAX_MS,
+      );
       await this.ctx.storage.setAlarm(Date.now() + backoff);
 
       return this.jsonResponse({
         status: "retrying",
-        attempt: stepResult.attempts,
+        attempt: step.attempts,
         maxRetries,
         nextRetryMs: backoff,
       });
     }
 
-    stepResult.status = "failed";
-    stepResult.error = body.error;
-    stepResult.completedAt = new Date().toISOString();
+    // Retries exhausted
+    step.status = "dlq";
+    step.completedAt = new Date().toISOString();
+    step.durationMs = step.startedAt
+      ? Date.now() - new Date(step.startedAt).getTime()
+      : undefined;
 
-    this.state.error = `Step ${stepId} failed: ${body.error}`;
-    this.transition("FAILED");
+    this.state.history.push({
+      stepId: step.stepId,
+      action: step.action,
+      status: "dlq",
+      timestamp: new Date().toISOString(),
+      attemptNumber: step.attempts,
+      error: body.error,
+    });
+
+    this.transition("failed");
     this.state.completedAt = new Date().toISOString();
     await this.ctx.storage.put("state", this.state);
     await this.ctx.storage.deleteAlarm();
+
+    // Emit evidence for the failed step
+    await this.emitEvidence(step);
+
+    // Move to dead letter queue
+    await this.sendToDeadLetter(step, body.error);
 
     if (this.definition.onFailure?.length) {
       await this.runCompensations();
     }
 
-    return this.jsonResponse({ status: "failed", error: this.state.error });
+    return this.jsonResponse({
+      status: "failed",
+      error: `Step ${stepId} failed: ${body.error}`,
+    });
   }
 
   private async handleGetStatus(): Promise<Response> {
@@ -210,17 +372,16 @@ export class WorkflowDO extends DurableObject {
     if (!this.state)
       return this.jsonResponse({ error: "Workflow not initialized" }, 404);
     return this.jsonResponse({
-      definitionId: this.state.definitionId,
-      definitionName: this.state.definitionName,
+      id: this.state.id,
+      type: this.state.type,
       status: this.state.status,
-      currentStepIndex: this.state.currentStepIndex,
-      stepResults: this.state.stepResults,
-      context: this.state.context,
       tenantId: this.state.tenantId,
-      startedAt: this.state.startedAt,
-      updatedAt: this.state.updatedAt,
+      steps: this.state.steps,
+      history: this.state.history,
+      context: this.state.context,
+      createdAt: this.state.createdAt,
       completedAt: this.state.completedAt,
-      error: this.state.error,
+      alarmCount: this.state.alarmCount,
     });
   }
 
@@ -228,14 +389,13 @@ export class WorkflowDO extends DurableObject {
     await this.loadState();
     if (!this.state)
       return this.jsonResponse({ error: "Workflow not initialized" }, 404);
-    if (this.state.status === "COMPLETED" || this.state.status === "FAILED") {
+    if (this.state.status === "completed" || this.state.status === "failed") {
       return this.jsonResponse(
         { error: `Cannot cancel workflow in ${this.state.status} state` },
         409,
       );
     }
-    this.transition("FAILED");
-    this.state.error = "Cancelled by user";
+    this.transition("failed");
     this.state.completedAt = new Date().toISOString();
     await this.ctx.storage.put("state", this.state);
     await this.ctx.storage.deleteAlarm();
@@ -246,21 +406,28 @@ export class WorkflowDO extends DurableObject {
     await this.loadState();
     if (!this.state || !this.definition) return;
 
-    if (this.state.status === "RUNNING" || this.state.status === "WAITING") {
-      this.transition("TIMED_OUT");
-      this.state.error = "Workflow timed out";
-      this.state.completedAt = new Date().toISOString();
+    this.state.alarmCount = (this.state.alarmCount ?? 0) + 1;
 
-      const currentStep = this.definition.steps[this.state.currentStepIndex];
+    if (this.state.status === "running") {
+      // Find the current running step and check if it timed out
+      const currentStep = this.state.steps.find((s) => s.status === "running");
       if (currentStep) {
-        const stepResult = this.state.stepResults[currentStep.id];
-        if (stepResult && stepResult.status === "running") {
-          stepResult.status = "failed";
-          stepResult.error = "Step timed out";
-          stepResult.completedAt = new Date().toISOString();
-        }
+        currentStep.status = "failed";
+        currentStep.error = "Step timed out";
+        currentStep.completedAt = new Date().toISOString();
+
+        this.state.history.push({
+          stepId: currentStep.stepId,
+          action: currentStep.action,
+          status: "failed",
+          timestamp: currentStep.completedAt,
+          attemptNumber: currentStep.attempts,
+          error: "Step timed out",
+        });
       }
 
+      this.transition("failed");
+      this.state.completedAt = new Date().toISOString();
       await this.ctx.storage.put("state", this.state);
 
       if (this.definition.onFailure?.length) {
@@ -269,60 +436,136 @@ export class WorkflowDO extends DurableObject {
     }
   }
 
-  private transition(newStatus: WorkflowStatus): void {
+  private transition(newStatus: RunStatus): void {
     if (!this.state) throw new Error("State not loaded");
     const allowed = VALID_TRANSITIONS[this.state.status];
-    if (!allowed.includes(newStatus)) {
+    if (!allowed || !allowed.includes(newStatus)) {
       throw new Error(
         `Invalid transition: ${this.state.status} -> ${newStatus}`,
       );
     }
     this.state.status = newStatus;
-    this.state.updatedAt = new Date().toISOString();
   }
 
   private async advanceToNextStep(): Promise<void> {
     if (!this.state || !this.definition) return;
-    const step = this.definition.steps[this.state.currentStepIndex];
-    if (!step) return;
 
-    const stepResult = this.state.stepResults[step.id];
-    stepResult.status = "running";
-    stepResult.startedAt = new Date().toISOString();
-    stepResult.attempts = 1;
-    this.state.updatedAt = new Date().toISOString();
+    const nextStep = this.state.steps.find((s) => s.status === "pending");
+    if (!nextStep) return;
+
+    const defStep = this.definition.steps.find((s) => s.id === nextStep.stepId);
+    if (!defStep) return;
+
+    nextStep.status = "running";
+    nextStep.startedAt = new Date().toISOString();
+    nextStep.attempts = 1;
+
+    this.state.history.push({
+      stepId: nextStep.stepId,
+      action: nextStep.action,
+      status: "running",
+      timestamp: nextStep.startedAt,
+      attemptNumber: 1,
+    });
 
     await this.ctx.storage.put("state", this.state);
 
-    if (step.timeoutMs > 0) {
-      await this.ctx.storage.setAlarm(Date.now() + step.timeoutMs);
+    if (defStep.timeoutMs > 0) {
+      await this.ctx.storage.setAlarm(Date.now() + defStep.timeoutMs);
+    }
+
+    // Dispatch step task via queue
+    const bus = this.getQueueBus();
+    if (bus) {
+      const msg: StepTaskMessage = {
+        kind: "step-task",
+        runId: this.state.id,
+        stepId: nextStep.stepId,
+        attempt: nextStep.attempts,
+      };
+      await bus.publish("step-tasks", msg);
+    }
+  }
+
+  private async emitEvidence(step: StepState): Promise<void> {
+    if (!this.state) return;
+    const emitter = this.getEvidenceEmitter();
+    if (!emitter) return;
+    try {
+      await emitter.emit(this.state, step);
+    } catch (err) {
+      // Evidence emission failure should not block workflow execution
+      console.error(
+        "Evidence emission failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  private async sendToDeadLetter(
+    step: StepState,
+    error: string,
+  ): Promise<void> {
+    if (!this.state) return;
+    try {
+      const db = this.env?.DB;
+      if (!db) return;
+
+      const entry: DeadLetterEntry = {
+        eventId: this.state.id,
+        agentId: step.action,
+        deliveryId: `${this.state.id}:${step.stepId}`,
+        tenantId: this.state.tenantId,
+        eventType: `workflow.step.${step.action}`,
+        eventSource: "workflow-do",
+        eventPayload: JSON.stringify({
+          runId: this.state.id,
+          stepId: step.stepId,
+          context: this.state.context,
+        }),
+        errorMessage: error,
+        totalAttempts: step.attempts,
+        firstAttemptAt: step.startedAt ?? this.state.createdAt,
+        lastAttemptAt: new Date().toISOString(),
+      };
+      await moveToDeadLetter(db, entry);
+    } catch (err) {
+      // DLQ failure should not block workflow execution
+      console.error(
+        "DLQ write failed:",
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 
   private async runCompensations(): Promise<void> {
-    if (!this.definition?.onFailure) return;
+    if (!this.definition?.onFailure || !this.state) return;
     for (const step of this.definition.onFailure) {
-      this.state!.stepResults[`compensate_${step.id}`] = {
+      const compensationStep: StepState = {
         stepId: `compensate_${step.id}`,
+        action: step.handler,
         status: "completed",
         attempts: 1,
         startedAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
       };
+      this.state.steps.push(compensationStep);
     }
-    await this.ctx.storage.put("state", this.state!);
+    await this.ctx.storage.put("state", this.state);
   }
 
   private getCurrentStepId(): string | null {
-    if (!this.state || !this.definition) return null;
-    return this.definition.steps[this.state.currentStepIndex]?.id ?? null;
+    if (!this.state) return null;
+    const current = this.state.steps.find(
+      (s) => s.status === "running" || s.status === "pending",
+    );
+    return current?.stepId ?? null;
   }
 
   private async loadState(): Promise<void> {
     if (!this.state) {
       this.state =
-        ((await this.ctx.storage.get("state")) as WorkflowState | undefined) ??
-        null;
+        ((await this.ctx.storage.get("state")) as RunState | undefined) ?? null;
       this.definition =
         ((await this.ctx.storage.get("definition")) as
           | WorkflowDefinition

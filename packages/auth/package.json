@@ -11,7 +11,7 @@
     "prebuild": "npm run clean"
   },
   "dependencies": {
-    "@atlasit/edge-utils": "*"
+    "@atlasit/edge-utils": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.2"

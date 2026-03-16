@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { moveToDeadLetter } from "../../ai-orchestrator/src/lib/dead-letter";
-import app from "../../ai-orchestrator/src/index";
+import { app } from "../../ai-orchestrator/src/index";
 
 type Row = Record<string, unknown>;
 

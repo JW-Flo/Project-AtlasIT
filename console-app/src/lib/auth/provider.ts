@@ -28,11 +28,55 @@ export interface AuthProviderContext {
     CF_ACCESS_TEAM_DOMAIN?: string;
   };
   kv: KVNamespace | undefined;
+  db?: D1Database;
 }
 
 export interface AuthProvider {
   name: string;
   resolve(ctx: AuthProviderContext): Promise<UserPrincipal | null>;
+}
+
+/**
+ * Fetches roles from the console_user_roles D1 table.
+ * Falls back to ["viewer"] when the user has no row or D1 is unavailable.
+ */
+export async function fetchUserRoles(
+  db: D1Database | undefined,
+  email: string,
+): Promise<{ roles: string[]; tenantId?: string }> {
+  const DEFAULT_ROLES = ["viewer"];
+  if (!db) {
+    return { roles: DEFAULT_ROLES };
+  }
+  try {
+    const row = await db
+      .prepare(
+        "SELECT roles, tenant_id FROM console_user_roles WHERE email = ? LIMIT 1",
+      )
+      .bind(email)
+      .first<{ roles: string; tenant_id: string }>();
+
+    if (!row) {
+      return { roles: DEFAULT_ROLES };
+    }
+
+    const parsed = JSON.parse(row.roles) as string[];
+    return {
+      roles:
+        Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_ROLES,
+      tenantId: row.tenant_id || undefined,
+    };
+  } catch (e) {
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        event: "auth.roles_lookup_failed",
+        email,
+        err: String(e),
+      }),
+    );
+    return { roles: DEFAULT_ROLES };
+  }
 }
 
 /**
@@ -42,6 +86,7 @@ export interface AuthProvider {
  *   - Fetches signing keys from the Access certs endpoint.
  *   - Verifies RS256 signature, audience, and expiry.
  *   - Checks email against the allow-list (ALLOWED_ACCESS_EMAILS / SUPER_ADMIN_EMAIL).
+ *   - Fetches roles from D1 console_user_roles table (falls back to ["viewer"]).
  *
  * Structured auth decisions are logged for auditability.
  */
@@ -100,13 +145,18 @@ export class CloudflareAccessProvider implements AuthProvider {
       return null;
     }
 
+    // Fetch roles from D1 instead of hardcoding super-admin.
+    const { roles, tenantId } = await fetchUserRoles(ctx.db, email);
+    const isSuperAdmin = roles.includes("super-admin");
+
     const now = new Date().toISOString();
     const principal: UserPrincipal = {
       userId: email,
       email,
-      roles: ["super-admin"],
-      superAdmin: true,
+      roles,
+      superAdmin: isSuperAdmin,
       provider: this.name,
+      tenantId,
       createdAt: now,
       lastSeenAt: now,
     };
@@ -116,6 +166,7 @@ export class CloudflareAccessProvider implements AuthProvider {
         level: "info",
         event: "auth.cf_access.authenticated",
         email,
+        roles,
         sub: claims.sub,
         aud: Array.isArray(claims.aud) ? claims.aud : [claims.aud],
         exp: claims.exp,
