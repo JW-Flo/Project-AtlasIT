@@ -1,0 +1,5 @@
+# Conftest configuration for AtlasIT Terraform policies.
+# https://www.conftest.dev/configuration/
+
+policy = "policies"
+namespace = "main"
