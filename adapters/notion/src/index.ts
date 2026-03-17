@@ -338,7 +338,7 @@ app.get("/auth/callback", async (c) => {
         "notion",
         tokens.access_token,
         tokens.refresh_token ?? null,
-        new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+        new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString(),
         new Date().toISOString(),
       )
       .run();

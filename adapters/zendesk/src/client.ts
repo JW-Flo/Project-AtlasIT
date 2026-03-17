@@ -70,7 +70,11 @@ export async function listUsers(
     `https://${subdomain}.zendesk.com/api/v2/users.json?per_page=${DEFAULT_PAGE_SIZE}`;
 
   while (url) {
-    const response = await zendeskFetch<{
+    const response: {
+      users: ZendeskUser[];
+      next_page: string | null;
+      count: number;
+    } = await zendeskFetch<{
       users: ZendeskUser[];
       next_page: string | null;
       count: number;
@@ -104,7 +108,11 @@ export async function listOrganizations(
     `https://${subdomain}.zendesk.com/api/v2/organizations.json?per_page=${DEFAULT_PAGE_SIZE}`;
 
   while (url) {
-    const response = await zendeskFetch<{
+    const response: {
+      organizations: ZendeskOrganization[];
+      next_page: string | null;
+      count: number;
+    } = await zendeskFetch<{
       organizations: ZendeskOrganization[];
       next_page: string | null;
       count: number;
@@ -127,7 +135,11 @@ export async function getOrganizationUsers(
     `https://${subdomain}.zendesk.com/api/v2/organizations/${orgId}/users.json?per_page=${DEFAULT_PAGE_SIZE}`;
 
   while (url) {
-    const response = await zendeskFetch<{
+    const response: {
+      users: ZendeskUser[];
+      next_page: string | null;
+      count: number;
+    } = await zendeskFetch<{
       users: ZendeskUser[];
       next_page: string | null;
       count: number;

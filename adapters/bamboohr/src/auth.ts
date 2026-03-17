@@ -17,5 +17,5 @@ export async function authMiddleware(
  * for direct API calls.
  */
 export function validateApiKey(apiKey: string): boolean {
-  return apiKey && apiKey.length > 10;
+  return !!apiKey && apiKey.length > 10;
 }

@@ -1,6 +1,7 @@
 import type {
   DropboxUser,
   DropboxGroup,
+  DropboxGroupMember,
   DropboxListMembersResponse,
   DropboxListGroupsResponse,
 } from "./types.js";
