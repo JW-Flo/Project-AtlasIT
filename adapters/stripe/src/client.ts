@@ -1,4 +1,11 @@
-import type { StripePerson, StripeAccount, StripeList } from "./types.js";
+import type {
+  StripePerson,
+  StripeAccount,
+  StripeCustomer,
+  StripeProduct,
+  StripeSubscription,
+  StripeList,
+} from "./types.js";
 
 const BASE_URL = "https://api.stripe.com/v1";
 
@@ -165,4 +172,59 @@ export async function getAccount(
 ): Promise<StripeAccount> {
   const url = `${BASE_URL}/accounts/${encodeURIComponent(accountId)}`;
   return stripeFetch<StripeAccount>(url, secretKey);
+}
+
+// --- Customer endpoints ---
+
+export async function listCustomers(
+  secretKey: string,
+): Promise<StripeCustomer[]> {
+  const url = `${BASE_URL}/customers`;
+  return paginateAll<StripeCustomer>(url, secretKey);
+}
+
+export async function getCustomer(
+  secretKey: string,
+  customerId: string,
+): Promise<StripeCustomer> {
+  const url = `${BASE_URL}/customers/${encodeURIComponent(customerId)}`;
+  return stripeFetch<StripeCustomer>(url, secretKey);
+}
+
+// --- Product endpoints ---
+
+export async function listProducts(
+  secretKey: string,
+  activeOnly = true,
+): Promise<StripeProduct[]> {
+  const url = activeOnly
+    ? `${BASE_URL}/products?active=true`
+    : `${BASE_URL}/products`;
+  return paginateAll<StripeProduct>(url, secretKey);
+}
+
+export async function getProduct(
+  secretKey: string,
+  productId: string,
+): Promise<StripeProduct> {
+  const url = `${BASE_URL}/products/${encodeURIComponent(productId)}`;
+  return stripeFetch<StripeProduct>(url, secretKey);
+}
+
+// --- Subscription endpoints ---
+
+export async function listSubscriptions(
+  secretKey: string,
+  status = "all",
+): Promise<StripeSubscription[]> {
+  const url = `${BASE_URL}/subscriptions?status=${encodeURIComponent(status)}`;
+  return paginateAll<StripeSubscription>(url, secretKey);
+}
+
+export async function getSubscription(
+  secretKey: string,
+  subscriptionId: string,
+): Promise<StripeSubscription> {
+  const url = `${BASE_URL}/subscriptions/${encodeURIComponent(subscriptionId)}`;
+  return stripeFetch<StripeSubscription>(url, secretKey);
 }

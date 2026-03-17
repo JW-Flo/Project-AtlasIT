@@ -90,11 +90,75 @@ export interface StripeEvent {
   } | null;
 }
 
-export interface SyncResult {
-  users: {
-    created: number;
-    updated: number;
-    total: number;
+// --- Stripe Customer types ---
+
+export interface StripeCustomer {
+  id: string;
+  object: "customer";
+  email: string | null;
+  name: string | null;
+  phone: string | null;
+  description: string | null;
+  address: StripeAddress | null;
+  created: number;
+  delinquent: boolean;
+  currency: string | null;
+  default_source: string | null;
+  metadata: Record<string, string>;
+}
+
+// --- Stripe Product types ---
+
+export interface StripeProduct {
+  id: string;
+  object: "product";
+  name: string;
+  description: string | null;
+  active: boolean;
+  created: number;
+  default_price: string | null;
+  metadata: Record<string, string>;
+}
+
+// --- Stripe Subscription types ---
+
+export interface StripeSubscription {
+  id: string;
+  object: "subscription";
+  customer: string;
+  status: string;
+  created: number;
+  current_period_start: number;
+  current_period_end: number;
+  items: {
+    object: "list";
+    data: Array<{
+      id: string;
+      price: {
+        id: string;
+        product: string;
+        unit_amount: number | null;
+        currency: string;
+        recurring: {
+          interval: string;
+          interval_count: number;
+        } | null;
+      };
+    }>;
   };
-  accounts: number;
+  metadata: Record<string, string>;
+}
+
+// --- Sync types ---
+
+export interface SyncResult {
+  created: number;
+  updated: number;
+  total: number;
+}
+
+export interface FullSyncResult {
+  users: SyncResult;
+  groups: SyncResult;
+  memberships: number;
 }

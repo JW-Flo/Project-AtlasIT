@@ -4,6 +4,9 @@ import type {
   Variables,
   StripeEvent,
   StripePerson,
+  StripeCustomer,
+  StripeProduct,
+  StripeSubscription,
 } from "./types.js";
 import { publishEvent } from "./event-publisher.js";
 
@@ -12,6 +15,17 @@ const HANDLED_EVENT_TYPES = new Set([
   "person.updated",
   "person.deleted",
   "account.updated",
+  "customer.created",
+  "customer.updated",
+  "customer.deleted",
+  "invoice.paid",
+  "invoice.payment_failed",
+  "product.created",
+  "product.updated",
+  "product.deleted",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
 ]);
 
 function mapEventType(stripeType: string): string | null {
@@ -24,6 +38,28 @@ function mapEventType(stripeType: string): string | null {
       return "user.deprovisioned";
     case "account.updated":
       return "account.updated";
+    case "customer.created":
+      return "billing.customer.created";
+    case "customer.updated":
+      return "billing.customer.updated";
+    case "customer.deleted":
+      return "billing.customer.deleted";
+    case "invoice.paid":
+      return "billing.invoice.paid";
+    case "invoice.payment_failed":
+      return "billing.invoice.payment_failed";
+    case "product.created":
+      return "billing.product.created";
+    case "product.updated":
+      return "billing.product.updated";
+    case "product.deleted":
+      return "billing.product.deleted";
+    case "customer.subscription.created":
+      return "billing.subscription.created";
+    case "customer.subscription.updated":
+      return "billing.subscription.updated";
+    case "customer.subscription.deleted":
+      return "billing.subscription.deleted";
     default:
       return null;
   }
@@ -43,6 +79,73 @@ function buildPersonPayload(person: StripePerson): Record<string, unknown> {
     firstName: person.first_name,
     lastName: person.last_name,
     relationship: person.relationship,
+  };
+}
+
+function buildCustomerPayload(
+  customer: StripeCustomer,
+): Record<string, unknown> {
+  return {
+    externalId: `cus:${customer.id}`,
+    customerId: customer.id,
+    email: customer.email,
+    name: customer.name,
+    phone: customer.phone,
+    description: customer.description,
+    delinquent: customer.delinquent,
+    currency: customer.currency,
+    metadata: customer.metadata,
+  };
+}
+
+function buildProductPayload(
+  product: StripeProduct,
+): Record<string, unknown> {
+  return {
+    externalId: `prod:${product.id}`,
+    productId: product.id,
+    name: product.name,
+    description: product.description,
+    active: product.active,
+    defaultPrice: product.default_price,
+    metadata: product.metadata,
+  };
+}
+
+function buildSubscriptionPayload(
+  subscription: StripeSubscription,
+): Record<string, unknown> {
+  return {
+    externalId: `sub:${subscription.id}`,
+    subscriptionId: subscription.id,
+    customerId: subscription.customer,
+    status: subscription.status,
+    currentPeriodStart: subscription.current_period_start,
+    currentPeriodEnd: subscription.current_period_end,
+    items: subscription.items.data.map((item) => ({
+      id: item.id,
+      priceId: item.price.id,
+      productId: item.price.product,
+      unitAmount: item.price.unit_amount,
+      currency: item.price.currency,
+      interval: item.price.recurring?.interval ?? null,
+    })),
+    metadata: subscription.metadata,
+  };
+}
+
+function buildInvoicePayload(
+  invoice: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    externalId: `inv:${invoice["id"] as string}`,
+    invoiceId: invoice["id"] as string,
+    customerId: invoice["customer"] as string,
+    status: invoice["status"] as string,
+    amountDue: invoice["amount_due"] as number,
+    amountPaid: invoice["amount_paid"] as number,
+    currency: invoice["currency"] as string,
+    subscriptionId: (invoice["subscription"] as string) ?? null,
   };
 }
 
@@ -182,21 +285,35 @@ export async function handleStripeWebhook(
 
   try {
     let payload: Record<string, unknown>;
+    const basePayload = {
+      stripeEventId: event.id,
+      stripeEventType: event.type,
+    };
 
     if (event.type.startsWith("person.")) {
       const person = event.data.object as unknown as StripePerson;
+      payload = { ...basePayload, ...buildPersonPayload(person) };
+    } else if (event.type.startsWith("customer.subscription.")) {
+      const subscription = event.data.object as unknown as StripeSubscription;
+      payload = { ...basePayload, ...buildSubscriptionPayload(subscription) };
+    } else if (event.type.startsWith("customer.")) {
+      const customer = event.data.object as unknown as StripeCustomer;
+      payload = { ...basePayload, ...buildCustomerPayload(customer) };
+    } else if (event.type.startsWith("product.")) {
+      const product = event.data.object as unknown as StripeProduct;
+      payload = { ...basePayload, ...buildProductPayload(product) };
+    } else if (event.type.startsWith("invoice.")) {
+      payload = { ...basePayload, ...buildInvoicePayload(event.data.object) };
+    } else if (event.type === "account.updated") {
       payload = {
-        stripeEventId: event.id,
-        stripeEventType: event.type,
-        ...buildPersonPayload(person),
-      };
-    } else {
-      // account.updated
-      payload = {
-        stripeEventId: event.id,
-        stripeEventType: event.type,
+        ...basePayload,
         accountId: event.data.object["id"] as string,
         previousAttributes: event.data.previous_attributes,
+      };
+    } else {
+      payload = {
+        ...basePayload,
+        objectId: event.data.object["id"] as string,
       };
     }
 
