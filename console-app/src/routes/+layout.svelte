@@ -1,6 +1,12 @@
 <script lang="ts">
   import "../app.css";
   import AppFrame from "$lib/components/layout/AppFrame.svelte";
+  import { page } from "$app/stores";
+
+  // Public routes that should not use the AppFrame shell (sidebar + topbar)
+  const PUBLIC_ROUTES = ["/support"];
+
+  $: isBare = PUBLIC_ROUTES.some((r) => $page.url.pathname === r || $page.url.pathname.startsWith(r + "/"));
 </script>
 
 <svelte:head>
@@ -8,6 +14,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 </svelte:head>
 
-<AppFrame>
+{#if isBare}
   <slot />
-</AppFrame>
+{:else}
+  <AppFrame>
+    <slot />
+  </AppFrame>
+{/if}
