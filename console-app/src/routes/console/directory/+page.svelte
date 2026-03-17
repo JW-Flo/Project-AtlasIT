@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
@@ -142,11 +143,7 @@
   async function loadAll() {
     loading = true;
     syncStatus = await fetchStatus();
-    // Always load users and groups; only load mappings if IdP is connected
-    const promises: Promise<void>[] = [fetchUsers(), fetchGroups()];
-    if (syncStatus.connected) {
-      promises.push(fetchMappings());
-    }
+    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings()];
     await Promise.all(promises);
     loading = false;
   }
@@ -322,11 +319,10 @@
     }
   }
 
-  // Tabs: Users and Groups always visible; Mappings only when IdP is connected
   $: tabs = [
     { id: "users" as const, label: "Users" },
     { id: "groups" as const, label: "Groups" },
-    ...(syncStatus.connected ? [{ id: "mappings" as const, label: "Mappings" }] : []),
+    { id: "mappings" as const, label: "Mappings" },
   ];
 
   const providerIcons: Record<string, string> = {
@@ -336,7 +332,13 @@
     entra_id: "Entra ID",
   };
 
-  onMount(loadAll);
+  onMount(() => {
+    const tabParam = $page.url.searchParams.get("tab");
+    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users") {
+      activeTab = tabParam;
+    }
+    loadAll();
+  });
 </script>
 
 <div class="space-y-6">

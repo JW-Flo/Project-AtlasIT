@@ -94,13 +94,20 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     connectedApps: appCount?.count ?? 0,
     directory: directoryConn
       ? {
+          connected: true,
           provider: directoryConn.provider,
           status: directoryConn.status,
           lastSyncAt: directoryConn.last_sync_at,
           userCount: directoryConn.user_count,
           groupCount: directoryConn.group_count,
         }
-      : null,
+      : {
+          connected: false,
+          provider: null,
+          userCount: 0,
+          groupCount: 0,
+          lastSync: null,
+        },
     users: { active: activeUsers?.count ?? 0 },
     groups: { total: groupCount?.count ?? 0 },
     activeMappings: confirmedMappings?.count ?? 0,
