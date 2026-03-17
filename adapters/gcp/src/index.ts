@@ -1,19 +1,11 @@
 import { Hono } from "hono";
+import type { Bindings, Variables, SyncResult } from "./types.js";
 import { validateConfig } from "./config.js";
-import { authMiddleware } from "./auth.js";
-
-type Bindings = {
-  ADAPTER_SECRET: string;
-  ORCHESTRATOR_URL: string;
-  ADAPTER_NAME: string;
-  DB: D1Database;
-  SERVICE_ACCOUNT_CREDENTIALS: string;
-  PRIVATEKEY: string;
-};
-
-type Variables = {
-  correlationId: string;
-};
+import { authMiddleware, loadServiceAccountCredentials } from "./auth.js";
+import { getAccessToken } from "./client.js";
+import { syncUsers } from "./sync/users.js";
+import { syncGroups } from "./sync/groups.js";
+import { handlePubSubWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -83,7 +75,7 @@ app.get("/health", (c) => {
   });
 });
 
-// Webhook receiver from orchestrator
+// Webhook receiver from orchestrator (internal)
 app.post("/webhook", async (c) => {
   const correlationId = c.get("correlationId");
   const signature = c.req.header("X-Signature");
@@ -141,21 +133,24 @@ app.post("/webhook", async (c) => {
   return c.json({ status: "processed", eventId, correlationId });
 });
 
-// Trigger a sync operation
+// Trigger a full directory sync (users + groups)
 app.post("/api/sync", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req.json<{ tenantId: string; scope?: string }>();
+  const body = await c.req
+    .json<{ tenantId: string; scope?: string }>()
+    .catch(() => null);
 
-  if (!body.tenantId) {
+  if (!body?.tenantId) {
     return c.json({ error: "tenantId is required", correlationId }, 400);
   }
 
   const syncId = crypto.randomUUID();
 
+  // Record sync job in D1
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(syncId, body.tenantId, "gcp", "pending", new Date().toISOString())
+    .bind(syncId, body.tenantId, "gcp", "running", new Date().toISOString())
     .run();
 
   console.log(
@@ -169,15 +164,146 @@ app.post("/api/sync", async (c) => {
     }),
   );
 
-  return c.json({
-    status: "accepted",
-    syncId,
-    correlationId,
-    targets: {
-      users: "pending",
-      groups: "pending",
-    },
-  });
+  // Retrieve connector config for this tenant
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'gcp' LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+    return c.json(
+      {
+        error: "No connector config found. Configure GCP credentials first.",
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  const config = JSON.parse(configRow.config) as Record<string, unknown>;
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+    return c.json(
+      { error: "Invalid config", details: validation.errors, correlationId },
+      400,
+    );
+  }
+
+  try {
+    // Load service account credentials and obtain access token
+    const credentials = loadServiceAccountCredentials(
+      c.env as unknown as Record<string, string>,
+    );
+    const accessToken = await getAccessToken({
+      type: "service_account",
+      project_id: (config.projectId as string) ?? credentials.project_id ?? "",
+      private_key_id: credentials.private_key_id ?? "",
+      private_key: (config.privateKey as string) ?? credentials.private_key ?? "",
+      client_email: (config.clientEmail as string) ?? credentials.client_email ?? "",
+      client_id: credentials.client_id ?? "",
+      auth_uri: credentials.auth_uri ?? "https://accounts.google.com/o/oauth2/auth",
+      token_uri: credentials.token_uri ?? "https://oauth2.googleapis.com/token",
+      auth_provider_x509_cert_url:
+        credentials.auth_provider_x509_cert_url ??
+        "https://www.googleapis.com/oauth2/v1/certs",
+      client_x509_cert_url: credentials.client_x509_cert_url ?? "",
+    });
+
+    const scope = body.scope ?? "all";
+    const projectId =
+      (config.projectId as string) ?? credentials.project_id ?? "";
+    const customerId = (config.customerId as string) ?? "";
+
+    let userResult: SyncResult = { created: 0, updated: 0, total: 0 };
+    let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
+
+    if (scope === "all" || scope === "users") {
+      userResult = await syncUsers(
+        accessToken,
+        projectId,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    if (scope === "all" || scope === "groups") {
+      groupResult = await syncGroups(
+        accessToken,
+        customerId,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    // Update connection status
+    await updateConnectionStatus(
+      c.env.DB,
+      body.tenantId,
+      userResult.total,
+      groupResult.total,
+    );
+
+    // Mark sync job complete
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'completed', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        syncId,
+        message: "Sync completed",
+        tenantId: body.tenantId,
+        users: userResult,
+        groups: groupResult,
+      }),
+    );
+
+    return c.json({
+      status: "synced",
+      syncId,
+      correlationId,
+      data: { users: userResult, groups: groupResult },
+    });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
+
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    await updateConnectionStatus(c.env.DB, body.tenantId, 0, 0, errorMsg);
+
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        syncId,
+        message: "Sync failed",
+        tenantId: body.tenantId,
+        error: errorMsg,
+      }),
+    );
+
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
 });
 
 // Status endpoint
@@ -192,18 +318,101 @@ app.get("/api/status", async (c) => {
     );
   }
 
-  const result = await c.env.DB.prepare(
-    "SELECT id, status, created_at, completed_at FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = ?2 ORDER BY created_at DESC LIMIT 10",
+  const connection = await c.env.DB.prepare(
+    `SELECT status, error_msg, last_sync_at, user_count, group_count
+     FROM directory_connections WHERE tenant_id = ?1`,
   )
-    .bind(tenantId, "gcp")
+    .bind(tenantId)
+    .first<{
+      status: string;
+      error_msg: string | null;
+      last_sync_at: string | null;
+      user_count: number;
+      group_count: number;
+    }>();
+
+  if (!connection) {
+    return c.json({
+      connector: "gcp",
+      tenantId,
+      correlationId,
+      status: "not_connected",
+      lastSyncAt: null,
+      userCount: 0,
+      groupCount: 0,
+    });
+  }
+
+  const recentSyncs = await c.env.DB.prepare(
+    `SELECT id, status, created_at, completed_at
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'gcp'
+     ORDER BY created_at DESC LIMIT 10`,
+  )
+    .bind(tenantId)
     .all();
 
   return c.json({
     connector: "gcp",
     tenantId,
     correlationId,
-    recentSyncs: result.results,
+    status: connection.status,
+    error: connection.error_msg,
+    lastSyncAt: connection.last_sync_at,
+    userCount: connection.user_count,
+    groupCount: connection.group_count,
+    recentSyncs: recentSyncs.results,
   });
 });
 
+// GCP Pub/Sub push webhook receiver
+app.post("/webhooks/gcp/events", (c) => handlePubSubWebhook(c));
+
 export default app;
+
+// -- Internal helpers --
+
+async function updateConnectionStatus(
+  db: D1Database,
+  tenantId: string,
+  userCount: number,
+  groupCount: number,
+  error?: string,
+): Promise<void> {
+  const existing = await db
+    .prepare("SELECT id FROM directory_connections WHERE tenant_id = ?1")
+    .bind(tenantId)
+    .first();
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE directory_connections
+         SET status = ?1, error_msg = ?2, last_sync_at = datetime('now'),
+             user_count = ?3, group_count = ?4, updated_at = datetime('now')
+         WHERE tenant_id = ?5`,
+      )
+      .bind(
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+        tenantId,
+      )
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
+      )
+      .bind(
+        tenantId,
+        "gcp",
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+      )
+      .run();
+  }
+}

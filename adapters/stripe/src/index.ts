@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import type { Bindings, Variables } from "./types.js";
-import { syncPersons } from "./sync/users.js";
+import type { Bindings, Variables, SyncResult } from "./types.js";
+import { syncUsers } from "./sync/users.js";
+import { syncGroups } from "./sync/groups.js";
 import { handleStripeWebhook } from "./webhooks.js";
 import { authMiddleware } from "./auth.js";
 
@@ -67,7 +68,7 @@ app.get("/health", (c) => {
       id: "stripe",
       name: "Stripe",
       provider: "Stripe",
-      capabilities: ["user-provisioning", "directory-sync"],
+      capabilities: ["user-provisioning", "directory-sync", "group-sync"],
     },
   });
 });
@@ -132,13 +133,17 @@ app.post("/webhook", async (c) => {
   return c.json({ status: "processed", eventId, correlationId });
 });
 
-// Trigger directory sync — pulls persons from all connected accounts
+// Trigger a full directory sync (users + groups)
 app.post("/api/sync", async (c) => {
   const correlationId = c.get("correlationId");
-  const tenantId = c.req.header("X-Tenant-ID");
+  const body = await c.req
+    .json<{ tenantId: string; scope?: string }>()
+    .catch(() => null);
+
+  const tenantId = body?.tenantId ?? c.req.header("X-Tenant-ID");
 
   if (!tenantId) {
-    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+    return c.json({ error: "tenantId is required", correlationId }, 400);
   }
 
   const syncId = crypto.randomUUID();
@@ -154,23 +159,52 @@ app.post("/api/sync", async (c) => {
       level: "info",
       correlationId,
       syncId,
-      message: "Sync started",
+      message: "Sync triggered",
       tenantId,
       connector: "stripe",
     }),
   );
 
   try {
-    const result = await syncPersons(
+    const scope = body?.scope ?? "all";
+
+    let userResult: SyncResult = { created: 0, updated: 0, total: 0 };
+    let groupResult: SyncResult & { memberships: number } = {
+      created: 0,
+      updated: 0,
+      total: 0,
+      memberships: 0,
+    };
+
+    if (scope === "all" || scope === "users") {
+      userResult = await syncUsers(
+        c.env.DB,
+        c.env.STRIPE_SECRET_KEY,
+        tenantId,
+      );
+    }
+
+    if (scope === "all" || scope === "groups") {
+      groupResult = await syncGroups(
+        c.env.DB,
+        c.env.STRIPE_SECRET_KEY,
+        tenantId,
+      );
+    }
+
+    // Update connection status
+    await updateConnectionStatus(
       c.env.DB,
-      c.env.STRIPE_SECRET_KEY,
       tenantId,
+      userResult.total,
+      groupResult.total,
     );
 
+    // Mark sync job complete
     await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = ?1, completed_at = ?2 WHERE id = ?3 AND tenant_id = ?4",
+      "UPDATE sync_jobs SET status = 'completed', completed_at = ?1 WHERE id = ?2",
     )
-      .bind("completed", new Date().toISOString(), syncId, tenantId)
+      .bind(new Date().toISOString(), syncId)
       .run();
 
     console.log(
@@ -180,25 +214,35 @@ app.post("/api/sync", async (c) => {
         syncId,
         message: "Sync completed",
         tenantId,
-        users: result.users,
-        accounts: result.accounts,
+        users: userResult,
+        groups: groupResult,
       }),
     );
 
     return c.json({
-      status: "completed",
+      status: "synced",
       syncId,
       correlationId,
-      data: result,
+      data: {
+        users: userResult,
+        groups: {
+          created: groupResult.created,
+          updated: groupResult.updated,
+          total: groupResult.total,
+        },
+        memberships: groupResult.memberships,
+      },
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
 
     await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = ?1, completed_at = ?2 WHERE id = ?3 AND tenant_id = ?4",
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
     )
-      .bind("failed", new Date().toISOString(), syncId, tenantId)
+      .bind(new Date().toISOString(), syncId)
       .run();
+
+    await updateConnectionStatus(c.env.DB, tenantId, 0, 0, errorMsg);
 
     console.error(
       JSON.stringify({
@@ -218,10 +262,10 @@ app.post("/api/sync", async (c) => {
 // Sync status endpoint
 app.get("/api/status", async (c) => {
   const correlationId = c.get("correlationId");
-  const tenantId = c.req.header("X-Tenant-ID");
+  const tenantId = c.req.query("tenantId") ?? c.req.header("X-Tenant-ID");
 
   if (!tenantId) {
-    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+    return c.json({ error: "tenantId is required", correlationId }, 400);
   }
 
   const connection = await c.env.DB.prepare(
@@ -238,10 +282,13 @@ app.get("/api/status", async (c) => {
 
   if (!connection) {
     return c.json({
+      connector: "stripe",
+      tenantId,
+      correlationId,
       status: "not_connected",
       lastSyncAt: null,
       userCount: 0,
-      correlationId,
+      groupCount: 0,
     });
   }
 
@@ -255,12 +302,61 @@ app.get("/api/status", async (c) => {
     connector: "stripe",
     tenantId,
     correlationId,
-    connectionStatus: connection.status,
+    status: connection.status,
     error: connection.error_msg,
     lastSyncAt: connection.last_sync_at,
     userCount: connection.user_count,
+    groupCount: connection.group_count,
     recentSyncs: recentSyncs.results,
   });
 });
 
 export default app;
+
+// -- Internal helpers --
+
+async function updateConnectionStatus(
+  db: D1Database,
+  tenantId: string,
+  userCount: number,
+  groupCount: number,
+  error?: string,
+): Promise<void> {
+  const existing = await db
+    .prepare("SELECT id FROM directory_connections WHERE tenant_id = ?1")
+    .bind(tenantId)
+    .first();
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE directory_connections
+         SET status = ?1, error_msg = ?2, last_sync_at = datetime('now'),
+             user_count = ?3, group_count = ?4, updated_at = datetime('now')
+         WHERE tenant_id = ?5`,
+      )
+      .bind(
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+        tenantId,
+      )
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
+      )
+      .bind(
+        tenantId,
+        "stripe",
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+      )
+      .run();
+  }
+}
