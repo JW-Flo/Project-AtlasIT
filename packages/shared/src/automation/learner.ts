@@ -36,6 +36,16 @@ export interface AutomationSuggestion {
 }
 
 /**
+ * A summary of a historical event from the events table.
+ */
+export interface EventHistoryEntry {
+  type: string;
+  source: string;
+  count: number;
+  latestAt: string;
+}
+
+/**
  * Analyze tenant state and generate automation rule suggestions.
  *
  * The learner does NOT persist anything — it returns suggestions that the
@@ -223,6 +233,74 @@ export function generateSuggestions(
         actions: template.actions,
       },
     });
+  }
+
+  return suggestions.sort(
+    (a, b) => priorityWeight(a.priority) - priorityWeight(b.priority),
+  );
+}
+
+/**
+ * Analyze event history to detect patterns and generate data-driven suggestions.
+ *
+ * Looks for:
+ * - Frequently occurring events without matching automation rules
+ * - Event types that map to supported triggers but have no rules
+ */
+export function generatePatternSuggestions(
+  existingRules: AutomationRule[],
+  eventHistory: EventHistoryEntry[],
+): AutomationSuggestion[] {
+  const suggestions: AutomationSuggestion[] = [];
+  const existingTriggerTypes = new Set(existingRules.map((r) => r.triggerType));
+
+  /** Map from D1 event types to automation trigger types */
+  const eventToTrigger: Record<string, TriggerType> = {
+    "user.created": "user_created",
+    "user.deactivated": "user_deactivated",
+    "user.joined_group": "user_joined_group",
+    "user.left_group": "user_left_group",
+    "app.connected": "app_connected",
+    "app.disconnected": "app_disconnected",
+    "app.health_changed": "app_health_changed",
+    "compliance.score_changed": "compliance_score_changed",
+  };
+
+  const triggerToTemplate: Record<string, string> = {
+    user_created: "onboard-new-user",
+    user_deactivated: "offboard-user-on-deactivation",
+    app_health_changed: "health-degradation-alert",
+    compliance_score_changed: "compliance-score-drop",
+    app_connected: "sync-directory-on-app-connect",
+  };
+
+  for (const entry of eventHistory) {
+    const triggerType = eventToTrigger[entry.type];
+    if (!triggerType) continue;
+    if (existingTriggerTypes.has(triggerType)) continue;
+
+    const templateId = triggerToTemplate[triggerType];
+    if (!templateId) continue;
+
+    const template = ruleTemplates.find((t) => t.id === templateId);
+    if (!template) continue;
+
+    // Suggest if the event occurs frequently (3+ times)
+    if (entry.count >= 3) {
+      suggestions.push({
+        templateId,
+        reason: `"${entry.type}" events have occurred ${entry.count} times — automate the response with a rule`,
+        priority: entry.count >= 10 ? "high" : "medium",
+        ruleInput: {
+          name: template.name,
+          description: template.description,
+          triggerType: template.triggerType,
+          triggerConfig: template.triggerConfig,
+          conditions: template.conditions,
+          actions: template.actions,
+        },
+      });
+    }
   }
 
   return suggestions.sort(

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AppEnv, AgentSubscription } from "../types";
 import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
+import { evaluateAutomationRules } from "../lib/automation-evaluator";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -208,6 +209,41 @@ eventRoutes.post("/", async (c) => {
         c.get("correlationId"),
       ),
     );
+  }
+
+  // Evaluate automation rules for this event (async, non-blocking)
+  try {
+    const ctx2 = c.executionCtx;
+    ctx2.waitUntil(
+      evaluateAutomationRules(
+        c.env.DB,
+        tenantId,
+        type,
+        source,
+        payload,
+        c.env.AUTOMATION,
+      ).catch((err) => {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            message: "Automation rule evaluation failed",
+            eventId,
+            tenantId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }),
+    );
+  } catch {
+    // No ExecutionContext available (e.g. in tests) — run synchronously
+    evaluateAutomationRules(
+      c.env.DB,
+      tenantId,
+      type,
+      source,
+      payload,
+      c.env.AUTOMATION,
+    ).catch(() => {});
   }
 
   // Mark event as processing

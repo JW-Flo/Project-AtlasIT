@@ -26,6 +26,15 @@ export interface AutomationSuggestion {
   ruleInput: CreateRuleInput;
 }
 /**
+ * A summary of a historical event from the events table.
+ */
+export interface EventHistoryEntry {
+  type: string;
+  source: string;
+  count: number;
+  latestAt: string;
+}
+/**
  * Analyze tenant state and generate automation rule suggestions.
  *
  * The learner does NOT persist anything — it returns suggestions that the
@@ -35,6 +44,17 @@ export declare function generateSuggestions(
   existingRules: AutomationRule[],
   connectedApps: ConnectedApp[],
   groupMappings: GroupAppMapping[],
+): AutomationSuggestion[];
+/**
+ * Analyze event history to detect patterns and generate data-driven suggestions.
+ *
+ * Looks for:
+ * - Frequently occurring events without matching automation rules
+ * - Event types that map to supported triggers but have no rules
+ */
+export declare function generatePatternSuggestions(
+  existingRules: AutomationRule[],
+  eventHistory: EventHistoryEntry[],
 ): AutomationSuggestion[];
 export {};
 //# sourceMappingURL=learner.d.ts.map
