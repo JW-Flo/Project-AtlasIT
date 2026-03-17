@@ -8,11 +8,8 @@ import {
   sortActions,
   buildExecutionSummary,
   interpolateTemplate,
-} from "@atlasit/shared/automation/engine";
-import type {
-  AutomationEvent,
-  ActionResult,
-} from "@atlasit/shared/automation/types";
+} from "@atlasit/shared";
+import type { AutomationEvent, ActionResult } from "@atlasit/shared";
 
 /**
  * Evaluate an automation event against tenant rules and execute matching actions.

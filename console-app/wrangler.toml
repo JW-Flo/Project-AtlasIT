@@ -21,6 +21,7 @@ routes = [
 	"www.atlasit.pro/api/incidents*",
 	"www.atlasit.pro/api/access-requests*",
 	"www.atlasit.pro/api/notifications*",
+	"www.atlasit.pro/api/slack/*",
 	"www.atlasit.pro/api/apps*",
 	"www.atlasit.pro/api/workflows*",
 	"www.atlasit.pro/api/admin/*",

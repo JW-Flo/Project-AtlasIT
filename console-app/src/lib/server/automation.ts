@@ -9,7 +9,7 @@ import type {
   AppHealthCheck,
   CreateRuleInput,
   UpdateRuleInput,
-} from "@atlasit/shared/automation/types";
+} from "@atlasit/shared";
 
 // ---------------------------------------------------------------------------
 // Row ↔ Domain mappers

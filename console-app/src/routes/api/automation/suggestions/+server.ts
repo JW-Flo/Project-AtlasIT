@@ -9,7 +9,7 @@ import { listConnectedApps } from "$lib/server/credentials";
 import {
   generateSuggestions,
   generatePatternSuggestions,
-} from "@atlasit/shared/automation/learner";
+} from "@atlasit/shared";
 import { integrations } from "$lib/data/integrations";
 
 /**

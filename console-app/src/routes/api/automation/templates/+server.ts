@@ -1,6 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { ruleTemplates } from "@atlasit/shared/automation/templates";
+import { ruleTemplates } from "@atlasit/shared";
 
 export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user as any;

@@ -1,0 +1,74 @@
+{
+  "display_information": {
+    "name": "AtlasIT Agent",
+    "description": "AtlasIT operational AI agent for DevSecOps automation, compliance evidence, and incident orchestration.",
+    "background_color": "#0F172A"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "AtlasIT Agent",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/atlas",
+        "url": "https://www.atlasit.pro/api/slack/commands",
+        "description": "Execute AtlasIT automation or query system status",
+        "usage_hint": "<task> or help",
+        "should_escape": false
+      },
+      {
+        "command": "/evidence",
+        "url": "https://www.atlasit.pro/api/slack/commands",
+        "description": "Retrieve or verify AtlasIT evidence artifacts",
+        "usage_hint": "<trace_id>",
+        "should_escape": false
+      }
+    ]
+  },
+  "oauth_config": {
+    "redirect_urls": ["https://www.atlasit.pro/api/apps/oauth/callback"],
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "channels:history",
+        "channels:read",
+        "chat:write",
+        "chat:write.public",
+        "commands",
+        "groups:history",
+        "groups:read",
+        "im:history",
+        "im:read",
+        "mpim:history",
+        "mpim:read",
+        "reactions:read",
+        "reactions:write",
+        "team:read",
+        "users:read",
+        "users:read.email"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://www.atlasit.pro/api/slack/events",
+      "bot_events": [
+        "app_mention",
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "message.mpim",
+        "reaction_added",
+        "reaction_removed"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://www.atlasit.pro/api/slack/interactions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": true
+  }
+}
