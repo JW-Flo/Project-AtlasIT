@@ -6,9 +6,13 @@ This roadmap tracks implementation phases from foundation through market readine
 
 ---
 
-## True Automation — The North Star
+## Vision & Market Positioning
 
-AtlasIT is built for **zero-touch IT operations**. Once adapters are connected and rules are defined, the platform runs itself — no scripts, no tickets, no manual steps.
+AtlasIT is a **Cloudflare-native IT automation and compliance platform** for small and mid-sized businesses (1–100 employees) that want to internalize IT ops securely without dedicated IT teams or expensive MSPs.
+
+**Value prop:** Zero-touch IT operations — once adapters are connected and rules are defined, the platform runs itself.
+
+**Differentiators:** Edge-native architecture, AI-driven connector onboarding, policy-as-code compliance, unified IdP abstraction with fallback OIDC/SAML for SMBs without an existing identity provider.
 
 ### The Autonomous Loop
 
@@ -16,7 +20,7 @@ AtlasIT is built for **zero-touch IT operations**. Once adapters are connected a
 Directory Event / Schedule / Webhook
   ↓ AutomationDO (dedup + rate-limit + conditions)
   ↓ WorkflowDO (durable steps, retry, compensation)
-  ↓ Adapter calls (provision / revoke / sync across 24 apps)
+  ↓ Adapter calls (provision / revoke / sync across 33 apps)
   ↓ Evidence emitted → compliance-worker scores
   ↓ Score change → new event → rules re-evaluate
 ```
@@ -26,7 +30,7 @@ Directory Event / Schedule / Webhook
 | Scenario                    | Trigger                              | What Happens Automatically                                                                 |
 | --------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
 | **New hire onboarding**     | `user.created` from Okta/M365/Google | Provision GitHub, Jira, Slack, email + all role-assigned apps; notify manager on Slack     |
-| **Employee offboarding**    | `user.deactivated`                   | Revoke access across all 24 connected apps; emit offboarding evidence; create audit record |
+| **Employee offboarding**    | `user.deactivated`                   | Revoke access across all connected apps; emit offboarding evidence; create audit record    |
 | **Department transfer**     | `group.membership_changed`           | Update app entitlements, reassign RBAC roles, re-sync directory                            |
 | **App connected**           | `app_connected`                      | Auto-provision existing users that match group rules; start health checks                  |
 | **Compliance scan**         | Cron schedule                        | Collect evidence from connected tools, re-score controls, create incidents on failures     |
@@ -37,7 +41,7 @@ Directory Event / Schedule / Webhook
 
 - **AutomationDO** — per-tenant rule engine; 9 trigger types, 8 action types, 5-min dedup TTL
 - **WorkflowDO** — durable joiner/mover/leaver with per-step timeouts and DLQ-backed compensation
-- **24 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, and more
+- **33 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, Salesforce, HubSpot, and 20 more
 - **MCP agent bus** — HMAC-verified agent webhooks; Slack notifier live, extensible to PagerDuty, email, Jira
 - **compliance-worker** — Rego-based policy eval, R2 evidence storage, auto-scoring across 5 frameworks
 
@@ -95,17 +99,18 @@ Directory Event / Schedule / Webhook
 - Rate limiting middleware (KV-backed, per-endpoint)
 - Security headers middleware (CSP, HSTS, X-Frame-Options)
 
-## Phase 5 — Adapter Scaffolding 🔄 (In Progress)
+## Phase 5 — Adapter Scaffolding ✅ (PR #158, #159)
 
-- [x] Registry data for all 24 apps (`shared/integrations/registry-detailed.ts`)
-- [ ] Add missing registry entries: Confluence (OAuth 2.0 3LO), 1Password (API key)
-- [ ] ConnectorManifest templates for all 22 remaining apps (`packages/connector-schema/src/templates.ts`)
-- [ ] Scaffold 22 adapters via `adapter-gen` into `adapters/<slug>/`
-- [ ] Hand-write core-tier implementations (7 apps): Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure
-- [ ] Update `adapters/registry.json` with all 24 entries
-- [ ] Update console-app integration statuses (planned → alpha/beta)
-- [ ] Add adapter deploy jobs to CI/CD (`deploy-on-merge.yml`)
-- [ ] Seed marketplace DB with all 24 apps
+- [x] Registry data for all 33 apps (`shared/integrations/registry-detailed.ts`)
+- [x] ConnectorManifest templates for all apps (`packages/connector-schema/src/templates.ts`, 2300+ lines)
+- [x] Scaffold all adapters via `adapter-gen` into `adapters/<slug>/` (PR #158)
+- [x] Implement 21 SaaS adapters with directory sync, webhooks, and auth (PR #159)
+- [x] Hand-write core-tier implementations (9 apps): Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure, + Okta, Google Workspace (production)
+- [x] Update `adapters/registry.json` with all 33 entries
+- [x] Add adapter deploy jobs to CI/CD (`deploy-on-merge.yml` — dynamic matrix)
+- [x] Expand adapter catalog from 24 → 33 apps (added Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva)
+- [ ] Update console-app integration statuses to match registry (planned → alpha/beta)
+- [ ] Seed marketplace DB with all 33 apps
 - [ ] Add missing JML workflow YAMLs
 
 ## Phase 6 — Contract Stability & Auth Hardening (Next)
@@ -153,6 +158,16 @@ Directory Event / Schedule / Webhook
 - [ ] Real-time risk anomaly detection
 - [ ] Plugin API for third-party compliance packs
 - [ ] Advanced analytics and reporting
+
+## Long-Term Platform Modules
+
+AtlasIT evolves into a modular platform:
+
+- **AtlasIT – IT Ops**: IAM automation, provisioning, SSO
+- **AtlasIT – Compliance**: Evidence locker, reporting, regulatory alignment (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR)
+- **AtlasIT – IdP**: Unified IdP abstraction + fallback OIDC/SAML service for SMBs
+- **AtlasIT – AI Security**: Automated detection, remediation, and AI-driven recommendations
+- **AtlasIT – Extensions**: Custom connectors, plugin API for third-party compliance packs
 
 ## Cross-Cutting Concerns
 

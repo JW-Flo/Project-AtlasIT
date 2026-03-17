@@ -10,14 +10,15 @@
 
 ## Phase Completion
 
-| Phase                          | Status          | PR   | Key Deliverables                                                                                                                  |
-| ------------------------------ | --------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 0 — Foundation                 | ✅ Complete     | —    | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                      |
-| 1 — Workflow Durability + Auth | ✅ Complete     | #139 | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                      |
-| 2 — MCP Orchestration          | ✅ Complete     | #140 | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                           |
-| 3 — Marketplace & Integrations | ✅ Pre-existing | —    | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                 |
-| 4 — Hardening & Production     | ✅ Complete     | #141 | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                     |
-| 5 — Adapter Scaffolding        | 🔄 In Progress  | —    | 24 marketplace adapters: registry data, ConnectorManifest templates, scaffolded workers, 7 core-tier hand-written implementations |
+| Phase                          | Status          | PR        | Key Deliverables                                                                                                                    |
+| ------------------------------ | --------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — Foundation                 | ✅ Complete     | —         | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                        |
+| 1 — Workflow Durability + Auth | ✅ Complete     | #139      | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                        |
+| 2 — MCP Orchestration          | ✅ Complete     | #140      | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                             |
+| 3 — Marketplace & Integrations | ✅ Pre-existing | —         | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                   |
+| 4 — Hardening & Production     | ✅ Complete     | #141      | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                       |
+| 5 — Adapter Scaffolding        | ✅ Complete     | #158, #159 | 33 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                  |
+| 6 — Contract Stability         | 🔄 Next         | —         | DTO normalization, error handling, RBAC expansion, secret assertions, JWT key rotation, Slack webhook alignment                      |
 
 ## Deployed Workers
 
@@ -56,10 +57,10 @@
 - CF Workers-native observability (W3C traceparent tracer, Analytics Engine metrics)
 - Structured logging with SLO definitions and burn-rate alerting
 
-## Marketplace Adapters (24 apps)
+## Marketplace Adapters (33 apps)
 
-| Status                      | Adapters                                                                                                                           |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| ✅ Production               | Okta, Google Workspace                                                                                                             |
-| 🔄 Core-tier (hand-written) | Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure                                                                             |
-| 🔄 Scaffolded               | BambooHR, Auth0, Workday, ADP, Confluence, QuickBooks, Xero, CrowdStrike, 1Password, PagerDuty, Datadog, GCP, Zoom, Teams, Discord |
+| Status                      | Adapters                                                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ✅ Production (stable)      | Okta, Google Workspace                                                                                                                                              |
+| 🟡 Core-tier (alpha)        | Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure, Workday, ADP, CrowdStrike, GCP                                                                              |
+| 🟢 Implemented (beta)       | Confluence, QuickBooks, Xero, Zoom, Teams, Discord, BambooHR, Auth0, 1Password, PagerDuty, Datadog, Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva |

@@ -77,8 +77,10 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 | 2 — MCP Orchestration | ✅ (PR #140) | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC, e2e tests |
 | 3 — Marketplace & Integrations | ✅ | Marketplace API, connectors, credential vault, feature flags |
 | 4 — Hardening & Production | ✅ (PR #141) | Okta SCIM, k6 load tests, IaC drift detection, OIDC worker, CF observability |
-| 5 — Operational Readiness | Pending | Production deployment, key rotation, pen testing |
-| 6 — Market Readiness | Future | Billing, LLM policy refinement, anomaly detection |
+| 5 — Adapter Scaffolding | ✅ (PR #158, #159) | 33 adapters: registry, manifests, scaffolds, 9 core-tier implementations, CI/CD |
+| 6 — Contract Stability & Auth Hardening | Next | DTO normalization, error handling, RBAC expansion, secret assertions |
+| 7 — Directory Reality | Future | Real provider sync, directory CRUD, group→app mapping |
+| 8 — Market Readiness | Future | Billing, LLM policy refinement, anomaly detection |
 
 ---
 
