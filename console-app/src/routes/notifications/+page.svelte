@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { Bell, AlertTriangle, CheckCheck, Eye } from "lucide-svelte";
 
   interface NotificationRecord {
     id: number;
@@ -65,107 +72,95 @@
     }
   }
 
-  function severityColor(severity: string | null): string {
-    switch (severity) {
-      case "critical":
-        return "text-red-400";
-      case "high":
-        return "text-orange-400";
-      case "medium":
-        return "text-yellow-400";
-      case "low":
-        return "text-blue-400";
-      default:
-        return "text-white/60";
+  function kindVariant(kind: string | null): "default" | "destructive" | "warning" | "secondary" | "outline" | "success" {
+    switch (kind) {
+      case "incident": return "destructive";
+      case "access_request": return "default";
+      case "policy": return "success";
+      case "workflow": return "secondary";
+      default: return "outline";
     }
   }
 
-  function kindBadge(kind: string | null): string {
-    switch (kind) {
-      case "incident":
-        return "bg-red-600/20 text-red-300 border-red-500/30";
-      case "access_request":
-        return "bg-blue-600/20 text-blue-300 border-blue-500/30";
-      case "policy":
-        return "bg-green-600/20 text-green-300 border-green-500/30";
-      case "workflow":
-        return "bg-purple-600/20 text-purple-300 border-purple-500/30";
-      default:
-        return "bg-neutral-600/20 text-neutral-300 border-neutral-500/30";
+  function severityColor(severity: string | null): string {
+    switch (severity) {
+      case "critical": return "text-destructive";
+      case "high": return "text-warning";
+      case "medium": return "text-warning";
+      case "low": return "text-primary";
+      default: return "text-muted-foreground";
     }
   }
 
   onMount(() => { load(); });
 </script>
 
-<div class="p-6 max-w-5xl mx-auto flex flex-col gap-6">
+<div class="space-y-6">
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-semibold">Notifications</h1>
+      <h1 class="text-2xl font-semibold tracking-tight">Notifications</h1>
       {#if unreadCount > 0}
-        <p class="text-sm text-white/60">{unreadCount} unread</p>
+        <p class="text-sm text-muted-foreground">{unreadCount} unread</p>
       {/if}
     </div>
     {#if items.length > 0 && unreadCount > 0}
-      <button
-        class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white"
-        on:click={markAllRead}
-      >
+      <Button variant="outline" size="sm" on:click={markAllRead}>
+        <CheckCheck class="h-4 w-4 mr-1.5" />
         Mark All Read
-      </button>
+      </Button>
     {/if}
   </div>
 
   {#if loading}
-    <div class="text-sm text-neutral-400">Loading...</div>
-  {:else if error}
-    <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{error}</div>
-  {:else if items.length === 0}
-    <div class="flex flex-col items-center justify-center py-16 text-white/30 gap-3">
-      <svg class="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-          d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-      </svg>
-      <p class="text-sm">No notifications yet</p>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-16 rounded-lg" />
+      {/each}
     </div>
+  {:else if error}
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
+  {:else if items.length === 0}
+    <Card class="border-dashed">
+      <CardContent class="py-16 text-center">
+        <Bell class="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+        <p class="text-sm text-muted-foreground">No notifications yet</p>
+      </CardContent>
+    </Card>
   {:else}
     <div class="flex flex-col gap-2">
       {#each items as notif}
-        <div
-          class="bg-[#1a2332] rounded-lg p-4 flex items-start gap-3 border {notif.read
-            ? 'border-white/5 opacity-60'
-            : 'border-white/10'}"
-        >
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1 flex-wrap">
-              {#if notif.kind}
-                <span
-                  class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 {kindBadge(notif.kind)}"
-                >
-                  {notif.kind.replace("_", " ")}
+        <Card class="{notif.read ? 'opacity-60' : ''} transition-opacity">
+          <CardContent class="py-4 flex items-start gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                {#if notif.kind}
+                  <Badge variant={kindVariant(notif.kind)}>
+                    {notif.kind.replace("_", " ")}
+                  </Badge>
+                {/if}
+                {#if notif.severity}
+                  <span class="text-[10px] uppercase tracking-wider font-semibold {severityColor(notif.severity)}">{notif.severity}</span>
+                {/if}
+                <span class="text-xs text-muted-foreground ml-auto shrink-0">
+                  {new Date(notif.createdAt).toLocaleString()}
                 </span>
+              </div>
+              <p class="text-sm">{notif.message}</p>
+              {#if notif.ref}
+                <p class="text-xs text-muted-foreground mt-1">Ref: {notif.ref}</p>
               {/if}
-              {#if notif.severity}
-                <span class="text-[10px] uppercase tracking-wider shrink-0 {severityColor(notif.severity)}">{notif.severity}</span>
-              {/if}
-              <span class="text-xs text-white/30 ml-auto shrink-0">
-                {new Date(notif.createdAt).toLocaleString()}
-              </span>
             </div>
-            <p class="text-sm text-white/85">{notif.message}</p>
-            {#if notif.ref}
-              <p class="text-xs text-white/40 mt-1">Ref: {notif.ref}</p>
+            {#if !notif.read}
+              <Button variant="ghost" size="sm" on:click={() => markRead(notif.id)}>
+                <Eye class="h-3.5 w-3.5 mr-1" />
+                Read
+              </Button>
             {/if}
-          </div>
-          {#if !notif.read}
-            <button
-              class="text-xs bg-neutral-700 hover:bg-neutral-600 px-2 py-1 rounded text-white/70 shrink-0"
-              on:click={() => markRead(notif.id)}
-            >
-              Mark Read
-            </button>
-          {/if}
-        </div>
+          </CardContent>
+        </Card>
       {/each}
     </div>
   {/if}

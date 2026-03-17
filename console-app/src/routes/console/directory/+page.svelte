@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X } from "lucide-svelte";
 
   // --- Types ---
   interface SyncStatus {
@@ -190,17 +199,13 @@
     }
   }
 
-  function statusColor(status: string): { bg: string; text: string } {
+  function statusVariant(status: string): "success" | "destructive" | "warning" | "secondary" {
     switch (status.toLowerCase()) {
-      case "active":
-        return { bg: "rgba(34,197,94,0.15)", text: "#22c55e" };
+      case "active": return "success";
       case "suspended":
-      case "disabled":
-        return { bg: "rgba(239,68,68,0.15)", text: "#ef4444" };
-      case "pending":
-        return { bg: "rgba(234,179,8,0.15)", text: "#eab308" };
-      default:
-        return { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
+      case "disabled": return "destructive";
+      case "pending": return "warning";
+      default: return "secondary";
     }
   }
 
@@ -220,22 +225,21 @@
   onMount(loadAll);
 </script>
 
-<div class="px-5 py-5 max-w-[1400px] mx-auto">
+<div class="space-y-6">
   {#if loading}
-    <div class="text-center py-12" style="color: var(--color-text, #fff); opacity: 0.4;">
-      <p>Loading directory...</p>
+    <div class="space-y-4">
+      <Skeleton class="h-8 w-48" />
+      <Skeleton class="h-64 w-full rounded-lg" />
     </div>
   {:else if !syncStatus.connected}
     <!-- Not connected state -->
     <div class="max-w-2xl mx-auto py-12">
       <div class="text-center mb-8">
-        <div class="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
-          <svg class="w-8 h-8" style="color: #3b82f6;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
+        <div class="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-primary/10">
+          <Users class="w-8 h-8 text-primary" />
         </div>
-        <h1 class="text-2xl font-semibold mb-2" style="color: var(--color-text, #fff);">Connect Your Identity Provider</h1>
-        <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+        <h1 class="text-2xl font-semibold tracking-tight">Connect Your Identity Provider</h1>
+        <p class="text-sm text-muted-foreground mt-1">
           Sync users and groups from your IdP to automate access management
         </p>
       </div>
@@ -246,58 +250,53 @@
           { id: "google_workspace", name: "Google Workspace", desc: "Google directory sync" },
           { id: "microsoft_365", name: "Microsoft 365", desc: "Entra ID / Azure AD sync" },
         ] as provider}
-          <a
-            href="/console/marketplace"
-            class="rounded-lg p-5 text-center transition-colors"
-            style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));"
-          >
-            <div class="w-10 h-10 rounded-lg mx-auto mb-3 flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
-              <svg class="w-5 h-5" style="color: #3b82f6;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <div class="text-sm font-semibold mb-1" style="color: var(--color-text, #fff);">{provider.name}</div>
-            <div class="text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">{provider.desc}</div>
+          <a href="/console/marketplace" class="block">
+            <Card class="hover:border-primary/50 transition-colors cursor-pointer">
+              <CardContent class="pt-5 text-center">
+                <div class="w-10 h-10 rounded-lg mx-auto mb-3 flex items-center justify-center bg-primary/10">
+                  <Link class="w-5 h-5 text-primary" />
+                </div>
+                <div class="text-sm font-semibold mb-1">{provider.name}</div>
+                <div class="text-xs text-muted-foreground">{provider.desc}</div>
+              </CardContent>
+            </Card>
           </a>
         {/each}
       </div>
     </div>
   {:else}
     <!-- Connected state -->
-    <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+    <div class="flex items-center justify-between flex-wrap gap-4">
       <div>
         <div class="flex items-center gap-3 mb-1">
-          <h1 class="text-2xl font-semibold" style="color: var(--color-text, #fff);">Directory</h1>
+          <h1 class="text-2xl font-semibold tracking-tight">Directory</h1>
           {#if syncStatus.provider}
-            <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full" style="background: rgba(59,130,246,0.15); color: #60a5fa;">
+            <Badge variant="secondary">
               {providerIcons[syncStatus.provider] || syncStatus.provider}
-            </span>
+            </Badge>
           {/if}
         </div>
-        <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+        <p class="text-sm text-muted-foreground">
           Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
           {syncStatus.userCount ?? users.length} users &middot;
           {syncStatus.groupCount ?? groups.length} groups
         </p>
       </div>
-      <button
-        type="button"
-        on:click={triggerSync}
-        disabled={syncing}
-        class="text-sm px-4 py-2 rounded font-medium text-white disabled:opacity-50 transition-colors"
-        style="background: var(--color-accent, #3b82f6);"
-      >
+      <Button on:click={triggerSync} disabled={syncing}>
+        <RefreshCw class="h-4 w-4 mr-1.5 {syncing ? 'animate-spin' : ''}" />
         {syncing ? "Syncing..." : "Sync Now"}
-      </button>
+      </Button>
     </div>
 
     <!-- Tabs -->
-    <div class="flex gap-6 border-b border-white/10 mb-6">
+    <div class="flex gap-1 border-b">
       {#each tabs as tab}
         <button
           type="button"
           on:click={() => activeTab = tab.id}
-          class="pb-2 text-sm {activeTab === tab.id ? 'text-white border-b-2 border-indigo-500' : 'text-white/50 hover:text-white/80'}"
+          class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === tab.id
+            ? 'text-foreground border-b-2 border-primary'
+            : 'text-muted-foreground hover:text-foreground'}"
         >
           {tab.label}
         </button>
@@ -307,74 +306,64 @@
     <!-- Users tab -->
     {#if activeTab === "users"}
       <div class="mb-4">
-        <input
+        <Input
           type="text"
           bind:value={userSearch}
           placeholder="Search users by name, email, or department..."
-          class="w-full max-w-md px-4 py-2.5 rounded-lg text-sm"
-          style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
+          class="max-w-md"
         />
       </div>
 
-      <div class="rounded-lg overflow-hidden" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-        <table class="w-full text-sm">
-          <thead>
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Name</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Email</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Department</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Title</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each pagedUsers as user}
-              {@const sc = statusColor(user.status)}
-              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <td class="px-4 py-3" style="color: var(--color-text, #fff);">{user.name}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.7;">{user.email}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.5;">{user.department || "-"}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.5;">{user.title || "-"}</td>
-                <td class="px-4 py-3">
-                  <span class="text-[11px] px-2 py-0.5 rounded-full capitalize" style="background: {sc.bg}; color: {sc.text};">{user.status}</span>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-
-        {#if pagedUsers.length === 0}
-          <div class="text-center py-8" style="color: var(--color-text, #fff); opacity: 0.3;">
-            <p>No users found</p>
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-4 py-3 font-medium">Name</th>
+                  <th class="px-4 py-3 font-medium">Email</th>
+                  <th class="px-4 py-3 font-medium">Department</th>
+                  <th class="px-4 py-3 font-medium">Title</th>
+                  <th class="px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each pagedUsers as user}
+                  <tr class="border-t hover:bg-muted/50">
+                    <td class="px-4 py-3">{user.name}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{user.email}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{user.department || "-"}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{user.title || "-"}</td>
+                    <td class="px-4 py-3">
+                      <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
+                    </td>
+                  </tr>
+                {:else}
+                  <tr>
+                    <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
-        {/if}
-      </div>
+        </CardContent>
+      </Card>
 
       <!-- Pagination -->
       {#if totalPages > 1}
-        <div class="flex items-center justify-between mt-4">
-          <span class="text-xs" style="color: var(--color-text, #fff); opacity: 0.5;">
-            Showing {userPage * pageSize + 1}-{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
+        <div class="flex items-center justify-between text-sm">
+          <span class="text-muted-foreground">
+            Showing {userPage * pageSize + 1}--{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
           </span>
           <div class="flex gap-2">
-            <button
-              type="button"
-              on:click={() => userPage = Math.max(0, userPage - 1)}
-              disabled={userPage === 0}
-              class="text-xs px-3 py-1.5 rounded disabled:opacity-30 transition-colors"
-              style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-            >
+            <Button variant="outline" size="sm" on:click={() => userPage = Math.max(0, userPage - 1)} disabled={userPage === 0}>
+              <ChevronLeft class="h-4 w-4 mr-1" />
               Previous
-            </button>
-            <button
-              type="button"
-              on:click={() => userPage = Math.min(totalPages - 1, userPage + 1)}
-              disabled={userPage >= totalPages - 1}
-              class="text-xs px-3 py-1.5 rounded disabled:opacity-30 transition-colors"
-              style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-            >
+            </Button>
+            <Button variant="outline" size="sm" on:click={() => userPage = Math.min(totalPages - 1, userPage + 1)} disabled={userPage >= totalPages - 1}>
               Next
-            </button>
+              <ChevronRight class="h-4 w-4 ml-1" />
+            </Button>
           </div>
         </div>
       {/if}
@@ -382,120 +371,107 @@
 
     <!-- Groups tab -->
     {#if activeTab === "groups"}
-      <div class="rounded-lg overflow-hidden" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-        <table class="w-full text-sm">
-          <thead>
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Group Name</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Members</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each groups as group}
-              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <td class="px-4 py-3 font-medium" style="color: var(--color-text, #fff);">{group.name}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.7;">
-                  <span class="text-[11px] px-2 py-0.5 rounded-full" style="background: rgba(59,130,246,0.12); color: #60a5fa;">
-                    {group.member_count}
-                  </span>
-                </td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.5;">{group.description || "-"}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-
-        {#if groups.length === 0}
-          <div class="text-center py-8" style="color: var(--color-text, #fff); opacity: 0.3;">
-            <p>No groups found</p>
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-4 py-3 font-medium">Group Name</th>
+                  <th class="px-4 py-3 font-medium">Members</th>
+                  <th class="px-4 py-3 font-medium">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each groups as group}
+                  <tr class="border-t hover:bg-muted/50">
+                    <td class="px-4 py-3 font-medium">{group.name}</td>
+                    <td class="px-4 py-3">
+                      <Badge variant="secondary">{group.member_count}</Badge>
+                    </td>
+                    <td class="px-4 py-3 text-muted-foreground">{group.description || "-"}</td>
+                  </tr>
+                {:else}
+                  <tr>
+                    <td colspan="3" class="px-4 py-8 text-center text-muted-foreground">No groups found</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
-        {/if}
-      </div>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Mappings tab -->
     {#if activeTab === "mappings"}
-      <div class="flex items-center justify-between mb-4">
-        <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+      <div class="flex items-center justify-between">
+        <p class="text-sm text-muted-foreground">
           Map IdP groups to application roles for automatic provisioning
         </p>
-        <button
-          type="button"
-          on:click={autoSuggest}
-          disabled={suggesting}
-          class="text-sm px-4 py-2 rounded font-medium text-white disabled:opacity-50 transition-colors"
-          style="background: rgba(139,92,246,0.8);"
-        >
+        <Button variant="secondary" on:click={autoSuggest} disabled={suggesting}>
+          <Sparkles class="h-4 w-4 mr-1.5" />
           {suggesting ? "Suggesting..." : "Auto-suggest"}
-        </button>
+        </Button>
       </div>
 
-      <div class="rounded-lg overflow-hidden" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-        <table class="w-full text-sm">
-          <thead>
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Group</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">App</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Role</th>
-              <th class="text-left px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Status</th>
-              <th class="text-right px-4 py-3 text-xs font-medium uppercase tracking-wider" style="color: var(--color-text, #fff); opacity: 0.5;">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each mappings as mapping}
-              <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <td class="px-4 py-3 font-medium" style="color: var(--color-text, #fff);">{mapping.group_name}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.7;">{mapping.app_id}</td>
-                <td class="px-4 py-3" style="color: var(--color-text, #fff); opacity: 0.7;">{mapping.role}</td>
-                <td class="px-4 py-3">
-                  {#if mapping.suggested}
-                    <span class="text-[11px] px-2 py-0.5 rounded-full" style="background: rgba(234,179,8,0.15); color: #eab308;">Suggested</span>
-                  {:else}
-                    <span class="text-[11px] px-2 py-0.5 rounded-full" style="background: rgba(34,197,94,0.15); color: #22c55e;">Confirmed</span>
-                  {/if}
-                </td>
-                <td class="px-4 py-3 text-right">
-                  {#if mapping.suggested}
-                    <button
-                      type="button"
-                      on:click={() => confirmMapping(mapping.id)}
-                      class="text-xs px-2.5 py-1 rounded mr-1 transition-colors"
-                      style="background: rgba(34,197,94,0.15); color: #22c55e;"
-                    >
-                      Confirm
-                    </button>
-                    <button
-                      type="button"
-                      on:click={() => removeMapping(mapping.id)}
-                      class="text-xs px-2.5 py-1 rounded transition-colors"
-                      style="background: rgba(239,68,68,0.1); color: #ef4444;"
-                    >
-                      Dismiss
-                    </button>
-                  {:else}
-                    <button
-                      type="button"
-                      on:click={() => removeMapping(mapping.id)}
-                      class="text-xs px-2.5 py-1 rounded transition-colors"
-                      style="background: rgba(239,68,68,0.1); color: #ef4444;"
-                    >
-                      Remove
-                    </button>
-                  {/if}
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-
-        {#if mappings.length === 0}
-          <div class="text-center py-8" style="color: var(--color-text, #fff); opacity: 0.3;">
-            <p>No mappings configured</p>
-            <p class="text-xs mt-1">Use Auto-suggest to generate mappings from your groups</p>
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-4 py-3 font-medium">Group</th>
+                  <th class="px-4 py-3 font-medium">App</th>
+                  <th class="px-4 py-3 font-medium">Role</th>
+                  <th class="px-4 py-3 font-medium">Status</th>
+                  <th class="px-4 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each mappings as mapping}
+                  <tr class="border-t hover:bg-muted/50">
+                    <td class="px-4 py-3 font-medium">{mapping.group_name}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{mapping.app_id}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{mapping.role}</td>
+                    <td class="px-4 py-3">
+                      {#if mapping.suggested}
+                        <Badge variant="warning">Suggested</Badge>
+                      {:else}
+                        <Badge variant="success">Confirmed</Badge>
+                      {/if}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      {#if mapping.suggested}
+                        <Button variant="ghost" size="sm" on:click={() => confirmMapping(mapping.id)}>
+                          <Check class="h-4 w-4 mr-1 text-green-500" />
+                          Confirm
+                        </Button>
+                        <Button variant="ghost" size="sm" on:click={() => removeMapping(mapping.id)}>
+                          <X class="h-4 w-4 mr-1 text-destructive" />
+                          Dismiss
+                        </Button>
+                      {:else}
+                        <Button variant="ghost" size="sm" on:click={() => removeMapping(mapping.id)}>
+                          <X class="h-4 w-4 mr-1 text-destructive" />
+                          Remove
+                        </Button>
+                      {/if}
+                    </td>
+                  </tr>
+                {:else}
+                  <tr>
+                    <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">
+                      <p>No mappings configured</p>
+                      <p class="text-xs mt-1">Use Auto-suggest to generate mappings from your groups</p>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
-        {/if}
-      </div>
+        </CardContent>
+      </Card>
     {/if}
   {/if}
 </div>

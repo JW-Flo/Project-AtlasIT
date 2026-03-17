@@ -8,6 +8,15 @@
     type Integration,
     type CredentialField,
   } from "$lib/data/integrations";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import { Search, X, Check, ArrowRight, ArrowLeft, ExternalLink } from "lucide-svelte";
 
   let apps: Integration[] = allIntegrations.map((i) => ({ ...i }));
   let activeCategory = "all";
@@ -19,7 +28,7 @@
   let wizardStep = 1;
   let wizardLoading = false;
 
-  // Dynamic credential values — keyed by field.key
+  // Dynamic credential values -- keyed by field.key
   let credValues: Record<string, string> = {};
 
   $: filtered = apps.filter((i) => {
@@ -54,7 +63,7 @@
         apps = apps.map((a) => ({ ...a, connected: !!connected[a.id] }));
       }
     } catch {
-      // Status fetch failed — apps show as not connected
+      // Status fetch failed -- apps show as not connected
     }
   });
 
@@ -162,64 +171,41 @@
   }
 </script>
 
-<div class="px-5 py-5 max-w-[1400px] mx-auto">
-  <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1
-        class="text-3xl font-semibold mb-1"
-        style="color: var(--color-text, #fff);"
-      >
-        Marketplace
-      </h1>
-      <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
-        Connect your business apps to AtlasIT for automated compliance and IT
-        management
+      <h1 class="text-2xl font-semibold tracking-tight">Marketplace</h1>
+      <p class="text-sm text-muted-foreground">
+        Connect your business apps to AtlasIT for automated compliance and IT management
       </p>
     </div>
     <div class="flex items-center gap-3">
       {#if connectedCount > 0}
-        <a
-          href="/console/integrations"
-          class="text-sm px-3 py-1.5 rounded font-medium"
-          style="background: rgba(34,197,94,0.15); color: #22c55e;"
-        >
-          {connectedCount} Connected &rarr; API Manager
+        <a href="/console/integrations">
+          <Badge variant="success" class="cursor-pointer">
+            {connectedCount} Connected &rarr; API Manager
+          </Badge>
         </a>
       {/if}
-      <a
-        href="/console"
-        class="text-sm px-3 py-1.5 rounded"
-        style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-      >
-        Back to Dashboard
-      </a>
     </div>
   </div>
 
   <!-- Search -->
-  <div class="mb-4">
-    <input
-      type="text"
-      bind:value={searchQuery}
-      placeholder="Search integrations..."
-      class="w-full max-w-md px-4 py-2.5 rounded-lg text-sm"
-      style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-    />
-  </div>
+  <Input
+    type="text"
+    bind:value={searchQuery}
+    placeholder="Search integrations..."
+    class="max-w-md"
+  />
 
   <!-- Categories -->
-  <div class="flex flex-wrap gap-2 mb-6">
+  <div class="flex flex-wrap gap-2">
     {#each categories as cat}
       <button
         type="button"
-        class="px-3 py-1.5 text-xs font-medium rounded-full transition-colors"
-        style="background: {activeCategory === cat.id
-          ? 'var(--color-accent, #3b82f6)'
-          : 'rgba(255,255,255,0.05)'}; color: {activeCategory === cat.id
-          ? '#fff'
-          : 'var(--color-text, #fff)'}; opacity: {activeCategory === cat.id
-          ? 1
-          : 0.6};"
+        class="px-3 py-1.5 text-xs font-medium rounded-full transition-colors {activeCategory === cat.id
+          ? 'bg-primary text-primary-foreground'
+          : 'bg-muted text-muted-foreground hover:text-foreground'}"
         on:click={() => (activeCategory = cat.id)}
       >
         {cat.label}
@@ -230,105 +216,51 @@
   <!-- Integration grid -->
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
     {#each filtered as integration}
-      <div
-        class="rounded-lg p-5 flex flex-col"
-        style="background: var(--color-surface, #1a2332); border: 1px solid {integration.connected
-          ? 'rgba(34,197,94,0.3)'
-          : 'var(--color-border, rgba(255,255,255,0.1))'};"
-      >
-        <div class="flex items-start justify-between mb-3">
-          <div
-            class="w-10 h-10 rounded-lg flex items-center justify-center"
-            style="background: rgba(59,130,246,0.1);"
-          >
-            <svg
-              class="w-5 h-5"
-              style="color: var(--color-accent, #3b82f6);"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.5"
-                d={iconMap[integration.category] || iconMap.productivity}
-              />
-            </svg>
+      <Card class="{integration.connected ? 'border-green-500/30' : ''}">
+        <CardContent class="pt-5 flex flex-col h-full">
+          <div class="flex items-start justify-between mb-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10">
+              <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[integration.category] || iconMap.productivity} />
+              </svg>
+            </div>
+            <Badge variant={integration.connected ? 'success' : integration.status === 'beta' ? 'warning' : 'secondary'}>
+              {integration.connected ? "Connected" : integration.status}
+            </Badge>
           </div>
-          <span
-            class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full"
-            style="background: {integration.connected
-              ? 'rgba(34,197,94,0.15)'
-              : integration.status === 'beta'
-                ? 'rgba(234,179,8,0.15)'
-                : 'rgba(255,255,255,0.05)'}; color: {integration.connected
-              ? '#22c55e'
-              : integration.status === 'beta'
-                ? '#eab308'
-                : 'rgba(255,255,255,0.4)'};"
-          >
-            {integration.connected ? "Connected" : integration.status}
-          </span>
-        </div>
 
-        <h3
-          class="text-sm font-semibold mb-1"
-          style="color: var(--color-text, #fff);"
-        >
-          {integration.name}
-        </h3>
-        <div
-          class="text-xs mb-1"
-          style="color: var(--color-text, #fff); opacity: 0.4;"
-        >
-          {integration.category} &middot; {authLabel(integration.auth)} &middot;
-          {integration.tier}
-        </div>
-        <div
-          class="text-xs mb-4 line-clamp-2"
-          style="color: var(--color-text, #fff); opacity: 0.35;"
-        >
-          {integration.description}
-        </div>
+          <h3 class="text-sm font-semibold mb-1">{integration.name}</h3>
+          <div class="text-xs text-muted-foreground mb-1">
+            {integration.category} &middot; {authLabel(integration.auth)} &middot; {integration.tier}
+          </div>
+          <div class="text-xs text-muted-foreground/70 mb-4 line-clamp-2">
+            {integration.description}
+          </div>
 
-        <div class="mt-auto space-y-2">
-          {#if integration.connected}
-            <a
-              href="/console/integrations"
-              class="block w-full py-2 text-xs font-medium rounded transition-colors text-center"
-              style="background: rgba(59,130,246,0.15); color: #3b82f6;"
-            >
-              Manage in API Manager
-            </a>
-            <button
-              type="button"
-              on:click={() => disconnectApp(integration)}
-              class="w-full py-2 text-xs font-medium rounded transition-colors"
-              style="background: rgba(239,68,68,0.1); color: #ef4444;"
-            >
-              Disconnect
-            </button>
-          {:else}
-            <button
-              type="button"
-              on:click={() => openWizard(integration)}
-              class="w-full py-2 text-xs font-medium rounded transition-colors"
-              style="background: var(--color-accent, #3b82f6); color: #fff;"
-            >
-              Connect
-            </button>
-          {/if}
-        </div>
-      </div>
+          <div class="mt-auto space-y-2">
+            {#if integration.connected}
+              <a href="/console/integrations">
+                <Button variant="outline" size="sm" class="w-full">
+                  <ExternalLink class="h-3 w-3 mr-1.5" />
+                  Manage in API Manager
+                </Button>
+              </a>
+              <Button variant="destructive" size="sm" class="w-full" on:click={() => disconnectApp(integration)}>
+                Disconnect
+              </Button>
+            {:else}
+              <Button size="sm" class="w-full" on:click={() => openWizard(integration)}>
+                Connect
+              </Button>
+            {/if}
+          </div>
+        </CardContent>
+      </Card>
     {/each}
   </div>
 
   {#if filtered.length === 0}
-    <div
-      class="text-center py-12"
-      style="color: var(--color-text, #fff); opacity: 0.3;"
-    >
+    <div class="text-center py-12 text-muted-foreground">
       <p class="text-lg">No integrations found</p>
       <p class="text-sm mt-1">Try a different search or category</p>
     </div>
@@ -336,274 +268,116 @@
 </div>
 
 <!-- Config Wizard Modal -->
-{#if wizardOpen && wizardApp}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center"
-    style="background: rgba(0,0,0,0.6);"
-  >
-    <div
-      class="w-full max-w-lg mx-4 rounded-lg p-6 max-h-[85vh] overflow-y-auto"
-      style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));"
-    >
-      <div class="flex items-center justify-between mb-4">
-        <h3
-          class="text-lg font-semibold"
-          style="color: var(--color-text, #fff);"
-        >
-          Connect {wizardApp.name}
-        </h3>
-        <button
-          type="button"
-          on:click={() => (wizardOpen = false)}
-          class="p-1"
-          style="color: var(--color-text, #fff); opacity: 0.5;"
-          aria-label="Close"
-        >
-          <svg
-            class="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            ><path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            /></svg
-          >
-        </button>
-      </div>
-
-      <!-- Wizard steps indicator -->
-      <div class="flex items-center gap-2 mb-6">
-        {#each [1, 2, 3] as s}
-          <div
-            class="h-1.5 rounded-full flex-1 transition-all"
-            style="background: {s <= wizardStep
-              ? 'var(--color-accent, #3b82f6)'
-              : 'rgba(255,255,255,0.1)'};"
-          ></div>
-        {/each}
-      </div>
-
-      {#if wizardStep === 1}
-        <!-- Step 1: Overview -->
-        <div class="space-y-4">
-          <div
-            class="rounded-lg p-4"
-            style="background: var(--color-bg, #0f1923);"
-          >
-            <div class="flex items-center gap-3 mb-3">
-              <div
-                class="w-10 h-10 rounded-lg flex items-center justify-center"
-                style="background: rgba(59,130,246,0.1);"
-              >
-                <svg
-                  class="w-5 h-5"
-                  style="color: var(--color-accent, #3b82f6);"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                    d={iconMap[wizardApp.category] || iconMap.productivity}
-                  />
-                </svg>
-              </div>
-              <div>
-                <div
-                  class="text-sm font-semibold"
-                  style="color: var(--color-text, #fff);"
-                >
-                  {wizardApp.name}
-                </div>
-                <div
-                  class="text-xs capitalize"
-                  style="color: var(--color-text, #fff); opacity: 0.5;"
-                >
-                  {wizardApp.category}
-                </div>
-              </div>
-            </div>
-            <p
-              class="text-xs mb-3"
-              style="color: var(--color-text, #fff); opacity: 0.6;"
-            >
-              {wizardApp.description}
-            </p>
-            <div
-              class="space-y-2 text-xs"
-              style="color: var(--color-text, #fff); opacity: 0.6;"
-            >
-              <div class="flex justify-between">
-                <span>Auth Method</span><span class="font-medium"
-                  >{authLabel(wizardApp.auth)}</span
-                >
-              </div>
-              <div class="flex justify-between">
-                <span>Tier</span><span class="font-medium capitalize"
-                  >{wizardApp.tier}</span
-                >
-              </div>
-              <div class="flex justify-between">
-                <span>Credentials Required</span><span class="font-medium"
-                  >{wizardApp.credentialFields.filter((f) => f.required)
-                    .length} fields</span
-                >
-              </div>
-            </div>
-          </div>
-          {#if wizardApp.auth === "platform_oauth"}
-            <button
-              type="button"
-              on:click={connectApp}
-              disabled={wizardLoading}
-              class="w-full py-2.5 text-sm font-medium rounded text-white transition-colors disabled:opacity-50"
-              style="background: var(--color-accent, #3b82f6);"
-            >
-              {wizardLoading ? "Redirecting..." : `Authorize ${wizardApp.name}`}
-            </button>
-            <p class="text-[11px] text-center" style="color: var(--color-text, #fff); opacity: 0.35;">
-              You'll be redirected to {wizardApp.name} to grant AtlasIT access to your workspace.
-            </p>
-          {:else}
-            <button
-              type="button"
-              on:click={() => (wizardStep = 2)}
-              class="w-full py-2.5 text-sm font-medium rounded text-white transition-colors"
-              style="background: var(--color-accent, #3b82f6);"
-            >
-              Continue to Credentials
-            </button>
-          {/if}
-        </div>
-      {:else if wizardStep === 2}
-        <!-- Step 2: Dynamic credential fields -->
-        <div class="space-y-4">
-          <p class="text-xs" style="color: var(--color-text, #fff); opacity: 0.5;">
-            Enter the credentials for {wizardApp.name}. These are stored
-            encrypted and used to connect to the API on your behalf.
-          </p>
-
-          {#each wizardApp.credentialFields as field}
-            <div>
-              <label
-                class="block text-sm mb-1.5"
-                style="color: var(--color-text, #fff); opacity: 0.7;"
-              >
-                {field.label}
-                {#if field.required}<span style="color: #ef4444;">*</span>{/if}
-              </label>
-              {#if field.type === "textarea"}
-                <textarea
-                  bind:value={credValues[field.key]}
-                  placeholder={field.placeholder || ""}
-                  rows="4"
-                  class="w-full px-3 py-2 rounded text-sm font-mono resize-y"
-                  style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-                ></textarea>
-              {:else}
-                <input
-                  type={fieldInputType(field)}
-                  bind:value={credValues[field.key]}
-                  placeholder={field.placeholder || ""}
-                  class="w-full px-3 py-2 rounded text-sm"
-                  style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-                />
-              {/if}
-              {#if field.helpText}
-                <p
-                  class="text-[11px] mt-1"
-                  style="color: var(--color-text, #fff); opacity: 0.35;"
-                >
-                  {field.helpText}
-                </p>
-              {/if}
-            </div>
-          {/each}
-
-          <button
-            type="button"
-            on:click={connectApp}
-            disabled={wizardLoading || !requiredFilled}
-            class="w-full py-2.5 text-sm font-medium rounded text-white disabled:opacity-50 transition-colors"
-            style="background: var(--color-accent, #3b82f6);"
-          >
-            {wizardLoading ? "Connecting..." : `Connect ${wizardApp.name}`}
-          </button>
-          <button
-            type="button"
-            on:click={() => (wizardStep = 1)}
-            class="w-full py-2 text-xs rounded"
-            style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-          >
-            Back
-          </button>
-        </div>
-      {:else}
-        <!-- Step 3: Confirmation -->
-        <div class="space-y-4 text-center">
-          <div
-            class="w-12 h-12 rounded-full mx-auto flex items-center justify-center"
-            style="background: rgba(34,197,94,0.15);"
-          >
-            <svg
-              class="w-6 h-6 text-green-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              ><path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 13l4 4L19 7"
-              /></svg
-            >
-          </div>
-          <div>
-            <p
-              class="text-sm font-semibold"
-              style="color: var(--color-text, #fff);"
-            >
-              {wizardApp.name} Connected
-            </p>
-            <p
-              class="text-xs mt-1"
-              style="color: var(--color-text, #fff); opacity: 0.5;"
-            >
-              JML workflows are now available for this application. You can
-              manage credentials anytime in the API Manager.
-            </p>
-          </div>
-          <div class="flex gap-2">
-            <a
-              href="/console/integrations"
-              class="flex-1 py-2 text-xs font-medium rounded text-center transition-colors"
-              style="background: var(--color-accent, #3b82f6); color: #fff;"
-            >
-              API Manager
-            </a>
-            <a
-              href="/console/workflows"
-              class="flex-1 py-2 text-xs font-medium rounded text-center transition-colors"
-              style="background: rgba(255,255,255,0.08); color: var(--color-text, #fff);"
-            >
-              Workflows
-            </a>
-            <button
-              type="button"
-              on:click={() => (wizardOpen = false)}
-              class="flex-1 py-2 text-xs font-medium rounded transition-colors"
-              style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      {/if}
+<Dialog open={wizardOpen} onClose={() => wizardOpen = false} title="Connect {wizardApp?.name || ''}">
+  {#if wizardApp}
+    <!-- Wizard steps indicator -->
+    <div class="flex items-center gap-2 mb-6">
+      {#each [1, 2, 3] as s}
+        <div
+          class="h-1.5 rounded-full flex-1 transition-all {s <= wizardStep ? 'bg-primary' : 'bg-muted'}"
+        ></div>
+      {/each}
     </div>
-  </div>
-{/if}
+
+    {#if wizardStep === 1}
+      <!-- Step 1: Overview -->
+      <div class="space-y-4">
+        <div class="rounded-lg p-4 bg-muted">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10">
+              <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[wizardApp.category] || iconMap.productivity} />
+              </svg>
+            </div>
+            <div>
+              <div class="text-sm font-semibold">{wizardApp.name}</div>
+              <div class="text-xs text-muted-foreground capitalize">{wizardApp.category}</div>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground mb-3">{wizardApp.description}</p>
+          <div class="space-y-2 text-xs text-muted-foreground">
+            <div class="flex justify-between"><span>Auth Method</span><span class="font-medium text-foreground">{authLabel(wizardApp.auth)}</span></div>
+            <div class="flex justify-between"><span>Tier</span><span class="font-medium capitalize text-foreground">{wizardApp.tier}</span></div>
+            <div class="flex justify-between"><span>Credentials Required</span><span class="font-medium text-foreground">{wizardApp.credentialFields.filter((f) => f.required).length} fields</span></div>
+          </div>
+        </div>
+        {#if wizardApp.auth === "platform_oauth"}
+          <Button class="w-full" on:click={connectApp} disabled={wizardLoading}>
+            {wizardLoading ? "Redirecting..." : `Authorize ${wizardApp.name}`}
+          </Button>
+          <p class="text-xs text-center text-muted-foreground">
+            You'll be redirected to {wizardApp.name} to grant AtlasIT access to your workspace.
+          </p>
+        {:else}
+          <Button class="w-full" on:click={() => (wizardStep = 2)}>
+            Continue to Credentials
+            <ArrowRight class="h-4 w-4 ml-1.5" />
+          </Button>
+        {/if}
+      </div>
+    {:else if wizardStep === 2}
+      <!-- Step 2: Dynamic credential fields -->
+      <div class="space-y-4">
+        <p class="text-xs text-muted-foreground">
+          Enter the credentials for {wizardApp.name}. These are stored encrypted and used to connect to the API on your behalf.
+        </p>
+
+        {#each wizardApp.credentialFields as field}
+          <div class="space-y-1.5">
+            <Label>
+              {field.label}
+              {#if field.required}<span class="text-destructive">*</span>{/if}
+            </Label>
+            {#if field.type === "textarea"}
+              <textarea
+                bind:value={credValues[field.key]}
+                placeholder={field.placeholder || ""}
+                rows="4"
+                class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              ></textarea>
+            {:else}
+              <Input
+                type={fieldInputType(field)}
+                bind:value={credValues[field.key]}
+                placeholder={field.placeholder || ""}
+              />
+            {/if}
+            {#if field.helpText}
+              <p class="text-xs text-muted-foreground">{field.helpText}</p>
+            {/if}
+          </div>
+        {/each}
+
+        <Button class="w-full" on:click={connectApp} disabled={wizardLoading || !requiredFilled}>
+          {wizardLoading ? "Connecting..." : `Connect ${wizardApp.name}`}
+        </Button>
+        <Button variant="outline" class="w-full" on:click={() => (wizardStep = 1)}>
+          <ArrowLeft class="h-4 w-4 mr-1.5" />
+          Back
+        </Button>
+      </div>
+    {:else}
+      <!-- Step 3: Confirmation -->
+      <div class="space-y-4 text-center">
+        <div class="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-green-500/15">
+          <Check class="w-6 h-6 text-green-500" />
+        </div>
+        <div>
+          <p class="text-sm font-semibold">{wizardApp.name} Connected</p>
+          <p class="text-xs text-muted-foreground mt-1">
+            JML workflows are now available for this application. You can manage credentials anytime in the API Manager.
+          </p>
+        </div>
+        <DialogFooter>
+          <a href="/console/integrations">
+            <Button size="sm">API Manager</Button>
+          </a>
+          <a href="/console/workflows">
+            <Button variant="outline" size="sm">Workflows</Button>
+          </a>
+          <Button variant="secondary" size="sm" on:click={() => (wizardOpen = false)}>Close</Button>
+        </DialogFooter>
+      </div>
+    {/if}
+  {/if}
+</Dialog>

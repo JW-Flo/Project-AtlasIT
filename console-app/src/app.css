@@ -2,109 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base semantic variables (light theme default) */
-:root {
-  --color-bg: #ffffff;
-  --color-surface: #f5f7fa;
-  --color-surface-alt: #e9edf2;
-  --color-border: #d4dbe3;
-  --color-text: #14171a;
-  --color-text-dim: #677280;
-  --color-accent: #0066d6;
-  --color-accent-hover: #0d82ff;
-  --color-critical: #ef4444;
-  --color-warning: #eab308;
-  --color-success: #16a34a;
-  --color-focus: #5fb2ff;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 210 40% 98%;
+    --warning: 45 93% 47%;
+    --warning-foreground: 222 47% 11%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+
+    /* Legacy token compatibility */
+    --color-bg: hsl(var(--background));
+    --color-surface: hsl(var(--card));
+    --color-surface-alt: hsl(var(--secondary));
+    --color-border: hsl(var(--border));
+    --color-text: hsl(var(--foreground));
+    --color-text-dim: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--primary));
+    --color-accent-hover: hsl(221 83% 60%);
+    --color-critical: hsl(var(--destructive));
+    --color-warning: hsl(var(--warning));
+    --color-success: hsl(var(--success));
+    --color-focus: hsl(221 83% 53% / 0.5);
+  }
+
+  :root[data-theme="dark"],
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 71% 45%;
+    --success-foreground: 222 47% 7%;
+    --warning: 45 93% 47%;
+    --warning-foreground: 222 47% 7%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
+
+    /* Legacy token compatibility */
+    --color-bg: hsl(var(--background));
+    --color-surface: hsl(var(--card));
+    --color-surface-alt: hsl(var(--secondary));
+    --color-border: hsl(var(--border));
+    --color-text: hsl(var(--foreground));
+    --color-text-dim: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--primary));
+    --color-accent-hover: hsl(217 91% 68%);
+    --color-critical: hsl(var(--destructive));
+    --color-warning: hsl(var(--warning));
+    --color-success: hsl(var(--success));
+    --color-focus: hsl(217 91% 60% / 0.5);
+  }
 }
 
-/* Dark theme override */
-:root[data-theme="dark"] {
-  --color-bg: #14171a;
-  --color-surface: #23272d;
-  --color-surface-alt: #363c44;
-  --color-border: #4d5560;
-  --color-text: #f5f7fa;
-  --color-text-dim: #b5c0cc;
-  --color-accent: #0d82ff;
-  --color-accent-hover: #379bff;
-  --color-critical: #ef4444;
-  --color-warning: #eab308;
-  --color-success: #22c55e;
-  --color-focus: #5fb2ff;
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
-body {
-  font-family: Inter, system-ui, sans-serif;
-  background: var(--color-bg);
-  color: var(--color-text);
-  -webkit-font-smoothing: antialiased;
-}
-
-.surface {
-  background: var(--color-surface);
-}
-.surface-alt {
-  background: var(--color-surface-alt);
-}
-.text-dim {
-  color: var(--color-text-dim);
-}
-.border-base {
-  border-color: var(--color-border);
-}
-.focus-ring:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px var(--color-focus);
-}
-
-/* Button baseline utility classes tied to tokens */
-.btn {
-  font-weight: 500;
-  border-radius: 6px;
-  line-height: 1.2;
-  transition:
-    background 0.18s ease,
-    color 0.18s ease,
-    border-color 0.18s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.btn-md {
-  padding: 6px 14px;
-  font-size: 14px;
-}
-.btn-primary {
-  background: var(--color-accent);
-  color: #fff;
-}
-.btn-primary:hover {
-  background: var(--color-accent-hover);
-}
-.btn-outline {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-}
-.btn-outline:hover {
-  background: var(--color-surface-alt);
-}
-.btn-subtle {
-  background: var(--color-surface-alt);
-  color: var(--color-text);
-}
-.btn-subtle:hover {
-  background: var(--color-surface);
-}
-.btn-danger {
-  background: var(--color-critical);
-  color: #fff;
-}
-.btn-danger:hover {
-  filter: brightness(1.1);
+/* Select option styling for dark mode */
+select option {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
 }

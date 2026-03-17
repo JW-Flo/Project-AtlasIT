@@ -1,8 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Button from "$lib/components/primitives/Button.svelte";
-  import Skeleton from "$lib/components/loading/Skeleton.svelte";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { FileText, Download, AlertTriangle } from "lucide-svelte";
 
   interface PolicyTemplate {
     key: string;
@@ -99,169 +108,139 @@
   onMount(loadTemplates);
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
-  <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-3xl font-semibold mb-1">Policy Generator</h1>
-      <p class="text-sm text-white/60">
-        Generate compliance policies from templates across SOC 2, ISO 27001,
-        NIST CSF, HIPAA, and more.
+      <h1 class="text-2xl font-semibold tracking-tight">Policy Generator</h1>
+      <p class="text-sm text-muted-foreground">
+        Generate compliance policies from templates across SOC 2, ISO 27001, NIST CSF, HIPAA, and more.
       </p>
     </div>
-    <a
-      href="/console"
-      class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
-    >
-      Back to Dashboard
-    </a>
   </div>
 
   {#if loading}
     <div class="flex flex-col gap-4">
-      <Skeleton width="100%" height="48px" />
-      <Skeleton width="100%" height="200px" />
+      <Skeleton class="h-12 w-full rounded-lg" />
+      <Skeleton class="h-48 w-full rounded-lg" />
     </div>
   {:else if error}
-    <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {:else}
     <div class="grid gap-6 lg:grid-cols-[380px_1fr]">
       <!-- Form Panel -->
-      <div class="bg-[#1a2332] rounded-lg p-5 flex flex-col gap-4">
-        <h2 class="text-lg font-semibold">Configuration</h2>
-
-        <div class="flex flex-col gap-1.5">
-          <label for="template" class="text-sm text-white/70">Policy Template</label>
-          <select
-            id="template"
-            bind:value={selectedTemplate}
-            class="select-dark bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-          >
-            {#each templates as tpl}
-              <option value={tpl.key}>{tpl.name}</option>
-            {/each}
-          </select>
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <label for="email" class="text-sm text-white/70">Contact Email</label>
-          <input
-            id="email"
-            type="email"
-            bind:value={contactEmail}
-            placeholder="security@company.com"
-            class="bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
-          />
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <label for="summary" class="text-sm text-white/70">Additional Context</label>
-          <textarea
-            id="summary"
-            bind:value={summary}
-            rows="4"
-            placeholder="Provide any additional context for the policy..."
-            class="bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500 resize-y"
-          ></textarea>
-        </div>
-
-        <Button
-          variant="primary"
-          on:click={generatePolicy}
-          disabled={generating || !selectedTemplate}
-        >
-          {generating ? "Generating..." : "Generate Policy"}
-        </Button>
-
-        {#if templates.length > 0}
-          <div class="mt-2">
-            <h3 class="text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-              Available Templates
-            </h3>
-            <div class="flex flex-col gap-1">
+      <Card>
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <div class="space-y-2">
+            <Label htmlFor="template">Policy Template</Label>
+            <select
+              id="template"
+              bind:value={selectedTemplate}
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               {#each templates as tpl}
-                <button
-                  type="button"
-                  class="text-xs px-2 py-1.5 rounded text-left cursor-pointer transition-colors {selectedTemplate === tpl.key
-                    ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
-                    : 'text-white/50 hover:text-white/70 hover:bg-white/5 border border-transparent'}"
-                  on:click={() => { selectedTemplate = tpl.key; }}
-                >
-                  {tpl.name}
-                </button>
+                <option value={tpl.key}>{tpl.name}</option>
               {/each}
-            </div>
+            </select>
           </div>
-        {/if}
-      </div>
+
+          <div class="space-y-2">
+            <Label htmlFor="email">Contact Email</Label>
+            <Input
+              id="email"
+              type="email"
+              bind:value={contactEmail}
+              placeholder="security@company.com"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <Label htmlFor="summary">Additional Context</Label>
+            <textarea
+              id="summary"
+              bind:value={summary}
+              rows="4"
+              placeholder="Provide any additional context for the policy..."
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            ></textarea>
+          </div>
+
+          <Button on:click={generatePolicy} disabled={generating || !selectedTemplate} class="w-full">
+            {generating ? "Generating..." : "Generate Policy"}
+          </Button>
+
+          {#if templates.length > 0}
+            <div class="mt-2">
+              <h3 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                Available Templates
+              </h3>
+              <div class="flex flex-col gap-1">
+                {#each templates as tpl}
+                  <button
+                    type="button"
+                    class="text-xs px-2 py-1.5 rounded text-left cursor-pointer transition-colors {selectedTemplate === tpl.key
+                      ? 'bg-primary/10 text-primary border border-primary/30'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted border border-transparent'}"
+                    on:click={() => { selectedTemplate = tpl.key; }}
+                  >
+                    {tpl.name}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </CardContent>
+      </Card>
 
       <!-- Output Panel -->
-      <div class="bg-[#1a2332] rounded-lg p-5 flex flex-col gap-3 min-h-[500px]">
-        {#if generating}
-          <div class="flex flex-col gap-3">
-            <Skeleton width="60%" height="24px" />
-            <Skeleton width="100%" height="300px" />
-          </div>
-        {:else if generatedPolicy}
-          <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold">Generated Policy</h2>
-            <div class="flex items-center gap-2">
-              {#if generatedPolicy.reused}
-                <span
-                  class="text-[10px] uppercase tracking-wider bg-yellow-600/20 text-yellow-300 px-2 py-0.5 rounded-full border border-yellow-500/30"
-                >
-                  cached
-                </span>
-              {/if}
-              <span class="text-xs text-white/40">
-                {(generatedPolicy.sizeBytes / 1024).toFixed(1)} KB
-              </span>
-              <button
-                on:click={downloadPolicy}
-                class="text-xs bg-green-600 hover:bg-green-500 px-2.5 py-1 rounded text-white"
-              >
-                Download .md
-              </button>
+      <Card class="min-h-[500px]">
+        <CardContent class="pt-6 flex flex-col gap-3 h-full">
+          {#if generating}
+            <div class="flex flex-col gap-3">
+              <Skeleton class="h-6 w-3/5 rounded" />
+              <Skeleton class="h-72 w-full rounded" />
             </div>
-          </div>
-          <div class="text-xs text-white/40 flex gap-4">
-            <span>Hash: {generatedPolicy.hash.substring(0, 12)}...</span>
-            <span>Generated: {new Date(generatedPolicy.createdAt).toLocaleString()}</span>
-          </div>
-          <div
-            class="policy-content bg-[#0f1923] rounded p-4 mt-1 flex-1 overflow-auto text-sm leading-relaxed text-white/85 whitespace-pre-wrap font-mono"
-          >
-            {generatedPolicy.content}
-          </div>
-        {:else}
-          <div
-            class="flex flex-col items-center justify-center h-full text-white/30 gap-3"
-          >
-            <svg
-              class="w-16 h-16 opacity-30"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="1.5"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            <p class="text-sm">Select a template and click Generate</p>
-          </div>
-        {/if}
-      </div>
+          {:else if generatedPolicy}
+            <div class="flex items-center justify-between">
+              <h2 class="text-lg font-semibold">Generated Policy</h2>
+              <div class="flex items-center gap-2">
+                {#if generatedPolicy.reused}
+                  <Badge variant="warning">cached</Badge>
+                {/if}
+                <span class="text-xs text-muted-foreground">
+                  {(generatedPolicy.sizeBytes / 1024).toFixed(1)} KB
+                </span>
+                <Button variant="success" size="sm" on:click={downloadPolicy}>
+                  <Download class="h-4 w-4 mr-1" />
+                  Download .md
+                </Button>
+              </div>
+            </div>
+            <div class="text-xs text-muted-foreground flex gap-4">
+              <span>Hash: {generatedPolicy.hash.substring(0, 12)}...</span>
+              <span>Generated: {new Date(generatedPolicy.createdAt).toLocaleString()}</span>
+            </div>
+            <div class="policy-content bg-muted rounded-lg p-4 mt-1 flex-1 overflow-auto text-sm leading-relaxed whitespace-pre-wrap font-mono">
+              {generatedPolicy.content}
+            </div>
+          {:else}
+            <div class="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+              <FileText class="w-16 h-16 opacity-30" />
+              <p class="text-sm">Select a template and click Generate</p>
+            </div>
+          {/if}
+        </CardContent>
+      </Card>
     </div>
   {/if}
 </div>
 
 <style>
-  .select-dark option {
-    background: #0f1923;
-    color: #f5f7fa;
-  }
   .policy-content :global(h1) {
     font-size: 1.25rem;
     font-weight: 700;

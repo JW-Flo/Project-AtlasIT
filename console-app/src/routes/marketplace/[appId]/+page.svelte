@@ -9,6 +9,14 @@
     updateInstallConfig,
   } from "$lib/api/marketplace";
   import { session } from "$lib/stores/session";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import { ArrowLeft, ExternalLink } from "lucide-svelte";
 
   export let data: { app: MarketplaceApp | null; install: Install | null };
 
@@ -35,16 +43,6 @@
     }
     return val as T;
   }
-
-  const categoryColors: Record<string, string> = {
-    identity: "bg-blue-100 text-blue-800",
-    security: "bg-red-100 text-red-800",
-    compliance: "bg-purple-100 text-purple-800",
-    productivity: "bg-green-100 text-green-800",
-    communication: "bg-yellow-100 text-yellow-800",
-    utility: "bg-gray-100 text-gray-800",
-    custom: "bg-indigo-100 text-indigo-800",
-  };
 
   async function handleInstall() {
     if (!app || !$session?.tenantId) return;
@@ -108,16 +106,13 @@
 {#if !app}
   <div class="flex items-center justify-center min-h-[400px]">
     <div class="text-center">
-      <h2 class="text-xl font-semibold text-gray-700">App not found</h2>
-      <p class="mt-2 text-gray-500">
+      <h2 class="text-xl font-semibold">App not found</h2>
+      <p class="mt-2 text-muted-foreground">
         This app may have been removed from the marketplace.
       </p>
-      <button
-        on:click={() => goto("/marketplace")}
-        class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-      >
+      <Button on:click={() => goto("/marketplace")} class="mt-4">
         Back to Marketplace
-      </button>
+      </Button>
     </div>
   </div>
 {:else}
@@ -125,163 +120,139 @@
     <!-- Back link -->
     <button
       on:click={() => goto("/marketplace")}
-      class="mb-6 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+      class="mb-6 text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
     >
-      <span>&larr;</span> Back to Marketplace
+      <ArrowLeft class="h-4 w-4" />
+      Back to Marketplace
     </button>
 
     <!-- App Header -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <div class="flex items-start gap-6">
-        <div
-          class="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl font-bold text-gray-400 shrink-0"
-        >
-          {#if app.logo_url}
-            <img
-              src={app.logo_url}
-              alt={app.name}
-              class="w-16 h-16 rounded-xl object-cover"
-            />
-          {:else}
-            {app.name.charAt(0)}
-          {/if}
-        </div>
-
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-3">
-            <h1 class="text-2xl font-bold text-gray-900">{app.name}</h1>
-            <span
-              class="px-2 py-0.5 rounded-full text-xs font-medium {categoryColors[
-                app.category
-              ] ?? 'bg-gray-100 text-gray-800'}"
-            >
-              {app.category}
-            </span>
+    <Card>
+      <CardContent class="pt-6">
+        <div class="flex items-start gap-6">
+          <div
+            class="w-16 h-16 rounded-xl bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground shrink-0"
+          >
+            {#if app.logo_url}
+              <img
+                src={app.logo_url}
+                alt={app.name}
+                class="w-16 h-16 rounded-xl object-cover"
+              />
+            {:else}
+              {app.name.charAt(0)}
+            {/if}
           </div>
-          <p class="mt-1 text-sm text-gray-500">
-            by {app.provider} &middot; v{app.version}
-          </p>
-          <p class="mt-3 text-gray-600">
-            {app.description ?? "No description available."}
-          </p>
-        </div>
 
-        <!-- Action buttons -->
-        <div class="flex flex-col gap-2 shrink-0">
-          {#if !isInstalled}
-            <button
-              on:click={handleInstall}
-              disabled={loading || app.status !== "active"}
-              class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-            >
-              {loading ? "Installing..." : "Install"}
-            </button>
-          {:else if !isActive}
-            <button
-              on:click={handleActivate}
-              disabled={loading}
-              class="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              {loading ? "Activating..." : "Activate"}
-            </button>
-            <button
-              on:click={handleUninstall}
-              disabled={loading}
-              class="px-5 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              Uninstall
-            </button>
-          {:else}
-            <span
-              class="px-5 py-2 bg-green-100 text-green-800 rounded-lg text-sm font-medium text-center"
-            >
-              Active
-            </span>
-            <button
-              on:click={handleUninstall}
-              disabled={loading}
-              class="px-5 py-2 bg-white text-red-600 border border-red-300 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              Uninstall
-            </button>
-          {/if}
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold">{app.name}</h1>
+              <Badge variant="secondary">{app.category}</Badge>
+            </div>
+            <p class="mt-1 text-sm text-muted-foreground">
+              by {app.provider} &middot; v{app.version}
+            </p>
+            <p class="mt-3 text-foreground">
+              {app.description ?? "No description available."}
+            </p>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="flex flex-col gap-2 shrink-0">
+            {#if !isInstalled}
+              <Button
+                on:click={handleInstall}
+                disabled={loading || app.status !== "active"}
+              >
+                {loading ? "Installing..." : "Install"}
+              </Button>
+            {:else if !isActive}
+              <Button variant="success" on:click={handleActivate} disabled={loading}>
+                {loading ? "Activating..." : "Activate"}
+              </Button>
+              <Button variant="destructive" on:click={handleUninstall} disabled={loading}>
+                Uninstall
+              </Button>
+            {:else}
+              <Badge variant="success" class="px-5 py-2 text-center">Active</Badge>
+              <Button variant="destructive" on:click={handleUninstall} disabled={loading}>
+                Uninstall
+              </Button>
+            {/if}
+          </div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
 
     <!-- Error -->
     {#if error}
-      <div
-        class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm"
-      >
-        {error}
-      </div>
+      <Alert variant="destructive" class="mt-4">
+        <p>{error}</p>
+      </Alert>
     {/if}
 
     <!-- Capabilities -->
     {#if capabilities.length > 0}
-      <div class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Capabilities</h2>
-        <div class="flex flex-wrap gap-2">
-          {#each capabilities as cap}
-            <span
-              class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
-            >
-              {cap.replace(/-/g, " ")}
-            </span>
-          {/each}
-        </div>
-      </div>
+      <Card class="mt-6">
+        <CardHeader>
+          <CardTitle>Capabilities</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="flex flex-wrap gap-2">
+            {#each capabilities as cap}
+              <Badge variant="secondary">{cap.replace(/-/g, " ")}</Badge>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Configuration -->
     {#if isInstalled && configFields.length > 0}
-      <div class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Configuration</h2>
-        <ConfigForm
-          fields={configFields}
-          values={configValues}
-          {loading}
-          onSubmit={handleConfigSave}
-        />
-      </div>
+      <Card class="mt-6">
+        <CardHeader>
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ConfigForm
+            fields={configFields}
+            values={configValues}
+            {loading}
+            onSubmit={handleConfigSave}
+          />
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Install Info -->
     {#if install}
-      <div class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">
-          Installation Details
-        </h2>
-        <dl class="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <dt class="text-gray-500">Status</dt>
-            <dd class="font-medium text-gray-900 capitalize">
-              {install.status}
-            </dd>
-          </div>
-          <div>
-            <dt class="text-gray-500">Installed</dt>
-            <dd class="font-medium text-gray-900">
-              {new Date(install.installed_at).toLocaleDateString()}
-            </dd>
-          </div>
-          {#if install.activated_at}
+      <Card class="mt-6">
+        <CardHeader>
+          <CardTitle>Installation Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <dt class="text-gray-500">Activated</dt>
-              <dd class="font-medium text-gray-900">
-                {new Date(install.activated_at).toLocaleDateString()}
-              </dd>
+              <dt class="text-muted-foreground">Status</dt>
+              <dd class="font-medium capitalize">{install.status}</dd>
             </div>
-          {/if}
-          <div>
-            <dt class="text-gray-500">Auth Model</dt>
-            <dd class="font-medium text-gray-900 uppercase">
-              {app.auth_model}
-            </dd>
-          </div>
-        </dl>
-      </div>
+            <div>
+              <dt class="text-muted-foreground">Installed</dt>
+              <dd class="font-medium">{new Date(install.installed_at).toLocaleDateString()}</dd>
+            </div>
+            {#if install.activated_at}
+              <div>
+                <dt class="text-muted-foreground">Activated</dt>
+                <dd class="font-medium">{new Date(install.activated_at).toLocaleDateString()}</dd>
+              </div>
+            {/if}
+            <div>
+              <dt class="text-muted-foreground">Auth Model</dt>
+              <dd class="font-medium uppercase">{app.auth_model}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Documentation link -->
@@ -291,9 +262,10 @@
           href={app.documentation_url}
           target="_blank"
           rel="noopener noreferrer"
-          class="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          class="text-primary hover:underline text-sm font-medium inline-flex items-center gap-1"
         >
-          View Documentation &rarr;
+          View Documentation
+          <ExternalLink class="h-3 w-3" />
         </a>
       </div>
     {/if}

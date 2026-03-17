@@ -1,7 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import Modal from "$lib/components/overlays/Modal.svelte";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogHeader from "$lib/components/ui/dialog-header.svelte";
+  import DialogTitle from "$lib/components/ui/dialog-title.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, Shield, UserX, Eye, Trash2 } from "lucide-svelte";
 
   interface Tenant {
     id: string;
@@ -86,83 +98,99 @@
   onMount(loadTenants);
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-6xl mx-auto">
-  <h1 class="text-2xl font-semibold">Platform Administration</h1>
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Platform Administration</h1>
+      <p class="text-sm text-muted-foreground">Manage tenants across the platform</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <Shield class="h-5 w-5 text-primary" />
+    </div>
+  </div>
 
   {#if error}
-    <div class="text-red-400 bg-red-900/20 p-4 rounded-lg text-sm">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   {#if loading}
-    <div class="text-white/50 text-sm">Loading tenants...</div>
-  {:else}
-    <div class="bg-[#1a2332] rounded-lg border border-white/10 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-white/50 border-b border-white/10">
-            <th class="px-4 py-3 font-medium">Org Name</th>
-            <th class="px-4 py-3 font-medium">Owner Email</th>
-            <th class="px-4 py-3 font-medium">Users</th>
-            <th class="px-4 py-3 font-medium">Status</th>
-            <th class="px-4 py-3 font-medium">Created</th>
-            <th class="px-4 py-3 font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each tenants as tenant}
-            <tr class="border-b border-white/10 hover:bg-white/5">
-              <td class="px-4 py-3 text-white">{tenant.name}</td>
-              <td class="px-4 py-3 text-white/80">{tenant.ownerEmail}</td>
-              <td class="px-4 py-3 text-white/80">{tenant.user_count}</td>
-              <td class="px-4 py-3">
-                <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium
-                  {tenant.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
-                  {tenant.status}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-white/60">{new Date(tenant.createdAt).toLocaleDateString()}</td>
-              <td class="px-4 py-3">
-                <div class="flex gap-2">
-                  <button
-                    on:click={() => toggleStatus(tenant)}
-                    class="text-xs px-2.5 py-1 rounded {tenant.status === 'active' ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-green-600 hover:bg-green-500'} text-white"
-                  >
-                    {tenant.status === "active" ? "Disable" : "Enable"}
-                  </button>
-                  <button
-                    on:click={() => impersonate(tenant)}
-                    class="text-xs bg-indigo-600 hover:bg-indigo-500 px-2.5 py-1 rounded text-white"
-                  >
-                    Impersonate
-                  </button>
-                  <button
-                    on:click={() => confirmDelete(tenant)}
-                    class="text-xs bg-red-600 hover:bg-red-500 px-2.5 py-1 rounded text-white"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="6" class="px-4 py-6 text-center text-white/40">No tenants found</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-16 rounded-lg" />
+      {/each}
     </div>
+  {:else}
+    <Card>
+      <CardContent class="p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-4 py-3 font-medium">Org Name</th>
+                <th class="px-4 py-3 font-medium">Owner Email</th>
+                <th class="px-4 py-3 font-medium">Users</th>
+                <th class="px-4 py-3 font-medium">Status</th>
+                <th class="px-4 py-3 font-medium">Created</th>
+                <th class="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each tenants as tenant}
+                <tr class="border-t hover:bg-muted/50">
+                  <td class="px-4 py-3 font-medium">{tenant.name}</td>
+                  <td class="px-4 py-3 text-muted-foreground">{tenant.ownerEmail}</td>
+                  <td class="px-4 py-3 text-muted-foreground">{tenant.user_count}</td>
+                  <td class="px-4 py-3">
+                    <Badge variant={tenant.status === 'active' ? 'success' : 'destructive'}>
+                      {tenant.status}
+                    </Badge>
+                  </td>
+                  <td class="px-4 py-3 text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</td>
+                  <td class="px-4 py-3">
+                    <div class="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={tenant.status === 'active' ? 'outline' : 'success'}
+                        on:click={() => toggleStatus(tenant)}
+                      >
+                        {tenant.status === "active" ? "Disable" : "Enable"}
+                      </Button>
+                      <Button size="sm" variant="secondary" on:click={() => impersonate(tenant)}>
+                        <Eye class="h-3 w-3 mr-1" />
+                        Impersonate
+                      </Button>
+                      <Button size="sm" variant="destructive" on:click={() => confirmDelete(tenant)}>
+                        <Trash2 class="h-3 w-3 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="6" class="px-4 py-6 text-center text-muted-foreground">No tenants found</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   {/if}
 </div>
 
-{#if deleteModalOpen}
-  <Modal open={true} title="Delete Tenant" ariaLabel="Confirm tenant deletion" close={closeDeleteModal}>
-    <p class="text-sm text-white/80">
-      Are you sure you want to delete tenant <strong class="text-white">{tenantToDelete?.name}</strong>? This cannot be undone.
-    </p>
-    <svelte:fragment slot="footer">
-      <button on:click={closeDeleteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Cancel</button>
-      <button on:click={deleteTenant} class="text-sm px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white">Delete</button>
-    </svelte:fragment>
-  </Modal>
-{/if}
+<Dialog open={deleteModalOpen} onClose={closeDeleteModal}>
+  <DialogHeader>
+    <DialogTitle>Delete Tenant</DialogTitle>
+  </DialogHeader>
+  <p class="text-sm text-muted-foreground">
+    Are you sure you want to delete tenant <strong class="text-foreground">{tenantToDelete?.name}</strong>? This cannot be undone.
+  </p>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeDeleteModal}>Cancel</Button>
+    <Button variant="destructive" on:click={deleteTenant}>Delete</Button>
+  </DialogFooter>
+</Dialog>

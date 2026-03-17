@@ -1,5 +1,11 @@
 <script lang="ts">
   import { page } from "$app/stores";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import { CreditCard } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -10,22 +16,35 @@
   $: current = $page.url.pathname;
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-4xl mx-auto">
-  <h1 class="text-2xl font-semibold">Billing</h1>
+<div class="space-y-6">
+  <h1 class="text-2xl font-semibold tracking-tight">Billing</h1>
 
-  <div class="flex gap-6 border-b border-white/10 mb-6">
+  <div class="flex gap-1 border-b">
     {#each settingsTabs as tab}
-      <a href={tab.href}
-         class="pb-2 text-sm {current === tab.href ? 'text-white border-b-2 border-indigo-500' : 'text-white/50 hover:text-white/80'}"
+      <a
+        href={tab.href}
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {current === tab.href
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
       >{tab.label}</a>
     {/each}
   </div>
 
-  <div class="bg-[#1a2332] rounded-lg p-6 border border-white/10">
-    <h2 class="text-lg font-semibold mb-2">Plan: Starter (Pilot)</h2>
-    <p class="text-sm text-white/60">
-      Billing management will be available in a future release.
-      Contact <a href="mailto:support@atlasit.pro" class="text-indigo-400 hover:text-indigo-300">support@atlasit.pro</a> for billing inquiries.
-    </p>
-  </div>
+  <Card>
+    <CardHeader>
+      <div class="flex items-center gap-3">
+        <CreditCard class="h-5 w-5 text-muted-foreground" />
+        <div>
+          <CardTitle>Plan: Starter (Pilot)</CardTitle>
+        </div>
+        <Badge variant="secondary" class="ml-auto">Active</Badge>
+      </div>
+    </CardHeader>
+    <CardContent>
+      <p class="text-sm text-muted-foreground">
+        Billing management will be available in a future release.
+        Contact <a href="mailto:support@atlasit.pro" class="text-primary hover:underline">support@atlasit.pro</a> for billing inquiries.
+      </p>
+    </CardContent>
+  </Card>
 </div>

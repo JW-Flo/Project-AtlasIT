@@ -5,6 +5,14 @@
     PlatformHealthResponse,
     PlatformUsageSummary,
   } from "$lib/types/platform";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import { AlertTriangle, RefreshCw, Activity, Server, Zap, Users } from "lucide-svelte";
 
   let health: PlatformHealthResponse | null = null;
   let usage: PlatformUsageSummary | null = null;
@@ -35,20 +43,23 @@
   }
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-5xl mx-auto">
+<div class="space-y-6">
   <div class="flex justify-between items-center">
-    <h1 class="text-2xl font-semibold">Platform Status</h1>
-    <button
-      on:click={loadStatus}
-      disabled={loading}
-      class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 disabled:opacity-50 text-sm"
-    >
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Platform Status</h1>
+      <p class="text-sm text-muted-foreground">Service health and usage metrics</p>
+    </div>
+    <Button variant="outline" size="sm" on:click={loadStatus} disabled={loading}>
+      <RefreshCw class="h-4 w-4 mr-1.5 {loading ? 'animate-spin' : ''}" />
       {loading ? "Refreshing..." : "Refresh"}
-    </button>
+    </Button>
   </div>
 
   {#if error}
-    <div class="text-red-400 bg-red-900/20 p-4 rounded-lg text-sm">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   <!-- Service Status Cards -->
@@ -57,36 +68,42 @@
     {#if health?.services}
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {#each Object.entries(health.services) as [service, status]}
-          <div class="bg-[#1a2332] p-4 rounded-lg border border-white/10">
-            <div class="flex items-center gap-2 mb-3">
-              <span class="w-2.5 h-2.5 rounded-full {status.ok ? 'bg-green-500' : 'bg-red-500'}"></span>
-              <h3 class="font-medium capitalize text-white/90">{service}</h3>
-            </div>
-            <div class="text-sm space-y-1.5">
-              <div class="flex justify-between">
-                <span class="text-white/50">Status</span>
-                <span class="{status.ok ? 'text-green-400' : 'text-red-400'} font-medium">
-                  {statusLabel(status.ok)}
-                </span>
+          <Card>
+            <CardContent class="pt-5">
+              <div class="flex items-center gap-2 mb-3">
+                <span class="w-2.5 h-2.5 rounded-full {status.ok ? 'bg-green-500' : 'bg-destructive'}"></span>
+                <h3 class="font-medium capitalize">{service}</h3>
               </div>
-              <div class="flex justify-between">
-                <span class="text-white/50">Latency</span>
-                <span class="text-white/80">{status.latencyMs ? `${status.latencyMs}ms` : "N/A"}</span>
+              <div class="text-sm space-y-1.5">
+                <div class="flex justify-between">
+                  <span class="text-muted-foreground">Status</span>
+                  <Badge variant={status.ok ? 'success' : 'destructive'}>
+                    {statusLabel(status.ok)}
+                  </Badge>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-muted-foreground">Latency</span>
+                  <span>{status.latencyMs ? `${status.latencyMs}ms` : "N/A"}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-muted-foreground">HTTP</span>
+                  <span>{status.status || "---"}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-muted-foreground">Checked</span>
+                  <span class="text-xs text-muted-foreground">{new Date(status.lastChecked).toLocaleTimeString()}</span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <span class="text-white/50">HTTP</span>
-                <span class="text-white/80">{status.status || "—"}</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-white/50">Checked</span>
-                <span class="text-white/60 text-xs">{new Date(status.lastChecked).toLocaleTimeString()}</span>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         {/each}
       </div>
     {:else if !loading}
-      <div class="text-white/40 text-sm bg-[#1a2332] rounded-lg p-4">No service data available</div>
+      <Card>
+        <CardContent class="py-4">
+          <p class="text-sm text-muted-foreground">No service data available</p>
+        </CardContent>
+      </Card>
     {/if}
   </section>
 
@@ -94,57 +111,74 @@
   <section>
     <h2 class="text-lg font-semibold mb-4">Usage Summary</h2>
     {#if usage?.ok}
-      <div class="bg-[#1a2332] p-4 rounded-lg border border-white/10">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <div class="text-2xl font-bold text-blue-400">{usage.total || 0}</div>
-            <div class="text-sm text-white/50">Total Scripts</div>
-          </div>
-          <div>
-            <div class="text-2xl font-bold text-red-400">{usage.failures || 0}</div>
-            <div class="text-sm text-white/50">Failures</div>
-          </div>
-          <div>
-            <div class="text-2xl font-bold text-yellow-400">
-              {((usage.failureRate || 0) * 100).toFixed(1)}%
+      <Card>
+        <CardContent class="pt-5">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <Server class="h-4 w-4 text-primary" />
+              </div>
+              <div class="text-2xl font-bold text-primary">{usage.total || 0}</div>
+              <div class="text-sm text-muted-foreground">Total Scripts</div>
             </div>
-            <div class="text-sm text-white/50">Failure Rate</div>
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <AlertTriangle class="h-4 w-4 text-destructive" />
+              </div>
+              <div class="text-2xl font-bold text-destructive">{usage.failures || 0}</div>
+              <div class="text-sm text-muted-foreground">Failures</div>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <Activity class="h-4 w-4 text-warning" />
+              </div>
+              <div class="text-2xl font-bold text-warning">
+                {((usage.failureRate || 0) * 100).toFixed(1)}%
+              </div>
+              <div class="text-sm text-muted-foreground">Failure Rate</div>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <Users class="h-4 w-4 text-green-500" />
+              </div>
+              <div class="text-2xl font-bold text-green-500">{usage.tenants || 0}</div>
+              <div class="text-sm text-muted-foreground">Tenants</div>
+            </div>
           </div>
-          <div>
-            <div class="text-2xl font-bold text-green-400">{usage.tenants || 0}</div>
-            <div class="text-sm text-white/50">Tenants</div>
-          </div>
-        </div>
 
-        {#if usage.breakerOpenScripts && usage.breakerOpenScripts > 0}
-          <div class="bg-yellow-600/15 border border-yellow-500/30 p-3 rounded mb-4">
-            <div class="flex items-center gap-2">
-              <span class="text-yellow-400 font-medium">Circuit Breaker Open</span>
-            </div>
-            <div class="text-yellow-300/80 text-sm mt-1">
-              {usage.breakerOpenScripts} scripts have circuit breakers open
-            </div>
-          </div>
-        {/if}
+          {#if usage.breakerOpenScripts && usage.breakerOpenScripts > 0}
+            <Alert variant="warning" class="mb-4">
+              <AlertTriangle class="h-4 w-4" />
+              <div class="pl-7">
+                <p class="font-medium">Circuit Breaker Open</p>
+                <p class="text-sm">{usage.breakerOpenScripts} scripts have circuit breakers open</p>
+              </div>
+            </Alert>
+          {/if}
 
-        {#if usage.topScripts && usage.topScripts.length > 0}
-          <div>
-            <h4 class="font-medium mb-2 text-white/70">Top Scripts by Invocations</h4>
-            <div class="space-y-1">
-              {#each usage.topScripts.slice(0, 5) as script}
-                <div class="flex justify-between text-sm">
-                  <span class="text-white/80">{script.name}</span>
-                  <span class="font-mono text-white/60">{script.invocations}</span>
-                </div>
-              {/each}
+          {#if usage.topScripts && usage.topScripts.length > 0}
+            <div>
+              <h4 class="font-medium mb-2 text-muted-foreground">Top Scripts by Invocations</h4>
+              <div class="space-y-1">
+                {#each usage.topScripts.slice(0, 5) as script}
+                  <div class="flex justify-between text-sm">
+                    <span>{script.name}</span>
+                    <span class="font-mono text-muted-foreground">{script.invocations}</span>
+                  </div>
+                {/each}
+              </div>
             </div>
-          </div>
-        {/if}
-      </div>
+          {/if}
+        </CardContent>
+      </Card>
     {:else}
-      <div class="text-white/40 text-sm bg-[#1a2332] rounded-lg p-4 border border-white/10">
-        No usage data available. This may indicate the platform is still initializing.
-      </div>
+      <Card>
+        <CardContent class="py-4">
+          <p class="text-sm text-muted-foreground">
+            No usage data available. This may indicate the platform is still initializing.
+          </p>
+        </CardContent>
+      </Card>
     {/if}
   </section>
 </div>

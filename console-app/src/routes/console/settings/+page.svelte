@@ -2,6 +2,16 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, Save } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -58,68 +68,67 @@
   onMount(loadSettings);
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-4xl mx-auto">
-  <h1 class="text-2xl font-semibold">Organization Settings</h1>
+<div class="space-y-6">
+  <h1 class="text-2xl font-semibold tracking-tight">Organization Settings</h1>
 
-  <div class="flex gap-6 border-b border-white/10 mb-6">
+  <div class="flex gap-1 border-b">
     {#each settingsTabs as tab}
-      <a href={tab.href}
-         class="pb-2 text-sm {current === tab.href ? 'text-white border-b-2 border-indigo-500' : 'text-white/50 hover:text-white/80'}"
+      <a
+        href={tab.href}
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {current === tab.href
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
       >{tab.label}</a>
     {/each}
   </div>
 
   {#if error}
-    <div class="text-red-400 bg-red-900/20 p-4 rounded-lg text-sm">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   {#if loading}
-    <div class="text-white/50 text-sm">Loading settings...</div>
-  {:else}
-    <div class="bg-[#1a2332] rounded-lg p-6 border border-white/10 space-y-5">
-      <div>
-        <label for="org-name" class="block text-sm text-white/60 mb-1.5">Organization Name</label>
-        <input
-          id="org-name"
-          type="text"
-          bind:value={name}
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        />
-      </div>
-
-      <div>
-        <label for="industry" class="block text-sm text-white/60 mb-1.5">Industry</label>
-        <input
-          id="industry"
-          type="text"
-          bind:value={industry}
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        />
-      </div>
-
-      <div>
-        <label for="company-size" class="block text-sm text-white/60 mb-1.5">Company Size</label>
-        <select
-          id="company-size"
-          bind:value={size}
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        >
-          <option value="">Select size...</option>
-          {#each sizeOptions as opt}
-            <option value={opt}>{opt}</option>
-          {/each}
-        </select>
-      </div>
-
-      <div class="pt-2">
-        <button
-          on:click={saveSettings}
-          disabled={saving}
-          class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
+    <div class="space-y-4">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-12 rounded-lg" />
+      {/each}
     </div>
+  {:else}
+    <Card>
+      <CardContent class="pt-6 space-y-5">
+        <div class="space-y-2">
+          <Label htmlFor="org-name">Organization Name</Label>
+          <Input id="org-name" bind:value={name} />
+        </div>
+
+        <div class="space-y-2">
+          <Label htmlFor="industry">Industry</Label>
+          <Input id="industry" bind:value={industry} />
+        </div>
+
+        <div class="space-y-2">
+          <Label htmlFor="company-size">Company Size</Label>
+          <select
+            id="company-size"
+            bind:value={size}
+            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <option value="">Select size...</option>
+            {#each sizeOptions as opt}
+              <option value={opt}>{opt}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div class="pt-2">
+          <Button on:click={saveSettings} disabled={saving}>
+            <Save class="h-4 w-4 mr-1.5" />
+            {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   {/if}
 </div>
