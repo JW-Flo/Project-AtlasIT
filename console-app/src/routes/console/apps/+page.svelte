@@ -9,6 +9,16 @@
     type Integration,
     type CredentialField,
   } from "$lib/data/integrations";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { Settings, Trash2, Plus, ArrowRight, ShoppingBag } from "lucide-svelte";
 
   interface ConnectedApp extends Integration {
     connectedAt?: string;
@@ -175,7 +185,7 @@
     pushToast({ message: "Role mapping removed", variant: "info" });
   }
 
-  // Credential editing (ported from integrations page)
+  // Credential editing
   function openEdit(app: ConnectedApp) {
     editApp = app;
     editValues = {};
@@ -252,26 +262,30 @@
   ];
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
-  <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-3xl font-semibold mb-1" style="color: var(--color-text, #fff);">Apps</h1>
-      <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+      <h1 class="text-2xl font-semibold tracking-tight">Apps</h1>
+      <p class="text-sm text-muted-foreground">
         Manage connected applications, group assignments, and role mappings
       </p>
     </div>
-    <a href="/console/marketplace" class="text-sm px-3 py-1.5 rounded" style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);">
-      Browse Marketplace
+    <a href="/console/marketplace">
+      <Button variant="outline">
+        <ShoppingBag class="h-4 w-4 mr-1.5" />
+        Browse Marketplace
+      </Button>
     </a>
   </div>
 
   <!-- Tab navigation -->
-  <div class="flex gap-1 mb-6 border-b" style="border-color: var(--color-border, rgba(255,255,255,0.1));">
+  <div class="flex gap-1 border-b">
     {#each tabs as tab}
       <button
         type="button"
-        class="px-4 py-2.5 text-sm font-medium transition-colors"
-        style="color: {activeTab === tab.id ? 'var(--color-accent, #3b82f6)' : 'var(--color-text, #fff)'}; opacity: {activeTab === tab.id ? 1 : 0.5}; border-bottom: 2px solid {activeTab === tab.id ? 'var(--color-accent, #3b82f6)' : 'transparent'}; margin-bottom: -1px;"
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === tab.id
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
         on:click={() => setTab(tab.id)}
       >
         {tab.label}
@@ -280,48 +294,58 @@
   </div>
 
   {#if loading}
-    <div class="text-center py-16" style="color: var(--color-text, #fff); opacity: 0.4;">Loading...</div>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-16 rounded-lg" />
+      {/each}
+    </div>
 
   {:else if activeTab === "connected"}
     <!-- Connected Apps -->
     {#if apps.length === 0}
-      <div class="rounded-lg p-10 text-center border border-dashed" style="background: var(--color-surface, #1a2332); border-color: rgba(255,255,255,0.15);">
-        <p class="text-lg font-semibold mb-1" style="color: var(--color-text, #fff);">No connected apps</p>
-        <p class="text-sm mb-5" style="color: var(--color-text, #fff); opacity: 0.5;">Connect applications from the Marketplace to get started.</p>
-        <a href="/console/marketplace" class="text-sm px-5 py-2.5 rounded text-white" style="background: var(--color-accent, #3b82f6);">Browse Marketplace</a>
-      </div>
+      <Card class="border-dashed">
+        <CardContent class="py-10 text-center">
+          <ShoppingBag class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
+          <p class="text-lg font-semibold mb-1">No connected apps</p>
+          <p class="text-sm text-muted-foreground mb-5">Connect applications from the Marketplace to get started.</p>
+          <a href="/console/marketplace"><Button>Browse Marketplace</Button></a>
+        </CardContent>
+      </Card>
     {:else}
       <div class="space-y-2">
         {#each apps as app}
-          <div class="flex items-center justify-between px-4 py-3 rounded-lg" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
-                <svg class="w-4 h-4" style="color: var(--color-accent, #3b82f6);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
-                </svg>
-              </div>
-              <div>
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-medium" style="color: var(--color-text, #fff);">{app.name}</span>
-                  <span class="w-2 h-2 rounded-full" style="background: {app.healthy !== false ? '#22c55e' : '#ef4444'};"></span>
+          <Card>
+            <CardContent class="py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded flex items-center justify-center bg-primary/10">
+                  <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
+                  </svg>
                 </div>
-                <div class="text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">
-                  {authLabel(app.auth)} &middot; {app.credentialFields.length} field{app.credentialFields.length !== 1 ? "s" : ""}
-                  {#if app.connectedAt}
-                    &middot; Connected {new Date(app.connectedAt).toLocaleDateString()}
-                  {/if}
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium">{app.name}</span>
+                    <span class="w-2 h-2 rounded-full {app.healthy !== false ? 'bg-green-500' : 'bg-destructive'}"></span>
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {authLabel(app.auth)} &middot; {app.credentialFields.length} field{app.credentialFields.length !== 1 ? "s" : ""}
+                    {#if app.connectedAt}
+                      &middot; Connected {new Date(app.connectedAt).toLocaleDateString()}
+                    {/if}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <button type="button" on:click={() => openEdit(app)} class="text-xs px-3 py-1.5 rounded" style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);">
-                Edit
-              </button>
-              <button type="button" on:click={() => disconnectApp(app)} class="text-xs px-3 py-1.5 rounded" style="background: rgba(239,68,68,0.1); color: #ef4444;">
-                Disconnect
-              </button>
-            </div>
-          </div>
+              <div class="flex items-center gap-2">
+                <Button variant="outline" size="sm" on:click={() => openEdit(app)}>
+                  <Settings class="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+                <Button variant="destructive" size="sm" on:click={() => disconnectApp(app)}>
+                  Disconnect
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         {/each}
       </div>
     {/if}
@@ -331,19 +355,20 @@
     <div class="flex gap-6">
       <!-- App sidebar -->
       <div class="w-56 shrink-0">
-        <p class="text-xs font-medium mb-2" style="color: var(--color-text, #fff); opacity: 0.5;">Select App</p>
+        <p class="text-xs font-medium text-muted-foreground mb-2">Select App</p>
         {#if apps.length === 0}
-          <p class="text-xs" style="color: var(--color-text, #fff); opacity: 0.3;">No connected apps</p>
+          <p class="text-xs text-muted-foreground">No connected apps</p>
         {:else}
           <div class="space-y-1">
             {#each apps as app}
               <button
                 type="button"
-                class="w-full text-left flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors"
-                style="background: {selectedAppId === app.id ? 'rgba(59,130,246,0.15)' : 'transparent'}; color: {selectedAppId === app.id ? 'var(--color-accent, #3b82f6)' : 'var(--color-text, #fff)'};"
+                class="w-full text-left flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors {selectedAppId === app.id
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'}"
                 on:click={() => selectApp(app.id)}
               >
-                <span class="w-2 h-2 rounded-full shrink-0" style="background: {app.healthy !== false ? '#22c55e' : '#ef4444'};"></span>
+                <span class="w-2 h-2 rounded-full shrink-0 {app.healthy !== false ? 'bg-green-500' : 'bg-destructive'}"></span>
                 {app.name}
               </button>
             {/each}
@@ -354,107 +379,117 @@
       <!-- Content -->
       <div class="flex-1 min-w-0">
         {#if !selectedAppId}
-          <div class="text-center py-12" style="color: var(--color-text, #fff); opacity: 0.4;">
+          <div class="text-center py-12 text-muted-foreground">
             <p class="text-sm">Select an app to manage {activeTab === "groups" ? "group assignments" : "role mappings"}</p>
           </div>
         {:else if activeTab === "groups"}
           <!-- Groups tab -->
-          <div class="mb-4">
-            <h2 class="text-sm font-semibold mb-3" style="color: var(--color-text, #fff);">
-              Group Assignments — {apps.find((a) => a.id === selectedAppId)?.name}
+          <div class="space-y-4">
+            <h2 class="text-sm font-semibold">
+              Group Assignments -- {apps.find((a) => a.id === selectedAppId)?.name}
             </h2>
 
             <!-- Add form -->
-            <div class="flex gap-2 mb-4">
-              <input type="text" bind:value={newGroupId} placeholder="Group ID" class="flex-1 px-3 py-2 rounded text-sm" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
-              <input type="text" bind:value={newGroupName} placeholder="Display Name" class="flex-1 px-3 py-2 rounded text-sm" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
-              <button type="button" on:click={addGroup} disabled={!newGroupId || !newGroupName} class="px-4 py-2 text-sm font-medium rounded text-white disabled:opacity-50" style="background: var(--color-accent, #3b82f6);">
+            <div class="flex gap-2">
+              <Input type="text" bind:value={newGroupId} placeholder="Group ID" class="flex-1" />
+              <Input type="text" bind:value={newGroupName} placeholder="Display Name" class="flex-1" />
+              <Button on:click={addGroup} disabled={!newGroupId || !newGroupName}>
+                <Plus class="h-4 w-4 mr-1" />
                 Add
-              </button>
+              </Button>
             </div>
 
             <!-- Table -->
             {#if groupsLoading}
-              <p class="text-xs py-4" style="color: var(--color-text, #fff); opacity: 0.4;">Loading...</p>
+              <Skeleton class="h-32 rounded-lg" />
             {:else if groups.length === 0}
-              <p class="text-xs py-4" style="color: var(--color-text, #fff); opacity: 0.4;">No group assignments yet</p>
+              <p class="text-xs text-muted-foreground py-4">No group assignments yet</p>
             {:else}
-              <div class="rounded-lg overflow-hidden" style="border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-                <table class="w-full">
-                  <thead>
-                    <tr style="background: rgba(255,255,255,0.02);">
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Group ID</th>
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Name</th>
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Added</th>
-                      <th class="text-right text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each groups as group}
-                      <tr style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06));">
-                        <td class="px-4 py-2.5 text-sm font-mono" style="color: var(--color-text, #fff);">{group.group_id}</td>
-                        <td class="px-4 py-2.5 text-sm" style="color: var(--color-text, #fff);">{group.group_name}</td>
-                        <td class="px-4 py-2.5 text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">{new Date(group.created_at).toLocaleDateString()}</td>
-                        <td class="px-4 py-2.5 text-right">
-                          <button type="button" on:click={() => removeGroup(group.group_id)} class="text-xs px-2 py-1 rounded" style="color: #ef4444;">Remove</button>
-                        </td>
+              <Card>
+                <CardContent class="p-0">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                        <th class="px-4 py-2 font-medium">Group ID</th>
+                        <th class="px-4 py-2 font-medium">Name</th>
+                        <th class="px-4 py-2 font-medium">Added</th>
+                        <th class="px-4 py-2 font-medium text-right"></th>
                       </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {#each groups as group}
+                        <tr class="border-t hover:bg-muted/50">
+                          <td class="px-4 py-2.5 font-mono">{group.group_id}</td>
+                          <td class="px-4 py-2.5">{group.group_name}</td>
+                          <td class="px-4 py-2.5 text-xs text-muted-foreground">{new Date(group.created_at).toLocaleDateString()}</td>
+                          <td class="px-4 py-2.5 text-right">
+                            <Button variant="ghost" size="sm" on:click={() => removeGroup(group.group_id)}>
+                              <Trash2 class="h-3 w-3 text-destructive" />
+                            </Button>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
             {/if}
           </div>
 
         {:else if activeTab === "roles"}
           <!-- Roles tab -->
-          <div class="mb-4">
-            <h2 class="text-sm font-semibold mb-3" style="color: var(--color-text, #fff);">
-              Role Mappings — {apps.find((a) => a.id === selectedAppId)?.name}
+          <div class="space-y-4">
+            <h2 class="text-sm font-semibold">
+              Role Mappings -- {apps.find((a) => a.id === selectedAppId)?.name}
             </h2>
 
             <!-- Add form -->
-            <div class="flex gap-2 mb-4">
-              <input type="text" bind:value={newSourceRole} placeholder="Source Role (e.g. Admin)" class="flex-1 px-3 py-2 rounded text-sm" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
-              <span class="flex items-center text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">&rarr;</span>
-              <input type="text" bind:value={newTargetRole} placeholder="Target Role (e.g. Owner)" class="flex-1 px-3 py-2 rounded text-sm" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);" />
-              <button type="button" on:click={addRole} disabled={!newSourceRole || !newTargetRole} class="px-4 py-2 text-sm font-medium rounded text-white disabled:opacity-50" style="background: var(--color-accent, #3b82f6);">
+            <div class="flex gap-2 items-center">
+              <Input type="text" bind:value={newSourceRole} placeholder="Source Role (e.g. Admin)" class="flex-1" />
+              <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input type="text" bind:value={newTargetRole} placeholder="Target Role (e.g. Owner)" class="flex-1" />
+              <Button on:click={addRole} disabled={!newSourceRole || !newTargetRole}>
+                <Plus class="h-4 w-4 mr-1" />
                 Add
-              </button>
+              </Button>
             </div>
 
             <!-- Table -->
             {#if rolesLoading}
-              <p class="text-xs py-4" style="color: var(--color-text, #fff); opacity: 0.4;">Loading...</p>
+              <Skeleton class="h-32 rounded-lg" />
             {:else if roles.length === 0}
-              <p class="text-xs py-4" style="color: var(--color-text, #fff); opacity: 0.4;">No role mappings yet</p>
+              <p class="text-xs text-muted-foreground py-4">No role mappings yet</p>
             {:else}
-              <div class="rounded-lg overflow-hidden" style="border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-                <table class="w-full">
-                  <thead>
-                    <tr style="background: rgba(255,255,255,0.02);">
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Source Role</th>
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;"></th>
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Target Role</th>
-                      <th class="text-left text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;">Added</th>
-                      <th class="text-right text-xs font-medium px-4 py-2" style="color: var(--color-text, #fff); opacity: 0.5;"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each roles as role}
-                      <tr style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06));">
-                        <td class="px-4 py-2.5 text-sm font-mono" style="color: var(--color-text, #fff);">{role.source_role}</td>
-                        <td class="px-4 py-2.5 text-xs" style="color: var(--color-text, #fff); opacity: 0.3;">&rarr;</td>
-                        <td class="px-4 py-2.5 text-sm font-mono" style="color: var(--color-accent, #3b82f6);">{role.target_role}</td>
-                        <td class="px-4 py-2.5 text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">{new Date(role.created_at).toLocaleDateString()}</td>
-                        <td class="px-4 py-2.5 text-right">
-                          <button type="button" on:click={() => removeRole(role.source_role)} class="text-xs px-2 py-1 rounded" style="color: #ef4444;">Remove</button>
-                        </td>
+              <Card>
+                <CardContent class="p-0">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                        <th class="px-4 py-2 font-medium">Source Role</th>
+                        <th class="px-4 py-2 font-medium"></th>
+                        <th class="px-4 py-2 font-medium">Target Role</th>
+                        <th class="px-4 py-2 font-medium">Added</th>
+                        <th class="px-4 py-2 font-medium text-right"></th>
                       </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {#each roles as role}
+                        <tr class="border-t hover:bg-muted/50">
+                          <td class="px-4 py-2.5 font-mono">{role.source_role}</td>
+                          <td class="px-4 py-2.5 text-xs text-muted-foreground">&rarr;</td>
+                          <td class="px-4 py-2.5 font-mono text-primary">{role.target_role}</td>
+                          <td class="px-4 py-2.5 text-xs text-muted-foreground">{new Date(role.created_at).toLocaleDateString()}</td>
+                          <td class="px-4 py-2.5 text-right">
+                            <Button variant="ghost" size="sm" on:click={() => removeRole(role.source_role)}>
+                              <Trash2 class="h-3 w-3 text-destructive" />
+                            </Button>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
             {/if}
           </div>
         {/if}
@@ -464,55 +499,43 @@
 </div>
 
 <!-- Edit Credentials Modal -->
-{#if editOpen && editApp}
-  <div class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.6);">
-    <div class="w-full max-w-md mx-4 rounded-lg p-6" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold" style="color: var(--color-text, #fff);">{editApp.name} — Credentials</h3>
-        <button type="button" on:click={() => editOpen = false} class="p-1" style="color: var(--color-text, #fff); opacity: 0.5;" aria-label="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
+<Dialog open={editOpen} onClose={() => editOpen = false} title="{editApp?.name || ''} -- Credentials">
+  {#if editApp}
+    {#if editApp.credentialFields.length > 0}
+      <div class="space-y-3 mb-4">
+        {#each editApp.credentialFields as field}
+          <div class="space-y-1.5">
+            <Label>
+              {field.label}{field.required ? " *" : ""}
+            </Label>
+            <Input
+              type={field.type === "password" ? "password" : "text"}
+              bind:value={editValues[field.key]}
+              placeholder="(unchanged)"
+            />
+            {#if field.helpText}
+              <p class="text-xs text-muted-foreground">{field.helpText}</p>
+            {/if}
+          </div>
+        {/each}
       </div>
+    {:else}
+      <p class="text-xs text-muted-foreground mb-4">This app uses OAuth. No manual credentials needed.</p>
+    {/if}
 
-      {#if editApp.credentialFields.length > 0}
-        <div class="space-y-3 mb-4">
-          {#each editApp.credentialFields as field}
-            <div>
-              <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.6;" for="cred-{field.key}">
-                {field.label}{field.required ? " *" : ""}
-              </label>
-              <input
-                id="cred-{field.key}"
-                type={field.type === "password" ? "password" : "text"}
-                bind:value={editValues[field.key]}
-                placeholder="(unchanged)"
-                class="w-full px-3 py-2 rounded text-sm"
-                style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-              />
-              {#if field.helpText}
-                <p class="text-[11px] mt-0.5" style="color: var(--color-text, #fff); opacity: 0.3;">{field.helpText}</p>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="text-xs mb-4" style="color: var(--color-text, #fff); opacity: 0.5;">This app uses OAuth. No manual credentials needed.</p>
-      {/if}
-
-      {#if testResult}
-        <div class="mb-3 px-3 py-2 rounded text-xs" style="background: {testResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'}; color: {testResult.ok ? '#22c55e' : '#ef4444'};">
-          {testResult.message}
-        </div>
-      {/if}
-
-      <div class="flex gap-2">
-        <button type="button" on:click={testConnection} disabled={testLoading} class="flex-1 py-2 text-sm font-medium rounded transition-colors disabled:opacity-50" style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);">
-          {testLoading ? "Testing..." : "Test Connection"}
-        </button>
-        <button type="button" on:click={saveCredentials} disabled={editLoading} class="flex-1 py-2 text-sm font-medium rounded text-white transition-colors disabled:opacity-50" style="background: var(--color-accent, #3b82f6);">
-          {editLoading ? "Saving..." : "Save Changes"}
-        </button>
+    {#if testResult}
+      <div class="mb-3 px-3 py-2 rounded text-xs {testResult.ok ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}">
+        {testResult.message}
       </div>
-    </div>
-  </div>
-{/if}
+    {/if}
+
+    <DialogFooter>
+      <Button variant="outline" on:click={testConnection} disabled={testLoading}>
+        {testLoading ? "Testing..." : "Test Connection"}
+      </Button>
+      <Button on:click={saveCredentials} disabled={editLoading}>
+        {editLoading ? "Saving..." : "Save Changes"}
+      </Button>
+    </DialogFooter>
+  {/if}
+</Dialog>

@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { page } from "$app/stores";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -56,73 +62,81 @@
   onMount(loadAuditLog);
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-6xl mx-auto">
-  <h1 class="text-2xl font-semibold">Audit Log</h1>
+<div class="space-y-6">
+  <h1 class="text-2xl font-semibold tracking-tight">Audit Log</h1>
 
-  <div class="flex gap-6 border-b border-white/10 mb-6">
+  <div class="flex gap-1 border-b">
     {#each settingsTabs as tab}
-      <a href={tab.href}
-         class="pb-2 text-sm {current === tab.href ? 'text-white border-b-2 border-indigo-500' : 'text-white/50 hover:text-white/80'}"
+      <a
+        href={tab.href}
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {current === tab.href
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
       >{tab.label}</a>
     {/each}
   </div>
 
   {#if error}
-    <div class="text-red-400 bg-red-900/20 p-4 rounded-lg text-sm">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   {#if loading}
-    <div class="text-white/50 text-sm">Loading audit log...</div>
-  {:else}
-    <div class="bg-[#1a2332] rounded-lg border border-white/10 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-white/50 border-b border-white/10">
-            <th class="px-4 py-3 font-medium">Date</th>
-            <th class="px-4 py-3 font-medium">Actor</th>
-            <th class="px-4 py-3 font-medium">Action</th>
-            <th class="px-4 py-3 font-medium">Target</th>
-            <th class="px-4 py-3 font-medium">Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each entries as entry}
-            <tr class="border-b border-white/10 hover:bg-white/5">
-              <td class="px-4 py-3 text-white/60 whitespace-nowrap">{new Date(entry.date).toLocaleString()}</td>
-              <td class="px-4 py-3 text-white/80">{entry.actor}</td>
-              <td class="px-4 py-3 text-white">{entry.action}</td>
-              <td class="px-4 py-3 text-white/80">{entry.target || "—"}</td>
-              <td class="px-4 py-3 text-white/60 max-w-xs truncate">{entry.details || "—"}</td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="5" class="px-4 py-6 text-center text-white/40">No audit log entries</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-12 rounded-lg" />
+      {/each}
     </div>
+  {:else}
+    <Card>
+      <CardContent class="p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-4 py-3 font-medium">Date</th>
+                <th class="px-4 py-3 font-medium">Actor</th>
+                <th class="px-4 py-3 font-medium">Action</th>
+                <th class="px-4 py-3 font-medium">Target</th>
+                <th class="px-4 py-3 font-medium">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each entries as entry}
+                <tr class="border-t hover:bg-muted/50">
+                  <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(entry.date).toLocaleString()}</td>
+                  <td class="px-4 py-3">{entry.actor}</td>
+                  <td class="px-4 py-3 font-medium">{entry.action}</td>
+                  <td class="px-4 py-3 text-muted-foreground">{entry.target || "---"}</td>
+                  <td class="px-4 py-3 text-muted-foreground max-w-xs truncate">{entry.details || "---"}</td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="5" class="px-4 py-6 text-center text-muted-foreground">No audit log entries</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
 
     {#if total > limit}
       <div class="flex justify-between items-center text-sm">
-        <span class="text-white/50">
-          Showing {offset + 1}–{Math.min(offset + limit, total)} of {total}
+        <span class="text-muted-foreground">
+          Showing {offset + 1}--{Math.min(offset + limit, total)} of {total}
         </span>
         <div class="flex gap-2">
-          <button
-            on:click={prevPage}
-            disabled={offset <= 0}
-            class="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-30"
-          >
+          <Button variant="outline" size="sm" on:click={prevPage} disabled={offset <= 0}>
+            <ChevronLeft class="h-4 w-4 mr-1" />
             Previous
-          </button>
-          <button
-            on:click={nextPage}
-            disabled={offset + limit >= total}
-            class="px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white disabled:opacity-30"
-          >
+          </Button>
+          <Button variant="outline" size="sm" on:click={nextPage} disabled={offset + limit >= total}>
             Next
-          </button>
+            <ChevronRight class="h-4 w-4 ml-1" />
+          </Button>
         </div>
       </div>
     {/if}

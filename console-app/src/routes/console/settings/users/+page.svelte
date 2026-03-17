@@ -2,7 +2,19 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import Modal from "$lib/components/overlays/Modal.svelte";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogHeader from "$lib/components/ui/dialog-header.svelte";
+  import DialogTitle from "$lib/components/ui/dialog-title.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, UserPlus, Users, Trash2, Copy } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -137,176 +149,165 @@
   onMount(loadUsers);
 </script>
 
-<div class="px-6 py-6 space-y-6 max-w-5xl mx-auto">
+<div class="space-y-6">
   <div class="flex justify-between items-center">
-    <h1 class="text-2xl font-semibold">User Management</h1>
-    <button
-      on:click={openInviteModal}
-      class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
-    >
+    <h1 class="text-2xl font-semibold tracking-tight">User Management</h1>
+    <Button size="sm" on:click={openInviteModal}>
+      <UserPlus class="h-4 w-4 mr-1.5" />
       Invite User
-    </button>
+    </Button>
   </div>
 
-  <div class="flex gap-6 border-b border-white/10 mb-6">
+  <div class="flex gap-1 border-b">
     {#each settingsTabs as tab}
-      <a href={tab.href}
-         class="pb-2 text-sm {current === tab.href ? 'text-white border-b-2 border-indigo-500' : 'text-white/50 hover:text-white/80'}"
+      <a
+        href={tab.href}
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {current === tab.href
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
       >{tab.label}</a>
     {/each}
   </div>
 
   {#if error}
-    <div class="text-red-400 bg-red-900/20 p-4 rounded-lg text-sm">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   {#if loading}
-    <div class="text-white/50 text-sm">Loading users...</div>
-  {:else}
-    <div class="bg-[#1a2332] rounded-lg border border-white/10 overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-white/50 border-b border-white/10">
-            <th class="px-4 py-3 font-medium">Name</th>
-            <th class="px-4 py-3 font-medium">Email</th>
-            <th class="px-4 py-3 font-medium">Role</th>
-            <th class="px-4 py-3 font-medium">Last Login</th>
-            <th class="px-4 py-3 font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each users as user}
-            <tr class="border-b border-white/10 hover:bg-white/5">
-              <td class="px-4 py-3 text-white">{user.displayName || "—"}</td>
-              <td class="px-4 py-3 text-white/80">{user.email}</td>
-              <td class="px-4 py-3">
-                <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium
-                  {user.role === 'admin' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}">
-                  {user.role}
-                </span>
-              </td>
-              <td class="px-4 py-3 text-white/60">
-                {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
-              </td>
-              <td class="px-4 py-3">
-                <div class="flex gap-2 items-center">
-                  <select
-                    value={user.role}
-                    on:change={(e) => changeRole(user, e.currentTarget.value)}
-                    class="text-xs bg-white/5 border border-white/10 rounded px-2 py-1 text-white"
-                  >
-                    <option value="admin">admin</option>
-                    <option value="member">member</option>
-                  </select>
-                  <button
-                    on:click={() => confirmDelete(user)}
-                    class="text-xs bg-red-600 hover:bg-red-500 px-2.5 py-1 rounded text-white"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </td>
-            </tr>
-          {:else}
-            <tr>
-              <td colspan="5" class="px-4 py-10 text-center">
-                <div class="flex flex-col items-center gap-3">
-                  <svg class="w-10 h-10 text-white/15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <div>
-                    <p class="text-white/60 font-medium mb-1">Invite your first team member to get started</p>
-                    <p class="text-white/40 text-xs mb-3">Add admins or members to collaborate on your organization's IT management.</p>
-                  </div>
-                  <button
-                    on:click={openInviteModal}
-                    class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white font-medium"
-                  >
-                    Invite Your First User
-                  </button>
-                </div>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-14 rounded-lg" />
+      {/each}
     </div>
+  {:else}
+    <Card>
+      <CardContent class="p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-4 py-3 font-medium">Name</th>
+                <th class="px-4 py-3 font-medium">Email</th>
+                <th class="px-4 py-3 font-medium">Role</th>
+                <th class="px-4 py-3 font-medium">Last Login</th>
+                <th class="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each users as user}
+                <tr class="border-t hover:bg-muted/50">
+                  <td class="px-4 py-3 font-medium">{user.displayName || "---"}</td>
+                  <td class="px-4 py-3 text-muted-foreground">{user.email}</td>
+                  <td class="px-4 py-3">
+                    <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>{user.role}</Badge>
+                  </td>
+                  <td class="px-4 py-3 text-muted-foreground">
+                    {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
+                  </td>
+                  <td class="px-4 py-3">
+                    <div class="flex gap-2 items-center">
+                      <select
+                        value={user.role}
+                        on:change={(e) => changeRole(user, e.currentTarget.value)}
+                        class="h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="admin">admin</option>
+                        <option value="member">member</option>
+                      </select>
+                      <Button size="sm" variant="destructive" on:click={() => confirmDelete(user)}>
+                        <Trash2 class="h-3 w-3 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              {:else}
+                <tr>
+                  <td colspan="5" class="px-4 py-10 text-center">
+                    <Users class="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
+                    <p class="text-muted-foreground font-medium mb-1">Invite your first team member</p>
+                    <p class="text-muted-foreground text-xs mb-3">Add admins or members to collaborate on your organization's IT management.</p>
+                    <Button on:click={openInviteModal}>
+                      <UserPlus class="h-4 w-4 mr-1.5" />
+                      Invite Your First User
+                    </Button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   {/if}
 </div>
 
-{#if inviteModalOpen && tempPassword}
-  <Modal open={true} title="Invite User" ariaLabel="Invite result" close={closeInviteModal}>
-    <div class="space-y-3">
-      <p class="text-sm text-white/80">User invited. Share this temporary password:</p>
-      <div class="flex items-center gap-2">
-        <code class="flex-1 bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white font-mono">{tempPassword}</code>
-        <button
-          on:click={copyTempPassword}
-          class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded text-white"
-        >
-          Copy
-        </button>
-      </div>
+<!-- Invite Modal: Show temp password -->
+<Dialog open={inviteModalOpen && !!tempPassword} onClose={closeInviteModal}>
+  <DialogHeader>
+    <DialogTitle>User Invited</DialogTitle>
+  </DialogHeader>
+  <div class="space-y-3">
+    <p class="text-sm text-muted-foreground">User invited. Share this temporary password:</p>
+    <div class="flex items-center gap-2">
+      <code class="flex-1 bg-muted border rounded-md px-3 py-2 text-sm font-mono">{tempPassword}</code>
+      <Button size="sm" variant="outline" on:click={copyTempPassword}>
+        <Copy class="h-4 w-4" />
+      </Button>
     </div>
-    <svelte:fragment slot="footer">
-      <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Done</button>
-    </svelte:fragment>
-  </Modal>
-{:else if inviteModalOpen}
-  <Modal open={true} title="Invite User" ariaLabel="Invite user form" close={closeInviteModal}>
-    <div class="space-y-4">
-      <div>
-        <label for="invite-email" class="block text-sm text-white/60 mb-1.5">Email <span class="text-red-400">*</span></label>
-        <input
-          id="invite-email"
-          type="email"
-          bind:value={inviteEmail}
-          data-autofocus
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        />
-      </div>
-      <div>
-        <label for="invite-name" class="block text-sm text-white/60 mb-1.5">Display Name</label>
-        <input
-          id="invite-name"
-          type="text"
-          bind:value={inviteDisplayName}
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        />
-      </div>
-      <div>
-        <label for="invite-role" class="block text-sm text-white/60 mb-1.5">Role</label>
-        <select
-          id="invite-role"
-          bind:value={inviteRole}
-          class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-        >
-          <option value="member">Member</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-    </div>
-    <svelte:fragment slot="footer">
-      <button on:click={closeInviteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Cancel</button>
-      <button
-        on:click={inviteUser}
-        disabled={!inviteEmail || inviting}
-        class="text-sm px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
-      >
-        {inviting ? "Inviting..." : "Send Invite"}
-      </button>
-    </svelte:fragment>
-  </Modal>
-{/if}
+  </div>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeInviteModal}>Done</Button>
+  </DialogFooter>
+</Dialog>
 
-{#if deleteModalOpen}
-  <Modal open={true} title="Remove User" ariaLabel="Confirm user removal" close={closeDeleteModal}>
-    <p class="text-sm text-white/80">
-      Are you sure you want to remove <strong class="text-white">{userToDelete?.email}</strong>? They will lose access immediately.
-    </p>
-    <svelte:fragment slot="footer">
-      <button on:click={closeDeleteModal} class="text-sm px-3 py-1.5 rounded bg-gray-600 hover:bg-gray-500 text-white">Cancel</button>
-      <button on:click={deleteUser} class="text-sm px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white">Remove</button>
-    </svelte:fragment>
-  </Modal>
-{/if}
+<!-- Invite Modal: Form -->
+<Dialog open={inviteModalOpen && !tempPassword} onClose={closeInviteModal}>
+  <DialogHeader>
+    <DialogTitle>Invite User</DialogTitle>
+  </DialogHeader>
+  <div class="space-y-4">
+    <div class="space-y-2">
+      <Label htmlFor="invite-email">Email <span class="text-destructive">*</span></Label>
+      <Input id="invite-email" type="email" bind:value={inviteEmail} />
+    </div>
+    <div class="space-y-2">
+      <Label htmlFor="invite-name">Display Name</Label>
+      <Input id="invite-name" bind:value={inviteDisplayName} />
+    </div>
+    <div class="space-y-2">
+      <Label htmlFor="invite-role">Role</Label>
+      <select
+        id="invite-role"
+        bind:value={inviteRole}
+        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <option value="member">Member</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+  </div>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeInviteModal}>Cancel</Button>
+    <Button on:click={inviteUser} disabled={!inviteEmail || inviting}>
+      {inviting ? "Inviting..." : "Send Invite"}
+    </Button>
+  </DialogFooter>
+</Dialog>
+
+<!-- Delete Modal -->
+<Dialog open={deleteModalOpen} onClose={closeDeleteModal}>
+  <DialogHeader>
+    <DialogTitle>Remove User</DialogTitle>
+  </DialogHeader>
+  <p class="text-sm text-muted-foreground">
+    Are you sure you want to remove <strong class="text-foreground">{userToDelete?.email}</strong>? They will lose access immediately.
+  </p>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeDeleteModal}>Cancel</Button>
+    <Button variant="destructive" on:click={deleteUser}>Remove</Button>
+  </DialogFooter>
+</Dialog>

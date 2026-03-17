@@ -6,6 +6,14 @@
   import type { MarketplaceApp, Install } from "$lib/api/marketplace";
   import { installApp } from "$lib/api/marketplace";
   import { session, fetchSession } from "$lib/stores/session";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, Package, RefreshCw } from "lucide-svelte";
 
   export let data: { apps: MarketplaceApp[]; installs: Install[] };
 
@@ -100,49 +108,35 @@
   }
 </script>
 
-<div class="px-5 py-5 max-w-[1400px] mx-auto">
+<div class="space-y-6 px-5 py-5 max-w-[1400px] mx-auto">
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-3xl font-semibold mb-1" style="color: var(--color-text);">
-        Marketplace
-      </h1>
-      <p class="text-sm" style="color: var(--color-text-dim);">
+      <h1 class="text-2xl font-semibold tracking-tight">Marketplace</h1>
+      <p class="text-sm text-muted-foreground">
         Browse and install apps to extend your IT automation platform
       </p>
     </div>
     <div class="flex items-center gap-3">
       {#if installedCount > 0}
-        <span
-          class="text-sm px-3 py-1.5 rounded font-medium"
-          style="background: rgba(34,197,94,0.15); color: #22c55e;"
-        >
-          {installedCount} Installed
-        </span>
+        <Badge variant="success">{installedCount} Installed</Badge>
       {/if}
-      <a
-        href="/console"
-        class="text-sm px-3 py-1.5 rounded"
-        style="background: var(--color-surface); color: var(--color-text);"
-      >
-        Back to Dashboard
+      <a href="/console">
+        <Button variant="outline" size="sm">Back to Dashboard</Button>
       </a>
     </div>
   </div>
 
   <!-- Search -->
-  <div class="mb-4">
-    <input
-      type="text"
-      bind:value={searchQuery}
-      placeholder="Search apps..."
-      class="w-full max-w-md px-4 py-2.5 rounded-lg text-sm"
-      style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
-    />
-  </div>
+  <Input
+    type="text"
+    bind:value={searchQuery}
+    placeholder="Search apps..."
+    class="max-w-md"
+  />
 
   <!-- Category filter -->
-  <div class="mb-6">
+  <div>
     <CategoryFilter
       {categories}
       active={activeCategory}
@@ -154,92 +148,38 @@
   {#if loading}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {#each Array(8) as _}
-        <div
-          class="rounded-lg p-5 animate-pulse"
-          style="background: var(--color-surface); height: 220px;"
-        >
-          <div
-            class="w-10 h-10 rounded-lg mb-3"
-            style="background: var(--color-surface-alt);"
-          ></div>
-          <div
-            class="h-4 rounded mb-2 w-2/3"
-            style="background: var(--color-surface-alt);"
-          ></div>
-          <div
-            class="h-3 rounded mb-1 w-1/3"
-            style="background: var(--color-surface-alt);"
-          ></div>
-          <div
-            class="h-3 rounded w-full mt-4"
-            style="background: var(--color-surface-alt);"
-          ></div>
-        </div>
+        <Skeleton class="h-56 rounded-lg" />
       {/each}
     </div>
 
   <!-- Error state -->
   {:else if error}
-    <div
-      class="text-center py-16 rounded-lg"
-      style="background: var(--color-surface);"
-    >
-      <svg
-        class="w-12 h-12 mx-auto mb-4"
-        style="color: #ef4444; opacity: 0.6;"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="1.5"
-          d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"
-        />
-      </svg>
-      <p class="text-lg mb-2" style="color: var(--color-text);">{error}</p>
-      <button
-        type="button"
-        class="text-sm px-4 py-2 rounded mt-2 font-medium text-white"
-        style="background: var(--color-accent);"
-        on:click={() => location.reload()}
-      >
-        Retry
-      </button>
-    </div>
+    <Card class="py-16 text-center">
+      <CardContent>
+        <AlertTriangle class="w-12 h-12 mx-auto mb-4 text-destructive/60" />
+        <p class="text-lg mb-2">{error}</p>
+        <Button on:click={() => location.reload()} class="mt-2">
+          <RefreshCw class="h-4 w-4 mr-1.5" />
+          Retry
+        </Button>
+      </CardContent>
+    </Card>
 
   <!-- Empty state -->
   {:else if filtered.length === 0 && !searchQuery && activeCategory === "all"}
-    <div
-      class="text-center py-16 rounded-lg"
-      style="background: var(--color-surface);"
-    >
-      <svg
-        class="w-12 h-12 mx-auto mb-4"
-        style="color: var(--color-text-dim); opacity: 0.3;"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="1.5"
-          d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
-        />
-      </svg>
-      <p class="text-lg mb-1" style="color: var(--color-text);">
-        No apps available yet
-      </p>
-      <p class="text-sm" style="color: var(--color-text-dim);">
-        The marketplace catalog is being populated. Check back soon.
-      </p>
-    </div>
+    <Card class="py-16 text-center">
+      <CardContent>
+        <Package class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
+        <p class="text-lg mb-1">No apps available yet</p>
+        <p class="text-sm text-muted-foreground">
+          The marketplace catalog is being populated. Check back soon.
+        </p>
+      </CardContent>
+    </Card>
 
   <!-- No results for search/filter -->
   {:else if filtered.length === 0}
-    <div class="text-center py-12" style="color: var(--color-text-dim);">
+    <div class="text-center py-12 text-muted-foreground">
       <p class="text-lg">No apps found</p>
       <p class="text-sm mt-1">Try a different search term or category</p>
     </div>

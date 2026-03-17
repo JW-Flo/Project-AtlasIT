@@ -2,6 +2,15 @@
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { integrations, iconMap } from "$lib/data/integrations";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import { Link, ChevronDown, Play, CheckCircle, XCircle, Minus } from "lucide-svelte";
 
   interface WorkflowStep {
     name: string;
@@ -62,11 +71,17 @@
   );
   $: hasConnected = connectedWorkflows.length > 0;
 
-  const sections: { type: "joiner" | "mover" | "leaver"; label: string; color: string; accent: string }[] = [
-    { type: "joiner", label: "Joiner", color: "rgba(34,197,94,0.15)", accent: "#22c55e" },
-    { type: "mover", label: "Mover", color: "rgba(59,130,246,0.15)", accent: "#3b82f6" },
-    { type: "leaver", label: "Leaver", color: "rgba(239,68,68,0.15)", accent: "#ef4444" },
+  const sections: { type: "joiner" | "mover" | "leaver"; label: string; variant: "success" | "default" | "destructive" }[] = [
+    { type: "joiner", label: "Joiner", variant: "success" },
+    { type: "mover", label: "Mover", variant: "default" },
+    { type: "leaver", label: "Leaver", variant: "destructive" },
   ];
+
+  const sectionColors: Record<string, string> = {
+    joiner: "bg-green-500/10 text-green-500 border-green-500/20",
+    mover: "bg-primary/10 text-primary border-primary/20",
+    leaver: "bg-destructive/10 text-destructive border-destructive/20",
+  };
 
   async function fetchWorkflows() {
     loading = true;
@@ -195,145 +210,124 @@
   $: if (mounted && idpSource) {
     fetchWorkflows();
   }
-
-  const typeColors: Record<string, { bg: string; text: string }> = {
-    joiner: { bg: "rgba(34,197,94,0.15)", text: "#22c55e" },
-    mover: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6" },
-    leaver: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
-  };
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
-  <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-3xl font-semibold mb-1" style="color: var(--color-text, #fff);">Workflows</h1>
-      <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+      <h1 class="text-2xl font-semibold tracking-tight">Workflows</h1>
+      <p class="text-sm text-muted-foreground">
         Joiner / Mover / Leaver workflows for connected applications
       </p>
     </div>
-    <a href="/console" class="text-sm px-3 py-1.5 rounded" style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);">
-      Back to Dashboard
-    </a>
   </div>
 
   <!-- Controls -->
-  <div class="flex flex-wrap items-end gap-4 mb-6">
-    <div>
-      <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.5;">IDP Source</label>
+  <div class="flex flex-wrap items-end gap-4">
+    <div class="space-y-1.5">
+      <Label>IDP Source</Label>
       <select
         bind:value={idpSource}
-        class="px-3 py-2 rounded text-sm"
-        style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
+        class="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {#each idpSources as src}
           <option value={src.id}>{src.label}</option>
         {/each}
       </select>
     </div>
-    <div class="flex-1 max-w-sm">
-      <label class="block text-xs mb-1" style="color: var(--color-text, #fff); opacity: 0.5;">Search</label>
-      <input
-        type="text"
-        bind:value={searchQuery}
-        placeholder="Filter apps..."
-        class="w-full px-3 py-2 rounded text-sm"
-        style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-      />
+    <div class="flex-1 max-w-sm space-y-1.5">
+      <Label>Search</Label>
+      <Input type="text" bind:value={searchQuery} placeholder="Filter apps..." />
     </div>
   </div>
 
   {#if loading}
-    <div class="text-center py-16" style="color: var(--color-text, #fff); opacity: 0.4;">
+    <div class="text-center py-16 text-muted-foreground">
       <p>Loading workflows...</p>
     </div>
   {:else if !hasConnected}
     <!-- Empty state: no connected apps -->
-    <div class="rounded-lg p-10 text-center border border-dashed" style="background: var(--color-surface, #1a2332); border-color: rgba(255,255,255,0.15);">
-      <svg class="w-12 h-12 mx-auto mb-4" style="color: rgba(255,255,255,0.2);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-      </svg>
-      <p class="text-lg font-semibold mb-1" style="color: var(--color-text, #fff);">No connected apps</p>
-      <p class="text-sm mb-5" style="color: var(--color-text, #fff); opacity: 0.5;">Connect applications from the Marketplace to enable JML workflows.</p>
-      <a href="/console/marketplace" class="text-sm px-5 py-2.5 rounded text-white" style="background: var(--color-accent, #3b82f6);">
-        Browse Marketplace
-      </a>
-    </div>
+    <Card class="border-dashed">
+      <CardContent class="py-10 text-center">
+        <Link class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
+        <p class="text-lg font-semibold mb-1">No connected apps</p>
+        <p class="text-sm text-muted-foreground mb-5">Connect applications from the Marketplace to enable JML workflows.</p>
+        <a href="/console/marketplace">
+          <Button>Browse Marketplace</Button>
+        </a>
+      </CardContent>
+    </Card>
   {:else}
     <!-- JML sections -->
     {#each sections as section}
       {@const apps = filtered.filter((w) => (w[section.type] || []).length > 0)}
-      <div class="mb-6">
+      <div>
         <!-- Section header -->
         <button
           type="button"
-          class="w-full flex items-center justify-between px-4 py-3 rounded-t-lg"
-          style="background: {section.color};"
+          class="w-full flex items-center justify-between px-4 py-3 rounded-t-lg border {sectionColors[section.type]}"
           on:click={() => { collapsed[section.type] = !collapsed[section.type]; collapsed = collapsed; }}
         >
           <div class="flex items-center gap-3">
-            <span class="text-sm font-semibold uppercase tracking-wide" style="color: {section.accent};">
+            <span class="text-sm font-semibold uppercase tracking-wide">
               {section.label}
             </span>
-            <span class="text-xs px-2 py-0.5 rounded-full" style="background: rgba(0,0,0,0.2); color: {section.accent};">
+            <Badge variant="secondary">
               {apps.length} app{apps.length !== 1 ? "s" : ""}
-            </span>
+            </Badge>
           </div>
-          <svg class="w-4 h-4 transition-transform" class:rotate-180={!collapsed[section.type]} style="color: {section.accent};" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
+          <ChevronDown class="w-4 h-4 transition-transform {collapsed[section.type] ? '' : 'rotate-180'}" />
         </button>
 
         {#if !collapsed[section.type]}
-          <div class="rounded-b-lg overflow-hidden" style="border: 1px solid var(--color-border, rgba(255,255,255,0.1)); border-top: none;">
-            {#if apps.length === 0}
-              <div class="px-4 py-6 text-center text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">
-                No matching apps
-              </div>
-            {:else}
-              <table class="w-full">
-                <thead>
-                  <tr style="background: rgba(255,255,255,0.02);">
-                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Application</th>
-                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Category</th>
-                    <th class="text-left text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Steps</th>
-                    <th class="text-right text-xs font-medium px-4 py-2.5" style="color: var(--color-text, #fff); opacity: 0.5;">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each apps as app}
-                    <tr style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06));">
-                      <td class="px-4 py-3">
-                        <div class="flex items-center gap-3">
-                          <div class="w-8 h-8 rounded flex items-center justify-center" style="background: rgba(59,130,246,0.1);">
-                            <svg class="w-4 h-4" style="color: var(--color-accent, #3b82f6);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
-                            </svg>
-                          </div>
-                          <span class="text-sm font-medium" style="color: var(--color-text, #fff);">{app.appName}</span>
-                        </div>
-                      </td>
-                      <td class="px-4 py-3">
-                        <span class="text-xs capitalize" style="color: var(--color-text, #fff); opacity: 0.5;">{app.category}</span>
-                      </td>
-                      <td class="px-4 py-3">
-                        <span class="text-xs" style="color: {section.accent};">{(app[section.type] || []).length} steps</span>
-                      </td>
-                      <td class="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          on:click={() => openRunModal(app, section.type)}
-                          class="text-xs font-medium px-3 py-1.5 rounded transition-colors"
-                          style="background: {section.color}; color: {section.accent};"
-                        >
-                          Run
-                        </button>
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            {/if}
-          </div>
+          <Card class="rounded-t-none border-t-0">
+            <CardContent class="p-0">
+              {#if apps.length === 0}
+                <div class="px-4 py-6 text-center text-sm text-muted-foreground">
+                  No matching apps
+                </div>
+              {:else}
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                        <th class="px-4 py-2.5 font-medium">Application</th>
+                        <th class="px-4 py-2.5 font-medium">Category</th>
+                        <th class="px-4 py-2.5 font-medium">Steps</th>
+                        <th class="px-4 py-2.5 font-medium text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each apps as app}
+                        <tr class="border-t hover:bg-muted/50">
+                          <td class="px-4 py-3">
+                            <div class="flex items-center gap-3">
+                              <div class="w-8 h-8 rounded flex items-center justify-center bg-primary/10">
+                                <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
+                                </svg>
+                              </div>
+                              <span class="font-medium">{app.appName}</span>
+                            </div>
+                          </td>
+                          <td class="px-4 py-3 text-muted-foreground capitalize">{app.category}</td>
+                          <td class="px-4 py-3">
+                            <Badge variant="secondary">{(app[section.type] || []).length} steps</Badge>
+                          </td>
+                          <td class="px-4 py-3 text-right">
+                            <Button variant="outline" size="sm" on:click={() => openRunModal(app, section.type)}>
+                              <Play class="h-3 w-3 mr-1" />
+                              Run
+                            </Button>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+              {/if}
+            </CardContent>
+          </Card>
         {/if}
       </div>
     {/each}
@@ -341,106 +335,80 @@
 </div>
 
 <!-- Run Workflow Modal -->
-{#if showModal && modalApp}
-  <div class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.6);">
-    <div class="w-full max-w-md mx-4 rounded-lg p-6" style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold" style="color: var(--color-text, #fff);">Run Workflow — {modalApp.appName}</h3>
-        <button type="button" on:click={() => showModal = false} class="p-1" style="color: var(--color-text, #fff); opacity: 0.5;" aria-label="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
+<Dialog open={showModal} onClose={() => showModal = false} title="Run Workflow{modalApp ? ` -- ${modalApp.appName}` : ''}">
+  {#if modalApp}
+    {#if !executionResult}
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <Label>Workflow Type</Label>
+          <div class="flex gap-2">
+            {#each ["joiner", "mover", "leaver"] as t}
+              <button
+                type="button"
+                class="flex-1 py-2 text-xs font-medium rounded capitalize transition-colors border {modalType === t
+                  ? sectionColors[t]
+                  : 'bg-muted text-muted-foreground border-transparent'}"
+                on:click={() => modalType = t}
+              >
+                {t}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <Label>Subject Email</Label>
+          <Input type="email" bind:value={modalEmail} placeholder="user@company.com" />
+        </div>
 
-      {#if !executionResult}
-        <div class="space-y-4">
+        <!-- Steps preview -->
+        {#if modalApp[modalType]?.length}
           <div>
-            <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Workflow Type</label>
-            <div class="flex gap-2">
-              {#each ["joiner", "mover", "leaver"] as t}
-                {@const colors = typeColors[t]}
-                <button
-                  type="button"
-                  class="flex-1 py-2 text-xs font-medium rounded capitalize transition-colors"
-                  style="background: {modalType === t ? colors.bg : 'rgba(255,255,255,0.05)'}; color: {modalType === t ? colors.text : 'var(--color-text, #fff)'}; border: 1px solid {modalType === t ? colors.text : 'transparent'};"
-                  on:click={() => modalType = t}
-                >
-                  {t}
-                </button>
+            <p class="text-xs text-muted-foreground mb-2">Steps ({modalApp[modalType].length})</p>
+            <div class="space-y-1">
+              {#each modalApp[modalType] as step, i}
+                <div class="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-muted">
+                  <span class="font-mono text-[10px] text-muted-foreground shrink-0">{i + 1}.</span>
+                  {step.name}
+                </div>
               {/each}
             </div>
           </div>
-          <div>
-            <label class="block text-sm mb-1.5" style="color: var(--color-text, #fff); opacity: 0.7;">Subject Email</label>
-            <input
-              type="email"
-              bind:value={modalEmail}
-              placeholder="user@company.com"
-              class="w-full px-3 py-2 rounded text-sm"
-              style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-            />
-          </div>
+        {/if}
 
-          <!-- Steps preview -->
-          {#if modalApp[modalType]?.length}
-            <div>
-              <p class="text-xs mb-2" style="color: var(--color-text, #fff); opacity: 0.5;">Steps ({modalApp[modalType].length})</p>
-              <div class="space-y-1">
-                {#each modalApp[modalType] as step, i}
-                  <div class="flex items-center gap-2 text-xs px-2 py-1.5 rounded" style="background: rgba(255,255,255,0.03); color: var(--color-text, #fff); opacity: 0.7;">
-                    <span class="font-mono text-[10px] shrink-0" style="opacity: 0.4;">{i + 1}.</span>
-                    {step.name}
-                  </div>
-                {/each}
-              </div>
-            </div>
+        <Button class="w-full" on:click={executeWorkflow} disabled={executing || !modalEmail}>
+          {executing ? "Executing..." : `Run ${modalType} workflow`}
+        </Button>
+      </div>
+    {:else}
+      <div class="space-y-3">
+        <div class="flex items-center gap-2 mb-2">
+          {#if executionResult.success}
+            <CheckCircle class="w-5 h-5 text-green-500" />
+            <span class="text-sm font-medium text-green-500">Workflow completed</span>
+          {:else}
+            <XCircle class="w-5 h-5 text-destructive" />
+            <span class="text-sm font-medium text-destructive">Workflow failed</span>
           {/if}
-
-          <button
-            type="button"
-            on:click={executeWorkflow}
-            disabled={executing || !modalEmail}
-            class="w-full py-2.5 text-sm font-medium rounded text-white disabled:opacity-50 transition-colors"
-            style="background: var(--color-accent, #3b82f6);"
-          >
-            {executing ? "Executing..." : `Run ${modalType} workflow`}
-          </button>
         </div>
-      {:else}
-        <div class="space-y-3">
-          <div class="flex items-center gap-2 mb-2">
-            {#if executionResult.success}
-              <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <span class="text-sm font-medium text-green-400">Workflow completed</span>
+        {#if executionResult.message}
+          <p class="text-xs text-muted-foreground">{executionResult.message}</p>
+        {/if}
+        {#each executionResult.steps as step}
+          <div class="flex items-center gap-2 px-3 py-2 rounded bg-muted">
+            {#if step.status === "success"}
+              <CheckCircle class="w-4 h-4 text-green-500 shrink-0" />
+            {:else if step.status === "failed"}
+              <XCircle class="w-4 h-4 text-destructive shrink-0" />
             {:else}
-              <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              <span class="text-sm font-medium text-red-400">Workflow failed</span>
+              <Minus class="w-4 h-4 text-muted-foreground shrink-0" />
             {/if}
+            <span class="text-xs">{step.name}</span>
           </div>
-          {#if executionResult.message}
-            <p class="text-xs" style="color: var(--color-text, #fff); opacity: 0.6;">{executionResult.message}</p>
-          {/if}
-          {#each executionResult.steps as step}
-            <div class="flex items-center gap-2 px-3 py-2 rounded" style="background: var(--color-bg, #0f1923);">
-              {#if step.status === "success"}
-                <svg class="w-4 h-4 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              {:else if step.status === "failed"}
-                <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-              {:else}
-                <svg class="w-4 h-4 shrink-0" style="color: rgba(255,255,255,0.3);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg>
-              {/if}
-              <span class="text-xs" style="color: var(--color-text, #fff);">{step.name}</span>
-            </div>
-          {/each}
-          <button
-            type="button"
-            on:click={() => showModal = false}
-            class="w-full py-2 text-sm font-medium rounded transition-colors"
-            style="background: rgba(255,255,255,0.05); color: var(--color-text, #fff);"
-          >
-            Close
-          </button>
-        </div>
-      {/if}
-    </div>
-  </div>
-{/if}
+        {/each}
+        <DialogFooter>
+          <Button variant="secondary" on:click={() => showModal = false}>Close</Button>
+        </DialogFooter>
+      </div>
+    {/if}
+  {/if}
+</Dialog>

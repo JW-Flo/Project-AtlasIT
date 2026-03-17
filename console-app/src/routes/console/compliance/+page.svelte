@@ -1,6 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Progress from "$lib/components/ui/progress.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import {
+    AlertTriangle, ShieldCheck, FileText, ClipboardCheck, Download,
+    Play, Link2, Upload, Search, Settings,
+  } from "lucide-svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
 
@@ -45,19 +60,19 @@
     verified: "Verified",
   };
 
-  const STATUS_COLORS: Record<ControlStatus, string> = {
-    not_started: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-    in_progress: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    implemented: "bg-green-500/20 text-green-300 border-green-500/30",
-    verified: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  const STATUS_VARIANTS: Record<ControlStatus, "default" | "destructive" | "warning" | "secondary" | "outline" | "success"> = {
+    not_started: "secondary",
+    in_progress: "warning",
+    implemented: "success",
+    verified: "success",
   };
 
-  const GRADE_COLORS: Record<string, string> = {
-    A: "bg-green-500/20 text-green-300 border-green-500/30",
-    B: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-    C: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-    D: "bg-orange-500/20 text-orange-300 border-orange-500/30",
-    F: "bg-red-500/20 text-red-300 border-red-500/30",
+  const GRADE_VARIANTS: Record<string, "default" | "destructive" | "warning" | "secondary" | "outline" | "success"> = {
+    A: "success",
+    B: "default",
+    C: "warning",
+    D: "warning",
+    F: "destructive",
   };
 
   $: frameworkSummaries = buildSummaries(frameworks, controls);
@@ -102,9 +117,7 @@
         const data = await res.json();
         scores = data.scores || [];
       }
-    } catch {
-      // scores fetch is non-blocking; overview falls back to empty
-    }
+    } catch {}
   }
 
   async function loadData() {
@@ -136,7 +149,6 @@
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       pushToast({ message: "Control statuses saved", variant: "success" });
-      // Recalculate scores after saving control changes
       await loadScores();
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save", variant: "error" });
@@ -292,7 +304,7 @@
         pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
         await loadData();
       } else {
-        pushToast({ message: "Evaluation complete — no changes needed", variant: "success" });
+        pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
       }
     } catch (e: any) {
       pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
@@ -308,44 +320,33 @@
   onMount(loadData);
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
+<div>
   <!-- Header -->
   <div class="flex items-center justify-between mb-6">
     <div>
-      <h1 class="text-3xl font-semibold mb-1">Compliance Manager</h1>
-      <p class="text-sm text-white/60">
-        Track frameworks, controls, and overall compliance posture.
-      </p>
+      <h1 class="text-2xl font-semibold tracking-tight">Compliance Manager</h1>
+      <p class="text-sm text-muted-foreground">Track frameworks, controls, and overall compliance posture.</p>
     </div>
     <div class="flex items-center gap-2">
-      <button
-        on:click={runEvaluation}
-        disabled={evaluating}
-        class="text-sm bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 px-3 py-1.5 rounded text-white"
-      >
+      <Button size="sm" on:click={runEvaluation} disabled={evaluating}>
+        <Play class="h-3.5 w-3.5 mr-1.5" />
         {evaluating ? "Evaluating..." : "Evaluate Configuration"}
-      </button>
-      <a
-        href="/console"
-        class="text-sm bg-gray-600 hover:bg-gray-500 px-3 py-1.5 rounded text-white"
-      >
-        Back to Dashboard
-      </a>
+      </Button>
     </div>
   </div>
 
-  <!-- Sub-navigation tabs -->
-  <div class="flex gap-1 mb-6 border-b border-white/10 pb-0">
+  <!-- Tabs -->
+  <div class="flex gap-1 mb-6 border-b">
     {#each [
       { key: "overview", label: "Overview" },
       { key: "controls", label: "Controls" },
       { key: "evidence", label: "Evidence" },
     ] as tab}
       <button
-        class="px-4 py-2 text-sm font-medium transition-colors relative -mb-px
+        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px
           {activeTab === tab.key
-          ? 'text-white border-b-2 border-blue-500'
-          : 'text-white/50 hover:text-white/70'}"
+          ? 'text-foreground border-b-2 border-primary'
+          : 'text-muted-foreground hover:text-foreground'}"
         on:click={() => (activeTab = tab.key)}
       >
         {tab.label}
@@ -355,117 +356,105 @@
 
   {#if loading}
     <div class="flex flex-col gap-4">
-      <div class="h-12 bg-white/5 rounded-lg animate-pulse"></div>
+      <Skeleton class="h-12 rounded-lg" />
       <div class="grid gap-4 md:grid-cols-3">
-        <div class="h-32 bg-white/5 rounded-lg animate-pulse"></div>
-        <div class="h-32 bg-white/5 rounded-lg animate-pulse"></div>
-        <div class="h-32 bg-white/5 rounded-lg animate-pulse"></div>
+        {#each [1, 2, 3] as _}
+          <Skeleton class="h-32 rounded-lg" />
+        {/each}
       </div>
     </div>
   {:else if error}
-    <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {:else if activeTab === "overview"}
-    <!-- Empty state when no frameworks configured -->
+    <!-- Empty state -->
     {#if frameworks.length === 0 && controls.length === 0}
-      <div class="rounded-lg p-8 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center mb-6">
-        <svg class="w-12 h-12 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-        <h2 class="text-xl font-semibold mb-2">No compliance frameworks configured yet</h2>
-        <p class="text-white/60 mb-4 max-w-md mx-auto">Select your frameworks in the onboarding wizard or settings to get started.</p>
-        <div class="flex gap-3 justify-center">
-          <a href="/console/settings" class="text-sm bg-white/10 hover:bg-white/15 px-4 py-2 rounded text-white">Go to Settings</a>
-          <a href="/console/onboarding" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-white">Setup Wizard</a>
-        </div>
-      </div>
+      <Card class="border-dashed mb-6">
+        <CardContent class="py-8 text-center">
+          <ShieldCheck class="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+          <h2 class="text-xl font-semibold mb-2">No compliance frameworks configured yet</h2>
+          <p class="text-muted-foreground mb-4 max-w-md mx-auto">Select your frameworks in the onboarding wizard or settings to get started.</p>
+          <div class="flex gap-3 justify-center">
+            <Button href="/console/settings" variant="outline">
+              <Settings class="h-4 w-4 mr-1.5" />
+              Go to Settings
+            </Button>
+            <Button href="/console/onboarding">Setup Wizard</Button>
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
-    <!-- Overall posture card -->
-    <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-3">
-          <h2 class="text-lg font-semibold">Overall Compliance Posture</h2>
-          <span
-            class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS[overallGrade] || GRADE_COLORS.F}"
-          >
-            {overallGrade}
-          </span>
+    <!-- Overall posture -->
+    <Card class="mb-6">
+      <CardContent class="pt-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <h2 class="text-lg font-semibold">Overall Compliance Posture</h2>
+            <Badge variant={GRADE_VARIANTS[overallGrade] || "destructive"}>{overallGrade}</Badge>
+          </div>
+          <span class="text-2xl font-bold">{overallScore}%</span>
         </div>
-        <span class="text-2xl font-bold text-white">{overallScore}%</span>
-      </div>
-      <div class="h-3 rounded-full bg-white/10">
-        <div
-          class="h-3 rounded-full transition-all duration-500
-            {overallGrade === 'A' ? 'bg-green-500' : overallGrade === 'B' ? 'bg-blue-500' : overallGrade === 'C' ? 'bg-yellow-500' : overallGrade === 'D' ? 'bg-orange-500' : 'bg-red-500'}"
-          style="width: {Math.min(overallScore, 100)}%"
-        ></div>
-      </div>
-      <p class="text-xs text-white/40 mt-2">
-        Weighted average across {scores.length} framework{scores.length !== 1 ? 's' : ''}
-      </p>
-    </div>
+        <Progress value={overallScore} max={100} />
+        <p class="text-xs text-muted-foreground mt-2">
+          Weighted average across {scores.length} framework{scores.length !== 1 ? 's' : ''}
+        </p>
+      </CardContent>
+    </Card>
 
     {#if lastEvaluation}
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-6">
-        <h2 class="text-lg font-semibold mb-3">Configuration Assessment</h2>
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {#each Object.entries(lastEvaluation.tenantState) as [key, met]}
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 rounded-full {met ? 'bg-green-400' : 'bg-red-400'}"></div>
-              <span class="text-xs text-white/60">{key.replace(/_/g, ' ')}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
+      <Card class="mb-6">
+        <CardHeader>
+          <CardTitle>Configuration Assessment</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {#each Object.entries(lastEvaluation.tenantState) as [key, met]}
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full {met ? 'bg-green-500' : 'bg-destructive'}"></div>
+                <span class="text-xs text-muted-foreground">{key.replace(/_/g, ' ')}</span>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Framework cards -->
     <h2 class="text-lg font-semibold mb-3">Frameworks</h2>
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
       {#each scores as fw}
-        <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="font-semibold text-white">{fw.framework}</h3>
-            <span
-              class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS[fw.grade] || GRADE_COLORS.F}"
-            >
-              {fw.grade}
-            </span>
-          </div>
-          <div class="flex items-center justify-between mb-2">
-            <span class="text-sm text-white/70">{fw.score}%</span>
-            <span class="text-xs text-white/40">{fw.controlsImplemented + fw.controlsVerified}/{fw.controlsTotal} controls</span>
-          </div>
-          <div class="h-2 rounded-full bg-white/10 mb-2">
-            <div
-              class="h-2 rounded-full transition-all duration-500
-                {fw.grade === 'A' ? 'bg-green-500' : fw.grade === 'B' ? 'bg-blue-500' : fw.grade === 'C' ? 'bg-yellow-500' : fw.grade === 'D' ? 'bg-orange-500' : 'bg-red-500'}"
-              style="width: {Math.min(fw.score, 100)}%"
-            ></div>
-          </div>
-          <p class="text-xs text-white/40">
-            {fw.controlsVerified} verified, {fw.controlsImplemented} implemented
-          </p>
-        </div>
+        <Card>
+          <CardContent class="pt-5">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="font-semibold">{fw.framework}</h3>
+              <Badge variant={GRADE_VARIANTS[fw.grade] || "destructive"}>{fw.grade}</Badge>
+            </div>
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm text-muted-foreground">{fw.score}%</span>
+              <span class="text-xs text-muted-foreground">{fw.controlsImplemented + fw.controlsVerified}/{fw.controlsTotal} controls</span>
+            </div>
+            <Progress value={fw.score} max={100} />
+            <p class="text-xs text-muted-foreground mt-2">
+              {fw.controlsVerified} verified, {fw.controlsImplemented} implemented
+            </p>
+          </CardContent>
+        </Card>
       {/each}
       {#if scores.length === 0}
         {#each frameworkSummaries as fw}
-          <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10">
-            <div class="flex items-center justify-between mb-2">
-              <h3 class="font-semibold text-white">{fw.name}</h3>
-              <span
-                class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border {GRADE_COLORS.F}"
-              >
-                F
-              </span>
-            </div>
-            <div class="h-2 rounded-full bg-white/10 mb-2">
-              <div class="h-2 rounded-full bg-red-500" style="width: 0%"></div>
-            </div>
-            <p class="text-xs text-white/40">
-              {fw.implemented}/{fw.total} controls completed
-            </p>
-          </div>
+          <Card>
+            <CardContent class="pt-5">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold">{fw.name}</h3>
+                <Badge variant="destructive">F</Badge>
+              </div>
+              <Progress value={0} max={100} />
+              <p class="text-xs text-muted-foreground mt-2">{fw.implemented}/{fw.total} controls completed</p>
+            </CardContent>
+          </Card>
         {/each}
       {/if}
     </div>
@@ -473,55 +462,50 @@
     <!-- Quick actions -->
     <h2 class="text-lg font-semibold mb-3">Quick Actions</h2>
     <div class="grid gap-4 md:grid-cols-3">
-      <a
-        href="/console/policies"
-        class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-blue-500/40 transition-colors group"
-      >
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-white group-hover:text-blue-300 transition-colors">Generate Policy</p>
-            <p class="text-xs text-white/40">Create compliance policy documents</p>
-          </div>
-        </div>
+      <a href="/console/policies" class="no-underline">
+        <Card class="hover:border-primary/40 transition-colors cursor-pointer group">
+          <CardContent class="pt-5">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <FileText class="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p class="text-sm font-medium group-hover:text-primary transition-colors">Generate Policy</p>
+                <p class="text-xs text-muted-foreground">Create compliance policy documents</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </a>
-
-      <button
-        on:click={() => (activeTab = "controls")}
-        class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-blue-500/40 transition-colors group text-left"
-      >
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-white group-hover:text-purple-300 transition-colors">View Risk Register</p>
-            <p class="text-xs text-white/40">Review controls and risk posture</p>
-          </div>
-        </div>
+      <button on:click={() => (activeTab = "controls")} class="text-left">
+        <Card class="hover:border-primary/40 transition-colors cursor-pointer group">
+          <CardContent class="pt-5">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center">
+                <ClipboardCheck class="h-5 w-5 text-secondary-foreground" />
+              </div>
+              <div>
+                <p class="text-sm font-medium group-hover:text-primary transition-colors">View Risk Register</p>
+                <p class="text-xs text-muted-foreground">Review controls and risk posture</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </button>
-
-      <button
-        on:click={exportReport}
-        class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 hover:border-blue-500/40 transition-colors group text-left"
-      >
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <div>
-            <p class="text-sm font-medium text-white group-hover:text-green-300 transition-colors">Export Compliance Report</p>
-            <p class="text-xs text-white/40">Download CSV of control statuses</p>
-          </div>
-        </div>
+      <button on:click={exportReport} class="text-left">
+        <Card class="hover:border-primary/40 transition-colors cursor-pointer group">
+          <CardContent class="pt-5">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                <Download class="h-5 w-5 text-green-500" />
+              </div>
+              <div>
+                <p class="text-sm font-medium group-hover:text-primary transition-colors">Export Compliance Report</p>
+                <p class="text-xs text-muted-foreground">Download CSV of control statuses</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </button>
     </div>
 
@@ -529,11 +513,11 @@
     <!-- Controls tab -->
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
-        <label for="fw-filter" class="text-sm text-white/60">Framework:</label>
+        <Label htmlFor="fw-filter">Framework:</Label>
         <select
           id="fw-filter"
           bind:value={filterFramework}
-          class="bg-[#0f1923] border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <option value="all">All Frameworks</option>
           {#each frameworks as fw}
@@ -541,93 +525,89 @@
           {/each}
         </select>
       </div>
-      <button
-        on:click={saveControls}
-        disabled={saving}
-        class="text-sm bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 px-4 py-1.5 rounded text-white transition-colors"
-      >
+      <Button size="sm" on:click={saveControls} disabled={saving}>
         {saving ? "Saving..." : "Save Changes"}
-      </button>
+      </Button>
     </div>
 
-    <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10 overflow-hidden">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="text-left text-white/50 text-xs uppercase tracking-wider">
-            <th class="px-4 py-3 font-medium">Control</th>
-            <th class="px-4 py-3 font-medium">Framework</th>
-            <th class="px-4 py-3 font-medium">Status</th>
-            <th class="px-4 py-3 font-medium">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filteredControls as control (control.id)}
-            <tr class="border-t border-white/10 hover:bg-white/[0.02]">
-              <td class="px-4 py-3 text-white">{control.name}</td>
-              <td class="px-4 py-3">
-                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
-                  {control.framework}
-                </span>
-              </td>
-              <td class="px-4 py-3">
-                <select
-                  value={control.status}
-                  on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
-                  class="bg-[#0f1923] border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="not_started">Not Started</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="implemented">Implemented</option>
-                  <option value="verified">Verified</option>
-                </select>
-              </td>
-              <td class="px-4 py-3">
-                <input
-                  type="text"
-                  value={control.notes}
-                  on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
-                  placeholder="Add notes..."
-                  class="w-full bg-transparent border-b border-white/10 text-xs text-white/70 placeholder:text-white/20 focus:outline-none focus:border-blue-500 py-1"
-                />
-              </td>
+    <Card>
+      <CardContent class="p-0">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+              <th class="px-4 py-3 font-medium">Control</th>
+              <th class="px-4 py-3 font-medium">Framework</th>
+              <th class="px-4 py-3 font-medium">Status</th>
+              <th class="px-4 py-3 font-medium">Notes</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {#each filteredControls as control (control.id)}
+              <tr class="border-t hover:bg-muted/50">
+                <td class="px-4 py-3 font-medium">{control.name}</td>
+                <td class="px-4 py-3">
+                  <Badge variant="outline">{control.framework}</Badge>
+                </td>
+                <td class="px-4 py-3">
+                  <select
+                    value={control.status}
+                    on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
+                    class="h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="implemented">Implemented</option>
+                    <option value="verified">Verified</option>
+                  </select>
+                </td>
+                <td class="px-4 py-3">
+                  <input
+                    type="text"
+                    value={control.notes}
+                    on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
+                    placeholder="Add notes..."
+                    class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
+                  />
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
 
   {:else if activeTab === "evidence"}
     <!-- Evidence tab -->
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold">Evidence Locker</h2>
-      <button
-        on:click={() => (showRecordForm = !showRecordForm)}
-        class="text-sm bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded text-white transition-colors"
-      >
+      <Button size="sm" variant={showRecordForm ? "outline" : "default"} on:click={() => (showRecordForm = !showRecordForm)}>
+        <Upload class="h-3.5 w-3.5 mr-1.5" />
         {showRecordForm ? "Cancel" : "Record Evidence"}
-      </button>
+      </Button>
     </div>
 
     {#if showRecordForm}
-      <div class="rounded-lg p-5 bg-[var(--color-surface,#1a2332)] border border-white/10 mb-4">
-        <h3 class="text-sm font-semibold mb-3">Record New Evidence</h3>
-        <div class="flex flex-col gap-3">
-          <div>
-            <label for="ev-desc" class="text-xs text-white/60 block mb-1">Description</label>
+      <Card class="mb-4">
+        <CardHeader>
+          <CardTitle class="text-base">Record New Evidence</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <div class="space-y-1.5">
+            <Label htmlFor="ev-desc">Description</Label>
             <textarea
               id="ev-desc"
               bind:value={newEvidenceDescription}
               rows="3"
-              placeholder="Describe the evidence (e.g., screenshot of MFA configuration, access review export)..."
-              class="w-full bg-[#0f1923] border border-white/10 rounded px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-blue-500 resize-none"
+              placeholder="Describe the evidence..."
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
             ></textarea>
           </div>
-          <div>
-            <label for="ev-pack" class="text-xs text-white/60 block mb-1">Evidence Pack</label>
+          <div class="space-y-1.5">
+            <Label htmlFor="ev-pack">Evidence Pack</Label>
             <select
               id="ev-pack"
               bind:value={newEvidencePack}
-              class="bg-[#0f1923] border border-white/10 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="manual">Manual Upload</option>
               <option value="access-review">Access Review</option>
@@ -636,104 +616,95 @@
               <option value="policy-doc">Policy Document</option>
             </select>
           </div>
-          <button
-            on:click={recordEvidence}
-            disabled={recordingEvidence || !newEvidenceDescription.trim()}
-            class="self-start text-sm bg-green-600 hover:bg-green-500 disabled:bg-green-600/50 px-4 py-1.5 rounded text-white transition-colors"
-          >
+          <Button variant="success" size="sm" on:click={recordEvidence} disabled={recordingEvidence || !newEvidenceDescription.trim()}>
             {recordingEvidence ? "Recording..." : "Submit Evidence"}
-          </button>
-        </div>
-      </div>
+          </Button>
+        </CardContent>
+      </Card>
     {/if}
 
     {#if evidenceLoading}
-      <div class="flex flex-col gap-3">
-        <div class="h-12 bg-white/5 rounded-lg animate-pulse"></div>
-        <div class="h-12 bg-white/5 rounded-lg animate-pulse"></div>
+      <div class="space-y-3">
+        {#each [1, 2] as _}
+          <Skeleton class="h-12 rounded-lg" />
+        {/each}
       </div>
     {:else if evidenceError}
-      <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-4">{evidenceError}</div>
+      <Alert variant="destructive">
+        <AlertTriangle class="h-4 w-4" />
+        <p class="pl-7">{evidenceError}</p>
+      </Alert>
     {:else if evidenceItems.length === 0}
-      <div class="rounded-lg p-12 bg-[var(--color-surface,#1a2332)] border border-dashed border-white/20 text-center">
-        <svg class="w-12 h-12 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        <h3 class="text-lg font-semibold text-white/60 mb-2">No evidence recorded yet</h3>
-        <p class="text-sm text-white/40 max-w-md mx-auto">
-          Record evidence to demonstrate compliance during audits. Click "Record Evidence" above to get started.
-        </p>
-      </div>
+      <Card class="border-dashed">
+        <CardContent class="py-12 text-center">
+          <Upload class="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+          <h3 class="text-lg font-semibold text-muted-foreground mb-2">No evidence recorded yet</h3>
+          <p class="text-sm text-muted-foreground max-w-md mx-auto">
+            Record evidence to demonstrate compliance during audits. Click "Record Evidence" above to get started.
+          </p>
+        </CardContent>
+      </Card>
     {:else}
-      <div class="rounded-lg bg-[var(--color-surface,#1a2332)] border border-white/10 overflow-hidden">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-white/50 text-xs uppercase tracking-wider">
-              <th class="px-4 py-3 font-medium">Hash</th>
-              <th class="px-4 py-3 font-medium">Pack</th>
-              <th class="px-4 py-3 font-medium">Subject</th>
-              <th class="px-4 py-3 font-medium">Date</th>
-              <th class="px-4 py-3 font-medium">Link to Control</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each evidenceItems as item (item.id)}
-              <tr class="border-t border-white/10 hover:bg-white/[0.02]">
-                <td class="px-4 py-3">
-                  <span class="font-mono text-xs text-white/80" title={item.hash}>{shortHash(item.hash)}</span>
-                </td>
-                <td class="px-4 py-3">
-                  <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                    {item.pack}
-                  </span>
-                </td>
-                <td class="px-4 py-3 text-white/60 text-xs">{item.subject || "-"}</td>
-                <td class="px-4 py-3 text-white/50 text-xs">{new Date(item.createdAt).toLocaleString()}</td>
-                <td class="px-4 py-3">
-                  {#if item.linkedControl}
-                    <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-500/30">
-                      {item.linkedControl}
-                    </span>
-                  {:else if linkingEvidenceId === item.id}
-                    <div class="flex items-center gap-2">
-                      <select
-                        bind:value={linkControlKey}
-                        class="bg-[#0f1923] border border-white/10 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="">Select control...</option>
-                        {#each INTERNAL_CONTROLS as ctrl}
-                          <option value={ctrl.key}>{ctrl.key} - {ctrl.title}</option>
-                        {/each}
-                      </select>
-                      <button
-                        on:click={() => linkEvidence(item.id)}
-                        disabled={!linkControlKey}
-                        class="text-xs bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 px-2 py-1 rounded text-white"
-                      >Link</button>
-                      <button
-                        on:click={() => { linkingEvidenceId = null; linkControlKey = ""; }}
-                        class="text-xs text-white/40 hover:text-white/60"
-                      >Cancel</button>
-                    </div>
-                  {:else}
-                    <button
-                      on:click={() => { linkingEvidenceId = item.id; linkControlKey = ""; }}
-                      class="text-xs text-blue-400 hover:text-blue-300 underline"
-                    >Link</button>
-                  {/if}
-                </td>
+      <Card>
+        <CardContent class="p-0">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-4 py-3 font-medium">Hash</th>
+                <th class="px-4 py-3 font-medium">Pack</th>
+                <th class="px-4 py-3 font-medium">Subject</th>
+                <th class="px-4 py-3 font-medium">Date</th>
+                <th class="px-4 py-3 font-medium">Link to Control</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {#each evidenceItems as item (item.id)}
+                <tr class="border-t hover:bg-muted/50">
+                  <td class="px-4 py-3">
+                    <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash)}</span>
+                  </td>
+                  <td class="px-4 py-3">
+                    <Badge variant="secondary">{item.pack}</Badge>
+                  </td>
+                  <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
+                  <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
+                  <td class="px-4 py-3">
+                    {#if item.linkedControl}
+                      <Badge variant="success">{item.linkedControl}</Badge>
+                    {:else if linkingEvidenceId === item.id}
+                      <div class="flex items-center gap-2">
+                        <select
+                          bind:value={linkControlKey}
+                          class="h-7 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">Select control...</option>
+                          {#each INTERNAL_CONTROLS as ctrl}
+                            <option value={ctrl.key}>{ctrl.key} - {ctrl.title}</option>
+                          {/each}
+                        </select>
+                        <Button size="sm" variant="default" on:click={() => linkEvidence(item.id)} disabled={!linkControlKey}>Link</Button>
+                        <Button size="sm" variant="ghost" on:click={() => { linkingEvidenceId = null; linkControlKey = ""; }}>Cancel</Button>
+                      </div>
+                    {:else}
+                      <Button size="sm" variant="ghost" on:click={() => { linkingEvidenceId = item.id; linkControlKey = ""; }}>
+                        <Link2 class="h-3 w-3 mr-1" />
+                        Link
+                      </Button>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     {/if}
   {/if}
 </div>
 
 <style>
   select option {
-    background: #0f1923;
-    color: #f5f7fa;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 </style>

@@ -6,12 +6,25 @@
   } from "$lib/api/incidents";
   import { onMount } from "svelte";
   import type { IncidentRecord } from "$lib/api/types";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Alert from "$lib/components/ui/alert.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { AlertTriangle, CheckCircle, Plus } from "lucide-svelte";
+
   let items: IncidentRecord[] = [];
   let loading = true;
   let error: string | null = null;
   let nextCursor: number | null = null;
   let form = { title: "", severity: "medium", source: "" };
   let submitting = false;
+
   async function load(reset = false) {
     try {
       const data = await listIncidents({
@@ -27,7 +40,9 @@
       loading = false;
     }
   }
+
   onMount(() => { load(true); });
+
   async function submit() {
     if (!form.title) return;
     submitting = true;
@@ -46,6 +61,7 @@
       submitting = false;
     }
   }
+
   async function actResolve(id: number) {
     const idx = items.findIndex((i) => i.id === id);
     if (idx === -1) return;
@@ -63,127 +79,132 @@
     }
   }
 
-  function severityBadge(s: string): string {
+  function severityVariant(s: string): "default" | "destructive" | "warning" | "secondary" | "outline" | "success" {
     switch (s) {
-      case "critical": return "bg-red-600/20 text-red-300 border-red-500/30";
-      case "high": return "bg-orange-600/20 text-orange-300 border-orange-500/30";
-      case "medium": return "bg-yellow-600/20 text-yellow-300 border-yellow-500/30";
-      case "low": return "bg-blue-600/20 text-blue-300 border-blue-500/30";
-      default: return "bg-neutral-600/20 text-neutral-300 border-neutral-500/30";
+      case "critical": return "destructive";
+      case "high": return "warning";
+      case "medium": return "warning";
+      case "low": return "secondary";
+      default: return "outline";
     }
   }
 </script>
 
-<div class="p-6 max-w-5xl mx-auto flex flex-col gap-6">
-  <h1 class="text-2xl font-semibold">Incidents</h1>
+<div class="space-y-6">
+  <h1 class="text-2xl font-semibold tracking-tight">Incidents</h1>
 
   <!-- Create Form -->
-  <div class="bg-[#1a2332] border border-white/10 rounded-lg p-4 flex flex-col gap-3">
-    <h2 class="text-sm font-medium text-white/70">Create Incident</h2>
-    <div class="flex gap-2 flex-wrap items-end">
-      <div class="flex flex-col gap-1">
-        <label for="inc-title" class="text-xs text-white/50">Title *</label>
-        <input
-          id="inc-title"
-          class="px-3 py-1.5 rounded bg-[#0f1923] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
-          placeholder="Incident title"
-          bind:value={form.title}
-        />
+  <Card>
+    <CardHeader>
+      <CardTitle class="text-base">Create Incident</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div class="flex gap-3 flex-wrap items-end">
+        <div class="flex flex-col gap-1.5">
+          <Label htmlFor="inc-title">Title *</Label>
+          <Input
+            id="inc-title"
+            placeholder="Incident title"
+            bind:value={form.title}
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label htmlFor="inc-severity">Severity</Label>
+          <select
+            id="inc-severity"
+            class="flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            bind:value={form.severity}
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label htmlFor="inc-source">Source</Label>
+          <Input
+            id="inc-source"
+            placeholder="Optional"
+            bind:value={form.source}
+          />
+        </div>
+        <Button disabled={submitting || !form.title} on:click={submit}>
+          <Plus class="h-4 w-4 mr-1" />
+          {submitting ? "Creating..." : "Create"}
+        </Button>
       </div>
-      <div class="flex flex-col gap-1">
-        <label for="inc-severity" class="text-xs text-white/50">Severity</label>
-        <select
-          id="inc-severity"
-          class="px-3 py-1.5 rounded bg-[#0f1923] border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-          bind:value={form.severity}
-        >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="critical">Critical</option>
-        </select>
-      </div>
-      <div class="flex flex-col gap-1">
-        <label for="inc-source" class="text-xs text-white/50">Source</label>
-        <input
-          id="inc-source"
-          class="px-3 py-1.5 rounded bg-[#0f1923] border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-500"
-          placeholder="Optional"
-          bind:value={form.source}
-        />
-      </div>
-      <button
-        class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm disabled:opacity-50"
-        disabled={submitting || !form.title}
-        on:click={submit}>{submitting ? "Creating..." : "Create"}</button
-      >
-    </div>
-  </div>
+    </CardContent>
+  </Card>
 
   {#if error}
-    <div class="text-sm text-red-400 bg-red-900/20 rounded-lg p-3">{error}</div>
+    <Alert variant="destructive">
+      <AlertTriangle class="h-4 w-4" />
+      <p class="pl-7">{error}</p>
+    </Alert>
   {/if}
 
   {#if loading}
-    <div class="text-sm text-white/40">Loading...</div>
+    <div class="space-y-3">
+      {#each [1, 2, 3] as _}
+        <Skeleton class="h-12 rounded-lg" />
+      {/each}
+    </div>
   {:else if items.length === 0}
-    <div class="flex flex-col items-center justify-center py-16 text-white/30 gap-3">
-      <svg class="w-16 h-16 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.834-2.694-.834-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-      </svg>
-      <p class="text-sm">No incidents recorded</p>
-    </div>
+    <Card class="border-dashed">
+      <CardContent class="py-16 text-center">
+        <AlertTriangle class="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+        <p class="text-sm text-muted-foreground">No incidents recorded</p>
+      </CardContent>
+    </Card>
   {:else}
-    <div class="overflow-x-auto">
-      <table class="w-full text-xs border-collapse">
-        <thead class="text-white/50 border-b border-white/10">
-          <tr>
-            <th class="p-2 text-left">ID</th>
-            <th class="p-2 text-left">Title</th>
-            <th class="p-2 text-left">Severity</th>
-            <th class="p-2 text-left">Status</th>
-            <th class="p-2 text-left">Created</th>
-            <th class="p-2 text-left">Resolved</th>
-            <th class="p-2 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each items as inc}
-            <tr class="border-t border-white/5 hover:bg-white/[0.02]">
-              <td class="p-2 text-white/60">{inc.id}</td>
-              <td class="p-2 text-white/90">{inc.title}</td>
-              <td class="p-2">
-                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border {severityBadge(inc.severity)}">
-                  {inc.severity}
-                </span>
-              </td>
-              <td class="p-2">
-                <span class="text-xs {inc.status === 'open' ? 'text-yellow-400' : 'text-green-400'}">
-                  {inc.status}
-                </span>
-              </td>
-              <td class="p-2 text-white/50">{new Date(inc.createdAt).toLocaleString()}</td>
-              <td class="p-2 text-white/50">{inc.resolvedAt ? new Date(inc.resolvedAt).toLocaleString() : "—"}</td>
-              <td class="p-2">
-                {#if inc.status === "open"}
-                  <button
-                    class="px-2 py-0.5 bg-green-600 hover:bg-green-500 rounded text-white text-xs"
-                    on:click={() => actResolve(inc.id)}>Resolve</button
-                  >
-                {:else}
-                  <span class="text-white/30">—</span>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+    <Card>
+      <CardContent class="p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-4 py-3 font-medium">ID</th>
+                <th class="px-4 py-3 font-medium">Title</th>
+                <th class="px-4 py-3 font-medium">Severity</th>
+                <th class="px-4 py-3 font-medium">Status</th>
+                <th class="px-4 py-3 font-medium">Created</th>
+                <th class="px-4 py-3 font-medium">Resolved</th>
+                <th class="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each items as inc}
+                <tr class="border-t hover:bg-muted/50">
+                  <td class="px-4 py-3 text-muted-foreground">{inc.id}</td>
+                  <td class="px-4 py-3 font-medium">{inc.title}</td>
+                  <td class="px-4 py-3">
+                    <Badge variant={severityVariant(inc.severity)}>{inc.severity}</Badge>
+                  </td>
+                  <td class="px-4 py-3">
+                    <Badge variant={inc.status === 'open' ? 'warning' : 'success'}>{inc.status}</Badge>
+                  </td>
+                  <td class="px-4 py-3 text-muted-foreground">{new Date(inc.createdAt).toLocaleString()}</td>
+                  <td class="px-4 py-3 text-muted-foreground">{inc.resolvedAt ? new Date(inc.resolvedAt).toLocaleString() : "---"}</td>
+                  <td class="px-4 py-3">
+                    {#if inc.status === "open"}
+                      <Button size="sm" variant="success" on:click={() => actResolve(inc.id)}>
+                        <CheckCircle class="h-3 w-3 mr-1" />
+                        Resolve
+                      </Button>
+                    {:else}
+                      <span class="text-muted-foreground">---</span>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
     {#if nextCursor}
-      <button
-        class="mt-2 text-sm bg-[#1a2332] border border-white/10 px-3 py-1.5 rounded text-white/70 hover:bg-white/5"
-        on:click={() => load(false)}>Load More</button
-      >
+      <Button variant="outline" on:click={() => load(false)}>Load More</Button>
     {/if}
   {/if}
 </div>

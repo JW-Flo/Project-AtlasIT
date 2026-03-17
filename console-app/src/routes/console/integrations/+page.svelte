@@ -8,6 +8,18 @@
     type Integration,
     type CredentialField,
   } from "$lib/data/integrations";
+  import Card from "$lib/components/ui/card.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
+  import CardContent from "$lib/components/ui/card-content.svelte";
+  import Button from "$lib/components/ui/button.svelte";
+  import Badge from "$lib/components/ui/badge.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Input from "$lib/components/ui/input.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
+  import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import { Plus, Settings, Trash2, Link, Server, AlertTriangle, CheckCircle } from "lucide-svelte";
 
   interface ConnectedApp extends Integration {
     connectedAt?: string;
@@ -167,206 +179,115 @@
     .filter((c) => c.apps.length > 0);
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
-  <div class="flex items-center justify-between mb-6">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <div>
-      <h1
-        class="text-3xl font-semibold mb-1"
-        style="color: var(--color-text, #fff);"
-      >
-        API Manager
-      </h1>
-      <p class="text-sm" style="color: var(--color-text, #fff); opacity: 0.5;">
+      <h1 class="text-2xl font-semibold tracking-tight">API Manager</h1>
+      <p class="text-sm text-muted-foreground">
         Manage credentials and connection health for your connected apps
       </p>
     </div>
-    <a
-      href="/console/marketplace"
-      class="text-sm px-3 py-1.5 rounded font-medium"
-      style="background: var(--color-accent, #3b82f6); color: #fff;"
-    >
-      + Add App
+    <a href="/console/marketplace">
+      <Button>
+        <Plus class="h-4 w-4 mr-1.5" />
+        Add App
+      </Button>
     </a>
   </div>
 
   {#if loading}
     <div class="space-y-4">
       {#each [1, 2, 3] as _}
-        <div
-          class="h-20 rounded-lg animate-pulse"
-          style="background: var(--color-surface, #1a2332);"
-        ></div>
+        <Skeleton class="h-20 rounded-lg" />
       {/each}
     </div>
   {:else if apps.length === 0}
-    <div
-      class="text-center py-16 rounded-lg"
-      style="background: var(--color-surface, #1a2332);"
-    >
-      <svg
-        class="w-12 h-12 mx-auto mb-4"
-        style="color: var(--color-text, #fff); opacity: 0.2;"
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="1.5"
-          d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-        />
-      </svg>
-      <p class="text-lg mb-2" style="color: var(--color-text, #fff);">
-        No apps connected yet
-      </p>
-      <p
-        class="text-sm mb-6"
-        style="color: var(--color-text, #fff); opacity: 0.4;"
-      >
-        Head to the Marketplace to connect your organization's SaaS apps.
-      </p>
-      <a
-        href="/console/marketplace"
-        class="inline-block text-sm px-5 py-2.5 rounded-lg font-medium text-white"
-        style="background: var(--color-accent, #3b82f6);"
-      >
-        Browse Marketplace
-      </a>
-    </div>
+    <Card>
+      <CardContent class="py-16 text-center">
+        <Link class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
+        <p class="text-lg mb-2">No apps connected yet</p>
+        <p class="text-sm text-muted-foreground mb-6">
+          Head to the Marketplace to connect your organization's SaaS apps.
+        </p>
+        <a href="/console/marketplace">
+          <Button>Browse Marketplace</Button>
+        </a>
+      </CardContent>
+    </Card>
   {:else}
     <!-- Summary bar -->
-    <div class="flex gap-4 mb-6">
-      <div
-        class="flex-1 rounded-lg p-4"
-        style="background: var(--color-surface, #1a2332);"
-      >
-        <div
-          class="text-2xl font-bold"
-          style="color: var(--color-text, #fff);"
-        >
-          {apps.length}
-        </div>
-        <div
-          class="text-xs"
-          style="color: var(--color-text, #fff); opacity: 0.5;"
-        >
-          Connected Apps
-        </div>
-      </div>
-      <div
-        class="flex-1 rounded-lg p-4"
-        style="background: var(--color-surface, #1a2332);"
-      >
-        <div class="text-2xl font-bold" style="color: #22c55e;">
-          {apps.filter((a) => a.healthy !== false).length}
-        </div>
-        <div
-          class="text-xs"
-          style="color: var(--color-text, #fff); opacity: 0.5;"
-        >
-          Healthy
-        </div>
-      </div>
-      <div
-        class="flex-1 rounded-lg p-4"
-        style="background: var(--color-surface, #1a2332);"
-      >
-        <div class="text-2xl font-bold" style="color: #eab308;">
-          {apps.filter((a) => a.healthy === false).length}
-        </div>
-        <div
-          class="text-xs"
-          style="color: var(--color-text, #fff); opacity: 0.5;"
-        >
-          Needs Attention
-        </div>
-      </div>
+    <div class="grid grid-cols-3 gap-4">
+      <Card>
+        <CardContent class="pt-4">
+          <div class="flex items-center gap-2 mb-1">
+            <Server class="h-4 w-4 text-primary" />
+          </div>
+          <div class="text-2xl font-bold">{apps.length}</div>
+          <div class="text-xs text-muted-foreground">Connected Apps</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="pt-4">
+          <div class="flex items-center gap-2 mb-1">
+            <CheckCircle class="h-4 w-4 text-green-500" />
+          </div>
+          <div class="text-2xl font-bold text-green-500">{apps.filter((a) => a.healthy !== false).length}</div>
+          <div class="text-xs text-muted-foreground">Healthy</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent class="pt-4">
+          <div class="flex items-center gap-2 mb-1">
+            <AlertTriangle class="h-4 w-4 text-warning" />
+          </div>
+          <div class="text-2xl font-bold text-warning">{apps.filter((a) => a.healthy === false).length}</div>
+          <div class="text-xs text-muted-foreground">Needs Attention</div>
+        </CardContent>
+      </Card>
     </div>
 
     <!-- Connected apps grouped by category -->
     {#each appsByCategory as cat}
-      <div class="mb-6">
-        <h2
-          class="text-xs uppercase tracking-wider mb-3 px-1"
-          style="color: var(--color-text, #fff); opacity: 0.4;"
-        >
-          {cat.label}
-        </h2>
+      <div>
+        <h2 class="text-xs uppercase tracking-wider text-muted-foreground mb-3 px-1">{cat.label}</h2>
         <div class="space-y-2">
           {#each cat.apps as app}
-            <div
-              class="rounded-lg p-4 flex items-center gap-4"
-              style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));"
-            >
-              <!-- Icon -->
-              <div
-                class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
-                style="background: rgba(59,130,246,0.1);"
-              >
-                <svg
-                  class="w-5 h-5"
-                  style="color: var(--color-accent, #3b82f6);"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="1.5"
-                    d={iconMap[app.category] || iconMap.productivity}
-                  />
-                </svg>
-              </div>
-
-              <!-- Info -->
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <span
-                    class="text-sm font-semibold"
-                    style="color: var(--color-text, #fff);">{app.name}</span
-                  >
-                  <span
-                    class="w-2 h-2 rounded-full"
-                    style="background: {app.healthy === false
-                      ? '#eab308'
-                      : '#22c55e'};"
-                  ></span>
+            <Card>
+              <CardContent class="py-4 flex items-center gap-4">
+                <!-- Icon -->
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-primary/10">
+                  <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
+                  </svg>
                 </div>
-                <div
-                  class="text-xs"
-                  style="color: var(--color-text, #fff); opacity: 0.4;"
-                >
-                  {authLabel(app.auth)} &middot; {app.credentialFields.filter(
-                    (f) => f.required,
-                  ).length} credential fields
-                  {#if app.lastSync}
-                    &middot; Last sync: {app.lastSync}
-                  {/if}
-                </div>
-              </div>
 
-              <!-- Actions -->
-              <div class="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  on:click={() => openEdit(app)}
-                  class="px-3 py-1.5 text-xs font-medium rounded transition-colors"
-                  style="background: rgba(59,130,246,0.15); color: #3b82f6;"
-                >
-                  Edit Credentials
-                </button>
-                <button
-                  type="button"
-                  on:click={() => disconnectApp(app)}
-                  class="px-3 py-1.5 text-xs font-medium rounded transition-colors"
-                  style="background: rgba(239,68,68,0.1); color: #ef4444;"
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
+                <!-- Info -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold">{app.name}</span>
+                    <span class="w-2 h-2 rounded-full {app.healthy === false ? 'bg-warning' : 'bg-green-500'}"></span>
+                  </div>
+                  <div class="text-xs text-muted-foreground">
+                    {authLabel(app.auth)} &middot; {app.credentialFields.filter((f) => f.required).length} credential fields
+                    {#if app.lastSync}
+                      &middot; Last sync: {app.lastSync}
+                    {/if}
+                  </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex items-center gap-2 shrink-0">
+                  <Button variant="outline" size="sm" on:click={() => openEdit(app)}>
+                    <Settings class="h-3 w-3 mr-1" />
+                    Edit Credentials
+                  </Button>
+                  <Button variant="destructive" size="sm" on:click={() => disconnectApp(app)}>
+                    <Trash2 class="h-3 w-3 mr-1" />
+                    Disconnect
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           {/each}
         </div>
       </div>
@@ -375,125 +296,54 @@
 </div>
 
 <!-- Edit Credentials Modal -->
-{#if editOpen && editApp}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center"
-    style="background: rgba(0,0,0,0.6);"
-  >
-    <div
-      class="w-full max-w-lg mx-4 rounded-lg p-6 max-h-[85vh] overflow-y-auto"
-      style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.1));"
-    >
-      <div class="flex items-center justify-between mb-4">
-        <h3
-          class="text-lg font-semibold"
-          style="color: var(--color-text, #fff);"
-        >
-          {editApp.name} — Credentials
-        </h3>
-        <button
-          type="button"
-          on:click={() => (editOpen = false)}
-          class="p-1"
-          style="color: var(--color-text, #fff); opacity: 0.5;"
-          aria-label="Close"
-        >
-          <svg
-            class="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            ><path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12"
-            /></svg
-          >
-        </button>
-      </div>
+<Dialog open={editOpen} onClose={() => editOpen = false} title="{editApp?.name || ''} -- Credentials">
+  {#if editApp}
+    <p class="text-xs text-muted-foreground mb-4">
+      Update credentials for {editApp.name}. Leave fields blank to keep the existing value.
+    </p>
 
-      <p
-        class="text-xs mb-4"
-        style="color: var(--color-text, #fff); opacity: 0.5;"
-      >
-        Update credentials for {editApp.name}. Leave fields blank to keep the
-        existing value.
-      </p>
-
-      <div class="space-y-4">
-        {#each editApp.credentialFields as field}
-          <div>
-            <label
-              class="block text-sm mb-1.5"
-              style="color: var(--color-text, #fff); opacity: 0.7;"
-            >
-              {field.label}
-              {#if field.required}<span style="color: #ef4444;">*</span>{/if}
-            </label>
-            {#if field.type === "textarea"}
-              <textarea
-                bind:value={editValues[field.key]}
-                placeholder="(unchanged)"
-                rows="3"
-                class="w-full px-3 py-2 rounded text-sm font-mono resize-y"
-                style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-              ></textarea>
-            {:else}
-              <input
-                type={fieldInputType(field)}
-                bind:value={editValues[field.key]}
-                placeholder="(unchanged)"
-                class="w-full px-3 py-2 rounded text-sm"
-                style="background: var(--color-bg, #0f1923); border: 1px solid var(--color-border, rgba(255,255,255,0.1)); color: var(--color-text, #fff);"
-              />
-            {/if}
-            {#if field.helpText}
-              <p
-                class="text-[11px] mt-1"
-                style="color: var(--color-text, #fff); opacity: 0.35;"
-              >
-                {field.helpText}
-              </p>
-            {/if}
-          </div>
-        {/each}
-      </div>
-
-      <!-- Test result -->
-      {#if testResult}
-        <div
-          class="mt-4 rounded-lg p-3 text-xs"
-          style="background: {testResult.ok
-            ? 'rgba(34,197,94,0.1)'
-            : 'rgba(239,68,68,0.1)'}; color: {testResult.ok
-            ? '#22c55e'
-            : '#ef4444'};"
-        >
-          {testResult.ok ? "Passed" : "Failed"}: {testResult.message}
+    <div class="space-y-4">
+      {#each editApp.credentialFields as field}
+        <div class="space-y-1.5">
+          <Label>
+            {field.label}
+            {#if field.required}<span class="text-destructive">*</span>{/if}
+          </Label>
+          {#if field.type === "textarea"}
+            <textarea
+              bind:value={editValues[field.key]}
+              placeholder="(unchanged)"
+              rows="3"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            ></textarea>
+          {:else}
+            <Input
+              type={fieldInputType(field)}
+              bind:value={editValues[field.key]}
+              placeholder="(unchanged)"
+            />
+          {/if}
+          {#if field.helpText}
+            <p class="text-xs text-muted-foreground">{field.helpText}</p>
+          {/if}
         </div>
-      {/if}
-
-      <div class="flex gap-2 mt-6">
-        <button
-          type="button"
-          on:click={testConnection}
-          disabled={testLoading}
-          class="flex-1 py-2.5 text-sm font-medium rounded transition-colors disabled:opacity-50"
-          style="background: rgba(255,255,255,0.08); color: var(--color-text, #fff);"
-        >
-          {testLoading ? "Testing..." : "Test Connection"}
-        </button>
-        <button
-          type="button"
-          on:click={saveCredentials}
-          disabled={editLoading}
-          class="flex-1 py-2.5 text-sm font-medium rounded text-white transition-colors disabled:opacity-50"
-          style="background: var(--color-accent, #3b82f6);"
-        >
-          {editLoading ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
+      {/each}
     </div>
-  </div>
-{/if}
+
+    <!-- Test result -->
+    {#if testResult}
+      <div class="mt-4 rounded-lg p-3 text-xs {testResult.ok ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}">
+        {testResult.ok ? "Passed" : "Failed"}: {testResult.message}
+      </div>
+    {/if}
+
+    <DialogFooter class="mt-6">
+      <Button variant="outline" on:click={testConnection} disabled={testLoading}>
+        {testLoading ? "Testing..." : "Test Connection"}
+      </Button>
+      <Button on:click={saveCredentials} disabled={editLoading}>
+        {editLoading ? "Saving..." : "Save Changes"}
+      </Button>
+    </DialogFooter>
+  {/if}
+</Dialog>
