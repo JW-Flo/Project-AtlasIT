@@ -30,7 +30,9 @@ function mapMethodToAtlasType(methodName: string): string | null {
   return HANDLED_METHODS.get(methodName) ?? null;
 }
 
-function decodeMessage(message: PubSubPushMessage["message"]): PubSubDecodedPayload {
+function decodeMessage(
+  message: PubSubPushMessage["message"],
+): PubSubDecodedPayload {
   const decoded = atob(message.data);
   return JSON.parse(decoded) as PubSubDecodedPayload;
 }
@@ -85,7 +87,8 @@ export async function handlePubSubWebhook(c: HonoContext): Promise<Response> {
   }
 
   const token = authHeader.slice("Bearer ".length);
-  if (token !== c.env.ADAPTER_SECRET) {
+  const expected = c.env.ADAPTER_SECRET;
+  if (token.length !== expected.length || !timingSafeEqual(token, expected)) {
     console.error(
       JSON.stringify({
         level: "error",
@@ -229,4 +232,13 @@ async function resolveProjectTenantId(
     .first<{ tenant_id: string }>();
 
   return row?.tenant_id ?? null;
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }
