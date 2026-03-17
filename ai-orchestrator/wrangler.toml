@@ -35,23 +35,22 @@ class_name = "WorkflowDO"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["WorkflowDO"]
+new_sqlite_classes = ["WorkflowDO"]
 
 # R2 bucket for evidence storage
 [[r2_buckets]]
 binding = "EVIDENCE"
 bucket_name = "atlasit-evidence"
 
-# Queue producer for dispatching step tasks
-[[queues.producers]]
-binding = "STEP_TASKS"
-queue = "atlasit-step-tasks"
-
-# Queue consumer for processing step results
-[[queues.consumers]]
-queue = "atlasit-step-tasks"
-max_batch_size = 10
-max_retries = 3
+# Queue bindings disabled — requires Workers Paid plan. Uncomment after upgrade.
+# [[queues.producers]]
+# binding = "STEP_TASKS"
+# queue = "atlasit-step-tasks"
+#
+# [[queues.consumers]]
+# queue = "atlasit-step-tasks"
+# max_batch_size = 10
+# max_retries = 3
 
 [vars]
 AI_PROVIDER = "groq"
