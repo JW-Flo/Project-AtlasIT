@@ -4,6 +4,7 @@ export type Bindings = {
   AI_QUOTA: KVNamespace;
   IDEMPOTENCY_CACHE: KVNamespace;
   WORKFLOW: DurableObjectNamespace;
+  AUTOMATION: DurableObjectNamespace;
   STEP_TASKS: Queue;
   EVIDENCE: R2Bucket;
   API_ALLOWED_KEYS?: string;

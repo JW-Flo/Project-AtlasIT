@@ -8,6 +8,9 @@ import type {
   QueueBus,
   PublishOptions,
   WorkflowStateStore,
+  EvidenceStore,
+  EvidenceWriteResult,
+  EvidenceReadResult,
 } from "./interfaces.js";
 export interface PublishedMessage {
   queue: string;
@@ -28,6 +31,30 @@ export declare class InMemoryWorkflowStateStore implements WorkflowStateStore {
   putRun(runId: string, state: unknown): Promise<void>;
   /** Diagnostic: return all stored run IDs. */
   getAllRunIds(): string[];
+  clear(): void;
+}
+export interface StoredEvidence {
+  tenantId: string;
+  runId: string;
+  stepId: string;
+  hash: string;
+  body: string;
+}
+export declare class InMemoryEvidenceStore implements EvidenceStore {
+  private readonly store;
+  exists(key: string): Promise<boolean>;
+  put(
+    tenantId: string,
+    runId: string,
+    stepId: string,
+    hash: string,
+    body: string,
+  ): Promise<EvidenceWriteResult>;
+  get(key: string): Promise<EvidenceReadResult | null>;
+  /** Return all stored evidence entries for inspection in tests. */
+  getAll(): StoredEvidence[];
+  /** Return evidence entries for a specific run. */
+  getByRun(runId: string): StoredEvidence[];
   clear(): void;
 }
 //# sourceMappingURL=testing.d.ts.map

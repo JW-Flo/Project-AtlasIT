@@ -33,9 +33,17 @@ database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
 name = "WORKFLOW"
 class_name = "WorkflowDO"
 
+[[durable_objects.bindings]]
+name = "AUTOMATION"
+class_name = "AutomationDO"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["WorkflowDO"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["AutomationDO"]
 
 # R2 bucket for evidence storage
 [[r2_buckets]]

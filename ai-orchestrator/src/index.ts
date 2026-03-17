@@ -8,6 +8,7 @@ import { agentRoutes } from "./routes/agents";
 import { healthRoute } from "./routes/health";
 import { workflowRoutes } from "./routes/workflows";
 import { deadLetterRoutes } from "./routes/dead-letter";
+import { automationRoutes } from "./routes/automation";
 
 const app = new Hono<AppEnv>();
 
@@ -93,8 +94,10 @@ app.route("/api/v1/events", eventRoutes);
 app.route("/api/v1/agents", agentRoutes);
 app.route("/api/v1/workflows", workflowRoutes);
 app.route("/api/v1/dead-letter", deadLetterRoutes);
+app.route("/api/v1/automation", automationRoutes);
 
 export { WorkflowDO } from "./workflow/workflow-do";
+export { AutomationDO } from "./automation/automation-do";
 export { app };
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { saveCredentials } from "$lib/server/credentials";
+import { writeAudit } from "$lib/server/audit";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
@@ -36,6 +37,23 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       JSON.stringify({ error: result.error || "Failed to save credentials" }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
+  }
+
+  // Fire automation event for app_connected trigger
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (db) {
+    try {
+      await writeAudit(db, {
+        tenantId,
+        actorUserId: user.userId ?? "unknown",
+        actorEmail: user.email ?? "unknown",
+        action: "app.connected",
+        targetType: "app",
+        targetId: appId,
+      });
+    } catch {
+      // Non-blocking: audit write failure shouldn't break connection
+    }
   }
 
   return new Response(
