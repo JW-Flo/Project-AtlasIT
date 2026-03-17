@@ -54,6 +54,12 @@ export default [
       "test/**",
       // Worker with standalone TypeScript configuration
       "infra/github-proxy/**",
+      // AI orchestrator has its own tsconfig with Bundler moduleResolution
+      "ai-orchestrator/**",
+      // OIDC exchange worker (standalone)
+      "ops/**",
+      // Data-migration and utility scripts (deps not installed)
+      "scripts/**",
     ],
   },
   {
