@@ -1,6 +1,9 @@
-name = "op-connect-oidc-exchange"
+name = "atlasit-oidc-exchange"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
+
+[observability.logs]
+enabled = true
 
 [vars]
 RATE_LIMIT_RPM = "10"

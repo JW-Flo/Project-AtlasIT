@@ -2,6 +2,7 @@ name = "atlasit-core-api"
 main = "src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
+account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 [[d1_databases]]
 binding = "DB"
@@ -19,6 +20,13 @@ id = "4f08086308004796bfd7cab01c34b006"
 [[kv_namespaces]]
 binding = "KV_FEATURE_FLAGS"
 id = "6a94dc4144f04b82a4989677c47509da"
+
+[env.dev]
+name = "atlasit-core-api-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
 
 [env.staging]
 name = "atlasit-core-api-staging"

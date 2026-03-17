@@ -1,3 +1,5 @@
+> WARNING: ARCHIVED — See ops/PRODUCTION_RUNBOOK.md for current procedures
+
 # AtlasIT Production Deployment Checklist
 
 ## Pre-Deployment Requirements

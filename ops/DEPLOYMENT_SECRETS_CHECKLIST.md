@@ -1,3 +1,5 @@
+> WARNING: ARCHIVED — See ops/PRODUCTION_RUNBOOK.md for current procedures
+
 # Deployment Secrets Checklist
 
 This checklist enumerates secrets required for production deployment and recommended storage locations.

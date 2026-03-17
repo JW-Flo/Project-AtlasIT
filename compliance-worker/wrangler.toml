@@ -4,14 +4,10 @@ compatibility_date = "2025-09-30"
 workers_dev = true
 compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-# zone_id = "1a5cc8cc62bc51b21430f970dc86fec7" # moved to route-level; top-level deprecated
-routes = [
-	"www.atlasit.pro/api/compliance/*",
-	"compliance.atlasit.pro/*"
-]
 
 [vars]
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
+ENVIRONMENT = "development"
 # WEBHOOK_SECRET — set via `wrangler secret put WEBHOOK_SECRET`
 
 [[d1_databases]]
@@ -29,3 +25,42 @@ id = "3c5284c47e2e43dc8166fd53f2d35166"
 
 # Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
 # GROQ_API_KEY — Groq API key for AI-powered policy generation
+
+[observability.logs]
+enabled = true
+
+[env.dev]
+name = "atlasit-compliance-worker-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+ORCHESTRATOR_URL = "http://localhost:8787"
+
+[env.production]
+name = "atlasit-compliance-worker"
+workers_dev = true
+routes = [
+  "www.atlasit.pro/api/compliance/*",
+  "compliance.atlasit.pro/*"
+]
+
+[env.production.vars]
+ENVIRONMENT = "production"
+ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
+
+[[env.production.d1_databases]]
+binding = "D1_COMPLIANCE"
+database_name = "atlasit_compliance"
+database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5"
+
+[[env.production.r2_buckets]]
+binding = "EVIDENCE_BUCKET"
+bucket_name = "atlasit-evidence"
+
+[[env.production.kv_namespaces]]
+binding = "API_TOKENS"
+id = "3c5284c47e2e43dc8166fd53f2d35166"
+
+[env.production.observability.logs]
+enabled = true
