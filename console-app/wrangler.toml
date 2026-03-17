@@ -40,7 +40,7 @@ directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
 [build]
-command = "npm install --no-fund --no-audit --ignore-scripts && npm run build:console && touch console-app/.svelte-kit/cloudflare/.assetsignore"
+command = "pnpm install --frozen-lockfile --ignore-scripts && pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
 
 [vars]
 APP_NAME = "AtlasIT Console"
