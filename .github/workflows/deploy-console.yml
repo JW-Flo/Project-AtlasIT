@@ -41,7 +41,7 @@ jobs:
                     echo 'Lint warnings ignored for deploy'
 
             - name: Deploy console worker
-              run: pnpm exec wrangler deploy --config console-app/wrangler.toml
+              run: pnpm exec wrangler deploy --config console-app/wrangler.toml --no-build
 
             - name: Post-deploy smoke
               run: |
