@@ -1,6 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { listRules } from "$lib/server/automation";
+import {
+  listRules,
+  listDismissedSuggestions,
+  dismissSuggestion,
+} from "$lib/server/automation";
 import { listConnectedApps } from "$lib/server/credentials";
 import {
   generateSuggestions,
@@ -23,32 +27,38 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ suggestions: [] });
 
-  // Gather tenant state + event history
-  const [rules, connectedRaw, mappingsResult, eventHistoryResult] =
-    await Promise.all([
-      listRules(db, tenantId),
-      listConnectedApps(platform, tenantId),
-      db
-        .prepare(
-          `SELECT m.group_id as groupId, g.name as groupName, m.app_id as appId, m.role
+  // Gather tenant state + event history + dismissed list
+  const [
+    rules,
+    connectedRaw,
+    mappingsResult,
+    eventHistoryResult,
+    dismissedIds,
+  ] = await Promise.all([
+    listRules(db, tenantId),
+    listConnectedApps(platform, tenantId),
+    db
+      .prepare(
+        `SELECT m.group_id as groupId, g.name as groupName, m.app_id as appId, m.role
          FROM group_app_mappings m
          LEFT JOIN directory_groups g ON g.id = m.group_id
          WHERE m.tenant_id = ?`,
-        )
-        .bind(tenantId)
-        .all(),
-      db
-        .prepare(
-          `SELECT type, source, COUNT(*) as count, MAX(created_at) as latestAt
+      )
+      .bind(tenantId)
+      .all(),
+    db
+      .prepare(
+        `SELECT type, source, COUNT(*) as count, MAX(created_at) as latestAt
          FROM events
          WHERE tenant_id = ? AND created_at > datetime('now', '-30 days')
          GROUP BY type, source
          ORDER BY count DESC
          LIMIT 50`,
-        )
-        .bind(tenantId)
-        .all(),
-    ]);
+      )
+      .bind(tenantId)
+      .all(),
+    listDismissedSuggestions(db, tenantId),
+  ]);
 
   const connectedApps = connectedRaw.map((c) => ({
     appId: c.app_id,
@@ -77,12 +87,43 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   );
   const patternSuggestions = generatePatternSuggestions(rules, eventHistory);
 
-  // Merge and deduplicate by templateId
+  // Merge, deduplicate by templateId, and filter out dismissed
   const seen = new Set(stateSuggestions.map((s) => s.templateId));
+  const dismissedSet = new Set(dismissedIds);
   const merged = [
     ...stateSuggestions,
     ...patternSuggestions.filter((s) => !seen.has(s.templateId)),
-  ];
+  ].filter((s) => !dismissedSet.has(s.templateId));
 
   return json({ suggestions: merged });
+};
+
+/**
+ * POST /api/automation/suggestions
+ * Dismiss a suggestion by templateId.
+ */
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
+  const user = locals.user as any;
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const tenantId = user.tenantId;
+  if (!tenantId)
+    return json({ error: "Tenant context required" }, { status: 403 });
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+
+  let body: { templateId?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!body.templateId) {
+    return json({ error: "templateId is required" }, { status: 400 });
+  }
+
+  await dismissSuggestion(db, tenantId, body.templateId, user.email);
+  return json({ ok: true });
 };

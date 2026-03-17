@@ -28,6 +28,18 @@
     durationMs?: number;
   }
 
+  interface ExecutionDetail extends Execution {
+    ruleName: string;
+    triggerType?: string;
+    triggerEvent: Record<string, any>;
+    results: Array<{
+      actionType: string;
+      status: string;
+      message?: string;
+      details?: Record<string, any>;
+    }>;
+  }
+
   interface HealthCheck {
     appId: string;
     healthy: boolean;
@@ -50,6 +62,8 @@
   let executions: Execution[] = [];
   let healthChecks: HealthCheck[] = [];
   let suggestions: Suggestion[] = [];
+  let selectedExecution: ExecutionDetail | null = null;
+  let loadingDetail = false;
 
   // ---- Data fetching --------------------------------------------------------
   async function fetchAll() {
@@ -135,6 +149,15 @@
 
   async function dismissSuggestion(suggestion: Suggestion) {
     suggestions = suggestions.filter((s) => s !== suggestion);
+    try {
+      await fetch("/api/automation/suggestions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ templateId: suggestion.templateId }),
+      });
+    } catch {
+      // Dismissal already applied optimistically in UI
+    }
   }
 
   async function runHealthCheck() {
@@ -159,6 +182,27 @@
     } catch {
       pushToast({ message: "Failed to delete rule", variant: "error" });
     }
+  }
+
+  async function viewExecution(exec: Execution) {
+    loadingDetail = true;
+    try {
+      const res = await fetch(`/api/automation/executions/${exec.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        selectedExecution = data.execution;
+      } else {
+        pushToast({ message: "Failed to load execution details", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to load execution details", variant: "error" });
+    } finally {
+      loadingDetail = false;
+    }
+  }
+
+  function closeExecutionDetail() {
+    selectedExecution = null;
   }
 
   // ---- Helpers --------------------------------------------------------------
@@ -306,14 +350,19 @@
         <div class="rounded-lg overflow-hidden" style="border: 1px solid var(--color-border, rgba(255,255,255,0.1));">
           {#each executions.slice(0, 8) as exec}
             {@const rule = rules.find((r) => r.id === exec.ruleId)}
-            <div class="flex items-center gap-3 px-4 py-3" style="border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.06)); background: var(--color-surface, #1a2332);">
+            <button
+              type="button"
+              class="flex items-center gap-3 px-4 py-3 w-full text-left hover:brightness-110 transition-all cursor-pointer"
+              style="border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.06)); background: var(--color-surface, #1a2332);"
+              on:click={() => viewExecution(exec)}
+            >
               <div class="w-2 h-2 rounded-full shrink-0" style="background: {statusColor(exec.status)};"></div>
               <div class="flex-1 min-w-0">
                 <span class="text-sm" style="color: var(--color-text, #fff);">{rule?.name ?? exec.ruleId}</span>
                 <span class="text-xs ml-2" style="color: var(--color-text, #fff); opacity: 0.4;">{exec.actionsRun} action{exec.actionsRun !== 1 ? "s" : ""}</span>
               </div>
               <span class="text-xs shrink-0" style="color: var(--color-text, #fff); opacity: 0.4;">{timeAgo(exec.startedAt)}</span>
-            </div>
+            </button>
           {/each}
         </div>
       </div>
@@ -449,7 +498,11 @@
           <tbody>
             {#each executions as exec}
               {@const rule = rules.find((r) => r.id === exec.ruleId)}
-              <tr style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06)); background: var(--color-surface, #1a2332);">
+              <tr
+                class="cursor-pointer hover:brightness-110 transition-all"
+                style="border-top: 1px solid var(--color-border, rgba(255,255,255,0.06)); background: var(--color-surface, #1a2332);"
+                on:click={() => viewExecution(exec)}
+              >
                 <td class="px-4 py-3">
                   <span class="text-sm" style="color: var(--color-text, #fff);">{rule?.name ?? "Unknown rule"}</span>
                 </td>
@@ -475,5 +528,79 @@
         </table>
       </div>
     {/if}
+  {/if}
+
+  <!-- Execution Detail Panel -->
+  {#if selectedExecution}
+    <div class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.6);" on:click={closeExecutionDetail}>
+      <div
+        class="rounded-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6"
+        style="background: var(--color-surface, #1a2332); border: 1px solid var(--color-border, rgba(255,255,255,0.15));"
+        on:click|stopPropagation
+      >
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold" style="color: var(--color-text, #fff);">Execution Detail</h3>
+          <button
+            type="button"
+            on:click={closeExecutionDetail}
+            class="text-sm px-2 py-1 rounded"
+            style="color: rgba(255,255,255,0.4);"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Rule + Trigger -->
+        <div class="mb-4">
+          <div class="text-sm font-medium" style="color: var(--color-text, #fff);">{selectedExecution.ruleName}</div>
+          {#if selectedExecution.triggerType}
+            <span class="text-xs px-2 py-0.5 rounded mt-1 inline-block" style="background: rgba(59,130,246,0.15); color: #3b82f6;">{triggerLabel(selectedExecution.triggerType)}</span>
+          {/if}
+        </div>
+
+        <!-- Status + Timing -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <div class="text-xs mb-0.5" style="color: var(--color-text, #fff); opacity: 0.4;">Status</div>
+            <span class="text-xs px-2 py-0.5 rounded capitalize" style="background: {statusColor(selectedExecution.status)}20; color: {statusColor(selectedExecution.status)};">{selectedExecution.status}</span>
+          </div>
+          <div>
+            <div class="text-xs mb-0.5" style="color: var(--color-text, #fff); opacity: 0.4;">Duration</div>
+            <span class="text-sm" style="color: var(--color-text, #fff);">{selectedExecution.durationMs ? `${selectedExecution.durationMs}ms` : "-"}</span>
+          </div>
+          <div>
+            <div class="text-xs mb-0.5" style="color: var(--color-text, #fff); opacity: 0.4;">Started</div>
+            <span class="text-xs" style="color: var(--color-text, #fff); opacity: 0.7;">{new Date(selectedExecution.startedAt).toLocaleString()}</span>
+          </div>
+          <div>
+            <div class="text-xs mb-0.5" style="color: var(--color-text, #fff); opacity: 0.4;">Completed</div>
+            <span class="text-xs" style="color: var(--color-text, #fff); opacity: 0.7;">{selectedExecution.completedAt ? new Date(selectedExecution.completedAt).toLocaleString() : "-"}</span>
+          </div>
+        </div>
+
+        <!-- Action Results -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--color-text, #fff); opacity: 0.5;">Action Results</div>
+          {#if selectedExecution.results && selectedExecution.results.length > 0}
+            <div class="space-y-2">
+              {#each selectedExecution.results as result}
+                <div class="rounded-lg p-3" style="background: rgba(255,255,255,0.03); border: 1px solid var(--color-border, rgba(255,255,255,0.08));">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xs px-1.5 py-0.5 rounded capitalize" style="background: {statusColor(result.status)}20; color: {statusColor(result.status)};">{result.status}</span>
+                    <span class="text-xs font-medium" style="color: var(--color-text, #fff);">{result.actionType.replace(/_/g, " ")}</span>
+                  </div>
+                  {#if result.message}
+                    <div class="text-xs mt-1" style="color: var(--color-text, #fff); opacity: 0.5;">{result.message}</div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p class="text-xs" style="color: var(--color-text, #fff); opacity: 0.4;">No action results recorded.</p>
+          {/if}
+        </div>
+      </div>
+    </div>
   {/if}
 </div>

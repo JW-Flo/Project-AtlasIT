@@ -45,17 +45,11 @@ describe("Auth & Correlation ID", () => {
   });
 
   it("rejects missing API key", async () => {
+    // Use GET to avoid undici body-stream bug with miniflare v4 when
+    // the worker returns early (401) without consuming the POST body.
     const resp = await mf.dispatchFetch(
       "http://localhost:8787/api/onboarding",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenantId: "t1",
-          name: "Name",
-          industry: "Technology",
-        }),
-      },
+      { method: "GET" },
     );
     expect(resp.status).toBe(401);
   });
@@ -64,13 +58,8 @@ describe("Auth & Correlation ID", () => {
     const resp = await mf.dispatchFetch(
       "http://localhost:8787/api/onboarding",
       {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": "nope" },
-        body: JSON.stringify({
-          tenantId: "t2",
-          name: "Name",
-          industry: "Technology",
-        }),
+        method: "GET",
+        headers: { "x-api-key": "nope" },
       },
     );
     expect(resp.status).toBe(401);

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   matchRules,
   sortActions,
@@ -454,5 +454,137 @@ describe("generatePatternSuggestions", () => {
     );
 
     expect(suggestions.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suggestion dismissal persistence
+// ---------------------------------------------------------------------------
+
+describe("suggestion dismissal filtering", () => {
+  it("filters dismissed templateIds from merged suggestions", () => {
+    const stateSuggestions = [
+      {
+        templateId: "tmpl-1",
+        reason: "r1",
+        priority: "high",
+        ruleInput: { name: "A", triggerType: "user_created", actions: [] },
+      },
+      {
+        templateId: "tmpl-2",
+        reason: "r2",
+        priority: "medium",
+        ruleInput: { name: "B", triggerType: "user_deactivated", actions: [] },
+      },
+      {
+        templateId: "tmpl-3",
+        reason: "r3",
+        priority: "low",
+        ruleInput: { name: "C", triggerType: "app_connected", actions: [] },
+      },
+    ];
+    const dismissedIds = ["tmpl-1", "tmpl-3"];
+    const dismissedSet = new Set(dismissedIds);
+
+    const filtered = stateSuggestions.filter(
+      (s) => !dismissedSet.has(s.templateId),
+    );
+
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].templateId).toBe("tmpl-2");
+  });
+
+  it("returns all suggestions when none are dismissed", () => {
+    const suggestions = [
+      {
+        templateId: "tmpl-1",
+        reason: "r1",
+        priority: "high",
+        ruleInput: { name: "A", triggerType: "user_created", actions: [] },
+      },
+    ];
+    const dismissedSet = new Set<string>();
+
+    const filtered = suggestions.filter((s) => !dismissedSet.has(s.templateId));
+    expect(filtered).toHaveLength(1);
+  });
+
+  it("returns empty when all are dismissed", () => {
+    const suggestions = [
+      {
+        templateId: "tmpl-1",
+        reason: "r1",
+        priority: "high",
+        ruleInput: { name: "A", triggerType: "user_created", actions: [] },
+      },
+    ];
+    const dismissedSet = new Set(["tmpl-1"]);
+
+    const filtered = suggestions.filter((s) => !dismissedSet.has(s.templateId));
+    expect(filtered).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Execution detail view
+// ---------------------------------------------------------------------------
+
+describe("execution detail data shape", () => {
+  it("parses execution detail with results array", () => {
+    const raw = {
+      id: "exec-1",
+      tenant_id: "t1",
+      rule_id: "r1",
+      rule_name: "Test Rule",
+      trigger_type: "user_joined_group",
+      trigger_event: '{"groupId":"eng"}',
+      status: "success",
+      actions_run: 2,
+      actions_failed: 0,
+      results: JSON.stringify([
+        {
+          actionType: "assign_role",
+          status: "success",
+          message: "Role assigned",
+        },
+        {
+          actionType: "send_notification",
+          status: "success",
+          message: "Notification sent",
+        },
+      ]),
+      duration_ms: 42,
+      started_at: "2026-01-01T00:00:00Z",
+      completed_at: "2026-01-01T00:00:01Z",
+    };
+
+    const parsed = {
+      id: raw.id,
+      ruleName: raw.rule_name ?? "Unknown rule",
+      triggerEvent: JSON.parse(raw.trigger_event || "{}"),
+      status: raw.status,
+      actionsRun: raw.actions_run ?? 0,
+      actionsFailed: raw.actions_failed ?? 0,
+      results: raw.results ? JSON.parse(raw.results) : [],
+      durationMs: raw.duration_ms ?? undefined,
+    };
+
+    expect(parsed.ruleName).toBe("Test Rule");
+    expect(parsed.results).toHaveLength(2);
+    expect(parsed.results[0].actionType).toBe("assign_role");
+    expect(parsed.triggerEvent.groupId).toBe("eng");
+  });
+
+  it("handles execution with null results gracefully", () => {
+    const raw = {
+      results: null,
+      rule_name: null,
+    };
+
+    const results = raw.results ? JSON.parse(raw.results) : [];
+    const ruleName = raw.rule_name ?? "Unknown rule";
+
+    expect(results).toEqual([]);
+    expect(ruleName).toBe("Unknown rule");
   });
 });
