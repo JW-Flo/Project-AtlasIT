@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../types";
-import { evaluateAutomationRules } from "../lib/automation-evaluator";
+import {
+  evaluateAutomationRules,
+  type ActionContext,
+} from "../lib/automation-evaluator";
 
 const EvaluateSchema = z.object({
   tenantId: z.string().min(1),
@@ -84,6 +87,19 @@ automationRoutes.post("/evaluate", async (c) => {
   // the console-app. Fall back to DB only if the shared binding is absent
   // (e.g. local dev without the binding configured).
   const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+  const adapterUrls = (() => {
+    try {
+      return JSON.parse(c.env.ADAPTER_URLS ?? "{}") as Record<string, string>;
+    } catch {
+      return {};
+    }
+  })();
+  const actionContext: ActionContext = {
+    workflow: c.env.WORKFLOW,
+    selfUrl: c.env.SELF_URL,
+    adapterUrls,
+    sharedDb,
+  };
 
   const result = await evaluateAutomationRules(
     sharedDb,
@@ -92,6 +108,7 @@ automationRoutes.post("/evaluate", async (c) => {
     source,
     payload ?? {},
     c.env.AUTOMATION,
+    actionContext,
   );
 
   return c.json({

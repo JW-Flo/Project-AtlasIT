@@ -83,7 +83,7 @@ export const integrations: Integration[] = [
     id: "confluence",
     category: "productivity",
     name: "Confluence",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -95,7 +95,7 @@ export const integrations: Integration[] = [
     id: "bamboohr",
     category: "hr",
     name: "BambooHR",
-    status: "alpha",
+    status: "beta",
     auth: "api_key",
     tier: "extended",
     description:
@@ -175,7 +175,7 @@ export const integrations: Integration[] = [
     id: "quickbooks",
     category: "finance",
     name: "QuickBooks",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -186,7 +186,7 @@ export const integrations: Integration[] = [
     id: "xero",
     category: "finance",
     name: "Xero",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "extended",
     description: "Manage payroll employees and contacts via Xero Payroll API.",
@@ -237,7 +237,7 @@ export const integrations: Integration[] = [
     id: "auth0",
     category: "security",
     name: "Auth0",
-    status: "alpha",
+    status: "beta",
     auth: "tenant_oauth",
     tier: "extended",
     description:
@@ -290,7 +290,7 @@ export const integrations: Integration[] = [
     id: "1password",
     category: "security",
     name: "1Password",
-    status: "alpha",
+    status: "beta",
     auth: "api_key",
     tier: "extended",
     description:
@@ -309,7 +309,7 @@ export const integrations: Integration[] = [
     id: "pagerduty",
     category: "security",
     name: "PagerDuty",
-    status: "alpha",
+    status: "beta",
     auth: "api_key",
     tier: "extended",
     description:
@@ -432,7 +432,7 @@ export const integrations: Integration[] = [
     id: "datadog",
     category: "infrastructure",
     name: "Datadog",
-    status: "alpha",
+    status: "beta",
     auth: "api_key",
     tier: "extended",
     description:
@@ -467,7 +467,7 @@ export const integrations: Integration[] = [
     id: "zoom",
     category: "communication",
     name: "Zoom",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -478,7 +478,7 @@ export const integrations: Integration[] = [
     id: "teams",
     category: "communication",
     name: "Microsoft Teams",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -489,11 +489,121 @@ export const integrations: Integration[] = [
     id: "discord",
     category: "communication",
     name: "Discord",
-    status: "alpha",
+    status: "beta",
     auth: "platform_oauth",
     tier: "experimental",
     description:
       "Manage Discord server members and role assignments via Bot API.",
+    credentialFields: [],
+  },
+  // CRM / Sales
+  {
+    id: "salesforce",
+    category: "productivity",
+    name: "Salesforce",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "core",
+    description:
+      "Manage Salesforce users and permission sets via REST API and SCIM.",
+    credentialFields: [],
+  },
+  {
+    id: "hubspot",
+    category: "productivity",
+    name: "HubSpot",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage HubSpot users and team assignments via Settings API.",
+    credentialFields: [],
+  },
+  // File Storage
+  {
+    id: "dropbox",
+    category: "productivity",
+    name: "Dropbox Business",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description:
+      "Manage Dropbox Business team members and groups via Team API.",
+    credentialFields: [],
+  },
+  // Wiki / Knowledge
+  {
+    id: "notion",
+    category: "productivity",
+    name: "Notion",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage Notion workspace members and permissions via API.",
+    credentialFields: [],
+  },
+  // Helpdesk
+  {
+    id: "zendesk",
+    category: "productivity",
+    name: "Zendesk",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage Zendesk agents and group assignments via REST API.",
+    credentialFields: [],
+  },
+  // Project Management
+  {
+    id: "asana",
+    category: "productivity",
+    name: "Asana",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description:
+      "Manage Asana workspace members and team assignments via REST API.",
+    credentialFields: [],
+  },
+  {
+    id: "monday",
+    category: "productivity",
+    name: "Monday.com",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage Monday.com users and teams via GraphQL API.",
+    credentialFields: [],
+  },
+  // Document Signing
+  {
+    id: "docusign",
+    category: "productivity",
+    name: "DocuSign",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage DocuSign users and account access via Admin API.",
+    credentialFields: [],
+  },
+  // Design
+  {
+    id: "figma",
+    category: "productivity",
+    name: "Figma",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "extended",
+    description: "Manage Figma organization members and teams via REST API.",
+    credentialFields: [],
+  },
+  {
+    id: "canva",
+    category: "productivity",
+    name: "Canva",
+    status: "beta",
+    auth: "platform_oauth",
+    tier: "experimental",
+    description: "Manage Canva team members and access via REST API.",
     credentialFields: [],
   },
 ];

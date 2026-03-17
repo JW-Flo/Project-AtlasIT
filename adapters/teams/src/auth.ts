@@ -11,12 +11,10 @@ const AUTHORIZATION_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES = [
-  "Team.ReadBasic.All",
-  "TeamMember.ReadWrite.All",
-  "Channel.ReadBasic.All",
+  "User.ReadWrite.All",
   "Group.ReadWrite.All",
+  "TeamMember.ReadWrite.All",
 ];
-const PKCE_ENABLED = true;
 
 export async function authMiddleware(
   c: Context,
@@ -27,25 +25,6 @@ export async function authMiddleware(
     return c.json({ error: "Missing or invalid Authorization header" }, 401);
   }
   await next();
-}
-
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return btoa(String.fromCharCode(...array))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
 }
 
 export function getAuthorizationUrl(
@@ -60,18 +39,12 @@ export function getAuthorizationUrl(
     state,
   });
 
-  if (PKCE_ENABLED) {
-    // In production, generate and store code_verifier per request
-    params.set("code_challenge_method", "S256");
-  }
-
   return `${AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 export async function exchangeCodeForToken(
   env: Record<string, string>,
   code: string,
-  codeVerifier?: string,
 ): Promise<TokenResponse> {
   const body: Record<string, string> = {
     grant_type: "authorization_code",
@@ -80,10 +53,6 @@ export async function exchangeCodeForToken(
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     code,
   };
-
-  if (PKCE_ENABLED && codeVerifier) {
-    body.code_verifier = codeVerifier;
-  }
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",

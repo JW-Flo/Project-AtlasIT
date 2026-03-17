@@ -1,0 +1,23 @@
+id: notion
+name: Notion JML Workflow
+description: Joiner/Mover/Leaver workflow for Notion workspace
+
+joiner:
+  steps:
+    - action: api.inviteMember
+      params:
+        email: "{{ user.email }}"
+        role: "{{ config.defaultRole | default: 'member' }}"
+
+mover:
+  steps:
+    - action: api.updateMemberRole
+      params:
+        userId: "{{ user.externalId }}"
+        role: "{{ user.role }}"
+
+leaver:
+  steps:
+    - action: api.removeMember
+      params:
+        userId: "{{ user.externalId }}"

@@ -1684,6 +1684,588 @@ export const GITHUB_MANIFEST: ConnectorManifest = {
 };
 
 // ---------------------------------------------------------------------------
+// Salesforce
+// ---------------------------------------------------------------------------
+
+export const SALESFORCE_MANIFEST: ConnectorManifest = {
+  id: "salesforce",
+  name: "Salesforce",
+  slug: "salesforce",
+  version: "1.0.0",
+  description:
+    "Provision and deprovision Salesforce users and sync permission sets via OAuth 2.0",
+  provider: "Salesforce",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/salesforce.svg",
+  documentationUrl: "https://developer.salesforce.com/docs",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl:
+        "https://login.salesforce.com/services/oauth2/authorize",
+      tokenUrl: "https://login.salesforce.com/services/oauth2/token",
+      scopes: ["api", "refresh_token", "full"],
+      clientIdEnvVar: "SALESFORCE_CLIENT_ID",
+      clientSecretEnvVar: "SALESFORCE_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [
+    {
+      key: "instanceUrl",
+      label: "Instance URL",
+      type: "url",
+      required: true,
+      description:
+        "Your Salesforce instance URL (e.g., https://yourorg.my.salesforce.com)",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/salesforce/events",
+      method: "POST",
+      description: "Receives Salesforce Platform Events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "user.updated"],
+    subscribes: ["user.created", "user.deleted", "user.updated"],
+  },
+  lifecycle: {
+    hooks: [
+      "onInstall",
+      "onUninstall",
+      "onEnable",
+      "onDisable",
+      "onConfigUpdate",
+    ],
+  },
+  rateLimit: {
+    requestsPerSecond: 25,
+    burstSize: 50,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// HubSpot
+// ---------------------------------------------------------------------------
+
+export const HUBSPOT_MANIFEST: ConnectorManifest = {
+  id: "hubspot",
+  name: "HubSpot",
+  slug: "hubspot",
+  version: "1.0.0",
+  description:
+    "Manage HubSpot portal users and teams via OAuth 2.0 integration",
+  provider: "HubSpot",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/hubspot.svg",
+  documentationUrl: "https://developers.hubspot.com/docs",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://app.hubspot.com/oauth/authorize",
+      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      scopes: [
+        "settings.users.read",
+        "settings.users.write",
+        "settings.users.teams.read",
+        "settings.users.teams.write",
+      ],
+      clientIdEnvVar: "HUBSPOT_CLIENT_ID",
+      clientSecretEnvVar: "HUBSPOT_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [
+    {
+      key: "portalId",
+      label: "Portal ID",
+      type: "string",
+      required: true,
+      description: "Your HubSpot Portal/Account ID",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/hubspot/events",
+      method: "POST",
+      description: "Receives HubSpot webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Dropbox Business
+// ---------------------------------------------------------------------------
+
+export const DROPBOX_MANIFEST: ConnectorManifest = {
+  id: "dropbox",
+  name: "Dropbox Business",
+  slug: "dropbox",
+  version: "1.0.0",
+  description:
+    "Provision Dropbox Business team members and manage groups via OAuth 2.0",
+  provider: "Dropbox",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/dropbox.svg",
+  documentationUrl: "https://www.dropbox.com/developers/documentation",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://www.dropbox.com/oauth2/authorize",
+      tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+      scopes: [
+        "team_data.member",
+        "members.read",
+        "members.write",
+        "groups.read",
+        "groups.write",
+      ],
+      clientIdEnvVar: "DROPBOX_CLIENT_ID",
+      clientSecretEnvVar: "DROPBOX_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/dropbox/events",
+      method: "POST",
+      description: "Receives Dropbox webhook notifications",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "group.updated"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Notion
+// ---------------------------------------------------------------------------
+
+export const NOTION_MANIFEST: ConnectorManifest = {
+  id: "notion",
+  name: "Notion",
+  slug: "notion",
+  version: "1.0.0",
+  description:
+    "Manage Notion workspace members and access via OAuth 2.0 integration",
+  provider: "Notion",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/notion.svg",
+  documentationUrl: "https://developers.notion.com",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://api.notion.com/v1/oauth/authorize",
+      tokenUrl: "https://api.notion.com/v1/oauth/token",
+      scopes: [],
+      clientIdEnvVar: "NOTION_CLIENT_ID",
+      clientSecretEnvVar: "NOTION_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "group-sync"],
+  configFields: [
+    {
+      key: "workspaceId",
+      label: "Workspace ID",
+      type: "string",
+      required: false,
+      description: "Notion workspace ID (auto-detected from OAuth)",
+    },
+  ],
+  webhookEndpoints: [],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 3,
+    burstSize: 6,
+  },
+  minimumTier: "starter",
+};
+
+// ---------------------------------------------------------------------------
+// Zendesk
+// ---------------------------------------------------------------------------
+
+export const ZENDESK_MANIFEST: ConnectorManifest = {
+  id: "zendesk",
+  name: "Zendesk",
+  slug: "zendesk",
+  version: "1.0.0",
+  description:
+    "Provision Zendesk agents and manage groups via OAuth 2.0 with subdomain support",
+  provider: "Zendesk",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/zendesk.svg",
+  documentationUrl: "https://developer.zendesk.com/api-reference",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl:
+        "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+      tokenUrl: "https://{subdomain}.zendesk.com/oauth/tokens",
+      scopes: ["users:read", "users:write", "groups:read", "groups:write"],
+      clientIdEnvVar: "ZENDESK_CLIENT_ID",
+      clientSecretEnvVar: "ZENDESK_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [
+    {
+      key: "subdomain",
+      label: "Zendesk Subdomain",
+      type: "string",
+      required: true,
+      description: "Your Zendesk subdomain (e.g., yourcompany)",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/zendesk/events",
+      method: "POST",
+      description: "Receives Zendesk webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "ticket.created"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Asana
+// ---------------------------------------------------------------------------
+
+export const ASANA_MANIFEST: ConnectorManifest = {
+  id: "asana",
+  name: "Asana",
+  slug: "asana",
+  version: "1.0.0",
+  description:
+    "Manage Asana workspace members and teams via OAuth 2.0 integration",
+  provider: "Asana",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/asana.svg",
+  documentationUrl: "https://developers.asana.com/docs",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      scopes: ["default"],
+      clientIdEnvVar: "ASANA_CLIENT_ID",
+      clientSecretEnvVar: "ASANA_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "group-sync"],
+  configFields: [
+    {
+      key: "workspaceGid",
+      label: "Workspace GID",
+      type: "string",
+      required: true,
+      description: "Your Asana workspace GID",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/asana/events",
+      method: "POST",
+      description: "Receives Asana webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "team.updated"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 25,
+    burstSize: 50,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Monday.com
+// ---------------------------------------------------------------------------
+
+export const MONDAY_MANIFEST: ConnectorManifest = {
+  id: "monday",
+  name: "Monday.com",
+  slug: "monday",
+  version: "1.0.0",
+  description:
+    "Provision Monday.com users and manage teams via OAuth 2.0 integration",
+  provider: "Monday.com",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/monday.svg",
+  documentationUrl: "https://developer.monday.com/api-reference",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://auth.monday.com/oauth2/authorize",
+      tokenUrl: "https://auth.monday.com/oauth2/token",
+      scopes: [
+        "me:read",
+        "users:read",
+        "users:write",
+        "teams:read",
+        "account:read",
+      ],
+      clientIdEnvVar: "MONDAY_CLIENT_ID",
+      clientSecretEnvVar: "MONDAY_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/monday/events",
+      method: "POST",
+      description: "Receives Monday.com webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 5,
+    burstSize: 10,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// DocuSign
+// ---------------------------------------------------------------------------
+
+export const DOCUSIGN_MANIFEST: ConnectorManifest = {
+  id: "docusign",
+  name: "DocuSign",
+  slug: "docusign",
+  version: "1.0.0",
+  description:
+    "Manage DocuSign account users and receive envelope events via OAuth 2.0",
+  provider: "DocuSign",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/docusign.svg",
+  documentationUrl: "https://developers.docusign.com",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://account-d.docusign.com/oauth/auth",
+      tokenUrl: "https://account-d.docusign.com/oauth/token",
+      scopes: ["signature", "user_read", "user_write", "organization_read"],
+      clientIdEnvVar: "DOCUSIGN_CLIENT_ID",
+      clientSecretEnvVar: "DOCUSIGN_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning"],
+  configFields: [
+    {
+      key: "accountId",
+      label: "Account ID",
+      type: "string",
+      required: true,
+      description: "Your DocuSign Account ID (GUID)",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/docusign/events",
+      method: "POST",
+      description: "Receives DocuSign Connect events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "envelope.completed"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Figma
+// ---------------------------------------------------------------------------
+
+export const FIGMA_MANIFEST: ConnectorManifest = {
+  id: "figma",
+  name: "Figma",
+  slug: "figma",
+  version: "1.0.0",
+  description:
+    "Manage Figma organization members and team assignments via OAuth 2.0",
+  provider: "Figma",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/figma.svg",
+  documentationUrl: "https://www.figma.com/developers/api",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://www.figma.com/oauth",
+      tokenUrl: "https://api.figma.com/v1/oauth/token",
+      scopes: ["org:read", "org:manage_members", "files:read"],
+      clientIdEnvVar: "FIGMA_CLIENT_ID",
+      clientSecretEnvVar: "FIGMA_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+  configFields: [
+    {
+      key: "orgId",
+      label: "Organization ID",
+      type: "string",
+      required: true,
+      description: "Your Figma Organization ID",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/figma/events",
+      method: "POST",
+      description: "Receives Figma webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
+// ---------------------------------------------------------------------------
+// Canva
+// ---------------------------------------------------------------------------
+
+export const CANVA_MANIFEST: ConnectorManifest = {
+  id: "canva",
+  name: "Canva",
+  slug: "canva",
+  version: "1.0.0",
+  description: "Manage Canva team members and access via OAuth 2.0 integration",
+  provider: "Canva",
+  category: "identity",
+  logoUrl: "https://cdn.atlasit.dev/connectors/canva.svg",
+  documentationUrl: "https://www.canva.dev/docs/connect",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      authorizationUrl: "https://www.canva.com/api/oauth/authorize",
+      tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+      scopes: ["team:read", "team:manage", "profile:read"],
+      clientIdEnvVar: "CANVA_CLIENT_ID",
+      clientSecretEnvVar: "CANVA_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: ["user-provisioning", "group-sync"],
+  configFields: [
+    {
+      key: "teamId",
+      label: "Team ID",
+      type: "string",
+      required: true,
+      description: "Your Canva Team ID",
+    },
+  ],
+  webhookEndpoints: [
+    {
+      path: "/webhooks/canva/events",
+      method: "POST",
+      description: "Receives Canva webhook events",
+      authRequired: true,
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned"],
+    subscribes: ["user.created", "user.deleted"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 5,
+    burstSize: 10,
+  },
+  minimumTier: "starter",
+};
+
+// ---------------------------------------------------------------------------
 // All manifests collection
 // ---------------------------------------------------------------------------
 
@@ -1712,4 +2294,14 @@ export const ALL_MANIFESTS: ConnectorManifest[] = [
   GCP_MANIFEST,
   AZURE_MANIFEST,
   GITHUB_MANIFEST,
+  SALESFORCE_MANIFEST,
+  HUBSPOT_MANIFEST,
+  DROPBOX_MANIFEST,
+  NOTION_MANIFEST,
+  ZENDESK_MANIFEST,
+  ASANA_MANIFEST,
+  MONDAY_MANIFEST,
+  DOCUSIGN_MANIFEST,
+  FIGMA_MANIFEST,
+  CANVA_MANIFEST,
 ];

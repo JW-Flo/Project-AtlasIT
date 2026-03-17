@@ -135,6 +135,40 @@ export interface AutomationEvent {
   source: string;
 }
 
+export interface CanonicalUserProfile {
+  // Core (always populated from directory_users columns)
+  id: string; // directory_users.id
+  externalId: string; // IdP-assigned ID
+  email: string;
+  displayName: string;
+  status: "active" | "suspended" | "inactive" | "pending";
+  source: string; // 'okta' | 'google_workspace' | 'microsoft_365' | etc.
+  tenantId: string;
+
+  // Normalized from raw_attributes (IdP-specific, best-effort)
+  firstName?: string; // Okta: profile.firstName / Google: name.givenName
+  lastName?: string; // Okta: profile.lastName  / Google: name.familyName
+  phone?: string; // Okta: profile.mobilePhone
+  department?: string; // Column value (preferred) or raw_attributes
+  title?: string; // Column value (preferred) or raw_attributes
+  manager?: string; // Manager email (if in raw_attributes)
+  employeeId?: string;
+  location?: string; // Okta: profile.city / Google: orgUnitPath
+  orgUnit?: string; // Google: orgUnitPath
+
+  // Enriched via JOINs
+  groups: string[]; // Group names from directory_memberships → directory_groups
+  appAccess: Array<{
+    // From group_app_mappings via memberships
+    appId: string;
+    role: string;
+    groupId: string;
+  }>;
+
+  // Full raw IdP blob — adapters can extract whatever they need
+  rawAttributes: Record<string, unknown>;
+}
+
 /** Predefined rule templates for common automation scenarios */
 export interface RuleTemplate {
   id: string;

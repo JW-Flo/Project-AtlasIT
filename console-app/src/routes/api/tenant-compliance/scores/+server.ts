@@ -197,7 +197,50 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
   await ensureScoreTables(db);
+
+  // Read previous scores before recalculation to detect changes
+  const { results: prevRows } = await db
+    .prepare(
+      "SELECT framework, score FROM compliance_scores WHERE tenant_id = ?",
+    )
+    .bind(user.tenantId)
+    .all<{ framework: string; score: number }>();
+  const previousScores: Record<string, number> = {};
+  for (const row of prevRows ?? []) {
+    previousScores[row.framework] = row.score;
+  }
+
   const scores = await calculateScores(db, user.tenantId);
+
+  // Emit compliance.score_changed for any framework whose score changed
+  const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+  if (orchestratorUrl) {
+    for (const fw of scores) {
+      const previousScore = previousScores[fw.framework];
+      if (previousScore !== undefined && previousScore !== fw.score) {
+        fetch(`${orchestratorUrl}/api/v1/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: user.tenantId,
+            type: "compliance.score_changed",
+            source: "compliance-scores-api",
+            payload: {
+              framework: fw.framework,
+              score: fw.score,
+              previousScore,
+              grade: fw.grade,
+              direction: fw.score < previousScore ? "below" : "above",
+              controlsTotal: fw.controlsTotal,
+              controlsImplemented: fw.controlsImplemented,
+              controlsVerified: fw.controlsVerified,
+            },
+            idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
+          }),
+        }).catch(() => {}); // best-effort, non-blocking
+      }
+    }
+  }
 
   return json({ scores, recalculated: true });
 };

@@ -21,8 +21,12 @@ import type {
   AutomationRule,
   AutomationEvent,
   ActionResult,
+  ActionType,
+  RuleAction,
   TriggerType,
+  CanonicalUserProfile,
 } from "@atlasit/shared/automation/types";
+import { enrichUserProfile } from "./profile-enricher";
 
 /** Map of orchestrator event types to automation trigger types */
 const EVENT_TYPE_MAP: Record<string, TriggerType> = {
@@ -36,12 +40,19 @@ const EVENT_TYPE_MAP: Record<string, TriggerType> = {
   "compliance.score_changed": "compliance_score_changed",
 };
 
+export interface ActionContext {
+  workflow?: DurableObjectNamespace; // for run_workflow
+  selfUrl?: string; // for send_notification (self-POST to event bus)
+  adapterUrls?: Record<string, string>; // appId → adapter worker base URL
+  sharedDb?: D1Database; // for create_incident, update_compliance_status
+}
+
 interface EvaluateResult {
   matched: number;
   executions: Array<{
     ruleId: string;
     ruleName: string;
-    status: "success" | "partial" | "failed";
+    status: "success" | "partial" | "failed" | "running";
     actionsRun: number;
   }>;
 }
@@ -77,6 +88,7 @@ export async function evaluateAutomationRules(
   source: string,
   payload: unknown,
   automationDO?: DurableObjectNamespace,
+  actionContext?: ActionContext,
 ): Promise<EvaluateResult> {
   const triggerType = EVENT_TYPE_MAP[eventType];
   if (!triggerType) {
@@ -99,6 +111,21 @@ export async function evaluateAutomationRules(
   const matched = matchRules(rules, event);
   if (matched.length === 0) {
     return { matched: 0, executions: [] };
+  }
+
+  // Enrich user profile once for this event if user context is present
+  const userEmail = (payload as Record<string, unknown>)?.email as
+    | string
+    | undefined;
+  const userId = (payload as Record<string, unknown>)?.userId as
+    | string
+    | undefined;
+  let userProfile: CanonicalUserProfile | null = null;
+  if (actionContext?.sharedDb && (userEmail || userId)) {
+    userProfile = await enrichUserProfile(actionContext.sharedDb, tenantId, {
+      email: userEmail,
+      userId,
+    }).catch(() => null);
   }
 
   const executions: EvaluateResult["executions"] = [];
@@ -134,22 +161,25 @@ export async function evaluateAutomationRules(
         const interpolatedConfig: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(action.config)) {
           interpolatedConfig[k] =
-            typeof v === "string" ? interpolateTemplate(v, event.payload) : v;
+            typeof v === "string"
+              ? interpolateTemplate(v, {
+                  ...event.payload,
+                  ...(userProfile ?? {}),
+                })
+              : v;
         }
 
-        results.push({
-          actionType: action.type,
-          status: "success",
-          message: `Action ${action.type} dispatched`,
-          details: interpolatedConfig,
-        });
+        const result = await executeAction(
+          action,
+          event,
+          interpolatedConfig,
+          actionContext ?? {},
+          userProfile,
+        );
+        results.push(result);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        results.push({
-          actionType: action.type,
-          status: "failed",
-          message,
-        });
+        results.push({ actionType: action.type, status: "failed", message });
       }
     }
 
@@ -220,6 +250,399 @@ export async function evaluateAutomationRules(
   }
 
   return { matched: matched.length, executions };
+}
+
+// ── Action executor ───────────────────────────────────────────────────────────
+
+async function executeAction(
+  action: RuleAction,
+  event: AutomationEvent,
+  config: Record<string, unknown>,
+  ctx: ActionContext,
+  profile: CanonicalUserProfile | null,
+): Promise<ActionResult> {
+  switch (action.type) {
+    // ── Workflow execution ──────────────────────────────────────────────────
+    case "run_workflow": {
+      if (!ctx.workflow) return skip(action.type, "no WORKFLOW binding");
+      const { workflowType = "joiner" } = config as { workflowType: string };
+      const runId = crypto.randomUUID();
+      const doId = ctx.workflow.idFromName(runId);
+      const stub = ctx.workflow.get(doId);
+      await stub.fetch(
+        new Request("http://workflow/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            definition: {
+              id: `${workflowType}-${runId}`,
+              name: workflowType,
+              steps: buildWorkflowSteps(workflowType, ctx.adapterUrls ?? {}),
+              globalTimeoutMs: 5 * 60 * 1000,
+            },
+            tenantId: event.tenantId,
+            correlationId: runId,
+            context: {
+              workflowType,
+              triggerEvent: event,
+              ...(profile
+                ? {
+                    userId: profile.id,
+                    email: profile.email,
+                    displayName: profile.displayName,
+                    firstName: profile.firstName,
+                    lastName: profile.lastName,
+                    department: profile.department,
+                    title: profile.title,
+                    manager: profile.manager,
+                    phone: profile.phone,
+                    groups: profile.groups,
+                    appAccess: profile.appAccess,
+                    rawAttributes: profile.rawAttributes,
+                  }
+                : {}),
+            },
+          }),
+        }),
+      );
+      return ok(action.type, `${workflowType} workflow started`, { runId });
+    }
+
+    // ── Notifications ───────────────────────────────────────────────────────
+    case "send_notification": {
+      if (!ctx.selfUrl) return skip(action.type, "no SELF_URL configured");
+      const { channel = "slack", template, notifyUser, notifyAdmin } = config;
+      await fetch(`${ctx.selfUrl}/api/v1/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: event.tenantId,
+          type: `notification.${template ?? "generic"}`,
+          source: "automation",
+          payload: {
+            channel,
+            notifyUser,
+            notifyAdmin,
+            user: profile
+              ? {
+                  email: profile.email,
+                  displayName: profile.displayName,
+                  firstName: profile.firstName,
+                  department: profile.department,
+                  title: profile.title,
+                  manager: profile.manager,
+                }
+              : event.payload,
+            context: event.payload,
+          },
+        }),
+      });
+      return ok(action.type, `Notification dispatched via ${channel}`);
+    }
+
+    // ── Incident creation ───────────────────────────────────────────────────
+    case "create_incident": {
+      const db = ctx.sharedDb;
+      if (!db) return skip(action.type, "no sharedDb binding");
+      const {
+        severity = "medium",
+        title = "Automation incident",
+        autoResolve = false,
+      } = config;
+      const id = crypto.randomUUID().replace(/-/g, "");
+      const description = profile
+        ? `Triggered for ${profile.displayName} (${profile.email}) — ${profile.department ?? ""} ${profile.title ?? ""}`
+        : JSON.stringify(event.payload).slice(0, 500);
+      await db
+        .prepare(
+          "INSERT INTO incidents (id, tenant_id, title, severity, source, source_id, description, auto_resolve) VALUES (?,?,?,?,?,?,?,?)",
+        )
+        .bind(
+          id,
+          event.tenantId,
+          String(title),
+          String(severity),
+          "automation",
+          null,
+          description,
+          autoResolve ? 1 : 0,
+        )
+        .run();
+      return ok(action.type, "Incident created", { incidentId: id });
+    }
+
+    // ── App provisioning ────────────────────────────────────────────────────
+    case "provision_app_access": {
+      const { appId, role } = config as { appId?: string; role?: string };
+      const adapterUrl = resolveAdapterUrl(appId, ctx);
+      if (!adapterUrl)
+        return skip(
+          action.type,
+          `no adapter URL for app "${appId ?? "unset"}"`,
+        );
+
+      // Okta uses SCIM 2.0
+      if (appId === "okta") {
+        const res = await fetch(`${adapterUrl}/scim/v2/Users`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/scim+json",
+            "X-Tenant-ID": event.tenantId,
+          },
+          body: JSON.stringify(buildScimUser(profile, config)),
+        });
+        return res.ok
+          ? ok(action.type, "User provisioned via SCIM")
+          : fail(action.type, `SCIM provision failed: HTTP ${res.status}`);
+      }
+
+      // All other adapters: standard contract POST /api/provision
+      const res = await fetch(`${adapterUrl}/api/provision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": event.tenantId,
+        },
+        body: JSON.stringify({
+          tenantId: event.tenantId,
+          userProfile: profile,
+          config,
+          role,
+        }),
+      });
+      return res.ok
+        ? ok(action.type, `User provisioned in ${appId}`)
+        : fail(action.type, `Provision failed: HTTP ${res.status}`);
+    }
+
+    case "revoke_app_access": {
+      const { appId } = config as { appId?: string };
+      const adapterUrl = resolveAdapterUrl(appId, ctx);
+      if (!adapterUrl)
+        return skip(
+          action.type,
+          `no adapter URL for app "${appId ?? "unset"}"`,
+        );
+
+      if (appId === "okta" && profile?.externalId) {
+        const res = await fetch(
+          `${adapterUrl}/scim/v2/Users/${profile.externalId}`,
+          {
+            method: "DELETE",
+            headers: { "X-Tenant-ID": event.tenantId },
+          },
+        );
+        return res.ok
+          ? ok(action.type, "User deprovisioned via SCIM")
+          : fail(action.type, `SCIM deprovision failed: HTTP ${res.status}`);
+      }
+
+      const res = await fetch(`${adapterUrl}/api/deprovision`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": event.tenantId,
+        },
+        body: JSON.stringify({
+          tenantId: event.tenantId,
+          userProfile: profile,
+          config,
+        }),
+      });
+      return res.ok
+        ? ok(action.type, `User deprovisioned from ${appId}`)
+        : fail(action.type, `Deprovision failed: HTTP ${res.status}`);
+    }
+
+    // ── Directory sync ──────────────────────────────────────────────────────
+    case "sync_directory": {
+      const { appId } = config as { appId?: string };
+      const targets = appId
+        ? ([resolveAdapterUrl(appId, ctx)].filter(Boolean) as string[])
+        : Object.values(ctx.adapterUrls ?? {});
+      await Promise.allSettled(
+        targets.map((url) =>
+          fetch(`${url}/api/sync`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-ID": event.tenantId,
+            },
+            body: JSON.stringify({ tenantId: event.tenantId }),
+          }),
+        ),
+      );
+      return ok(
+        action.type,
+        `Directory sync dispatched to ${targets.length} adapter(s)`,
+      );
+    }
+
+    // ── Role assignment ─────────────────────────────────────────────────────
+    case "assign_role":
+    case "remove_role": {
+      const { appId, roleId } = config as { appId: string; roleId: string };
+      const adapterUrl = resolveAdapterUrl(appId, ctx);
+      if (!adapterUrl) return skip(action.type, `no adapter URL for ${appId}`);
+      const method = action.type === "assign_role" ? "POST" : "DELETE";
+      const userId = profile?.externalId ?? (event.payload.userId as string);
+      const res = await fetch(`${adapterUrl}/api/roles/${roleId}/members`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": event.tenantId,
+        },
+        body: JSON.stringify({
+          tenantId: event.tenantId,
+          userId,
+          userProfile: profile,
+        }),
+      });
+      return res.ok
+        ? ok(
+            action.type,
+            `Role ${roleId} ${action.type === "assign_role" ? "assigned" : "removed"}`,
+          )
+        : fail(action.type, `Role update failed: HTTP ${res.status}`);
+    }
+
+    // ── Compliance status ───────────────────────────────────────────────────
+    case "update_compliance_status": {
+      const db = ctx.sharedDb;
+      if (!db) return skip(action.type, "no sharedDb binding");
+      const { controlId, status: newStatus } = config as {
+        controlId: string;
+        status: string;
+      };
+      await db
+        .prepare(
+          'UPDATE compliance_controls SET status = ?, updated_at = datetime("now") WHERE id = ? AND tenant_id = ?',
+        )
+        .bind(newStatus, controlId, event.tenantId)
+        .run();
+      return ok(action.type, `Control ${controlId} → ${newStatus}`);
+    }
+
+    default:
+      return fail(action.type as string, "unknown action type");
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function ok(
+  actionType: string,
+  message: string,
+  details?: Record<string, unknown>,
+): ActionResult {
+  return {
+    actionType: actionType as ActionType,
+    status: "success",
+    message,
+    details,
+  };
+}
+function fail(actionType: string, message: string): ActionResult {
+  return { actionType: actionType as ActionType, status: "failed", message };
+}
+/** Graceful fallback when a required binding/URL is not configured. */
+function skip(actionType: string, message: string): ActionResult {
+  return { actionType: actionType as ActionType, status: "skipped", message };
+}
+function resolveAdapterUrl(
+  appId: string | undefined,
+  ctx: ActionContext,
+): string | undefined {
+  if (!appId) return undefined;
+  return (ctx.adapterUrls ?? {})[appId];
+}
+
+/** Map CanonicalUserProfile → SCIM 2.0 User resource for Okta */
+function buildScimUser(
+  profile: CanonicalUserProfile | null,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+    userName: profile?.email ?? config.email,
+    name: {
+      givenName: profile?.firstName ?? "",
+      familyName: profile?.lastName ?? "",
+      formatted: profile?.displayName ?? "",
+    },
+    displayName: profile?.displayName,
+    emails: [
+      { value: profile?.email ?? config.email, type: "work", primary: true },
+    ],
+    active: true,
+    title: profile?.title,
+    department: profile?.department,
+    externalId: profile?.externalId,
+    "urn:ietf:params:scim:schemas:extension:atlasit:2.0:User": {
+      rawAttributes: profile?.rawAttributes ?? {},
+      groups: profile?.groups ?? [],
+      appAccess: profile?.appAccess ?? [],
+    },
+  };
+}
+
+/** Build canonical joiner/mover/leaver step arrays for WorkflowDO */
+function buildWorkflowSteps(
+  workflowType: string,
+  adapterUrls: Record<string, string>,
+): Array<{
+  id: string;
+  name: string;
+  handler: string;
+  timeoutMs: number;
+  compensate?: string;
+}> {
+  const connectedApps = Object.keys(adapterUrls);
+  const provisionSteps = connectedApps.map((appId) => ({
+    id: `provision_${appId}`,
+    name: `Provision ${appId}`,
+    handler: `${appId}.provision`,
+    timeoutMs: 30_000,
+    compensate: `${appId}.deprovision`,
+  }));
+  const revokeSteps = connectedApps.map((appId) => ({
+    id: `revoke_${appId}`,
+    name: `Revoke ${appId}`,
+    handler: `${appId}.deprovision`,
+    timeoutMs: 30_000,
+  }));
+
+  if (workflowType === "joiner")
+    return [
+      {
+        id: "resolve_access",
+        name: "Resolve access bundle",
+        handler: "atlas.resolve_access_bundle",
+        timeoutMs: 10_000,
+      },
+      ...provisionSteps,
+      {
+        id: "emit_evidence",
+        name: "Emit joiner evidence",
+        handler: "atlas.emit_evidence",
+        timeoutMs: 10_000,
+      },
+    ];
+  if (workflowType === "leaver")
+    return [
+      ...revokeSteps,
+      {
+        id: "emit_evidence",
+        name: "Emit leaver evidence",
+        handler: "atlas.emit_evidence",
+        timeoutMs: 10_000,
+      },
+    ];
+  // mover: revoke old + provision new (simplified)
+  return [
+    ...revokeSteps.map((s) => ({ ...s, id: `old_${s.id}` })),
+    ...provisionSteps.map((s) => ({ ...s, id: `new_${s.id}` })),
+  ];
 }
 
 // Row → domain mapper (mirrors console-app/src/lib/server/automation.ts)

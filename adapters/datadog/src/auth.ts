@@ -18,12 +18,17 @@ export function injectApiKeyHeaders(
   env: Record<string, string>,
 ): Record<string, string> {
   const apiKey = env.DATADOG_API_KEY;
+  const appKey = env.DATADOG_APP_KEY;
   if (!apiKey) {
     throw new Error("API key not configured: DATADOG_API_KEY");
+  }
+  if (!appKey) {
+    throw new Error("App key not configured: DATADOG_APP_KEY");
   }
 
   return {
     "DD-API-KEY": apiKey,
+    "DD-APPLICATION-KEY": appKey,
   };
 }
 

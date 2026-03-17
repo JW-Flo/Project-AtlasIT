@@ -3,7 +3,10 @@ import { z } from "zod";
 import type { AppEnv, AgentSubscription } from "../types";
 import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
-import { evaluateAutomationRules } from "../lib/automation-evaluator";
+import {
+  evaluateAutomationRules,
+  type ActionContext,
+} from "../lib/automation-evaluator";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -214,6 +217,19 @@ eventRoutes.post("/", async (c) => {
   // Evaluate automation rules for this event (async, non-blocking).
   // Rules and execution records live in ATLAS_SHARED_DB (same DB as the console-app).
   const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+  const adapterUrls = (() => {
+    try {
+      return JSON.parse(c.env.ADAPTER_URLS ?? "{}") as Record<string, string>;
+    } catch {
+      return {};
+    }
+  })();
+  const actionContext: ActionContext = {
+    workflow: c.env.WORKFLOW,
+    selfUrl: c.env.SELF_URL,
+    adapterUrls,
+    sharedDb,
+  };
   try {
     const ctx2 = c.executionCtx;
     ctx2.waitUntil(
@@ -224,6 +240,7 @@ eventRoutes.post("/", async (c) => {
         source,
         payload,
         c.env.AUTOMATION,
+        actionContext,
       ).catch((err) => {
         console.error(
           JSON.stringify({
@@ -245,6 +262,7 @@ eventRoutes.post("/", async (c) => {
       source,
       payload,
       c.env.AUTOMATION,
+      actionContext,
     ).catch(() => {});
   }
 

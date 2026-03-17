@@ -9,6 +9,11 @@ import { healthRoute } from "./routes/health";
 import { workflowRoutes } from "./routes/workflows";
 import { deadLetterRoutes } from "./routes/dead-letter";
 import { automationRoutes } from "./routes/automation";
+import {
+  evaluateAutomationRules,
+  type ActionContext,
+} from "./lib/automation-evaluator";
+import { executeStepTask } from "./lib/step-executor";
 
 const app = new Hono<AppEnv>();
 
@@ -114,6 +119,16 @@ interface StepResultMessage {
   error?: string;
 }
 
+interface StepTaskMessage {
+  kind: "step-task";
+  runId: string;
+  stepId: string;
+  attempt: number;
+  compensation?: boolean;
+}
+
+type AnyStepMessage = StepResultMessage | StepTaskMessage;
+
 interface QueueMessage<T = unknown> {
   body: T;
   ack(): void;
@@ -126,12 +141,69 @@ interface QueueBatch<T = unknown> {
 
 const worker = {
   fetch: app.fetch,
+  async scheduled(
+    event: { cron: string },
+    env: AppEnv["Bindings"],
+  ): Promise<void> {
+    const sharedDb = env.ATLAS_SHARED_DB ?? env.DB;
+    const { results } = await sharedDb
+      .prepare(
+        "SELECT tenant_id FROM automation_rules WHERE trigger_type = 'schedule' AND enabled = 1",
+      )
+      .all<{ tenant_id: string }>();
+
+    const adapterUrls = (() => {
+      try {
+        return JSON.parse(env.ADAPTER_URLS ?? "{}") as Record<string, string>;
+      } catch {
+        return {};
+      }
+    })();
+    const actionContext: ActionContext = {
+      workflow: env.WORKFLOW,
+      selfUrl: env.SELF_URL,
+      adapterUrls,
+      sharedDb,
+    };
+
+    await Promise.allSettled(
+      (results ?? []).map((row) =>
+        evaluateAutomationRules(
+          sharedDb,
+          row.tenant_id,
+          "schedule",
+          "cron",
+          { scheduledAt: new Date().toISOString(), cron: event.cron },
+          env.AUTOMATION,
+          actionContext,
+        ),
+      ),
+    );
+  },
   async queue(
-    batch: QueueBatch<StepResultMessage>,
-    env: { WORKFLOW: DurableObjectNamespace },
+    batch: QueueBatch<AnyStepMessage>,
+    env: AppEnv["Bindings"],
   ): Promise<void> {
     for (const message of batch.messages) {
       const msg = message.body;
+
+      // ── step-task: dispatch to adapter, report back to WorkflowDO ──────────
+      if (msg.kind === "step-task") {
+        try {
+          await executeStepTask(msg, {
+            WORKFLOW: env.WORKFLOW,
+            ADAPTER_URLS: env.ADAPTER_URLS,
+            EVIDENCE: env.EVIDENCE,
+          });
+          message.ack();
+        } catch {
+          // WorkflowDO unreachable — retry the message
+          message.retry();
+        }
+        continue;
+      }
+
+      // ── step-result: forward outcome to WorkflowDO ──────────────────────────
       if (msg.kind !== "step-result") {
         message.ack();
         continue;

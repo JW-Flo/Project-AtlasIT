@@ -1,0 +1,32 @@
+id: docusign
+name: DocuSign JML Workflow
+description: Joiner/Mover/Leaver workflow for DocuSign via Admin API
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        accountId: "{{ config.accountId }}"
+        email: "{{ user.email }}"
+        firstName: "{{ user.firstName }}"
+        lastName: "{{ user.lastName }}"
+    - action: api.addToGroup
+      params:
+        groupId: "{{ config.defaultGroupId }}"
+        userId: "{{ steps[0].result.userId }}"
+      condition: "{{ config.defaultGroupId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        accountId: "{{ config.accountId }}"
+        userId: "{{ user.externalId }}"
+        permissionProfileId: "{{ user.permissionProfileId }}"
+
+leaver:
+  steps:
+    - action: api.closeUser
+      params:
+        accountId: "{{ config.accountId }}"
+        userId: "{{ user.externalId }}"

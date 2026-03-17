@@ -23,7 +23,7 @@ export function injectApiKeyHeaders(
   }
 
   return {
-    Authorization: `Token token= ${apiKey}`,
+    Authorization: `Token token=${apiKey}`,
   };
 }
 

@@ -1,25 +1,11 @@
 import type { Context, Next } from "hono";
+import type { TokenResponse } from "./types.js";
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-  token_type: string;
-}
-
-const AUTHORIZATION_URL = "https://{domain}/authorize";
-const TOKEN_URL = "https://{domain}/oauth/token";
 const SCOPES = [
   "read:users",
-  "create:users",
-  "update:users",
-  "delete:users",
-  "read:roles",
-  "create:role_members",
-  "delete:role_members",
   "read:organizations",
+  "read:organization_members",
 ];
-const PKCE_ENABLED = false;
 
 export async function authMiddleware(
   c: Context,
@@ -32,95 +18,61 @@ export async function authMiddleware(
   await next();
 }
 
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return btoa(String.fromCharCode(...array))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-export function getAuthorizationUrl(
-  env: Record<string, string>,
-  state: string,
-): string {
-  const params = new URLSearchParams({
-    client_id: env.AUTH0_CLIENT_ID,
-    redirect_uri: env.OAUTH2_REDIRECT_URI,
-    response_type: "code",
-    scope: SCOPES.join(" "),
-    state,
-  });
-
-  if (PKCE_ENABLED) {
-    // In production, generate and store code_verifier per request
-    params.set("code_challenge_method", "S256");
-  }
-
-  return `${AUTHORIZATION_URL}?${params.toString()}`;
-}
-
-export async function exchangeCodeForToken(
-  env: Record<string, string>,
-  code: string,
-  codeVerifier?: string,
+export async function getClientCredentialsToken(
+  domain: string,
+  clientId: string,
+  clientSecret: string,
 ): Promise<TokenResponse> {
-  const body: Record<string, string> = {
-    grant_type: "authorization_code",
-    client_id: env.AUTH0_CLIENT_ID,
-    client_secret: env.AUTH0_CLIENT_SECRET,
-    redirect_uri: env.OAUTH2_REDIRECT_URI,
-    code,
-  };
+  const tokenUrl = `https://${domain}/oauth/token`;
 
-  if (PKCE_ENABLED && codeVerifier) {
-    body.code_verifier = codeVerifier;
-  }
-
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body).toString(),
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      audience: `https://${domain}/api/v2/`,
+      grant_type: "client_credentials",
+    }).toString(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Token exchange failed (${response.status}): ${errorText}`);
+    const error = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `Auth0 token exchange failed (${response.status}): ${error}`,
+    );
   }
 
   return response.json() as Promise<TokenResponse>;
 }
 
 export async function refreshAccessToken(
-  env: Record<string, string>,
+  domain: string,
+  clientId: string,
+  clientSecret: string,
   refreshToken: string,
 ): Promise<TokenResponse> {
-  const response = await fetch(TOKEN_URL, {
+  const tokenUrl = `https://${domain}/oauth/token`;
+
+  const response = await fetch(tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: "refresh_token",
-      client_id: env.AUTH0_CLIENT_ID,
-      client_secret: env.AUTH0_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: refreshToken,
+      grant_type: "refresh_token",
     }).toString(),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Token refresh failed (${response.status}): ${errorText}`);
+    const error = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `Auth0 token refresh failed (${response.status}): ${error}`,
+    );
   }
 
   return response.json() as Promise<TokenResponse>;
 }
+
+export { SCOPES };

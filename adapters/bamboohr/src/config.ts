@@ -8,65 +8,33 @@ interface ConfigValidationResult {
   errors: ConfigValidationError[];
 }
 
-export const CONFIG_DEFAULTS: Record<string, unknown> = {
-  syncInterval: 60,
-};
+export const CONFIG_DEFAULTS: Record<string, unknown> = {};
 
 export function validateConfig(
   values: Record<string, unknown>,
 ): ConfigValidationResult {
   const errors: ConfigValidationError[] = [];
 
+  // subdomain is required
   if (
-    values["companyDomain"] === undefined ||
-    values["companyDomain"] === null ||
-    values["companyDomain"] === ""
+    values["subdomain"] === undefined ||
+    values["subdomain"] === null ||
+    values["subdomain"] === ""
   ) {
     errors.push({
-      field: "companyDomain",
-      message: 'Required field "Company Subdomain" is missing',
+      field: "subdomain",
+      message: 'Required field "BambooHR Subdomain" is missing',
     });
   }
 
   if (
-    values["companyDomain"] !== undefined &&
-    values["companyDomain"] !== null &&
-    typeof values["companyDomain"] !== "string"
+    values["subdomain"] !== undefined &&
+    values["subdomain"] !== null &&
+    typeof values["subdomain"] !== "string"
   ) {
     errors.push({
-      field: "companyDomain",
-      message: 'Field "Company Subdomain" must be a string',
-    });
-  }
-
-  if (
-    values["syncInterval"] !== undefined &&
-    values["syncInterval"] !== null &&
-    typeof values["syncInterval"] !== "number"
-  ) {
-    errors.push({
-      field: "syncInterval",
-      message: 'Field "Sync Interval (minutes)" must be a number',
-    });
-  }
-
-  if (
-    typeof values["syncInterval"] === "number" &&
-    values["syncInterval"] < 15
-  ) {
-    errors.push({
-      field: "syncInterval",
-      message: 'Field "Sync Interval (minutes)" must be at least 15',
-    });
-  }
-
-  if (
-    typeof values["syncInterval"] === "number" &&
-    values["syncInterval"] > 1440
-  ) {
-    errors.push({
-      field: "syncInterval",
-      message: 'Field "Sync Interval (minutes)" must be at most 1440',
+      field: "subdomain",
+      message: 'Field "BambooHR Subdomain" must be a string',
     });
   }
 

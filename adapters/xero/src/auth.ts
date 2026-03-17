@@ -9,14 +9,8 @@ interface TokenResponse {
 
 const AUTHORIZATION_URL = "https://login.xero.com/identity/connect/authorize";
 const TOKEN_URL = "https://identity.xero.com/connect/token";
-const SCOPES = [
-  "openid",
-  "profile",
-  "email",
-  "payroll.employees",
-  "payroll.settings",
-];
-const PKCE_ENABLED = true;
+const SCOPES = ["offline_access", "accounting"];
+const PKCE_ENABLED = false;
 
 export async function authMiddleware(
   c: Context,

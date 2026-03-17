@@ -1,0 +1,102 @@
+import type { CanonicalUserProfile } from "@atlasit/shared/automation/types";
+
+/**
+ * Load a full CanonicalUserProfile from D1 for a given user.
+ * Looks up by email or directory user ID, enriches with groups + app access.
+ * Returns null if user not found in directory.
+ */
+export async function enrichUserProfile(
+  db: D1Database,
+  tenantId: string,
+  lookup: { email?: string; userId?: string },
+): Promise<CanonicalUserProfile | null> {
+  // 1. Load directory_users row
+  const row = await db
+    .prepare(
+      lookup.email
+        ? "SELECT * FROM directory_users WHERE tenant_id = ? AND email = ? LIMIT 1"
+        : "SELECT * FROM directory_users WHERE tenant_id = ? AND id = ? LIMIT 1",
+    )
+    .bind(tenantId, lookup.email ?? lookup.userId)
+    .first<Record<string, unknown>>();
+
+  if (!row) return null;
+
+  const raw = safeJsonParse<Record<string, unknown>>(
+    row.raw_attributes as string,
+    {},
+  );
+
+  // 2. Normalize IdP-specific raw_attributes
+  const firstName = (raw.firstName ??
+    raw.givenName ??
+    (raw as any)?.name?.givenName) as string | undefined;
+  const lastName = (raw.lastName ??
+    raw.familyName ??
+    (raw as any)?.name?.familyName) as string | undefined;
+  const phone = (raw.mobilePhone ?? raw.phone) as string | undefined;
+  const manager = (raw.manager ?? raw.managerEmail) as string | undefined;
+  const location = (raw.city ?? raw.orgUnitPath) as string | undefined;
+  const orgUnit = (raw.orgUnitPath ?? raw.department) as string | undefined;
+
+  // 3. Load group memberships
+  const { results: memberRows } = await db
+    .prepare(
+      `SELECT dg.id as groupId, dg.name as groupName
+       FROM directory_memberships dm
+       JOIN directory_groups dg ON dg.id = dm.group_id
+       WHERE dm.user_id = ? AND dm.tenant_id = ?`,
+    )
+    .bind(row.id, tenantId)
+    .all<{ groupId: string; groupName: string }>();
+
+  const groups = (memberRows ?? []).map((r) => r.groupName);
+  const groupIds = (memberRows ?? []).map((r) => r.groupId);
+
+  // 4. Load app access from group_app_mappings
+  let appAccess: CanonicalUserProfile["appAccess"] = [];
+  if (groupIds.length > 0) {
+    const placeholders = groupIds.map(() => "?").join(",");
+    const { results: mappingRows } = await db
+      .prepare(
+        `SELECT app_id as appId, role, group_id as groupId
+         FROM group_app_mappings
+         WHERE tenant_id = ? AND group_id IN (${placeholders})`,
+      )
+      .bind(tenantId, ...groupIds)
+      .all<{ appId: string; role: string; groupId: string }>();
+    appAccess = mappingRows ?? [];
+  }
+
+  return {
+    id: row.id as string,
+    externalId: row.external_id as string,
+    email: row.email as string,
+    displayName:
+      (row.display_name as string) ??
+      `${firstName ?? ""} ${lastName ?? ""}`.trim(),
+    status: row.status as CanonicalUserProfile["status"],
+    source: (row.source as string) ?? "unknown",
+    tenantId,
+    firstName,
+    lastName,
+    phone,
+    department: (row.department as string) ?? (raw.department as string),
+    title: (row.title as string) ?? (raw.title as string),
+    manager,
+    location,
+    orgUnit,
+    groups,
+    appAccess,
+    rawAttributes: raw,
+  };
+}
+
+function safeJsonParse<T>(val: string | null | undefined, fallback: T): T {
+  if (!val) return fallback;
+  try {
+    return JSON.parse(val) as T;
+  } catch {
+    return fallback;
+  }
+}

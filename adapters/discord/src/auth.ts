@@ -115,3 +115,11 @@ export async function refreshAccessToken(
 
   return response.json() as Promise<TokenResponse>;
 }
+
+// -- Bot token auth (api_key style) --
+
+export function getBotTokenHeader(botToken: string): Record<string, string> {
+  return {
+    Authorization: `Bot ${botToken}`,
+  };
+}

@@ -2050,6 +2050,681 @@ const onepassword: IntegrationDetail = {
 };
 
 // ---------------------------------------------------------------------------
+// Productivity (continued)
+// ---------------------------------------------------------------------------
+
+const salesforce: IntegrationDetail = {
+  id: "salesforce",
+  name: "Salesforce",
+  category: "productivity",
+  tier: "core",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://login.salesforce.com/services/oauth2/authorize",
+      tokenUrl: "https://login.salesforce.com/services/oauth2/token",
+      revokeUrl: "https://login.salesforce.com/services/oauth2/revoke",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: ["api", "refresh_token", "full"],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://login.salesforce.com",
+    version: "v60.0",
+    endpoints: {
+      createUser: "POST /services/data/v60.0/sobjects/User",
+      getUser: "GET /services/data/v60.0/sobjects/User/{id}",
+      updateUser: "PATCH /services/data/v60.0/sobjects/User/{id}",
+      suspendUser: "PATCH /services/data/v60.0/sobjects/User/{id}",
+      deleteUser: "DELETE /services/data/v60.0/sobjects/User/{id}",
+      listUsers:
+        "GET /services/data/v60.0/query?q=SELECT+Id,Username,Email,Name,IsActive+FROM+User",
+      listGroups: "GET /services/data/v60.0/query?q=SELECT+Id,Name+FROM+Group",
+    },
+    rateLimits: "100,000 API calls/24hr (Enterprise)",
+    scim: {
+      supported: true,
+      endpoint: "https://{instance}.salesforce.com/services/scim/v2/",
+      notes: "SCIM 2.0 via Connected App",
+    },
+  },
+  sdk: {
+    npm: "jsforce",
+    docsUrl:
+      "https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/",
+    exampleImport: "import jsforce from 'jsforce'",
+  },
+  webhooks: {
+    supported: true,
+    type: "platform_events",
+    eventTypes: ["user.created", "user.updated", "user.deactivated"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Salesforce Developer Edition free accounts",
+  },
+};
+
+const hubspot: IntegrationDetail = {
+  id: "hubspot",
+  name: "HubSpot",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://app.hubspot.com/oauth/authorize",
+      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: [
+        "crm.objects.owners.read",
+        "settings.users.read",
+        "settings.users.write",
+        "settings.users.teams.read",
+        "settings.users.teams.write",
+      ],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.hubapi.com",
+    version: "v3",
+    endpoints: {
+      listUsers: "GET /settings/v3/users",
+      getUser: "GET /settings/v3/users/{userId}",
+      createUser: "POST /settings/v3/users",
+      updateUser: "PUT /settings/v3/users/{userId}",
+      deleteUser: "DELETE /settings/v3/users/{userId}",
+      listGroups: "GET /settings/v3/users/teams",
+    },
+    rateLimits: "100 req/10sec (OAuth)",
+    scim: {
+      supported: false,
+      notes: "No SCIM support; use Settings API",
+    },
+  },
+  sdk: {
+    npm: "@hubspot/api-client",
+    docsUrl: "https://developers.hubspot.com/docs/api/overview",
+    exampleImport: "import { Client } from '@hubspot/api-client'",
+  },
+  webhooks: {
+    supported: true,
+    type: "subscription",
+    eventTypes: ["user.created", "user.updated", "user.deleted"],
+  },
+  sandbox: {
+    available: true,
+    notes: "HubSpot Developer Test Accounts",
+  },
+};
+
+const dropbox: IntegrationDetail = {
+  id: "dropbox",
+  name: "Dropbox Business",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://www.dropbox.com/oauth2/authorize",
+      tokenUrl: "https://api.dropboxapi.com/oauth2/token",
+      revokeUrl: "https://api.dropboxapi.com/2/auth/token/revoke",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: [
+        "team_data.member",
+        "team_data.governance.write",
+        "members.read",
+        "members.write",
+        "groups.read",
+        "groups.write",
+      ],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.dropboxapi.com/2",
+    version: "v2",
+    endpoints: {
+      listUsers: "POST /team/members/list_v2",
+      getUser: "POST /team/members/get_info_v2",
+      createUser: "POST /team/members/add_v2",
+      suspendUser: "POST /team/members/suspend",
+      deleteUser: "POST /team/members/remove",
+      listGroups: "POST /team/groups/list",
+      addToGroup: "POST /team/groups/members/add",
+      removeFromGroup: "POST /team/groups/members/remove",
+    },
+    rateLimits: "600 req/min per app",
+    scim: {
+      supported: true,
+      endpoint: "https://api.dropboxapi.com/2/team/scim/v2/",
+      notes: "SCIM 2.0 for Business/Enterprise plans",
+    },
+  },
+  sdk: {
+    npm: "dropbox",
+    docsUrl: "https://www.dropbox.com/developers/documentation/http/teams",
+    exampleImport: "import { Dropbox } from 'dropbox'",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: ["member.joined", "member.left", "group.updated"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Dropbox Business trial accounts",
+  },
+};
+
+const notion: IntegrationDetail = {
+  id: "notion",
+  name: "Notion",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://api.notion.com/v1/oauth/authorize",
+      tokenUrl: "https://api.notion.com/v1/oauth/token",
+      grantTypes: ["authorization_code"],
+      scopes: [],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.notion.com/v1",
+    version: "2022-06-28",
+    endpoints: {
+      listUsers: "GET /users",
+      getUser: "GET /users/{userId}",
+      listGroups: "GET /databases",
+    },
+    rateLimits: "3 req/sec per integration",
+    scim: {
+      supported: true,
+      endpoint: "https://api.notion.com/scim/v2/",
+      notes: "SCIM 2.0 for Enterprise plans",
+    },
+  },
+  sdk: {
+    npm: "@notionhq/client",
+    docsUrl: "https://developers.notion.com/",
+    exampleImport: "import { Client } from '@notionhq/client'",
+  },
+  webhooks: {
+    supported: false,
+    eventTypes: [],
+  },
+  sandbox: {
+    available: true,
+    notes: "Free Notion workspaces for testing",
+  },
+};
+
+const zendesk: IntegrationDetail = {
+  id: "zendesk",
+  name: "Zendesk",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "subdomain",
+        label: "Subdomain",
+        type: "text",
+        required: true,
+        placeholder: "yourcompany",
+        helpText: "The subdomain in yourcompany.zendesk.com",
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://{subdomain}.zendesk.com/oauth/authorizations/new",
+      tokenUrl: "https://{subdomain}.zendesk.com/oauth/tokens",
+      grantTypes: ["authorization_code"],
+      scopes: [
+        "users:read",
+        "users:write",
+        "groups:read",
+        "groups:write",
+        "organizations:read",
+      ],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://{subdomain}.zendesk.com/api/v2",
+    version: "v2",
+    endpoints: {
+      listUsers: "GET /users",
+      getUser: "GET /users/{userId}",
+      createUser: "POST /users",
+      updateUser: "PUT /users/{userId}",
+      suspendUser: "PUT /users/{userId}",
+      deleteUser: "DELETE /users/{userId}",
+      listGroups: "GET /groups",
+      addToGroup: "POST /group_memberships",
+      removeFromGroup: "DELETE /group_memberships/{id}",
+    },
+    rateLimits: "700 req/min (Enterprise)",
+    scim: {
+      supported: false,
+      notes: "No native SCIM; use REST API",
+    },
+  },
+  sdk: {
+    npm: "node-zendesk",
+    docsUrl: "https://developer.zendesk.com/api-reference/",
+    exampleImport: "import zendesk from 'node-zendesk'",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: [
+      "user.created",
+      "user.updated",
+      "user.deleted",
+      "group.updated",
+    ],
+  },
+  sandbox: {
+    available: true,
+    notes: "Zendesk Sandbox environments",
+  },
+};
+
+const asana: IntegrationDetail = {
+  id: "asana",
+  name: "Asana",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://app.asana.com/-/oauth_authorize",
+      tokenUrl: "https://app.asana.com/-/oauth_token",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: ["default"],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://app.asana.com/api/1.0",
+    version: "1.0",
+    endpoints: {
+      listUsers: "GET /users?workspace={workspaceGid}",
+      getUser: "GET /users/{userGid}",
+      listGroups: "GET /teams?organization={workspaceGid}",
+      addToGroup: "POST /teams/{teamGid}/addUser",
+      removeFromGroup: "POST /teams/{teamGid}/removeUser",
+    },
+    rateLimits: "1500 req/min",
+    scim: {
+      supported: true,
+      endpoint: "https://app.asana.com/api/1.0/scim/",
+      notes: "SCIM 2.0 for Enterprise plans",
+    },
+  },
+  sdk: {
+    npm: "asana",
+    docsUrl: "https://developers.asana.com/docs/overview",
+    exampleImport: "import asana from 'asana'",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: ["user.added", "user.removed", "team.updated"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Asana Developer Sandbox",
+  },
+};
+
+const monday: IntegrationDetail = {
+  id: "monday",
+  name: "Monday.com",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://auth.monday.com/oauth2/authorize",
+      tokenUrl: "https://auth.monday.com/oauth2/token",
+      grantTypes: ["authorization_code"],
+      scopes: [
+        "me:read",
+        "users:read",
+        "users:write",
+        "teams:read",
+        "account:read",
+      ],
+      adminConsentRequired: false,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.monday.com/v2",
+    version: "v2",
+    endpoints: {
+      listUsers: "POST /v2 (GraphQL: query { users { id name email } })",
+      getUser:
+        "POST /v2 (GraphQL: query { users(ids: [{id}]) { id name email } })",
+      listGroups: "POST /v2 (GraphQL: query { teams { id name } })",
+    },
+    rateLimits: "60 req/min (complexity-based)",
+    scim: {
+      supported: true,
+      endpoint: "https://{slug}.monday.com/scim/v2/",
+      notes: "SCIM 2.0 for Enterprise plans",
+    },
+  },
+  sdk: {
+    npm: null,
+    docsUrl: "https://developer.monday.com/api-reference/reference",
+    exampleImport: "// GraphQL API - no official SDK",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: ["user.created", "user.deleted", "team.updated"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Monday.com Developer accounts",
+  },
+};
+
+const docusign: IntegrationDetail = {
+  id: "docusign",
+  name: "DocuSign",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://account-d.docusign.com/oauth/auth",
+      tokenUrl: "https://account-d.docusign.com/oauth/token",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: ["signature", "user_read", "user_write", "organization_read"],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://demo.docusign.net/restapi/v2.1",
+    version: "v2.1",
+    endpoints: {
+      listUsers: "GET /v2.1/organizations/{orgId}/users",
+      getUser: "GET /v2.1/organizations/{orgId}/users/{userId}",
+      createUser: "POST /v2.1/organizations/{orgId}/users/profiles",
+      updateUser: "POST /v2.1/organizations/{orgId}/users/profiles",
+      deleteUser: "DELETE /v2.1/organizations/{orgId}/users/profiles",
+    },
+    rateLimits: "1000 API calls/hr per account",
+    scim: {
+      supported: true,
+      endpoint: "https://{baseUrl}/scim/v2/",
+      notes: "SCIM 2.0 for Organization plans",
+    },
+  },
+  sdk: {
+    npm: "docusign-esign",
+    docsUrl: "https://developers.docusign.com/docs/esign-rest-api/",
+    exampleImport: "import docusign from 'docusign-esign'",
+  },
+  webhooks: {
+    supported: true,
+    type: "connect",
+    eventTypes: ["user.created", "user.updated", "user.closed"],
+  },
+  sandbox: {
+    available: true,
+    notes: "DocuSign Developer Sandbox",
+  },
+};
+
+const figma: IntegrationDetail = {
+  id: "figma",
+  name: "Figma",
+  category: "productivity",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://www.figma.com/oauth",
+      tokenUrl: "https://api.figma.com/v1/oauth/token",
+      revokeUrl: "https://api.figma.com/v1/oauth/revoke",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: ["org:read", "org:manage_members", "files:read"],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.figma.com/v1",
+    version: "v1",
+    endpoints: {
+      listUsers: "GET /org/{org_id}/members",
+      getUser: "GET /org/{org_id}/member/{member_id}",
+      listGroups: "GET /org/{org_id}/teams",
+    },
+    rateLimits: "120 req/min",
+    scim: {
+      supported: true,
+      endpoint: "https://www.figma.com/scim/v2/",
+      notes: "SCIM 2.0 for Organization plans",
+    },
+  },
+  sdk: {
+    npm: null,
+    docsUrl: "https://www.figma.com/developers/api",
+    exampleImport: "// REST API - no official SDK",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: ["file.updated", "team_library.published"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Figma Professional free trial",
+  },
+};
+
+const canva: IntegrationDetail = {
+  id: "canva",
+  name: "Canva",
+  category: "productivity",
+  tier: "experimental",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://www.canva.com/api/oauth/authorize",
+      tokenUrl: "https://api.canva.com/rest/v1/oauth/token",
+      grantTypes: ["authorization_code", "refresh_token"],
+      scopes: ["team:read", "team:manage", "profile:read"],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://api.canva.com/rest/v1",
+    version: "v1",
+    endpoints: {
+      listUsers: "GET /teams/{teamId}/members",
+      getUser: "GET /users/{userId}",
+    },
+    rateLimits: "100 req/min",
+    scim: {
+      supported: false,
+      notes: "No SCIM support; use REST API",
+    },
+  },
+  sdk: {
+    npm: null,
+    docsUrl: "https://www.canva.dev/docs/connect/",
+    exampleImport: "// REST API - no official SDK",
+  },
+  webhooks: {
+    supported: true,
+    type: "webhook",
+    eventTypes: ["design.published", "team.member.added"],
+  },
+  sandbox: {
+    available: true,
+    notes: "Canva Developer portal test apps",
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
@@ -2078,6 +2753,16 @@ export const integrationRegistry: Record<string, IntegrationDetail> = {
   quickbooks,
   xero,
   stripe,
+  salesforce,
+  hubspot,
+  dropbox,
+  notion,
+  zendesk,
+  asana,
+  monday,
+  docusign,
+  figma,
+  canva,
 };
 
 export const integrationList: IntegrationDetail[] =

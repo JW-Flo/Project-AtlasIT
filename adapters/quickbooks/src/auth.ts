@@ -5,6 +5,7 @@ interface TokenResponse {
   refresh_token?: string;
   expires_in: number;
   token_type: string;
+  x_refresh_token_expires_in?: number;
 }
 
 const AUTHORIZATION_URL = "https://appcenter.intuit.com/connect/oauth2";

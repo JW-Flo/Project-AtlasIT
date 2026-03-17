@@ -37,49 +37,49 @@
   {
     "name": "Confluence",
     "slug": "confluence",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_CONFLUENCE",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "QuickBooks",
     "slug": "quickbooks",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_QUICKBOOKS",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Xero",
     "slug": "xero",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_XERO",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Zoom",
     "slug": "zoom",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_ZOOM",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Microsoft Teams",
     "slug": "teams",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_TEAMS",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Discord",
     "slug": "discord",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_DISCORD",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "BambooHR",
     "slug": "bamboohr",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_BAMBOOHR",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -107,7 +107,7 @@
   {
     "name": "Auth0",
     "slug": "auth0",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_AUTH0",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -121,21 +121,21 @@
   {
     "name": "1Password",
     "slug": "1password",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_1PASSWORD",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "PagerDuty",
     "slug": "pagerduty",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_PAGERDUTY",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Datadog",
     "slug": "datadog",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_DATADOG",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -165,6 +165,76 @@
     "slug": "github",
     "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_GITHUB",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Salesforce",
+    "slug": "salesforce",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_SALESFORCE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "HubSpot",
+    "slug": "hubspot",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_HUBSPOT",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Dropbox Business",
+    "slug": "dropbox",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_DROPBOX",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Notion",
+    "slug": "notion",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_NOTION",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Zendesk",
+    "slug": "zendesk",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_ZENDESK",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Asana",
+    "slug": "asana",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_ASANA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Monday.com",
+    "slug": "monday",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_MONDAY",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "DocuSign",
+    "slug": "docusign",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_DOCUSIGN",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Figma",
+    "slug": "figma",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_FIGMA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Canva",
+    "slug": "canva",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_CANVA",
     "createdAt": "2026-03-17T00:00:00.000Z"
   }
 ]
