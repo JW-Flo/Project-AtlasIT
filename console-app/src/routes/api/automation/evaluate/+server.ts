@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { listRules, recordExecution } from "$lib/server/automation";
+import { executeAction } from "$lib/server/automation-actions";
 import { writeAudit } from "$lib/server/audit";
 import {
   matchRules,
@@ -63,20 +64,17 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
     for (const action of actions) {
       try {
-        // Interpolate any template strings in action config
         const interpolatedConfig = interpolateConfig(
           action.config,
           event.payload,
         );
 
-        // Dispatch action — in production, each action type maps to a specific handler.
-        // For now, we record the intent and mark as success.
-        results.push({
-          actionType: action.type,
-          status: "success",
-          message: `Action ${action.type} dispatched`,
-          details: interpolatedConfig,
+        const result = await executeAction(action.type, interpolatedConfig, {
+          db,
+          tenantId,
+          payload: event.payload,
         });
+        results.push(result);
       } catch (err: any) {
         results.push({
           actionType: action.type,

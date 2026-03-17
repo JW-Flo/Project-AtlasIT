@@ -280,6 +280,44 @@ export async function recordExecution(
 }
 
 // ---------------------------------------------------------------------------
+// Dismissed Suggestions
+// ---------------------------------------------------------------------------
+
+export async function dismissSuggestion(
+  db: D1Database,
+  tenantId: string,
+  templateId: string,
+  dismissedBy?: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO dismissed_suggestions (id, tenant_id, template_id, dismissed_by)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .bind(
+      crypto.randomUUID().replace(/-/g, ""),
+      tenantId,
+      templateId,
+      dismissedBy ?? null,
+    )
+    .run();
+}
+
+export async function listDismissedSuggestions(
+  db: D1Database,
+  tenantId: string,
+): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      "SELECT template_id FROM dismissed_suggestions WHERE tenant_id = ?",
+    )
+    .bind(tenantId)
+    .all();
+
+  return (results || []).map((r: any) => r.template_id as string);
+}
+
+// ---------------------------------------------------------------------------
 // Health Checks
 // ---------------------------------------------------------------------------
 
