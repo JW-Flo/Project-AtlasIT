@@ -54,7 +54,20 @@ This roadmap tracks implementation phases from foundation through market readine
 - Rate limiting middleware (KV-backed, per-endpoint)
 - Security headers middleware (CSP, HSTS, X-Frame-Options)
 
-## Phase 5 — Operational Readiness (Next)
+## Phase 5 — Adapter Scaffolding 🔄 (In Progress)
+
+- [x] Registry data for all 24 apps (`shared/integrations/registry-detailed.ts`)
+- [ ] Add missing registry entries: Confluence (OAuth 2.0 3LO), 1Password (API key)
+- [ ] ConnectorManifest templates for all 22 remaining apps (`packages/connector-schema/src/templates.ts`)
+- [ ] Scaffold 22 adapters via `adapter-gen` into `adapters/<slug>/`
+- [ ] Hand-write core-tier implementations (7 apps): Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure
+- [ ] Update `adapters/registry.json` with all 24 entries
+- [ ] Update console-app integration statuses (planned → alpha/beta)
+- [ ] Add adapter deploy jobs to CI/CD (`deploy-on-merge.yml`)
+- [ ] Seed marketplace DB with all 24 apps
+- [ ] Add missing JML workflow YAMLs
+
+## Phase 6 — Operational Readiness (Next)
 
 - [ ] Production deployment of all workers with env promotion
 - [ ] API key rotation automation
@@ -63,7 +76,7 @@ This roadmap tracks implementation phases from foundation through market readine
 - [ ] Custom domain DNS configuration
 - [ ] Workers Paid plan upgrade for queue bindings
 
-## Phase 6 — Market Readiness (Future)
+## Phase 7 — Market Readiness (Future)
 
 - [ ] Multi-tenant billing and usage metering
 - [ ] LLM-backed policy refinement with redline diff
@@ -73,12 +86,12 @@ This roadmap tracks implementation phases from foundation through market readine
 
 ## Cross-Cutting Concerns
 
-| Concern | Strategy |
-|---------|----------|
-| Schema Evolution | Versioned D1 migrations + idempotent backfills |
-| Secrets | 1Password (vault: AWW_SHARED) + wrangler secret put |
-| Config | Environment gating via wrangler.toml [env.*] sections |
-| Performance | Precompute aggregates into KV; Queues for heavy ops |
-| Testing | Vitest + Miniflare; 356 tests (49 files) |
-| Observability | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
-| IaC | Terraform + OPA policies + daily drift detection |
+| Concern          | Strategy                                                                  |
+| ---------------- | ------------------------------------------------------------------------- |
+| Schema Evolution | Versioned D1 migrations + idempotent backfills                            |
+| Secrets          | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
+| Config           | Environment gating via wrangler.toml [env.*] sections                     |
+| Performance      | Precompute aggregates into KV; Queues for heavy ops                       |
+| Testing          | Vitest + Miniflare; 356 tests (49 files)                                  |
+| Observability    | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
+| IaC              | Terraform + OPA policies + daily drift detection                          |

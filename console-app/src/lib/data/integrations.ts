@@ -40,7 +40,7 @@ export const integrations: Integration[] = [
     id: "google_workspace",
     category: "productivity",
     name: "Google Workspace",
-    status: "planned",
+    status: "stable",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -51,7 +51,7 @@ export const integrations: Integration[] = [
     id: "microsoft_365",
     category: "productivity",
     name: "Microsoft 365",
-    status: "planned",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description: "Manage users, groups, and licenses via Microsoft Graph API.",
@@ -61,7 +61,7 @@ export const integrations: Integration[] = [
     id: "slack",
     category: "productivity",
     name: "Slack",
-    status: "planned",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -72,7 +72,7 @@ export const integrations: Integration[] = [
     id: "jira",
     category: "productivity",
     name: "Jira",
-    status: "planned",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -83,7 +83,7 @@ export const integrations: Integration[] = [
     id: "confluence",
     category: "productivity",
     name: "Confluence",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -95,7 +95,7 @@ export const integrations: Integration[] = [
     id: "bamboohr",
     category: "hr",
     name: "BambooHR",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description:
@@ -122,7 +122,7 @@ export const integrations: Integration[] = [
     id: "workday",
     category: "hr",
     name: "Workday",
-    status: "planned",
+    status: "alpha",
     auth: "tenant_oauth",
     tier: "extended",
     description:
@@ -148,7 +148,7 @@ export const integrations: Integration[] = [
     id: "adp",
     category: "hr",
     name: "ADP",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description:
@@ -175,7 +175,7 @@ export const integrations: Integration[] = [
     id: "quickbooks",
     category: "finance",
     name: "QuickBooks",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -186,7 +186,7 @@ export const integrations: Integration[] = [
     id: "xero",
     category: "finance",
     name: "Xero",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "extended",
     description: "Manage payroll employees and contacts via Xero Payroll API.",
@@ -196,7 +196,7 @@ export const integrations: Integration[] = [
     id: "stripe",
     category: "finance",
     name: "Stripe",
-    status: "planned",
+    status: "beta",
     auth: "api_key",
     tier: "core",
     description:
@@ -237,7 +237,7 @@ export const integrations: Integration[] = [
     id: "auth0",
     category: "security",
     name: "Auth0",
-    status: "planned",
+    status: "alpha",
     auth: "tenant_oauth",
     tier: "extended",
     description:
@@ -257,7 +257,7 @@ export const integrations: Integration[] = [
     id: "crowdstrike",
     category: "security",
     name: "CrowdStrike",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description: "Manage Falcon console users and roles for endpoint security.",
@@ -290,7 +290,7 @@ export const integrations: Integration[] = [
     id: "1password",
     category: "security",
     name: "1Password",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description:
@@ -309,7 +309,7 @@ export const integrations: Integration[] = [
     id: "pagerduty",
     category: "security",
     name: "PagerDuty",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description:
@@ -329,7 +329,7 @@ export const integrations: Integration[] = [
     id: "aws",
     category: "infrastructure",
     name: "AWS",
-    status: "planned",
+    status: "beta",
     auth: "service_account",
     tier: "core",
     description:
@@ -370,7 +370,7 @@ export const integrations: Integration[] = [
     id: "gcp",
     category: "infrastructure",
     name: "GCP",
-    status: "planned",
+    status: "alpha",
     auth: "service_account",
     tier: "extended",
     description:
@@ -411,7 +411,7 @@ export const integrations: Integration[] = [
     id: "azure",
     category: "infrastructure",
     name: "Azure",
-    status: "planned",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description: "Manage Entra ID users and groups via Microsoft Graph API.",
@@ -421,7 +421,7 @@ export const integrations: Integration[] = [
     id: "github",
     category: "infrastructure",
     name: "GitHub",
-    status: "planned",
+    status: "beta",
     auth: "platform_oauth",
     tier: "core",
     description:
@@ -432,7 +432,7 @@ export const integrations: Integration[] = [
     id: "datadog",
     category: "infrastructure",
     name: "Datadog",
-    status: "planned",
+    status: "alpha",
     auth: "api_key",
     tier: "extended",
     description:
@@ -467,7 +467,7 @@ export const integrations: Integration[] = [
     id: "zoom",
     category: "communication",
     name: "Zoom",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -478,7 +478,7 @@ export const integrations: Integration[] = [
     id: "teams",
     category: "communication",
     name: "Microsoft Teams",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "extended",
     description:
@@ -489,7 +489,7 @@ export const integrations: Integration[] = [
     id: "discord",
     category: "communication",
     name: "Discord",
-    status: "planned",
+    status: "alpha",
     auth: "platform_oauth",
     tier: "experimental",
     description:
