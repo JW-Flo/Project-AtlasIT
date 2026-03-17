@@ -7,9 +7,14 @@ interface TokenResponse {
   token_type: string;
 }
 
-const AUTHORIZATION_URL = "https://discord.com/oauth2/authorize";
-const TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
-const SCOPES = ["bot", "guilds", "guilds.members.read"];
+const AUTHORIZATION_URL = "https://app.hubspot.com/oauth/authorize";
+const TOKEN_URL = "https://api.hubapi.com/oauth/v1/token";
+const SCOPES = [
+  "crm.objects.contacts.read",
+  "crm.objects.contacts.write",
+  "crm.lists.read",
+  "crm.lists.write",
+];
 const PKCE_ENABLED = false;
 
 export async function authMiddleware(
@@ -23,41 +28,17 @@ export async function authMiddleware(
   await next();
 }
 
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return btoa(String.fromCharCode(...array))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 export function getAuthorizationUrl(
   env: Record<string, string>,
   state: string,
 ): string {
   const params = new URLSearchParams({
-    client_id: env.DISCORD_CLIENT_ID,
+    client_id: env.HUBSPOT_CLIENT_ID,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     response_type: "code",
     scope: SCOPES.join(" "),
     state,
   });
-
-  if (PKCE_ENABLED) {
-    // In production, generate and store code_verifier per request
-    params.set("code_challenge_method", "S256");
-  }
 
   return `${AUTHORIZATION_URL}?${params.toString()}`;
 }
@@ -65,19 +46,14 @@ export function getAuthorizationUrl(
 export async function exchangeCodeForToken(
   env: Record<string, string>,
   code: string,
-  codeVerifier?: string,
 ): Promise<TokenResponse> {
   const body: Record<string, string> = {
     grant_type: "authorization_code",
-    client_id: env.DISCORD_CLIENT_ID,
-    client_secret: env.DISCORD_CLIENT_SECRET,
+    client_id: env.HUBSPOT_CLIENT_ID,
+    client_secret: env.HUBSPOT_CLIENT_SECRET,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     code,
   };
-
-  if (PKCE_ENABLED && codeVerifier) {
-    body.code_verifier = codeVerifier;
-  }
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -102,8 +78,8 @@ export async function refreshAccessToken(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: env.DISCORD_CLIENT_ID,
-      client_secret: env.DISCORD_CLIENT_SECRET,
+      client_id: env.HUBSPOT_CLIENT_ID,
+      client_secret: env.HUBSPOT_CLIENT_SECRET,
       refresh_token: refreshToken,
     }).toString(),
   });
@@ -114,12 +90,4 @@ export async function refreshAccessToken(
   }
 
   return response.json() as Promise<TokenResponse>;
-}
-
-// -- Bot token auth (api_key style) --
-
-export function getBotTokenHeader(botToken: string): Record<string, string> {
-  return {
-    Authorization: `Bot ${botToken}`,
-  };
 }

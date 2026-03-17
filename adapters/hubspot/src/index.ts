@@ -8,7 +8,7 @@ import {
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
-import { handleDiscordWebhook } from "./webhooks.js";
+import { handleHubSpotWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -68,17 +68,21 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-    service: "discord",
+    service: "hubspot",
     connector: {
-      id: "discord",
-      name: "Discord",
-      provider: "Discord",
-      capabilities: ["user-provisioning", "group-sync", "webhooks"],
+      id: "hubspot",
+      name: "HubSpot",
+      provider: "HubSpot",
+      capabilities: [
+        "directory-sync",
+        "user-provisioning",
+        "user-deprovisioning",
+      ],
     },
   });
 });
 
-// Webhook receiver from orchestrator (internal)
+// Webhook receiver from orchestrator
 app.post("/webhook", async (c) => {
   const correlationId = c.get("correlationId");
   const signature = c.req.header("X-Signature");
@@ -153,7 +157,7 @@ app.post("/api/sync", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(syncId, body.tenantId, "discord", "running", new Date().toISOString())
+    .bind(syncId, body.tenantId, "hubspot", "running", new Date().toISOString())
     .run();
 
   console.log(
@@ -163,14 +167,14 @@ app.post("/api/sync", async (c) => {
       syncId,
       message: "Sync triggered",
       tenantId: body.tenantId,
-      connector: "discord",
+      connector: "hubspot",
     }),
   );
 
-  // Retrieve stored bot token from connector_tokens
+  // Retrieve stored OAuth token
   const tokenRow = await c.env.DB.prepare(
     `SELECT access_token FROM connector_tokens
-     WHERE tenant_id = ?1 AND connector_slug = 'discord'
+     WHERE tenant_id = ?1 AND connector_slug = 'hubspot'
      ORDER BY created_at DESC LIMIT 1`,
   )
     .bind(body.tenantId)
@@ -184,17 +188,17 @@ app.post("/api/sync", async (c) => {
       .run();
     return c.json(
       {
-        error: "No bot token found for tenant. Configure first.",
+        error: "No OAuth token found for tenant. Authorize first.",
         correlationId,
       },
       400,
     );
   }
 
-  // Retrieve guild config
+  // Retrieve portal config
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
-     WHERE tenant_id = ?1 AND connector_slug = 'discord' LIMIT 1`,
+     WHERE tenant_id = ?1 AND connector_slug = 'hubspot' LIMIT 1`,
   )
     .bind(body.tenantId)
     .first<{ config: string }>();
@@ -207,14 +211,14 @@ app.post("/api/sync", async (c) => {
       .run();
     return c.json(
       {
-        error: "No connector config found. Configure guildId first.",
+        error: "No connector config found. Configure portalId first.",
         correlationId,
       },
       400,
     );
   }
 
-  const config = JSON.parse(configRow.config) as { guildId: string };
+  const config = JSON.parse(configRow.config) as { portalId: string };
   const validation = validateConfig(
     config as unknown as Record<string, unknown>,
   );
@@ -234,7 +238,6 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "users") {
       userResult = await syncUsers(
         tokenRow.access_token,
-        config.guildId,
         c.env.DB,
         body.tenantId,
       );
@@ -243,7 +246,6 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "groups") {
       groupResult = await syncGroups(
         tokenRow.access_token,
-        config.guildId,
         c.env.DB,
         body.tenantId,
       );
@@ -335,7 +337,7 @@ app.get("/api/status", async (c) => {
 
   if (!connection) {
     return c.json({
-      connector: "discord",
+      connector: "hubspot",
       tenantId,
       correlationId,
       status: "not_connected",
@@ -347,14 +349,14 @@ app.get("/api/status", async (c) => {
 
   const recentSyncs = await c.env.DB.prepare(
     `SELECT id, status, created_at, completed_at
-     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'discord'
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'hubspot'
      ORDER BY created_at DESC LIMIT 10`,
   )
     .bind(tenantId)
     .all();
 
   return c.json({
-    connector: "discord",
+    connector: "hubspot",
     tenantId,
     correlationId,
     status: connection.status,
@@ -433,13 +435,12 @@ app.get("/auth/callback", async (c) => {
     );
 
     await c.env.DB.prepare(
-      `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+      "INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )
       .bind(
         crypto.randomUUID(),
         stateData.tenantId,
-        "discord",
+        "hubspot",
         tokens.access_token,
         tokens.refresh_token ?? null,
         new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
@@ -453,7 +454,7 @@ app.get("/auth/callback", async (c) => {
         correlationId,
         message: "OAuth tokens stored",
         tenantId: stateData.tenantId,
-        connector: "discord",
+        connector: "hubspot",
       }),
     );
 
@@ -476,8 +477,8 @@ app.get("/auth/callback", async (c) => {
   }
 });
 
-// Discord interaction webhook receiver
-app.post("/webhooks/discord/interactions", (c) => handleDiscordWebhook(c));
+// HubSpot webhook receiver (from HubSpot API)
+app.post("/webhooks/hubspot/events", (c) => handleHubSpotWebhook(c));
 
 export default app;
 
@@ -519,7 +520,7 @@ async function updateConnectionStatus(
       )
       .bind(
         tenantId,
-        "discord",
+        "hubspot",
         error ? "error" : "active",
         error ?? null,
         userCount,

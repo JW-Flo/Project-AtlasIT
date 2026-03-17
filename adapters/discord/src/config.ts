@@ -22,7 +22,7 @@ export function validateConfig(
   ) {
     errors.push({
       field: "guildId",
-      message: 'Required field "Server (Guild) ID" is missing',
+      message: 'Required field "Guild ID" is missing',
     });
   }
 
@@ -33,29 +33,7 @@ export function validateConfig(
   ) {
     errors.push({
       field: "guildId",
-      message: 'Field "Server (Guild) ID" must be a string',
-    });
-  }
-
-  if (
-    values["botToken"] === undefined ||
-    values["botToken"] === null ||
-    values["botToken"] === ""
-  ) {
-    errors.push({
-      field: "botToken",
-      message: 'Required field "Bot Token" is missing',
-    });
-  }
-
-  if (
-    values["botToken"] !== undefined &&
-    values["botToken"] !== null &&
-    typeof values["botToken"] !== "string"
-  ) {
-    errors.push({
-      field: "botToken",
-      message: 'Field "Bot Token" must be a string',
+      message: 'Field "Guild ID" must be a string',
     });
   }
 
