@@ -12,49 +12,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint
+  lint-and-typecheck:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+          node-version: 20
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
       - name: Generate SvelteKit types
         working-directory: console-app
         run: npx svelte-kit sync
-      - run: npm run lint
+      - name: Build shared package
+        run: pnpm run build:shared
+      - name: Type check
+        run: pnpm run typecheck
+      - name: Lint
+        run: pnpm run lint
       - name: Secret scan
-        run: npm run scan:secrets
-
-  typecheck:
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build:shared
-      - name: Generate SvelteKit types
-        working-directory: console-app
-        run: npx svelte-kit sync
-      - run: npm run typecheck
+        run: node scripts/scan-secrets.js
 
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build:shared
+          node-version: 20
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: pnpm run build:shared
       - name: Run unit tests
-        run: npx vitest run --project unit
+        run: npx vitest run

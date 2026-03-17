@@ -57,6 +57,18 @@ max_retries = 3
 AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
 
+[observability.logs]
+enabled = true
+
+[env.dev]
+name = "atlasit-ai-orchestrator-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+AI_PROVIDER = "groq"
+AI_FALLBACKS = "groq,together,cloudflare"
+
 [env.production]
 # Dual routing: keep workers.dev for fallback, add custom orchestrator.atlasit.pro
 routes = [
@@ -72,9 +84,6 @@ AI_FALLBACKS = "groq,together,cloudflare"
 
 # Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
 # GROQ_API_KEY — Groq API key for AtlasIT Agent Mesh
-
-[env.production.logs]
-enabled = true
 
 # Temporarily disable cron trigger to avoid exceeding free plan limit (5). Re-enable when consolidating other workers.
 # [triggers]

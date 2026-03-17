@@ -89,6 +89,13 @@ bucket_name = "atlas-artifacts"
 #   "15 * * * *"    # monitorBudget every 15 minutes
 # ]
 
+[env.dev]
+name = "atlasit-core-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+
 # Production environment (legacy canonical during transition)
 [env.production]
 route = "atlasit-core.kd8jc7v8cd.workers.dev/*"
