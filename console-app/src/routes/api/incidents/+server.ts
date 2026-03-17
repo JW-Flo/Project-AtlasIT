@@ -1,5 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 import { getWorkerBase, getEnv, proxyFetch } from "../_proxy-helpers";
+import { writeAudit } from "$lib/server/audit";
 
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
@@ -28,16 +30,37 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
         "x-tenant-id": tenantId,
       },
     });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    if (!res.ok) {
+      const text = await res.text();
+      return json(
+        {
+          error: "Upstream service error",
+          status: res.status,
+          detail: text.substring(0, 200),
+        },
+        { status: 502 },
+      );
+    }
+    const data: any = await res.json();
+
+    // Map snake_case D1 rows to camelCase for frontend types
+    if (Array.isArray(data.items)) {
+      data.items = data.items.map((row: any) => ({
+        id: row.id,
+        tenantId: row.tenant_id ?? row.tenantId,
+        title: row.title,
+        severity: row.severity,
+        status: row.status,
+        source: row.source ?? null,
+        createdAt: row.created_at ?? row.createdAt,
+        resolvedAt: row.resolved_at ?? row.resolvedAt ?? null,
+        updatedAt: row.updated_at ?? row.updatedAt ?? null,
+      }));
+    }
+
+    return json(data, { status: res.status });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Incidents service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return json({ error: "Incidents service unavailable" }, { status: 503 });
   }
 };
 
@@ -62,13 +85,13 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
   let body: string;
   try {
-    const json = await request.json();
-    body = JSON.stringify(json);
+    const parsed = await request.json();
+    if (!parsed || typeof parsed.title !== "string" || !parsed.title.trim()) {
+      return json({ error: "Missing required field: title" }, { status: 400 });
+    }
+    body = JSON.stringify(parsed);
   } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   try {
@@ -82,15 +105,41 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       },
       body,
     });
+    if (!res.ok) {
+      const text = await res.text();
+      return json(
+        {
+          error: "Upstream service error",
+          status: res.status,
+          detail: text.substring(0, 200),
+        },
+        { status: 502 },
+      );
+    }
     const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
+
+    // Log audit event for successful incident creation
+    const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+    if (db) {
+      try {
+        await writeAudit(db, {
+          tenantId,
+          actorUserId: user.userId ?? "unknown",
+          actorEmail: user.email ?? "unknown",
+          action: "incident.created",
+          targetType: "incident",
+          targetId: data?.id,
+          detail: data?.title
+            ? JSON.stringify({ title: data.title })
+            : undefined,
+        });
+      } catch {
+        // Non-blocking: audit write failure shouldn't break incident creation
+      }
+    }
+
+    return json(data, { status: res.status });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Incidents service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return json({ error: "Incidents service unavailable" }, { status: 503 });
   }
 };

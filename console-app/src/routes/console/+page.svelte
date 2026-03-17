@@ -317,7 +317,7 @@
           {inviteCopied ? "Invite Link Copied" : "Invite Team"}
         </Button>
         <Button href="/console/workflows" variant="secondary" size="sm">View Workflows</Button>
-        <Button href="/console/api-manager" variant="outline" size="sm">API Manager</Button>
+        <!-- API Manager: route not yet implemented -->
         <Button on:click={load} variant="ghost" size="sm">
           <RefreshCw class="h-3.5 w-3.5" />
         </Button>

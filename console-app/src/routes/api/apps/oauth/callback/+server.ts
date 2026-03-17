@@ -5,6 +5,7 @@ import {
   saveCredentials,
 } from "$lib/server/credentials";
 import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
+import { writeAudit } from "$lib/server/audit";
 
 /**
  * OAuth callback handler.
@@ -138,6 +139,23 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   // Ensure app is marked as connected
   const existingCreds = (await getCredentials(platform, appId, tenantId)) || {};
   await saveCredentials(platform, appId, existingCreds, tenantId);
+
+  // Log audit event for successful OAuth connection
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (db) {
+    try {
+      await writeAudit(db, {
+        tenantId,
+        actorUserId: "oauth_system",
+        actorEmail: "oauth_system",
+        action: "app.oauth_connected",
+        targetType: "app",
+        targetId: appId,
+      });
+    } catch {
+      // Non-blocking: audit write failure shouldn't break OAuth connection
+    }
+  }
 
   return new Response(null, {
     status: 302,

@@ -1,8 +1,11 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { requireSuperAdmin } from "$lib/server/guards";
 import { dispatchFetch } from "$lib/api";
 import type { PlatformUsageSummary } from "$lib/types/platform";
 
-export const GET: RequestHandler = async ({ platform }) => {
+export const GET: RequestHandler = async ({ locals, platform }) => {
+  const denied = requireSuperAdmin(locals.user);
+  if (denied) return denied;
   const env: any = platform?.env || {};
   if (!env.DISPATCH_ADMIN_TOKEN) {
     return new Response(

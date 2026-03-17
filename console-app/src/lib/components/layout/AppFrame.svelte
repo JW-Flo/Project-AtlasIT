@@ -160,6 +160,10 @@
     await fetch("/api/auth/logout", { method: "POST" });
     location.href = "/console/login";
   }
+
+  function titleCase(s: string): string {
+    return s.replace(/\b\w/g, c => c.toUpperCase());
+  }
 </script>
 
 <svelte:window on:click={handleClickOutside} />
@@ -216,7 +220,7 @@
 
     <!-- User section at bottom -->
     <div class="border-t p-3">
-      <div class="flex items-center gap-3 rounded-md px-3 py-2">
+      <a href="/console/settings" class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
         <Avatar {initials} size="sm" />
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
@@ -224,7 +228,7 @@
             <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
           {/if}
         </div>
-      </div>
+      </a>
     </div>
   </aside>
 
@@ -237,8 +241,8 @@
         <a href="/console" class="hover:text-foreground transition-colors">Console</a>
         {#if current !== "/console" && current !== "/console/"}
           <ChevronDown class="h-3 w-3 -rotate-90" />
-          <span class="text-foreground font-medium capitalize">
-            {current.split("/").filter(Boolean).slice(1).join(" / ").replace(/-/g, " ")}
+          <span class="text-foreground font-medium">
+            {titleCase(current.split("/").filter(Boolean).slice(1).join(" / ").replace(/-/g, " "))}
           </span>
         {/if}
       </div>

@@ -1,6 +1,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { activeProviders, type UserPrincipal } from "./lib/auth/provider";
+import { matchRoutePermission } from "$lib/server/permissions";
 
 /** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
 const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
@@ -259,7 +260,41 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // ------------------------------------------------------------------
-  // 5. Route protection: /console/* requires authentication
+  // 5. Centralized RBAC enforcement for API routes
+  // ------------------------------------------------------------------
+  if (event.url.pathname.startsWith("/api/")) {
+    const requiredRoles = matchRoutePermission(
+      event.url.pathname,
+      event.request.method,
+    );
+
+    if (requiredRoles !== undefined) {
+      // null = any authenticated user; string[] = specific roles required
+      if (!user) {
+        return new Response(
+          JSON.stringify({ error: "Authentication required" }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        );
+      }
+
+      if (requiredRoles !== null) {
+        // Super-admins bypass role checks
+        if (!user.superAdmin) {
+          const userRoles: string[] = user.roles ?? [];
+          const hasRole = requiredRoles.some((r) => userRoles.includes(r));
+          if (!hasRole) {
+            return new Response(
+              JSON.stringify({ error: "Insufficient permissions" }),
+              { status: 403, headers: { "content-type": "application/json" } },
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // 6. Route protection: /console/* requires authentication
   // ------------------------------------------------------------------
   if (
     event.url.pathname.startsWith("/console") &&

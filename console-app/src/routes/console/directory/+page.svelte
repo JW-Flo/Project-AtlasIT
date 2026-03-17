@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
@@ -8,8 +9,11 @@
   import Button from "$lib/components/ui/button.svelte";
   import Badge from "$lib/components/ui/badge.svelte";
   import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X } from "lucide-svelte";
+  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2 } from "lucide-svelte";
 
   // --- Types ---
   interface SyncStatus {
@@ -28,6 +32,7 @@
     department?: string;
     title?: string;
     status: string;
+    console_user_id?: string;
   }
 
   interface DirectoryGroup {
@@ -76,6 +81,21 @@
   $: pagedUsers = filteredUsers.slice(userPage * pageSize, (userPage + 1) * pageSize);
   $: totalPages = Math.ceil(filteredUsers.length / pageSize);
 
+  // Add User dialog state
+  let addUserOpen = false;
+  let addUserLoading = false;
+  let addUserForm = { email: "", displayName: "", department: "", title: "" };
+
+  // Add Group dialog state
+  let addGroupOpen = false;
+  let addGroupLoading = false;
+  let addGroupForm = { name: "", description: "" };
+
+  // Delete confirmation dialog state
+  let deleteOpen = false;
+  let deleteLoading = false;
+  let deleteTarget: { type: "user" | "group"; id: string; name: string } | null = null;
+
   // --- Data fetching ---
   async function fetchStatus(): Promise<SyncStatus> {
     try {
@@ -90,7 +110,10 @@
       const res = await fetch("/api/directory/users?limit=100");
       if (res.ok) {
         const data = await res.json();
-        users = data.users || [];
+        users = (data.users || []).map((u: any) => ({
+          ...u,
+          name: u.display_name || u.name || u.email,
+        }));
         usersTotal = data.total || users.length;
       }
     } catch {}
@@ -119,9 +142,12 @@
   async function loadAll() {
     loading = true;
     syncStatus = await fetchStatus();
+    // Always load users and groups; only load mappings if IdP is connected
+    const promises: Promise<void>[] = [fetchUsers(), fetchGroups()];
     if (syncStatus.connected) {
-      await Promise.all([fetchUsers(), fetchGroups(), fetchMappings()]);
+      promises.push(fetchMappings());
     }
+    await Promise.all(promises);
     loading = false;
   }
 
@@ -190,6 +216,93 @@
     }
   }
 
+  // --- Add User ---
+  async function submitAddUser() {
+    if (!addUserForm.email) return;
+    addUserLoading = true;
+    try {
+      const res = await fetch("/api/directory/users", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: addUserForm.email,
+          displayName: addUserForm.displayName || undefined,
+          department: addUserForm.department || undefined,
+          title: addUserForm.title || undefined,
+        }),
+      });
+      if (res.ok) {
+        pushToast({ message: "User added", variant: "success" });
+        addUserOpen = false;
+        addUserForm = { email: "", displayName: "", department: "", title: "" };
+        await fetchUsers();
+      } else {
+        const data = await res.json().catch(() => ({ error: "Failed to add user" }));
+        pushToast({ message: data.error || "Failed to add user", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Add user request failed", variant: "error" });
+    }
+    addUserLoading = false;
+  }
+
+  // --- Add Group ---
+  async function submitAddGroup() {
+    if (!addGroupForm.name) return;
+    addGroupLoading = true;
+    try {
+      const res = await fetch("/api/directory/groups", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: addGroupForm.name,
+          description: addGroupForm.description || undefined,
+        }),
+      });
+      if (res.ok) {
+        pushToast({ message: "Group added", variant: "success" });
+        addGroupOpen = false;
+        addGroupForm = { name: "", description: "" };
+        await fetchGroups();
+      } else {
+        const data = await res.json().catch(() => ({ error: "Failed to add group" }));
+        pushToast({ message: data.error || "Failed to add group", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Add group request failed", variant: "error" });
+    }
+    addGroupLoading = false;
+  }
+
+  // --- Delete ---
+  function openDeleteDialog(type: "user" | "group", id: string, name: string) {
+    deleteTarget = { type, id, name };
+    deleteOpen = true;
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    deleteLoading = true;
+    const { type, id } = deleteTarget;
+    const endpoint = type === "user" ? `/api/directory/users/${id}` : `/api/directory/groups/${id}`;
+    try {
+      const res = await fetch(endpoint, { method: "DELETE" });
+      if (res.ok) {
+        pushToast({ message: `${type === "user" ? "User" : "Group"} deleted`, variant: "success" });
+        if (type === "user") await fetchUsers();
+        else await fetchGroups();
+      } else {
+        const data = await res.json().catch(() => ({ error: "Delete failed" }));
+        pushToast({ message: data.error || "Delete failed", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Delete request failed", variant: "error" });
+    }
+    deleteLoading = false;
+    deleteOpen = false;
+    deleteTarget = null;
+  }
+
   function formatTime(iso: string | undefined): string {
     if (!iso) return "Never";
     try {
@@ -209,10 +322,11 @@
     }
   }
 
-  const tabs = [
+  // Tabs: Users and Groups always visible; Mappings only when IdP is connected
+  $: tabs = [
     { id: "users" as const, label: "Users" },
     { id: "groups" as const, label: "Groups" },
-    { id: "mappings" as const, label: "Mappings" },
+    ...(syncStatus.connected ? [{ id: "mappings" as const, label: "Mappings" }] : []),
   ];
 
   const providerIcons: Record<string, string> = {
@@ -231,61 +345,45 @@
       <Skeleton class="h-8 w-48" />
       <Skeleton class="h-64 w-full rounded-lg" />
     </div>
-  {:else if !syncStatus.connected}
-    <!-- Not connected state -->
-    <div class="max-w-2xl mx-auto py-12">
-      <div class="text-center mb-8">
-        <div class="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-primary/10">
-          <Users class="w-8 h-8 text-primary" />
-        </div>
-        <h1 class="text-2xl font-semibold tracking-tight">Connect Your Identity Provider</h1>
-        <p class="text-sm text-muted-foreground mt-1">
-          Sync users and groups from your IdP to automate access management
-        </p>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-3">
-        {#each [
-          { id: "okta", name: "Okta", desc: "SSO and lifecycle management" },
-          { id: "google_workspace", name: "Google Workspace", desc: "Google directory sync" },
-          { id: "microsoft_365", name: "Microsoft 365", desc: "Entra ID / Azure AD sync" },
-        ] as provider}
-          <a href="/console/marketplace" class="block">
-            <Card class="hover:border-primary/50 transition-colors cursor-pointer">
-              <CardContent class="pt-5 text-center">
-                <div class="w-10 h-10 rounded-lg mx-auto mb-3 flex items-center justify-center bg-primary/10">
-                  <Link class="w-5 h-5 text-primary" />
-                </div>
-                <div class="text-sm font-semibold mb-1">{provider.name}</div>
-                <div class="text-xs text-muted-foreground">{provider.desc}</div>
-              </CardContent>
-            </Card>
-          </a>
-        {/each}
-      </div>
-    </div>
   {:else}
-    <!-- Connected state -->
+    <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-4">
       <div>
         <div class="flex items-center gap-3 mb-1">
           <h1 class="text-2xl font-semibold tracking-tight">Directory</h1>
-          {#if syncStatus.provider}
+          {#if syncStatus.connected && syncStatus.provider}
             <Badge variant="secondary">
               {providerIcons[syncStatus.provider] || syncStatus.provider}
             </Badge>
           {/if}
         </div>
-        <p class="text-sm text-muted-foreground">
-          Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
-          {syncStatus.userCount ?? users.length} users &middot;
-          {syncStatus.groupCount ?? groups.length} groups
-        </p>
+        {#if syncStatus.connected}
+          <p class="text-sm text-muted-foreground">
+            Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
+            {syncStatus.userCount ?? users.length} users &middot;
+            {syncStatus.groupCount ?? groups.length} groups
+          </p>
+        {:else}
+          <p class="text-sm text-muted-foreground">
+            Manage users and groups manually, or connect an identity provider for automatic sync
+          </p>
+        {/if}
       </div>
-      <Button on:click={triggerSync} disabled={syncing}>
-        <RefreshCw class="h-4 w-4 mr-1.5 {syncing ? 'animate-spin' : ''}" />
-        {syncing ? "Syncing..." : "Sync Now"}
-      </Button>
+      <div class="flex items-center gap-2">
+        {#if !syncStatus.connected}
+          <a href="/console/marketplace">
+            <Button variant="outline">
+              <Link class="h-4 w-4 mr-1.5" />
+              Connect IdP
+            </Button>
+          </a>
+        {:else}
+          <Button on:click={triggerSync} disabled={syncing}>
+            <RefreshCw class="h-4 w-4 mr-1.5 {syncing ? 'animate-spin' : ''}" />
+            {syncing ? "Syncing..." : "Sync Now"}
+          </Button>
+        {/if}
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -305,13 +403,17 @@
 
     <!-- Users tab -->
     {#if activeTab === "users"}
-      <div class="mb-4">
+      <div class="flex items-center justify-between gap-4 mb-4">
         <Input
           type="text"
           bind:value={userSearch}
           placeholder="Search users by name, email, or department..."
           class="max-w-md"
         />
+        <Button on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
+          <Plus class="h-4 w-4 mr-1.5" />
+          Add User
+        </Button>
       </div>
 
       <Card>
@@ -325,11 +427,16 @@
                   <th class="px-4 py-3 font-medium">Department</th>
                   <th class="px-4 py-3 font-medium">Title</th>
                   <th class="px-4 py-3 font-medium">Status</th>
+                  <th class="px-4 py-3 font-medium">Console Access</th>
+                  <th class="px-4 py-3 font-medium text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {#each pagedUsers as user}
-                  <tr class="border-t hover:bg-muted/50">
+                  <tr
+                    class="border-t hover:bg-muted/50 cursor-pointer"
+                    on:click={() => goto(`/console/directory/users/${user.id}`)}
+                  >
                     <td class="px-4 py-3">{user.name}</td>
                     <td class="px-4 py-3 text-muted-foreground">{user.email}</td>
                     <td class="px-4 py-3 text-muted-foreground">{user.department || "-"}</td>
@@ -337,10 +444,28 @@
                     <td class="px-4 py-3">
                       <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
                     </td>
+                    <td class="px-4 py-3">
+                      {#if user.console_user_id}
+                        <Badge variant="secondary">Console Access</Badge>
+                      {:else}
+                        <span class="text-muted-foreground">-</span>
+                      {/if}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <!-- svelte-ignore a11y_click_events_have_key_events -->
+                      <button
+                        type="button"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium h-8 w-8 hover:bg-muted transition-colors"
+                        on:click|stopPropagation={() => openDeleteDialog("user", user.id, user.name)}
+                        title="Delete user"
+                      >
+                        <Trash2 class="h-4 w-4 text-destructive" />
+                      </button>
+                    </td>
                   </tr>
                 {:else}
                   <tr>
-                    <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
+                    <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
                   </tr>
                 {/each}
               </tbody>
@@ -371,6 +496,13 @@
 
     <!-- Groups tab -->
     {#if activeTab === "groups"}
+      <div class="flex items-center justify-end mb-4">
+        <Button on:click={() => { addGroupForm = { name: "", description: "" }; addGroupOpen = true; }}>
+          <Plus class="h-4 w-4 mr-1.5" />
+          Add Group
+        </Button>
+      </div>
+
       <Card>
         <CardContent class="p-0">
           <div class="overflow-x-auto">
@@ -380,20 +512,35 @@
                   <th class="px-4 py-3 font-medium">Group Name</th>
                   <th class="px-4 py-3 font-medium">Members</th>
                   <th class="px-4 py-3 font-medium">Description</th>
+                  <th class="px-4 py-3 font-medium text-right"></th>
                 </tr>
               </thead>
               <tbody>
                 {#each groups as group}
-                  <tr class="border-t hover:bg-muted/50">
+                  <tr
+                    class="border-t hover:bg-muted/50 cursor-pointer"
+                    on:click={() => goto(`/console/directory/groups/${group.id}`)}
+                  >
                     <td class="px-4 py-3 font-medium">{group.name}</td>
                     <td class="px-4 py-3">
                       <Badge variant="secondary">{group.member_count}</Badge>
                     </td>
                     <td class="px-4 py-3 text-muted-foreground">{group.description || "-"}</td>
+                    <td class="px-4 py-3 text-right">
+                      <!-- svelte-ignore a11y_click_events_have_key_events -->
+                      <button
+                        type="button"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium h-8 w-8 hover:bg-muted transition-colors"
+                        on:click|stopPropagation={() => openDeleteDialog("group", group.id, group.name)}
+                        title="Delete group"
+                      >
+                        <Trash2 class="h-4 w-4 text-destructive" />
+                      </button>
+                    </td>
                   </tr>
                 {:else}
                   <tr>
-                    <td colspan="3" class="px-4 py-8 text-center text-muted-foreground">No groups found</td>
+                    <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">No groups found</td>
                   </tr>
                 {/each}
               </tbody>
@@ -475,3 +622,69 @@
     {/if}
   {/if}
 </div>
+
+<!-- Add User Dialog -->
+<Dialog open={addUserOpen} onClose={() => addUserOpen = false} title="Add User">
+  <form on:submit|preventDefault={submitAddUser} class="space-y-4">
+    <div class="space-y-1.5">
+      <Label htmlFor="add-user-email">Email *</Label>
+      <Input id="add-user-email" type="email" bind:value={addUserForm.email} placeholder="user@example.com" required />
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-user-name">Display Name</Label>
+      <Input id="add-user-name" type="text" bind:value={addUserForm.displayName} placeholder="Jane Doe" />
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-user-dept">Department</Label>
+      <Input id="add-user-dept" type="text" bind:value={addUserForm.department} placeholder="Engineering" />
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-user-title">Title</Label>
+      <Input id="add-user-title" type="text" bind:value={addUserForm.title} placeholder="Software Engineer" />
+    </div>
+    <DialogFooter>
+      <Button variant="outline" type="button" on:click={() => addUserOpen = false}>Cancel</Button>
+      <Button type="submit" disabled={!addUserForm.email || addUserLoading}>
+        {addUserLoading ? "Adding..." : "Add User"}
+      </Button>
+    </DialogFooter>
+  </form>
+</Dialog>
+
+<!-- Add Group Dialog -->
+<Dialog open={addGroupOpen} onClose={() => addGroupOpen = false} title="Add Group">
+  <form on:submit|preventDefault={submitAddGroup} class="space-y-4">
+    <div class="space-y-1.5">
+      <Label htmlFor="add-group-name">Name *</Label>
+      <Input id="add-group-name" type="text" bind:value={addGroupForm.name} placeholder="Engineering" required />
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-group-desc">Description</Label>
+      <Input id="add-group-desc" type="text" bind:value={addGroupForm.description} placeholder="Engineering team members" />
+    </div>
+    <DialogFooter>
+      <Button variant="outline" type="button" on:click={() => addGroupOpen = false}>Cancel</Button>
+      <Button type="submit" disabled={!addGroupForm.name || addGroupLoading}>
+        {addGroupLoading ? "Adding..." : "Add Group"}
+      </Button>
+    </DialogFooter>
+  </form>
+</Dialog>
+
+<!-- Delete Confirmation Dialog -->
+<Dialog open={deleteOpen} onClose={() => { deleteOpen = false; deleteTarget = null; }} title="Confirm Delete">
+  {#if deleteTarget}
+    <p class="text-sm text-muted-foreground mb-2">
+      Are you sure you want to delete <strong class="text-foreground">{deleteTarget.name}</strong>?
+    </p>
+    <p class="text-xs text-muted-foreground">
+      This action cannot be undone.{#if deleteTarget.type === "group"} All group memberships and app mappings will also be removed.{/if}
+    </p>
+    <DialogFooter>
+      <Button variant="outline" on:click={() => { deleteOpen = false; deleteTarget = null; }}>Cancel</Button>
+      <Button variant="destructive" on:click={confirmDelete} disabled={deleteLoading}>
+        {deleteLoading ? "Deleting..." : "Delete"}
+      </Button>
+    </DialogFooter>
+  {/if}
+</Dialog>

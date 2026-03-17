@@ -1,10 +1,16 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 import { deleteCredentials } from "$lib/server/credentials";
+import { writeAudit } from "$lib/server/audit";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const guard = requireTenantRole(user, ["owner", "admin"]);
+  if (guard) return guard;
+
   const tenantId = user.tenantId;
   if (!tenantId) {
     return json({ error: "Tenant context required" }, { status: 403 });
@@ -28,6 +34,23 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   }
 
   await deleteCredentials(platform, appId, tenantId);
+
+  // Log audit event for successful app disconnection
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (db) {
+    try {
+      await writeAudit(db, {
+        tenantId,
+        actorUserId: user.userId ?? "unknown",
+        actorEmail: user.email ?? "unknown",
+        action: "app.disconnected",
+        targetType: "app",
+        targetId: appId,
+      });
+    } catch {
+      // Non-blocking: audit write failure shouldn't break app disconnection
+    }
+  }
 
   return new Response(
     JSON.stringify({ success: true, connected: false, id: appId }),

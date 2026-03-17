@@ -1,5 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
+import { writeAudit } from "$lib/server/audit";
 
 export const POST: RequestHandler = async ({ params, platform, locals }) => {
   const user = locals.user;
@@ -9,6 +11,9 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const guard = requireTenantRole(user, ["owner", "admin"]);
+  if (guard) return guard;
 
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
@@ -32,6 +37,26 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
       },
     });
     const data = await res.json();
+
+    // Log audit event for successful incident resolution
+    if (res.ok) {
+      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+      if (db) {
+        try {
+          await writeAudit(db, {
+            tenantId,
+            actorUserId: user.userId ?? "unknown",
+            actorEmail: user.email ?? "unknown",
+            action: "incident.resolved",
+            targetType: "incident",
+            targetId: id,
+          });
+        } catch {
+          // Non-blocking: audit write failure shouldn't break incident resolution
+        }
+      }
+    }
+
     return new Response(JSON.stringify(data), {
       status: res.status,
       headers: { "Content-Type": "application/json" },

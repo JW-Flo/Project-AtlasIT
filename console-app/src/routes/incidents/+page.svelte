@@ -24,6 +24,7 @@
   let nextCursor: number | null = null;
   let form = { title: "", severity: "medium", source: "" };
   let submitting = false;
+  let titleError = "";
 
   async function load(reset = false) {
     try {
@@ -44,7 +45,11 @@
   onMount(() => { load(true); });
 
   async function submit() {
-    if (!form.title) return;
+    if (!form.title.trim()) {
+      titleError = "Incident title is required";
+      return;
+    }
+    titleError = "";
     submitting = true;
     error = null;
     try {
@@ -107,6 +112,9 @@
             placeholder="Incident title"
             bind:value={form.title}
           />
+          {#if titleError}
+            <p class="text-sm text-destructive">{titleError}</p>
+          {/if}
         </div>
         <div class="flex flex-col gap-1.5">
           <Label htmlFor="inc-severity">Severity</Label>

@@ -378,9 +378,14 @@
 
       <!-- Content -->
       <div class="flex-1 min-w-0">
-        {#if !selectedAppId}
+        {#if !selectedAppId && apps.length > 0}
           <div class="text-center py-12 text-muted-foreground">
             <p class="text-sm">Select an app to manage {activeTab === "groups" ? "group assignments" : "role mappings"}</p>
+          </div>
+        {:else if !selectedAppId}
+          <div class="text-center py-12 text-muted-foreground">
+            <p class="text-sm mb-3">No connected apps to manage {activeTab === "groups" ? "group assignments" : "role mappings"}</p>
+            <a href="/console/marketplace"><Button variant="outline" size="sm">Browse Marketplace</Button></a>
           </div>
         {:else if activeTab === "groups"}
           <!-- Groups tab -->

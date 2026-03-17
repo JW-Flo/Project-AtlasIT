@@ -14,7 +14,7 @@
   import DialogTitle from "$lib/components/ui/dialog-title.svelte";
   import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { AlertTriangle, UserPlus, Users, Trash2, Copy } from "lucide-svelte";
+  import { AlertTriangle, UserPlus, Users, Trash2, Copy, ExternalLink } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -43,6 +43,8 @@
   let inviting = false;
   let tempPassword = "";
 
+  let inviteEmailError = "";
+
   let deleteModalOpen = false;
   let userToDelete: User | null = null;
 
@@ -65,6 +67,7 @@
     inviteDisplayName = "";
     inviteRole = "member";
     tempPassword = "";
+    inviteEmailError = "";
     inviteModalOpen = true;
   }
 
@@ -75,6 +78,12 @@
 
   async function inviteUser() {
     if (!inviteEmail) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(inviteEmail)) {
+      inviteEmailError = "Please enter a valid email address";
+      return;
+    }
+    inviteEmailError = "";
     inviting = true;
     try {
       const res = await fetch("/api/tenant/users/invite", {
@@ -150,6 +159,17 @@
 </script>
 
 <div class="space-y-6">
+  <!-- Directory cross-link banner -->
+  <a
+    href="/console/directory"
+    class="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm hover:bg-primary/10 transition-colors"
+  >
+    <span class="text-foreground">
+      <strong>Directory:</strong> View all organization users and groups in the Directory
+    </span>
+    <ExternalLink class="h-4 w-4 text-primary shrink-0" />
+  </a>
+
   <div class="flex justify-between items-center">
     <h1 class="text-2xl font-semibold tracking-tight">User Management</h1>
     <Button size="sm" on:click={openInviteModal}>
@@ -273,6 +293,9 @@
     <div class="space-y-2">
       <Label htmlFor="invite-email">Email <span class="text-destructive">*</span></Label>
       <Input id="invite-email" type="email" bind:value={inviteEmail} />
+      {#if inviteEmailError}
+        <p class="text-sm text-destructive">{inviteEmailError}</p>
+      {/if}
     </div>
     <div class="space-y-2">
       <Label htmlFor="invite-name">Display Name</Label>
