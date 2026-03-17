@@ -1,0 +1,33 @@
+id: pagerduty
+name: PagerDuty JML Workflow
+description: Joiner/Mover/Leaver workflow for PagerDuty
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        name: "{{ user.displayName }}"
+        email: "{{ user.email }}"
+        role: "{{ config.defaultRole | default('limited_user') }}"
+    - action: api.addToTeam
+      params:
+        teamId: "{{ config.defaultTeamId }}"
+        userId: "{{ steps[0].result.user.id }}"
+      condition: "{{ config.defaultTeamId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        role: "{{ user.role }}"
+    - action: api.updateTeamMembership
+      params:
+        userId: "{{ user.externalId }}"
+        newTeams: "{{ user.teams }}"
+
+leaver:
+  steps:
+    - action: api.deleteUser
+      params:
+        userId: "{{ user.externalId }}"

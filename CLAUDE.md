@@ -55,10 +55,11 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 - `slack-notification-agent/` — Outbound Slack MCP agent (event → Slack webhook)
 - `packages/shared/` — Common types, auth, logging, middleware (rate-limit, security-headers, auth), platform adapters, observability (logger, metrics, tracer, SLOs)
 - `packages/mcp-sdk/` — MCP agent SDK (client + server, HMAC signing)
-- `packages/connector-schema/` — Connector manifest Zod schemas
-- `packages/adapter-gen/` — Adapter code generator pipeline
+- `packages/connector-schema/` — ConnectorManifest Zod schemas + manifest templates for all 24 apps
+- `packages/adapter-gen/` — Adapter code generator (manifest JSON → full CF Worker scaffold)
 - `adapters/okta/` — Okta connector (directory sync, webhooks, SCIM 2.0 provisioning)
 - `adapters/google-workspace/` — Google Workspace connector (OAuth 2.0, user/group sync)
+- `adapters/<slug>/` — 22 scaffolded adapters (7 with hand-written core implementations)
 - `ops/oidc/` — GitHub Actions OIDC → 1Password Connect exchange worker
 
 ### Storage (Cloudflare D1/KV/R2/Queues)
@@ -82,3 +83,12 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 - Tenant isolation: all data queries scoped by `tenant_id` from authenticated session
 - Scoring: weighted status (not_started=0, in_progress=0.25, implemented=0.75, verified=1.0)
 - Integrations catalog: `$lib/data/integrations.ts` (AuthModel: platform_oauth | tenant_oauth | api_key | service_account)
+
+### Adapter Pipeline
+
+- **Registry**: `shared/integrations/registry-detailed.ts` — OAuth URLs, scopes, API endpoints for all 24 apps
+- **Manifests**: `packages/connector-schema/src/templates.ts` — ConnectorManifest JSON per app (auth, capabilities, config, events, webhooks)
+- **Scaffold**: `packages/adapter-gen/src/scaffold.ts` — `scaffoldAdapter(manifest, outputDir)` generates full CF Worker
+- **Output**: `adapters/<slug>/` — `src/index.ts`, `src/auth.ts`, `src/config.ts`, `wrangler.toml`, `package.json`, `tsconfig.json`, `migrations/`
+- **Validation**: `packages/connector-schema` exports `validateManifest()` for Zod validation
+- **Auth models**: `oauth2` (Microsoft 365, Jira, etc.), `api_key` (BambooHR, Stripe, etc.), `tenant_oauth` (Auth0, Workday), `service_account` (AWS, GCP)

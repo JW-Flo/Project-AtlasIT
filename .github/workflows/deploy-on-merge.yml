@@ -26,6 +26,28 @@ jobs:
       onboarding: ${{ steps.filter.outputs.onboarding }}
       slack-agent: ${{ steps.filter.outputs.slack-agent }}
       dispatch: ${{ steps.filter.outputs.dispatch }}
+      adapter-microsoft-365: ${{ steps.filter.outputs.adapter-microsoft-365 }}
+      adapter-slack: ${{ steps.filter.outputs.adapter-slack }}
+      adapter-jira: ${{ steps.filter.outputs.adapter-jira }}
+      adapter-confluence: ${{ steps.filter.outputs.adapter-confluence }}
+      adapter-github: ${{ steps.filter.outputs.adapter-github }}
+      adapter-stripe: ${{ steps.filter.outputs.adapter-stripe }}
+      adapter-aws: ${{ steps.filter.outputs.adapter-aws }}
+      adapter-azure: ${{ steps.filter.outputs.adapter-azure }}
+      adapter-zoom: ${{ steps.filter.outputs.adapter-zoom }}
+      adapter-teams: ${{ steps.filter.outputs.adapter-teams }}
+      adapter-discord: ${{ steps.filter.outputs.adapter-discord }}
+      adapter-bamboohr: ${{ steps.filter.outputs.adapter-bamboohr }}
+      adapter-workday: ${{ steps.filter.outputs.adapter-workday }}
+      adapter-adp: ${{ steps.filter.outputs.adapter-adp }}
+      adapter-quickbooks: ${{ steps.filter.outputs.adapter-quickbooks }}
+      adapter-xero: ${{ steps.filter.outputs.adapter-xero }}
+      adapter-auth0: ${{ steps.filter.outputs.adapter-auth0 }}
+      adapter-crowdstrike: ${{ steps.filter.outputs.adapter-crowdstrike }}
+      adapter-1password: ${{ steps.filter.outputs.adapter-1password }}
+      adapter-pagerduty: ${{ steps.filter.outputs.adapter-pagerduty }}
+      adapter-datadog: ${{ steps.filter.outputs.adapter-datadog }}
+      adapter-gcp: ${{ steps.filter.outputs.adapter-gcp }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +87,50 @@ jobs:
               - 'dispatch-worker/**'
               - 'packages/shared/**'
               - '.github/workflows/deploy-on-merge.yml'
+            adapter-microsoft-365:
+              - 'adapters/microsoft-365/**'
+            adapter-slack:
+              - 'adapters/slack/**'
+            adapter-jira:
+              - 'adapters/jira/**'
+            adapter-confluence:
+              - 'adapters/confluence/**'
+            adapter-github:
+              - 'adapters/github/**'
+            adapter-stripe:
+              - 'adapters/stripe/**'
+            adapter-aws:
+              - 'adapters/aws/**'
+            adapter-azure:
+              - 'adapters/azure/**'
+            adapter-zoom:
+              - 'adapters/zoom/**'
+            adapter-teams:
+              - 'adapters/teams/**'
+            adapter-discord:
+              - 'adapters/discord/**'
+            adapter-bamboohr:
+              - 'adapters/bamboohr/**'
+            adapter-workday:
+              - 'adapters/workday/**'
+            adapter-adp:
+              - 'adapters/adp/**'
+            adapter-quickbooks:
+              - 'adapters/quickbooks/**'
+            adapter-xero:
+              - 'adapters/xero/**'
+            adapter-auth0:
+              - 'adapters/auth0/**'
+            adapter-crowdstrike:
+              - 'adapters/crowdstrike/**'
+            adapter-1password:
+              - 'adapters/1password/**'
+            adapter-pagerduty:
+              - 'adapters/pagerduty/**'
+            adapter-datadog:
+              - 'adapters/datadog/**'
+            adapter-gcp:
+              - 'adapters/gcp/**'
 
   deploy-core-api:
     name: Deploy core-api
@@ -274,3 +340,59 @@ jobs:
         run: npx wrangler deploy --config dispatch-worker/wrangler.toml
       - name: Smoke test
         run: bash scripts/smoke-test.sh dispatch-worker https://dispatch.atlasit.pro
+
+  # ---------------------------------------------------------------------------
+  # Adapter deploys (one job per adapter, triggered by path changes)
+  # ---------------------------------------------------------------------------
+  deploy-adapters:
+    name: Deploy adapter/${{ matrix.slug }}
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs[format('adapter-{0}', matrix.slug)] == 'true' ||
+      github.event.inputs.force_all == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        slug:
+          - microsoft-365
+          - slack
+          - jira
+          - confluence
+          - github
+          - stripe
+          - aws
+          - azure
+          - zoom
+          - teams
+          - discord
+          - bamboohr
+          - workday
+          - adp
+          - quickbooks
+          - xero
+          - auth0
+          - crowdstrike
+          - 1password
+          - pagerduty
+          - datadog
+          - gcp
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Deploy adapter
+        run: npx wrangler deploy --config adapters/${{ matrix.slug }}/wrangler.toml
+      - name: Smoke test
+        run: bash scripts/smoke-adapter.sh ${{ matrix.slug }}

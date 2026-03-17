@@ -1885,6 +1885,171 @@ const stripe: IntegrationDetail = {
 };
 
 // ---------------------------------------------------------------------------
+// Productivity (continued)
+// ---------------------------------------------------------------------------
+
+const confluence: IntegrationDetail = {
+  id: "confluence",
+  name: "Confluence (Atlassian Cloud)",
+  category: "productivity",
+  tier: "core",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+        helpText: "From Atlassian Developer Console",
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+    ],
+    oauth: {
+      authorizeUrl: "https://auth.atlassian.com/authorize",
+      tokenUrl: "https://auth.atlassian.com/oauth/token",
+      grantTypes: ["authorization_code"],
+      scopes: [
+        "read:confluence-space.summary",
+        "read:confluence-content.all",
+        "write:confluence-space",
+        "read:confluence-user",
+        "manage:confluence-configuration",
+        "read:me",
+      ],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+    alternativeAuth: {
+      type: "api_key",
+      notes:
+        "SCIM provisioning uses Atlassian directory API tokens. Requires Atlassian Guard.",
+    },
+  },
+  api: {
+    baseUrl: "https://api.atlassian.com",
+    version: "v2",
+    endpoints: {
+      createUser: "POST /scim/directory/{directoryId}/Users",
+      getUser: "GET /scim/directory/{directoryId}/Users/{id}",
+      updateUser: "PUT /scim/directory/{directoryId}/Users/{id}",
+      suspendUser: "PATCH /scim/directory/{directoryId}/Users/{id}",
+      deleteUser: "DELETE /scim/directory/{directoryId}/Users/{id}",
+      listUsers: "GET /scim/directory/{directoryId}/Users",
+      listGroups: "GET /scim/directory/{directoryId}/Groups",
+      addToGroup: "PATCH /scim/directory/{directoryId}/Groups/{id}",
+      removeFromGroup: "PATCH /scim/directory/{directoryId}/Groups/{id}",
+      listSpaces: "GET /wiki/api/v2/spaces",
+      getSpacePermissions: "GET /wiki/api/v2/spaces/{spaceId}/permissions",
+      addSpacePermission: "POST /wiki/api/v2/spaces/{spaceId}/permissions",
+      removeSpacePermission:
+        "DELETE /wiki/api/v2/spaces/{spaceId}/permissions/{permissionId}",
+    },
+    rateLimits: "Rate limits vary by endpoint, returned in response headers",
+    scim: {
+      supported: true,
+      endpoint: "https://api.atlassian.com/scim/directory/{directoryId}/",
+      notes: "Shares Atlassian directory with Jira. Requires Atlassian Guard.",
+    },
+  },
+  sdk: {
+    npm: "confluence.js",
+    docsUrl: "https://developer.atlassian.com/cloud/confluence/rest/v2/intro/",
+    exampleImport: "import { ConfluenceClient } from 'confluence.js'",
+  },
+  webhooks: {
+    supported: true,
+    type: "connect_webhooks",
+    eventTypes: [
+      "page_created",
+      "page_updated",
+      "space_permissions_updated",
+      "user_created",
+      "user_updated",
+    ],
+  },
+  sandbox: {
+    available: true,
+    notes: "Free Cloud instances for up to 10 users",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Security (continued)
+// ---------------------------------------------------------------------------
+
+const onepassword: IntegrationDetail = {
+  id: "1password",
+  name: "1Password",
+  category: "security",
+  tier: "extended",
+  auth: {
+    type: "api_key",
+    credentialFields: [
+      {
+        key: "service_account_token",
+        label: "Service Account Token",
+        type: "password",
+        required: true,
+        helpText: "From 1Password → Developer → Service Accounts",
+      },
+      {
+        key: "connect_host",
+        label: "Connect Server URL",
+        type: "url",
+        required: false,
+        placeholder: "https://connect.your-domain.com",
+        helpText:
+          "URL for 1Password Connect Server (if using self-hosted SCIM bridge)",
+      },
+    ],
+  },
+  api: {
+    baseUrl: "https://events.1password.com",
+    version: "v1",
+    endpoints: {
+      listUsers: "GET /api/v1/users",
+      getUser: "GET /api/v1/users/{userId}",
+      suspendUser: "PATCH /api/v1/users/{userId}",
+      deleteUser: "DELETE /api/v1/users/{userId}",
+      listGroups: "GET /api/v1/groups",
+      addToGroup: "PUT /api/v1/groups/{groupId}/members",
+      removeFromGroup: "DELETE /api/v1/groups/{groupId}/members/{userId}",
+      listVaults: "GET /api/v1/vaults",
+      getVaultAccess: "GET /api/v1/vaults/{vaultId}/access",
+      grantVaultAccess: "PUT /api/v1/vaults/{vaultId}/access",
+      revokeVaultAccess: "DELETE /api/v1/vaults/{vaultId}/access/{userId}",
+    },
+    rateLimits: "600 req/min per token",
+    scim: {
+      supported: true,
+      endpoint: "https://{scimBridgeUrl}/scim/v2/",
+      notes:
+        "SCIM Bridge required (self-hosted or 1Password cloud-hosted). Manages user provisioning and group sync.",
+    },
+  },
+  sdk: {
+    npm: "@1password/connect",
+    docsUrl: "https://developer.1password.com/docs/connect/",
+    exampleImport: "import { OnePasswordConnect } from '@1password/connect'",
+  },
+  webhooks: {
+    supported: false,
+    eventTypes: [],
+  },
+  sandbox: {
+    available: true,
+    notes:
+      "1Password Developer account with free Teams trial. SCIM Bridge available as Docker container.",
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
@@ -1893,12 +2058,14 @@ export const integrationRegistry: Record<string, IntegrationDetail> = {
   microsoft_365,
   slack,
   jira,
+  confluence,
   zoom,
   teams,
   discord,
   okta,
   auth0,
   crowdstrike,
+  "1password": onepassword,
   pagerduty,
   aws,
   gcp,

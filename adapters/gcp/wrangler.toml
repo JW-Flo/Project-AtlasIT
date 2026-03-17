@@ -1,0 +1,25 @@
+name = "atlasit-adapter-gcp"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+ADAPTER_NAME = "gcp"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+# Secrets (set via wrangler secret put):
+# ADAPTER_SECRET - HMAC secret for webhook verification
+# SERVICE_ACCOUNT_CREDENTIALS - Service account credentials JSON
+# PRIVATEKEY - Full JSON key file contents for the service account
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas-shared-db"
+database_id = "" # Set per environment
+
+[observability.logs]
+enabled = true
+
+# Rate limit: 10 req/s
+# Burst size: 20

@@ -12,11 +12,11 @@ describe("connectors API", () => {
   });
 
   it("returns flagged adapters when enabled", async () => {
-    const env = { FEATURE_CONNECTOR_EXAMPLE_HR_SUITE: "1" } as any;
+    const env = { FEATURE_CONNECTOR_OKTA: "1" } as any;
     const response = await worker.fetch(new Request(url), env);
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(Array.isArray(body.adapters)).toBe(true);
-    expect(body.adapters[0]?.slug).toBe("example-hr-suite");
+    expect(body.adapters[0]?.slug).toBe("okta");
   });
 });

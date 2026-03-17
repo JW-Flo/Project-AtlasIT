@@ -1,0 +1,39 @@
+id: confluence
+name: Confluence JML Workflow
+description: Joiner/Mover/Leaver workflow for Confluence Cloud via Atlassian SCIM
+
+joiner:
+  steps:
+    - action: scim.createUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userName: "{{ user.email }}"
+        displayName: "{{ user.displayName }}"
+        emails:
+          - value: "{{ user.email }}"
+            type: work
+            primary: true
+    - action: api.grantSpacePermission
+      params:
+        spaceId: "{{ config.defaultSpaceId }}"
+        userId: "{{ steps[0].result.id }}"
+        permission: read
+      condition: "{{ config.defaultSpaceId }}"
+
+mover:
+  steps:
+    - action: scim.updateUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userId: "{{ user.externalId }}"
+        department: "{{ user.department }}"
+
+leaver:
+  steps:
+    - action: scim.deactivateUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userId: "{{ user.externalId }}"
+    - action: api.revokeAllSpacePermissions
+      params:
+        userId: "{{ user.externalId }}"

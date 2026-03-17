@@ -1,0 +1,29 @@
+id: datadog
+name: Datadog JML Workflow
+description: Joiner/Mover/Leaver workflow for Datadog
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        email: "{{ user.email }}"
+        name: "{{ user.displayName }}"
+        accessRole: "{{ config.defaultAccessRole | default('st') }}"
+    - action: api.assignRole
+      params:
+        userId: "{{ steps[0].result.data.id }}"
+        roleId: "{{ config.defaultRoleId }}"
+      condition: "{{ config.defaultRoleId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        accessRole: "{{ user.accessRole }}"
+
+leaver:
+  steps:
+    - action: api.disableUser
+      params:
+        userId: "{{ user.externalId }}"
