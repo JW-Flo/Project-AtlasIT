@@ -100,7 +100,7 @@ case "$WORKER_NAME" in
     HEALTH_FIELDS=("status")
     ;;
   compliance-worker|compliance)
-    HEALTH_PATH="/api/compliance/health"
+    HEALTH_PATH="/health"
     HEALTH_FIELDS=("status")
     EXTRA_PROBE_PATH="/api/compliance/snapshot"
     ;;
@@ -110,8 +110,8 @@ case "$WORKER_NAME" in
     HEALTH_FIELDS=()
     ;;
   dispatch-worker|dispatch)
-    HEALTH_PATH="/health"
-    HEALTH_FIELDS=("status")
+    HEALTH_PATH="/"
+    HEALTH_FIELDS=("ok")
     ;;
   onboarding)
     HEALTH_PATH="/health"
