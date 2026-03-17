@@ -106,7 +106,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
           provider: null,
           userCount: 0,
           groupCount: 0,
-          lastSync: null,
+          lastSyncAt: null,
         },
     users: { active: activeUsers?.count ?? 0 },
     groups: { total: groupCount?.count ?? 0 },
