@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cn } from "$lib/utils";
-  import { theme, setTheme } from "../../stores/theme";
+  import { theme, setTheme, syncThemeFromServer } from "../../stores/theme";
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { init as initUx } from "../../instrumentation/ux-metrics";
@@ -13,6 +13,7 @@
     LayoutDashboard,
     Shield,
     Users,
+    User,
     Store,
     AppWindow,
     Workflow,
@@ -121,6 +122,9 @@
         impersonatedBy = sessionData.impersonatedBy || "";
       }
     } catch {}
+
+    // Sync theme preference from DB
+    syncThemeFromServer().catch(() => {});
   });
 
   let unreadCount = 0;
@@ -220,7 +224,7 @@
 
     <!-- User section at bottom -->
     <div class="border-t p-3">
-      <a href="/console/settings" class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
+      <a href="/console/profile" class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
         <Avatar {initials} size="sm" />
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
@@ -302,6 +306,14 @@
                 </div>
               </div>
               <Separator />
+              <a
+                href="/console/profile"
+                class="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                on:click={() => profileOpen = false}
+              >
+                <User class="h-4 w-4" />
+                My Account
+              </a>
               <a
                 href="/console/settings"
                 class="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
