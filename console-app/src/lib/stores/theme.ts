@@ -27,6 +27,32 @@ export function setTheme(t: Theme) {
     document.documentElement.dataset.theme = t;
     applyTheme(t === "dark" ? darkThemeVars : lightThemeVars);
   }
+  // Persist to DB (fire-and-forget)
+  if (typeof fetch !== "undefined") {
+    fetch("/api/user/preferences", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ theme: t }),
+    }).catch(() => {});
+  }
+}
+
+export async function syncThemeFromServer(): Promise<void> {
+  try {
+    const res = await fetch("/api/user/preferences");
+    if (res.ok) {
+      const prefs = await res.json();
+      if (prefs.theme === "light" || prefs.theme === "dark") {
+        theme.set(prefs.theme);
+        if (typeof localStorage !== "undefined")
+          localStorage.setItem(KEY, prefs.theme);
+        if (typeof document !== "undefined") {
+          document.documentElement.dataset.theme = prefs.theme;
+          applyTheme(prefs.theme === "dark" ? darkThemeVars : lightThemeVars);
+        }
+      }
+    }
+  } catch {}
 }
 
 if (typeof document !== "undefined") {
