@@ -43,7 +43,7 @@ new_sqlite_classes = ["WorkflowDO"]
 
 [[migrations]]
 tag = "v2"
-new_classes = ["AutomationDO"]
+new_sqlite_classes = ["AutomationDO"]
 
 # R2 bucket for evidence storage
 [[r2_buckets]]
