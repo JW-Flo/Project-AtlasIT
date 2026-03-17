@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getWorkerBase, getEnv, proxyFetch } from "../_proxy-helpers";
+import { writeAudit } from "$lib/server/audit";
 
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
@@ -28,7 +29,22 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
         "x-tenant-id": tenantId,
       },
     });
-    const data = await res.json();
+    const data: any = await res.json();
+
+    // Map snake_case D1 rows to camelCase for frontend types
+    if (Array.isArray(data.items)) {
+      data.items = data.items.map((row: any) => ({
+        id: row.id,
+        subject: row.subject_ref ?? row.subject,
+        resource: row.resource,
+        status: row.status,
+        reason: row.reason ?? row.justification,
+        createdAt: row.created_at ?? row.createdAt,
+        decidedAt: row.decided_at ?? row.decidedAt ?? null,
+        approver: row.approved_by ?? row.approver ?? null,
+      }));
+    }
+
     return new Response(JSON.stringify(data), {
       status: res.status,
       headers: { "Content-Type": "application/json" },
@@ -83,6 +99,29 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       body,
     });
     const data = await res.json();
+
+    // Log audit event for successful access request creation
+    if (res.ok) {
+      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+      if (db) {
+        try {
+          await writeAudit(db, {
+            tenantId,
+            actorUserId: user.userId ?? "unknown",
+            actorEmail: user.email ?? "unknown",
+            action: "access_request.created",
+            targetType: "access_request",
+            targetId: data?.id,
+            detail: data?.resource
+              ? JSON.stringify({ resource: data.resource })
+              : undefined,
+          });
+        } catch {
+          // Non-blocking: audit write failure shouldn't break access request creation
+        }
+      }
+    }
+
     return new Response(JSON.stringify(data), {
       status: res.status,
       headers: { "Content-Type": "application/json" },

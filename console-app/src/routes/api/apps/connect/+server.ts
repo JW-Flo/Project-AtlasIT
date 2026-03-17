@@ -1,11 +1,16 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 import { saveCredentials } from "$lib/server/credentials";
 import { writeAudit } from "$lib/server/audit";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const guard = requireTenantRole(user, ["owner", "admin"]);
+  if (guard) return guard;
+
   const tenantId = user.tenantId;
   if (!tenantId) {
     return json({ error: "Tenant context required" }, { status: 403 });

@@ -1,5 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
+import { writeAudit } from "$lib/server/audit";
 
 const ALLOWED_ACTIONS = new Set(["approve", "deny", "fulfill"]);
 
@@ -11,6 +13,9 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const guard = requireTenantRole(user, ["owner", "admin"]);
+  if (guard) return guard;
 
   const base = getWorkerBase(platform);
   const env = getEnv(platform);
@@ -41,6 +46,33 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
       },
     });
     const data = await res.json();
+
+    // Log audit event for successful access request action
+    if (res.ok) {
+      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+      if (db) {
+        try {
+          const auditAction =
+            action === "approve"
+              ? "access_request.approved"
+              : action === "deny"
+                ? "access_request.denied"
+                : `access_request.${action}`;
+
+          await writeAudit(db, {
+            tenantId,
+            actorUserId: user.userId ?? "unknown",
+            actorEmail: user.email ?? "unknown",
+            action: auditAction,
+            targetType: "access_request",
+            targetId: id,
+          });
+        } catch {
+          // Non-blocking: audit write failure shouldn't break access request action
+        }
+      }
+    }
+
     return new Response(JSON.stringify(data), {
       status: res.status,
       headers: { "Content-Type": "application/json" },

@@ -51,6 +51,11 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     );
   }
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return json({ error: "Invalid email format" }, { status: 400 });
+  }
+
   const existing = await db
     .prepare(`SELECT id FROM console_users WHERE email = ? AND tenant_id = ?`)
     .bind(email, user!.tenantId)
@@ -82,6 +87,27 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       displayName ?? null,
       JSON.stringify([role]),
       user!.tenantId,
+      now,
+    )
+    .run();
+
+  // Create linked directory user for the invited user
+  const directoryUserId = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO directory_users (id, tenant_id, external_id, email, display_name, status, source, console_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      directoryUserId,
+      user!.tenantId,
+      "local:" + id,
+      email,
+      displayName ?? email,
+      "active",
+      "local",
+      id,
+      now,
       now,
     )
     .run();

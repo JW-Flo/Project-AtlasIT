@@ -248,6 +248,10 @@
               <Button variant="destructive" size="sm" class="w-full" on:click={() => disconnectApp(integration)}>
                 Disconnect
               </Button>
+            {:else if integration.status === 'planned'}
+              <Button size="sm" class="w-full" disabled>
+                Coming Soon
+              </Button>
             {:else}
               <Button size="sm" class="w-full" on:click={() => openWizard(integration)}>
                 Connect

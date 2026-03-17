@@ -175,7 +175,7 @@
       <Card>
         <CardContent class="py-4">
           <p class="text-sm text-muted-foreground">
-            No usage data available. This may indicate the platform is still initializing.
+            Usage data unavailable (configuration required)
           </p>
         </CardContent>
       </Card>

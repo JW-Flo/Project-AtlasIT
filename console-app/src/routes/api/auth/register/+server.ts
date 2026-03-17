@@ -151,6 +151,28 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       )
       .run();
 
+    // Create linked directory user for the owner
+    const directoryUserId = crypto.randomUUID();
+    await db
+      .prepare(
+        `INSERT INTO directory_users (id, tenant_id, external_id, email, display_name, title, status, source, console_user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        directoryUserId,
+        tenantId,
+        "local:" + userId,
+        email,
+        ownerName || email,
+        "Owner",
+        "active",
+        "local",
+        userId,
+        now,
+        now,
+      )
+      .run();
+
     // Ensure preferences table exists
     await db
       .prepare(

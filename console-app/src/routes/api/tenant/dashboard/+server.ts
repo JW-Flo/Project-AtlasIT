@@ -15,7 +15,8 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       directory: null,
       users: { active: 0 },
       groups: { total: 0 },
-      mappings: { confirmed: 0, pending: 0 },
+      activeMappings: 0,
+      pendingSuggestions: 0,
       recentActivity: [],
       workflows: { last24h: 0 },
     });
@@ -102,11 +103,16 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       : null,
     users: { active: activeUsers?.count ?? 0 },
     groups: { total: groupCount?.count ?? 0 },
-    mappings: {
-      confirmed: confirmedMappings?.count ?? 0,
-      pending: pendingSuggestions?.count ?? 0,
-    },
-    recentActivity: recentAudit,
+    activeMappings: confirmedMappings?.count ?? 0,
+    pendingSuggestions: pendingSuggestions?.count ?? 0,
+    recentActivity: (recentAudit as any[]).map((row: any) => ({
+      action: row.action,
+      description: row.detail ?? row.action,
+      user: row.actor_email,
+      timestamp: row.created_at,
+      targetType: row.target_type,
+      targetId: row.target_id,
+    })),
     workflows: { last24h: workflowCount?.count ?? 0 },
   });
 };

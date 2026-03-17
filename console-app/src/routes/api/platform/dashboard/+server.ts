@@ -1,11 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { requireSuperAdmin } from "$lib/server/guards";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user;
-  if (!user?.superAdmin) {
-    return json({ error: "forbidden" }, { status: 403 });
-  }
+  const denied = requireSuperAdmin(locals.user);
+  if (denied) return denied;
 
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
@@ -68,8 +67,21 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       disabled: tenantStats?.disabled ?? 0,
     },
     users: { total: userStats?.total ?? 0 },
-    recentTenants,
-    recentActivity: recentAudit,
+    recentTenants: (recentTenants as any[]).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      ownerEmail: row.owner_email,
+      status: row.status,
+      createdAt: row.created_at,
+      userCount: row.user_count,
+    })),
+    recentActivity: (recentAudit as any[]).map((row: any) => ({
+      action: row.action,
+      description: row.action,
+      tenant: row.actor_email,
+      timestamp: row.created_at,
+      targetType: row.target_type,
+    })),
     workflows: { total: workflowStats?.total ?? 0 },
   });
 };

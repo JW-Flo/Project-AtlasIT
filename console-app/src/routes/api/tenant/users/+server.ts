@@ -19,5 +19,27 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     .bind(user!.tenantId)
     .all();
 
-  return json(result.results ?? []);
+  // Map snake_case D1 rows to camelCase and parse roles JSON
+  const users = (result.results ?? []).map((row: any) => {
+    let parsedRoles: string[] = [];
+    try {
+      parsedRoles =
+        typeof row.roles === "string"
+          ? JSON.parse(row.roles)
+          : (row.roles ?? []);
+    } catch {
+      parsedRoles = [];
+    }
+    return {
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name ?? row.displayName,
+      role: parsedRoles[0] ?? "viewer",
+      roles: parsedRoles,
+      createdAt: row.created_at ?? row.createdAt,
+      lastLogin: row.last_login ?? row.lastLogin ?? null,
+    };
+  });
+
+  return json(users);
 };
