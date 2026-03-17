@@ -5,9 +5,9 @@ import { execSync } from 'child_process';
 
 function readJson(p){ return JSON.parse(fs.readFileSync(p,'utf-8')); }
 const repoRoot = process.cwd();
-const configPath = path.join(repoRoot,'codex-work.json');
+const configPath = path.join(repoRoot,'artifacts/codex-work.json');
 if(!fs.existsSync(configPath)){
-  console.error('[codex-guard] codex-work.json missing; skipping');
+  console.error('[codex-guard] artifacts/codex-work.json missing; skipping');
   process.exit(0);
 }
 const cfg = readJson(configPath);

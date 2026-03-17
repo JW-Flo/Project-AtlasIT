@@ -16,7 +16,7 @@ interface Section {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const root = resolve(__dirname, "..");
-const outFile = resolve(root, "codex-context.trimmed.txt");
+const outFile = resolve(root, "artifacts/codex-context.trimmed.txt");
 
 const argv = process.argv.slice(2);
 const has = (flag: string) => argv.includes(flag);
@@ -44,7 +44,7 @@ const baseSections: Section[] = [
     path: "docs/codex/prompt-update-sheet.md",
     optional: false,
   },
-  { title: "Codex Work Protection Rules", path: "codex-work.json" },
+  { title: "Codex Work Protection Rules", path: "artifacts/codex-work.json" },
 ];
 if (!noReadme) {
   baseSections.push({

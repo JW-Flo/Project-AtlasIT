@@ -62,7 +62,7 @@ Last Updated: 2025-09-29
 | KV Namespace Names         | `ignite-dispatcher-namespace`, `ignite_docs`           | Create new atlasit namespaces + dual period      | 3            |
 | Code Constants             | URLs in `ai-orchestrator/index.js`, `autoDoc.js`, etc. | Refactor to config-driven base                   | 2            |
 | MCP Artifacts              | `project-ignite-mcp` worker                            | Mark legacy / optional rename deferred           | 4 (optional) |
-| Legacy Scripts             | `scripts/ignite-deploy.yml`                            | Archive reference in LEGACY.md                   | 4            |
+| Legacy Scripts             | `scripts/ci/ignite-deploy.yml`                         | Archive reference in LEGACY.md                   | 4            |
 | Branding Strings in Agents | orchestrator / start scripts                           | Rename user-facing strings                       | 1            |
 | 1Password / Secrets Notes  | "Project Ignite Secrets"                               | Update vault display name (out of repo scope)    | External     |
 

@@ -4,6 +4,47 @@
 
 This roadmap tracks implementation phases from foundation through market readiness. See `STATUS.md` for current deployment state and `CLAUDE.md` for coding standards.
 
+---
+
+## True Automation — The North Star
+
+AtlasIT is built for **zero-touch IT operations**. Once adapters are connected and rules are defined, the platform runs itself — no scripts, no tickets, no manual steps.
+
+### The Autonomous Loop
+
+```
+Directory Event / Schedule / Webhook
+  ↓ AutomationDO (dedup + rate-limit + conditions)
+  ↓ WorkflowDO (durable steps, retry, compensation)
+  ↓ Adapter calls (provision / revoke / sync across 24 apps)
+  ↓ Evidence emitted → compliance-worker scores
+  ↓ Score change → new event → rules re-evaluate
+```
+
+### No-Brainer Backend Automations
+
+| Scenario                    | Trigger                              | What Happens Automatically                                                                 |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| **New hire onboarding**     | `user.created` from Okta/M365/Google | Provision GitHub, Jira, Slack, email + all role-assigned apps; notify manager on Slack     |
+| **Employee offboarding**    | `user.deactivated`                   | Revoke access across all 24 connected apps; emit offboarding evidence; create audit record |
+| **Department transfer**     | `group.membership_changed`           | Update app entitlements, reassign RBAC roles, re-sync directory                            |
+| **App connected**           | `app_connected`                      | Auto-provision existing users that match group rules; start health checks                  |
+| **Compliance scan**         | Cron schedule                        | Collect evidence from connected tools, re-score controls, create incidents on failures     |
+| **Policy violation**        | `compliance_score_changed`           | Auto-create incident, notify ops via Slack, trigger remediation workflow                   |
+| **Access request approved** | Workflow gate cleared                | Provision app access within seconds, no manual ops steps                                   |
+
+### Components That Make It Real
+
+- **AutomationDO** — per-tenant rule engine; 9 trigger types, 8 action types, 5-min dedup TTL
+- **WorkflowDO** — durable joiner/mover/leaver with per-step timeouts and DLQ-backed compensation
+- **24 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, and more
+- **MCP agent bus** — HMAC-verified agent webhooks; Slack notifier live, extensible to PagerDuty, email, Jira
+- **compliance-worker** — Rego-based policy eval, R2 evidence storage, auto-scoring across 5 frameworks
+
+> Everything in the phases below is infrastructure to make these automations reliable, observable, and trustworthy.
+
+---
+
 ## Phase 0 — Foundation ✅
 
 - Cloudflare Workers deployed (onboarding, orchestrator, docs)
@@ -67,16 +108,45 @@ This roadmap tracks implementation phases from foundation through market readine
 - [ ] Seed marketplace DB with all 24 apps
 - [ ] Add missing JML workflow YAMLs
 
-## Phase 6 — Operational Readiness (Next)
+## Phase 6 — Contract Stability & Auth Hardening (Next)
 
-- [ ] Production deployment of all workers with env promotion
-- [ ] API key rotation automation
-- [ ] Penetration testing (OWASP top 10)
-- [ ] Production deployment runbook and incident response
-- [ ] Custom domain DNS configuration
-- [ ] Workers Paid plan upgrade for queue bindings
+- [ ] Standardize DTO mapping (snake_case → camelCase) across all BFF proxy routes
+- [ ] Normalize error handling: no raw HTML/JSON crashes surfaced to UI; all errors must be actionable
+- [ ] Expand RBAC permission matrix until every mutation route is guarded
+- [ ] Add startup-failing assertions for missing prod secrets (CRED_ENCRYPTION_KEY, D1 bindings, etc.)
+- [ ] CF Access JWT signing key rotation readiness (dynamic key fetch, not hard-pinned)
+- [ ] Slack webhook verification alignment with Slack's replay window algorithm
 
-## Phase 7 — Market Readiness (Future)
+## Phase 7 — Directory Reality (Future)
+
+- [ ] Replace synthetic directory sync with real provider sync (Okta, Google Workspace, Microsoft 365)
+- [ ] Directory CRUD + detail pages (users / groups / memberships)
+- [ ] Surface "Coming Soon" for unimplemented sync rather than silent 501
+- [ ] Group→app mapping based on real directory data (Engineering→GitHub/Jira etc.)
+
+## Phase 8 — Marketplace & OAuth Hardening (Future)
+
+- [ ] OAuth failure UX: actionable error messages + retry paths (no raw redirect errors)
+- [ ] Connector health checks + "status honesty" UI (planned → disabled; functional → enabled)
+- [ ] Credential encryption enforcement: remove silent plaintext fallback in prod
+- [ ] Admin endpoint isolation: cron endpoints behind internal-only access
+
+## Phase 9 — Workflow Trust & Evidence Integrity (Future)
+
+- [ ] Workflow execution reliability: idempotency, DLQ visibility in UI, confidence threshold surfacing
+- [ ] Evidence/policy integrity as first-class UX (ingest → verify → display pipeline)
+- [ ] Execution history UI with step-level status and compensation visibility
+- [ ] R2 evidence deletion protections and access scoping
+
+## Phase 10 — Continuous Validation (Future)
+
+- [ ] Scheduled synthetic crawl + a11y budgets (Playwright + axe, WCAG 2.2)
+- [ ] k6 smoke SLO gates for key endpoints (LCP ≤ 2.5s, INP ≤ 200ms at p75)
+- [ ] Security scanning: Snyk (pnpm monorepo) + ZAP baseline
+- [ ] Platform Status "truthfulness" SLO (functional checks, not just reachability)
+- [ ] Journey completion rate metrics: login → dashboard → connect → workflow → evidence
+
+## Phase 11 — Market Readiness (Future)
 
 - [ ] Multi-tenant billing and usage metering
 - [ ] LLM-backed policy refinement with redline diff
@@ -86,12 +156,13 @@ This roadmap tracks implementation phases from foundation through market readine
 
 ## Cross-Cutting Concerns
 
-| Concern          | Strategy                                                                  |
-| ---------------- | ------------------------------------------------------------------------- |
-| Schema Evolution | Versioned D1 migrations + idempotent backfills                            |
-| Secrets          | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
-| Config           | Environment gating via wrangler.toml [env.*] sections                     |
-| Performance      | Precompute aggregates into KV; Queues for heavy ops                       |
-| Testing          | Vitest + Miniflare; 356 tests (49 files)                                  |
-| Observability    | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
-| IaC              | Terraform + OPA policies + daily drift detection                          |
+| Concern             | Strategy                                                                  |
+| ------------------- | ------------------------------------------------------------------------- |
+| Schema Evolution    | Versioned D1 migrations + idempotent backfills                            |
+| Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
+| Config              | Environment gating via wrangler.toml [env.*] sections                     |
+| Performance         | Precompute aggregates into KV; Queues for heavy ops                       |
+| Testing             | Vitest + Miniflare; 356 tests (49 files)                                  |
+| Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
+| IaC                 | Terraform + OPA policies + daily drift detection                          |
+| Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |

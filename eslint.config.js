@@ -41,7 +41,7 @@ export default [
       "**/.generated/**",
       "**/.cache/**",
       // Explicit ignore for dummy root check file that is not part of a TS project
-      "DUMMY_CHECK.ts",
+      "artifacts/DUMMY_CHECK.ts",
       // Broad code areas not part of active linted projects
       "adapters/**",
       "auth/**",

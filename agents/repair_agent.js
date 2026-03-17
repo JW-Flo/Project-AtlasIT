@@ -1,7 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { LoggingAPI } from '../utils/logging.js';
-import { SlackAPI } from '../utils/slack.js';
+import fs from "fs";
+import path from "path";
+import { LoggingAPI } from "../utils/logging.js";
+import { SlackAPI } from "../utils/slack.js";
 
 export class RepairAgent {
   constructor() {
@@ -10,11 +10,11 @@ export class RepairAgent {
     this.projectRoot = process.cwd();
     this.knownPatterns = [
       {
-        description: 'Remove unsupported cloudflare: imports',
-        file: 'mcp_index.js',
+        description: "Remove unsupported cloudflare: imports",
+        file: "mcp/mcp_index.js",
         regex: /import\s+\{[^}]+\}\s+from\s+['"]cloudflare:workers['"];?/g,
-        replacement: match => `// [auto-removed by RepairAgent] ${match}`
-      }
+        replacement: (match) => `// [auto-removed by RepairAgent] ${match}`,
+      },
     ];
     this.running = false;
     this.interval = null;
@@ -25,17 +25,25 @@ export class RepairAgent {
     for (const pattern of this.knownPatterns) {
       const filePath = path.join(this.projectRoot, pattern.file);
       if (!fs.existsSync(filePath)) continue;
-      let content = fs.readFileSync(filePath, 'utf-8');
+      let content = fs.readFileSync(filePath, "utf-8");
       const newContent = content.replace(pattern.regex, pattern.replacement);
       if (newContent !== content) {
-        fs.writeFileSync(filePath, newContent, 'utf-8');
+        fs.writeFileSync(filePath, newContent, "utf-8");
         anyFixes = true;
-        await this.logging.logInfo('repair', `Patched: ${pattern.description} in ${pattern.file}`);
-        await this.slack.sendAlert(`🛠️ RepairAgent: ${pattern.description} in ${pattern.file}`);
+        await this.logging.logInfo(
+          "repair",
+          `Patched: ${pattern.description} in ${pattern.file}`,
+        );
+        await this.slack.sendAlert(
+          `🛠️ RepairAgent: ${pattern.description} in ${pattern.file}`,
+        );
       }
     }
     if (!anyFixes) {
-      await this.logging.logInfo('repair', 'No repairs needed. System is compatible.');
+      await this.logging.logInfo(
+        "repair",
+        "No repairs needed. System is compatible.",
+      );
     }
     return anyFixes;
   }
@@ -44,15 +52,18 @@ export class RepairAgent {
     this.running = true;
     await this.run(); // Run immediately
     this.interval = setInterval(() => this.run(), 60000); // Run every 60 seconds
-    await this.logging.logInfo('repair', 'RepairAgent started continuous operation.');
-    await this.slack.sendAlert('🛠️ RepairAgent started continuous operation.');
+    await this.logging.logInfo(
+      "repair",
+      "RepairAgent started continuous operation.",
+    );
+    await this.slack.sendAlert("🛠️ RepairAgent started continuous operation.");
   }
 
   async stop() {
     this.running = false;
     if (this.interval) clearInterval(this.interval);
-    await this.logging.logInfo('repair', 'RepairAgent stopped.');
-    await this.slack.sendAlert('🛠️ RepairAgent stopped.');
+    await this.logging.logInfo("repair", "RepairAgent stopped.");
+    await this.slack.sendAlert("🛠️ RepairAgent stopped.");
   }
 }
 

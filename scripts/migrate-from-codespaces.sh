@@ -212,9 +212,9 @@ if [[ $DO_DEPS -eq 1 ]]; then
   else
     warn "package.json missing; skipping Node dependencies."
   fi
-  if [[ $DO_PYTHON -eq 1 && -f requirements.txt ]]; then
-    log "Installing Python dependencies from requirements.txt"
-    [[ $DRY_RUN -eq 0 ]] && python3 -m pip install -r requirements.txt || warn "Python install failed"
+  if [[ $DO_PYTHON -eq 1 && -f scripts/python/requirements.txt ]]; then
+    log "Installing Python dependencies from scripts/python/requirements.txt"
+    [[ $DRY_RUN -eq 0 ]] && python3 -m pip install -r scripts/python/requirements.txt || warn "Python install failed"
   fi
 else
   log "Dependency installation skipped (--skip-deps)."

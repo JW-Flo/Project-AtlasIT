@@ -8,7 +8,7 @@ describe("schema hash integrity", () => {
   it("matches committed schema.hash", () => {
     const repoRoot = process.cwd();
     const committed = readFileSync(
-      path.join(repoRoot, "schema.hash"),
+      path.join(repoRoot, "artifacts/schema.hash"),
       "utf-8",
     ).trim();
     const output = execSync("node scripts/schema-hash.js", {
