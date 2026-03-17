@@ -28,6 +28,7 @@
     ChevronDown,
     Activity,
     FileText,
+    Zap,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -62,6 +63,7 @@
         { href: "/console/marketplace", label: "Marketplace", icon: Store },
         { href: "/console/apps", label: "Apps", icon: AppWindow },
         { href: "/console/workflows", label: "Workflows", icon: Workflow },
+        { href: "/console/automation", label: "Automation", icon: Zap },
       ],
     },
     {

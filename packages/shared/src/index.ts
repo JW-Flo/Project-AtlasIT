@@ -15,3 +15,4 @@ export * from "./feature-flags/index";
 export * from "./credentials/index";
 export * from "./events/index";
 export * from "./crypto/index";
+export * from "./automation/index";
