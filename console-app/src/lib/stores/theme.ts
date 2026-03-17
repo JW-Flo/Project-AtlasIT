@@ -20,15 +20,22 @@ function detect(): Theme {
 
 export const theme = writable<Theme>(detect());
 
-export function setTheme(t: Theme) {
+// Gate DB writes until after first server sync (avoids unauthenticated PATCHes on page load)
+let dbWriteEnabled = false;
+
+function applyLocal(t: Theme) {
   theme.set(t);
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, t);
   if (typeof document !== "undefined") {
     document.documentElement.dataset.theme = t;
     applyTheme(t === "dark" ? darkThemeVars : lightThemeVars);
   }
-  // Persist to DB (fire-and-forget)
-  if (typeof fetch !== "undefined") {
+}
+
+export function setTheme(t: Theme) {
+  applyLocal(t);
+  // Persist to DB (fire-and-forget, only after server sync has run)
+  if (dbWriteEnabled && typeof fetch !== "undefined") {
     fetch("/api/user/preferences", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -43,19 +50,14 @@ export async function syncThemeFromServer(): Promise<void> {
     if (res.ok) {
       const prefs = await res.json();
       if (prefs.theme === "light" || prefs.theme === "dark") {
-        theme.set(prefs.theme);
-        if (typeof localStorage !== "undefined")
-          localStorage.setItem(KEY, prefs.theme);
-        if (typeof document !== "undefined") {
-          document.documentElement.dataset.theme = prefs.theme;
-          applyTheme(prefs.theme === "dark" ? darkThemeVars : lightThemeVars);
-        }
+        applyLocal(prefs.theme);
       }
     }
   } catch {}
+  dbWriteEnabled = true;
 }
 
 if (typeof document !== "undefined") {
-  // initialize on load
-  setTheme(detect());
+  // initialize on load from localStorage (no DB write)
+  applyLocal(detect());
 }
