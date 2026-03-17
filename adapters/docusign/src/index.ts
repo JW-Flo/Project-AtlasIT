@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
-import { validateConfig } from "./config.js";
+import { validateConfig, applyDefaults } from "./config.js";
 import {
   authMiddleware,
   getAuthorizationUrl,
@@ -8,10 +8,7 @@ import {
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
-import {
-  handleTeamsWebhook,
-  handleTeamsWebhookValidation,
-} from "./webhooks.js";
+import { handleDocuSignWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -71,17 +68,22 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-    service: "teams",
+    service: "docusign",
     connector: {
-      id: "teams",
-      name: "Microsoft Teams",
-      provider: "Microsoft",
-      capabilities: ["user-provisioning", "group-sync", "notifications"],
+      id: "docusign",
+      name: "DocuSign",
+      provider: "DocuSign",
+      capabilities: [
+        "directory-sync",
+        "user-provisioning",
+        "user-deprovisioning",
+        "group-sync",
+      ],
     },
   });
 });
 
-// Webhook receiver from orchestrator
+// Webhook receiver from orchestrator (internal)
 app.post("/webhook", async (c) => {
   const correlationId = c.get("correlationId");
   const signature = c.req.header("X-Signature");
@@ -156,7 +158,13 @@ app.post("/api/sync", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(syncId, body.tenantId, "teams", "running", new Date().toISOString())
+    .bind(
+      syncId,
+      body.tenantId,
+      "docusign",
+      "running",
+      new Date().toISOString(),
+    )
     .run();
 
   console.log(
@@ -166,14 +174,14 @@ app.post("/api/sync", async (c) => {
       syncId,
       message: "Sync triggered",
       tenantId: body.tenantId,
-      connector: "teams",
+      connector: "docusign",
     }),
   );
 
   // Retrieve stored OAuth token for this tenant
   const tokenRow = await c.env.DB.prepare(
     `SELECT access_token FROM connector_tokens
-     WHERE tenant_id = ?1 AND connector_slug = 'teams'
+     WHERE tenant_id = ?1 AND connector_slug = 'docusign'
      ORDER BY created_at DESC LIMIT 1`,
   )
     .bind(body.tenantId)
@@ -194,10 +202,10 @@ app.post("/api/sync", async (c) => {
     );
   }
 
-  // Retrieve config
+  // Retrieve connector config
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
-     WHERE tenant_id = ?1 AND connector_slug = 'teams' LIMIT 1`,
+     WHERE tenant_id = ?1 AND connector_slug = 'docusign' LIMIT 1`,
   )
     .bind(body.tenantId)
     .first<{ config: string }>();
@@ -210,17 +218,24 @@ app.post("/api/sync", async (c) => {
       .run();
     return c.json(
       {
-        error: "No connector config found. Configure tenantId first.",
+        error: "No connector config found. Configure accountId first.",
         correlationId,
       },
       400,
     );
   }
 
-  const config = JSON.parse(configRow.config) as { tenantId: string };
-  const validation = validateConfig(
+  const config = JSON.parse(configRow.config) as {
+    accountId: string;
+    baseUrl?: string;
+  };
+  const configWithDefaults = applyDefaults(
     config as unknown as Record<string, unknown>,
-  );
+  ) as {
+    accountId: string;
+    baseUrl: string;
+  };
+  const validation = validateConfig(configWithDefaults);
   if (!validation.valid) {
     return c.json(
       { error: "Invalid config", details: validation.errors, correlationId },
@@ -237,6 +252,7 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "users") {
       userResult = await syncUsers(
         tokenRow.access_token,
+        configWithDefaults,
         c.env.DB,
         body.tenantId,
       );
@@ -245,6 +261,7 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "groups") {
       groupResult = await syncGroups(
         tokenRow.access_token,
+        configWithDefaults,
         c.env.DB,
         body.tenantId,
       );
@@ -323,7 +340,7 @@ app.get("/api/status", async (c) => {
 
   const connection = await c.env.DB.prepare(
     `SELECT status, error_msg, last_sync_at, user_count, group_count
-     FROM directory_connections WHERE tenant_id = ?1`,
+     FROM directory_connections WHERE tenant_id = ?1 AND provider = 'docusign'`,
   )
     .bind(tenantId)
     .first<{
@@ -336,7 +353,7 @@ app.get("/api/status", async (c) => {
 
   if (!connection) {
     return c.json({
-      connector: "teams",
+      connector: "docusign",
       tenantId,
       correlationId,
       status: "not_connected",
@@ -348,14 +365,14 @@ app.get("/api/status", async (c) => {
 
   const recentSyncs = await c.env.DB.prepare(
     `SELECT id, status, created_at, completed_at
-     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'teams'
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'docusign'
      ORDER BY created_at DESC LIMIT 10`,
   )
     .bind(tenantId)
     .all();
 
   return c.json({
-    connector: "teams",
+    connector: "docusign",
     tenantId,
     correlationId,
     status: connection.status,
@@ -434,12 +451,13 @@ app.get("/auth/callback", async (c) => {
     );
 
     await c.env.DB.prepare(
-      "INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+      `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
     )
       .bind(
         crypto.randomUUID(),
         stateData.tenantId,
-        "teams",
+        "docusign",
         tokens.access_token,
         tokens.refresh_token ?? null,
         new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
@@ -453,7 +471,7 @@ app.get("/auth/callback", async (c) => {
         correlationId,
         message: "OAuth tokens stored",
         tenantId: stateData.tenantId,
-        connector: "teams",
+        connector: "docusign",
       }),
     );
 
@@ -475,13 +493,9 @@ app.get("/auth/callback", async (c) => {
     return c.json({ error: errorMessage, correlationId }, 500);
   }
 });
-// Teams subscription validation endpoint (first handshake)
-app.post("/webhooks/teams/notifications/validate", (c) =>
-  handleTeamsWebhookValidation(c),
-);
 
-// Receives Microsoft Graph change notifications for Teams
-app.post("/webhooks/teams/notifications", (c) => handleTeamsWebhook(c));
+// DocuSign webhook receiver
+app.post("/webhooks/docusign/events", (c) => handleDocuSignWebhook(c));
 
 export default app;
 
@@ -495,7 +509,9 @@ async function updateConnectionStatus(
   error?: string,
 ): Promise<void> {
   const existing = await db
-    .prepare("SELECT id FROM directory_connections WHERE tenant_id = ?1")
+    .prepare(
+      "SELECT id FROM directory_connections WHERE tenant_id = ?1 AND provider = 'docusign'",
+    )
     .bind(tenantId)
     .first();
 
@@ -505,7 +521,7 @@ async function updateConnectionStatus(
         `UPDATE directory_connections
          SET status = ?1, error_msg = ?2, last_sync_at = datetime('now'),
              user_count = ?3, group_count = ?4, updated_at = datetime('now')
-         WHERE tenant_id = ?5`,
+         WHERE tenant_id = ?5 AND provider = 'docusign'`,
       )
       .bind(
         error ? "error" : "active",
@@ -523,7 +539,7 @@ async function updateConnectionStatus(
       )
       .bind(
         tenantId,
-        "teams",
+        "docusign",
         error ? "error" : "active",
         error ?? null,
         userCount,

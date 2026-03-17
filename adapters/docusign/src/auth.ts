@@ -7,14 +7,9 @@ interface TokenResponse {
   token_type: string;
 }
 
-const AUTHORIZATION_URL =
-  "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-const TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
-const SCOPES = [
-  "User.ReadWrite.All",
-  "Group.ReadWrite.All",
-  "TeamMember.ReadWrite.All",
-];
+const AUTHORIZATION_URL = "https://account-d.docusign.com/oauth/auth";
+const TOKEN_URL = "https://account-d.docusign.com/oauth/token";
+const SCOPES = ["signature", "extended", "impersonation"];
 
 export async function authMiddleware(
   c: Context,
@@ -32,7 +27,7 @@ export function getAuthorizationUrl(
   state: string,
 ): string {
   const params = new URLSearchParams({
-    client_id: env.TEAMS_CLIENT_ID,
+    client_id: env.DOCUSIGN_CLIENT_ID,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     response_type: "code",
     scope: SCOPES.join(" "),
@@ -48,8 +43,8 @@ export async function exchangeCodeForToken(
 ): Promise<TokenResponse> {
   const body: Record<string, string> = {
     grant_type: "authorization_code",
-    client_id: env.TEAMS_CLIENT_ID,
-    client_secret: env.TEAMS_CLIENT_SECRET,
+    client_id: env.DOCUSIGN_CLIENT_ID,
+    client_secret: env.DOCUSIGN_CLIENT_SECRET,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     code,
   };
@@ -77,8 +72,8 @@ export async function refreshAccessToken(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: env.TEAMS_CLIENT_ID,
-      client_secret: env.TEAMS_CLIENT_SECRET,
+      client_id: env.DOCUSIGN_CLIENT_ID,
+      client_secret: env.DOCUSIGN_CLIENT_SECRET,
       refresh_token: refreshToken,
     }).toString(),
   });

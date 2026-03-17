@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
-import { validateConfig } from "./config.js";
+import { validateConfig, applyDefaults } from "./config.js";
 import {
   authMiddleware,
   getAuthorizationUrl,
@@ -8,10 +8,7 @@ import {
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
-import {
-  handleTeamsWebhook,
-  handleTeamsWebhookValidation,
-} from "./webhooks.js";
+import { handleSalesforceWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -71,12 +68,17 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-    service: "teams",
+    service: "salesforce",
     connector: {
-      id: "teams",
-      name: "Microsoft Teams",
-      provider: "Microsoft",
-      capabilities: ["user-provisioning", "group-sync", "notifications"],
+      id: "salesforce",
+      name: "Salesforce",
+      provider: "Salesforce",
+      capabilities: [
+        "directory-sync",
+        "user-provisioning",
+        "user-deprovisioning",
+        "group-sync",
+      ],
     },
   });
 });
@@ -156,7 +158,13 @@ app.post("/api/sync", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(syncId, body.tenantId, "teams", "running", new Date().toISOString())
+    .bind(
+      syncId,
+      body.tenantId,
+      "salesforce",
+      "running",
+      new Date().toISOString(),
+    )
     .run();
 
   console.log(
@@ -166,14 +174,14 @@ app.post("/api/sync", async (c) => {
       syncId,
       message: "Sync triggered",
       tenantId: body.tenantId,
-      connector: "teams",
+      connector: "salesforce",
     }),
   );
 
   // Retrieve stored OAuth token for this tenant
   const tokenRow = await c.env.DB.prepare(
     `SELECT access_token FROM connector_tokens
-     WHERE tenant_id = ?1 AND connector_slug = 'teams'
+     WHERE tenant_id = ?1 AND connector_slug = 'salesforce'
      ORDER BY created_at DESC LIMIT 1`,
   )
     .bind(body.tenantId)
@@ -197,7 +205,7 @@ app.post("/api/sync", async (c) => {
   // Retrieve config
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
-     WHERE tenant_id = ?1 AND connector_slug = 'teams' LIMIT 1`,
+     WHERE tenant_id = ?1 AND connector_slug = 'salesforce' LIMIT 1`,
   )
     .bind(body.tenantId)
     .first<{ config: string }>();
@@ -210,17 +218,20 @@ app.post("/api/sync", async (c) => {
       .run();
     return c.json(
       {
-        error: "No connector config found. Configure tenantId first.",
+        error: "No connector config found. Configure instanceUrl first.",
         correlationId,
       },
       400,
     );
   }
 
-  const config = JSON.parse(configRow.config) as { tenantId: string };
-  const validation = validateConfig(
+  const config = JSON.parse(configRow.config) as { instanceUrl: string };
+  const configWithDefaults = applyDefaults(
     config as unknown as Record<string, unknown>,
-  );
+  ) as {
+    instanceUrl: string;
+  };
+  const validation = validateConfig(configWithDefaults);
   if (!validation.valid) {
     return c.json(
       { error: "Invalid config", details: validation.errors, correlationId },
@@ -237,6 +248,7 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "users") {
       userResult = await syncUsers(
         tokenRow.access_token,
+        configWithDefaults,
         c.env.DB,
         body.tenantId,
       );
@@ -245,6 +257,7 @@ app.post("/api/sync", async (c) => {
     if (scope === "all" || scope === "groups") {
       groupResult = await syncGroups(
         tokenRow.access_token,
+        configWithDefaults,
         c.env.DB,
         body.tenantId,
       );
@@ -336,7 +349,7 @@ app.get("/api/status", async (c) => {
 
   if (!connection) {
     return c.json({
-      connector: "teams",
+      connector: "salesforce",
       tenantId,
       correlationId,
       status: "not_connected",
@@ -348,14 +361,14 @@ app.get("/api/status", async (c) => {
 
   const recentSyncs = await c.env.DB.prepare(
     `SELECT id, status, created_at, completed_at
-     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'teams'
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'salesforce'
      ORDER BY created_at DESC LIMIT 10`,
   )
     .bind(tenantId)
     .all();
 
   return c.json({
-    connector: "teams",
+    connector: "salesforce",
     tenantId,
     correlationId,
     status: connection.status,
@@ -439,7 +452,7 @@ app.get("/auth/callback", async (c) => {
       .bind(
         crypto.randomUUID(),
         stateData.tenantId,
-        "teams",
+        "salesforce",
         tokens.access_token,
         tokens.refresh_token ?? null,
         new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
@@ -447,13 +460,39 @@ app.get("/auth/callback", async (c) => {
       )
       .run();
 
+    // Also store instanceUrl in config if provided by token response
+    const configId = crypto.randomUUID();
+    const config = JSON.stringify({
+      instanceUrl: tokens.instance_url,
+    });
+
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM connector_configs WHERE tenant_id = ?1 AND connector_slug = 'salesforce'",
+    )
+      .bind(stateData.tenantId)
+      .first<{ id: string }>();
+
+    if (existing) {
+      await c.env.DB.prepare(
+        "UPDATE connector_configs SET config = ?1, updated_at = datetime('now') WHERE id = ?2",
+      )
+        .bind(config, existing.id)
+        .run();
+    } else {
+      await c.env.DB.prepare(
+        "INSERT INTO connector_configs (id, tenant_id, connector_slug, config, created_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+      )
+        .bind(configId, stateData.tenantId, "salesforce", config)
+        .run();
+    }
+
     console.log(
       JSON.stringify({
         level: "info",
         correlationId,
         message: "OAuth tokens stored",
         tenantId: stateData.tenantId,
-        connector: "teams",
+        connector: "salesforce",
       }),
     );
 
@@ -475,13 +514,9 @@ app.get("/auth/callback", async (c) => {
     return c.json({ error: errorMessage, correlationId }, 500);
   }
 });
-// Teams subscription validation endpoint (first handshake)
-app.post("/webhooks/teams/notifications/validate", (c) =>
-  handleTeamsWebhookValidation(c),
-);
 
-// Receives Microsoft Graph change notifications for Teams
-app.post("/webhooks/teams/notifications", (c) => handleTeamsWebhook(c));
+// Receives Salesforce platform event notifications
+app.post("/webhooks/salesforce/events", (c) => handleSalesforceWebhook(c));
 
 export default app;
 
@@ -523,7 +558,7 @@ async function updateConnectionStatus(
       )
       .bind(
         tenantId,
-        "teams",
+        "salesforce",
         error ? "error" : "active",
         error ?? null,
         userCount,
