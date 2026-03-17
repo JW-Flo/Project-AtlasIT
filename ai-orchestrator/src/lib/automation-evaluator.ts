@@ -1,6 +1,14 @@
 /**
  * Evaluates automation rules against incoming events within the ai-orchestrator.
- * Queries tenant rules from D1 and dispatches matched actions.
+ *
+ * Automation rules and execution records live in ATLAS_SHARED_DB (the same D1
+ * database as the console-app). When evaluateAutomationRules is called it MUST
+ * receive the shared DB so that:
+ *   1. Rules are loaded from the same place the console-app creates them.
+ *   2. Execution records written here are immediately visible in the console-app's
+ *      /api/automation/executions endpoint.
+ *
+ * The `db` parameter is therefore expected to be ATLAS_SHARED_DB, not ATLAS_CORE_DB.
  */
 
 import {

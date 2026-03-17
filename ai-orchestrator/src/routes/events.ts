@@ -211,12 +211,14 @@ eventRoutes.post("/", async (c) => {
     );
   }
 
-  // Evaluate automation rules for this event (async, non-blocking)
+  // Evaluate automation rules for this event (async, non-blocking).
+  // Rules and execution records live in ATLAS_SHARED_DB (same DB as the console-app).
+  const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
   try {
     const ctx2 = c.executionCtx;
     ctx2.waitUntil(
       evaluateAutomationRules(
-        c.env.DB,
+        sharedDb,
         tenantId,
         type,
         source,
@@ -237,7 +239,7 @@ eventRoutes.post("/", async (c) => {
   } catch {
     // No ExecutionContext available (e.g. in tests) — run synchronously
     evaluateAutomationRules(
-      c.env.DB,
+      sharedDb,
       tenantId,
       type,
       source,

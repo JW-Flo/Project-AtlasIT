@@ -1,5 +1,7 @@
 export type Bindings = {
   DB: D1Database;
+  /** Shared DB where automation_rules and automation_executions live (same DB as console-app) */
+  ATLAS_SHARED_DB: D1Database;
   TASKS: KVNamespace;
   AI_QUOTA: KVNamespace;
   IDEMPOTENCY_CACHE: KVNamespace;

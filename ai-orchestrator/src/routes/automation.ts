@@ -80,8 +80,13 @@ automationRoutes.post("/evaluate", async (c) => {
 
   const { type, source, payload } = parsed.data;
 
+  // Use ATLAS_SHARED_DB so rules and execution records are in the same DB as
+  // the console-app. Fall back to DB only if the shared binding is absent
+  // (e.g. local dev without the binding configured).
+  const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+
   const result = await evaluateAutomationRules(
-    c.env.DB,
+    sharedDb,
     tenantId,
     type,
     source,
@@ -120,9 +125,11 @@ automationRoutes.get("/rules", async (c) => {
     );
   }
 
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, name, trigger_type, enabled, run_count, error_count, last_run_at, last_status FROM automation_rules WHERE tenant_id = ? ORDER BY created_at DESC",
-  )
+  const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+  const { results } = await sharedDb
+    .prepare(
+      "SELECT id, name, trigger_type, enabled, run_count, error_count, last_run_at, last_status FROM automation_rules WHERE tenant_id = ? ORDER BY created_at DESC",
+    )
     .bind(tenantId)
     .all();
 

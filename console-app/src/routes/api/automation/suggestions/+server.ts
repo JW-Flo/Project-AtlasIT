@@ -27,14 +27,15 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ suggestions: [] });
 
-  // Gather tenant state + event history + dismissed list
+  // Gather tenant state + event history + dismissed list — isolated so a
+  // single failing data source does not abort the entire response.
   const [
-    rules,
-    connectedRaw,
-    mappingsResult,
-    eventHistoryResult,
-    dismissedIds,
-  ] = await Promise.all([
+    rulesResult,
+    connectedRawResult,
+    mappingsSettled,
+    eventHistorySettled,
+    dismissedResult,
+  ] = await Promise.allSettled([
     listRules(db, tenantId),
     listConnectedApps(platform, tenantId),
     db
@@ -59,6 +60,75 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .all(),
     listDismissedSuggestions(db, tenantId),
   ]);
+
+  const warnings: string[] = [];
+
+  const rules =
+    rulesResult.status === "fulfilled"
+      ? rulesResult.value
+      : (console.error(
+          JSON.stringify({
+            source: "suggestions/rules",
+            tenantId,
+            error: String((rulesResult as PromiseRejectedResult).reason),
+          }),
+        ),
+        warnings.push("rules"),
+        []);
+
+  const connectedRaw =
+    connectedRawResult.status === "fulfilled"
+      ? connectedRawResult.value
+      : (console.error(
+          JSON.stringify({
+            source: "suggestions/connected-apps",
+            tenantId,
+            error: String((connectedRawResult as PromiseRejectedResult).reason),
+          }),
+        ),
+        warnings.push("connected-apps"),
+        []);
+
+  const mappingsResult =
+    mappingsSettled.status === "fulfilled"
+      ? mappingsSettled.value
+      : (console.error(
+          JSON.stringify({
+            source: "suggestions/group-mappings",
+            tenantId,
+            error: String((mappingsSettled as PromiseRejectedResult).reason),
+          }),
+        ),
+        warnings.push("group-mappings"),
+        { results: [] });
+
+  const eventHistoryResult =
+    eventHistorySettled.status === "fulfilled"
+      ? eventHistorySettled.value
+      : (console.error(
+          JSON.stringify({
+            source: "suggestions/event-history",
+            tenantId,
+            error: String(
+              (eventHistorySettled as PromiseRejectedResult).reason,
+            ),
+          }),
+        ),
+        warnings.push("event-history"),
+        { results: [] });
+
+  const dismissedIds =
+    dismissedResult.status === "fulfilled"
+      ? dismissedResult.value
+      : (console.error(
+          JSON.stringify({
+            source: "suggestions/dismissed",
+            tenantId,
+            error: String((dismissedResult as PromiseRejectedResult).reason),
+          }),
+        ),
+        warnings.push("dismissed"),
+        []);
 
   const connectedApps = connectedRaw.map((c) => ({
     appId: c.app_id,
@@ -95,7 +165,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     ...patternSuggestions.filter((s) => !seen.has(s.templateId)),
   ].filter((s) => !dismissedSet.has(s.templateId));
 
-  return json({ suggestions: merged });
+  const response: { suggestions: typeof merged; warnings?: string[] } = {
+    suggestions: merged,
+  };
+  if (warnings.length > 0) response.warnings = warnings;
+
+  return json(response);
 };
 
 /**
