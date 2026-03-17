@@ -48,6 +48,9 @@ jobs:
           cache: pnpm
       - name: Install deps
         run: pnpm install --frozen-lockfile
+      - name: Generate SvelteKit types
+        working-directory: console-app
+        run: npx svelte-kit sync
       - name: Build shared package
         run: pnpm run build:shared
       - name: Run unit tests
