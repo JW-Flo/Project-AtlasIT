@@ -1,84 +1,84 @@
-# AtlasIT Roadmap (High-Level)
+# AtlasIT Roadmap
 
-Status: Living document – last updated <!--DATE-->
+**Last updated:** March 2026
 
-This roadmap enumerates _unimplemented_ phases required to reach the UI/feature breadth captured in design mockups (compliance center, policy generation, risk dashboard). Production today: three Workers (onboarding, orchestrator, docs).
+This roadmap tracks implementation phases from foundation through market readiness. See `STATUS.md` for current deployment state and `CLAUDE.md` for coding standards.
 
-## Phase 1 – UI & Stub Layer
+## Phase 0 — Foundation ✅
 
-- SvelteKit (or Next.js) frontend scaffold
-- Auth placeholder (dev token)
-- Stub endpoints: compliance score, frameworks list, policy list (empty)
-- Dashboard renders without console errors
-  **Exit:** Manual smoke shows stable layout + stub JSON <50ms
+- Cloudflare Workers deployed (onboarding, orchestrator, docs)
+- D1 schemas (13 root + 8 worker migrations)
+- Shared types package with Zod schemas
+- Vitest + Miniflare test harness
+- Structured logging, error handling middleware
+- `packages/shared` with auth, middleware, platform adapters
 
-## Phase 2 – Compliance Core
+## Phase 1 — Workflow Durability + Auth Hardening ✅ (PR #139)
 
-- D1 migrations: `compliance_framework_status`, `compliance_audits`, `risk_events`
-- Cron job compute compliance composite score every 15m
-- `/compliance/score`, `/compliance/frameworks`, `/compliance/audit-timeline`
-- Basic risk event ingestion + matrix derivation
-  **Exit:** Real score persists, delta tracking working
+- Unified workflow types (shared RunState/StepState)
+- EvidenceEmitter wired into WorkflowDO (R2-backed)
+- Queue dispatch via QueueBus (Cloudflare Queues)
+- Dead letter queue integration (DLQ + replay)
+- D1-backed RBAC (console_user_roles table, unknown users → viewer)
+- Shared auth middleware enforced on core-api and ai-orchestrator
+- Dev bypass validation script
 
-## Phase 3 – Policy Engine
+## Phase 2 — MCP Orchestration ✅ (PR #140)
 
-- Tenant profile model (industry, size, requirements)
-- Template library (Markdown with tokens)
-- Generation endpoint writes versioned policies to KV + index rows
-- Customization patch endpoint with diff guardrails
-  **Exit:** Generate 5 canonical policies for a tenant in <2s
+- Compensation dispatch (queued via QueueBus, not instant)
+- Per-step timeout tracking with stepDeadline
+- Compensation failure escalation to DLQ
+- Slack notification MCP agent (event → Slack webhook)
+- Inbound HMAC signature verification on event ingestion
+- E2E orchestration integration tests (event → agent → workflow)
 
-## Phase 4 – Directory & Lifecycle (JML)
+## Phase 3 — Marketplace & Integrations ✅ (Pre-existing)
 
-- Okta sync (users, groups) cached in D1
-- Lifecycle workflow triggers via orchestrator (joiner/mover/leaver events -> tasks)
-- Metrics: active users, pending access requests
-  **Exit:** New Okta user visible in dashboard <2m
+- Marketplace API (GET /apps, POST /install, DELETE /uninstall)
+- Connector schema package with Zod validation
+- Adapter generator pipeline (research → scaffold → compile)
+- Google Workspace connector (OAuth 2.0, user/group sync)
+- Okta connector (directory sync + webhook events)
+- Marketplace UI (SvelteKit: catalog, install, configure)
+- Credential vault (AES-GCM envelope encryption)
+- Feature flag system (KV-backed, rollout %, tenant overrides, kill switches)
+- E2E connector install flow test
 
-## Phase 5 – Reporting & Export
+## Phase 4 — Hardening & Production ✅ (PR #141)
 
-- Report assembler (compliance + risk + policies snapshot)
-- Export formats: Markdown first, PDF second (wkhtmltopdf or API service)
-- Signed download URLs (short-lived HMAC token)
-  **Exit:** Downloaded report hash logged & verifiable
+- Okta SCIM 2.0 provisioning endpoints (Users + Groups CRUD, filter parsing)
+- k6 load testing scripts (smoke/load/stress/soak for 3 services)
+- IaC drift detection (OPA/Conftest policies, GH Actions workflow)
+- OIDC exchange worker hardened (GitHub JWT validation, rate limiting, repo allowlists)
+- CF Workers-native observability (W3C traceparent tracer, Analytics Engine metrics)
+- Rate limiting middleware (KV-backed, per-endpoint)
+- Security headers middleware (CSP, HSTS, X-Frame-Options)
 
-## Phase 6 – Hardening & Observability
+## Phase 5 — Operational Readiness (Next)
 
-- Structured logs + correlation id
-- Rate limiting tiers (public vs internal)
-- Metrics endpoint (/metrics) w/ counters & p95 latency gauge
-- Security pipeline: dependency audit + simple Semgrep rules gating
-  **Exit:** p95 <75ms; 0 high vulnerabilities; comprehensive request logging
+- [ ] Production deployment of all workers with env promotion
+- [ ] API key rotation automation
+- [ ] Penetration testing (OWASP top 10)
+- [ ] Production deployment runbook and incident response
+- [ ] Custom domain DNS configuration
+- [ ] Workers Paid plan upgrade for queue bindings
 
-## Future (Out-of-Scope for Current Plan)
+## Phase 6 — Market Readiness (Future)
 
-- Marketplace (integration templates)
-- LLM-backed policy refinement with redline diff validation
-- Real-time risk anomaly detection
-- Multi-tenant billing / usage metering
-- Plugin API for third-party compliance packs
+- [ ] Multi-tenant billing and usage metering
+- [ ] LLM-backed policy refinement with redline diff
+- [ ] Real-time risk anomaly detection
+- [ ] Plugin API for third-party compliance packs
+- [ ] Advanced analytics and reporting
 
 ## Cross-Cutting Concerns
 
-| Concern          | Strategy                                                               |
-| ---------------- | ---------------------------------------------------------------------- |
-| Schema Evolution | Versioned D1 migrations + idempotent backfills                         |
-| Secrets          | Cloudflare secrets + rotated per environment; no plaintext commits     |
-| Config           | Central `config.ts` with environment gating; no inline magic constants |
-| Performance      | Precompute heavy aggregates (score, matrix) into KV snapshot           |
-| Rollback         | Keep prior worker names active for 1 deploy window when renaming       |
-
-## Status Matrix
-
-| Phase | State       | Notes                                              |
-| ----- | ----------- | -------------------------------------------------- |
-| 1     | NOT STARTED | Awaiting framework decision                        |
-| 2     | NOT STARTED | Depends on Phase 1 endpoints contract              |
-| 3     | NOT STARTED | Template authoring blocked until Phase 1 UI slots  |
-| 4     | NOT STARTED | Requires Okta app credentials & sync window design |
-| 5     | NOT STARTED | Waits on stable compliance + policy datasets       |
-| 6     | NOT STARTED | Metrics scaffolding delayed until real traffic     |
-
----
-
-Track changes via PRs labeled `roadmap` and link deliverables to this file.
+| Concern | Strategy |
+|---------|----------|
+| Schema Evolution | Versioned D1 migrations + idempotent backfills |
+| Secrets | 1Password (vault: AWW_SHARED) + wrangler secret put |
+| Config | Environment gating via wrangler.toml [env.*] sections |
+| Performance | Precompute aggregates into KV; Queues for heavy ops |
+| Testing | Vitest + Miniflare; 356 tests (49 files) |
+| Observability | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
+| IaC | Terraform + OPA policies + daily drift detection |
