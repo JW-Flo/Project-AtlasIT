@@ -1,10 +1,14 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
-import { validateConfig, applyDefaults } from "./config.js";
-import { authMiddleware } from "./auth.js";
+import { validateConfig } from "./config.js";
+import {
+  authMiddleware,
+  getAuthorizationUrl,
+  exchangeCodeForToken,
+} from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
-import { handleDatadogWebhook } from "./webhooks.js";
+import { handleMondayWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -64,21 +68,17 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
-    service: "datadog",
+    service: "monday",
     connector: {
-      id: "datadog",
-      name: "Datadog",
-      provider: "Datadog",
-      capabilities: [
-        "user-provisioning",
-        "user-deprovisioning",
-        "group-management",
-      ],
+      id: "monday",
+      name: "Monday.com",
+      provider: "Monday.com",
+      capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
     },
   });
 });
 
-// Webhook receiver from orchestrator
+// Webhook receiver from orchestrator (internal)
 app.post("/webhook", async (c) => {
   const correlationId = c.get("correlationId");
   const signature = c.req.header("X-Signature");
@@ -153,7 +153,7 @@ app.post("/api/sync", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(syncId, body.tenantId, "datadog", "running", new Date().toISOString())
+    .bind(syncId, body.tenantId, "monday", "running", new Date().toISOString())
     .run();
 
   console.log(
@@ -163,14 +163,20 @@ app.post("/api/sync", async (c) => {
       syncId,
       message: "Sync triggered",
       tenantId: body.tenantId,
-      connector: "datadog",
+      connector: "monday",
     }),
   );
 
-  // Retrieve stored API keys for this tenant
-  const apiKey = c.env.DATADOG_API_KEY;
-  const appKey = c.env.DATADOG_APP_KEY;
-  if (!apiKey || !appKey) {
+  // Retrieve stored OAuth token for this tenant
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'monday'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
     await c.env.DB.prepare(
       "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
     )
@@ -178,17 +184,17 @@ app.post("/api/sync", async (c) => {
       .run();
     return c.json(
       {
-        error: "Datadog API keys not configured",
+        error: "No OAuth token found for tenant. Authorize first.",
         correlationId,
       },
       400,
     );
   }
 
-  // Retrieve config
+  // Retrieve connector config (optional for Monday.com)
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
-     WHERE tenant_id = ?1 AND connector_slug = 'datadog' LIMIT 1`,
+     WHERE tenant_id = ?1 AND connector_slug = 'monday' LIMIT 1`,
   )
     .bind(body.tenantId)
     .first<{ config: string }>();
@@ -204,8 +210,6 @@ app.post("/api/sync", async (c) => {
     );
   }
 
-  applyDefaults(config as unknown as Record<string, unknown>);
-
   try {
     const scope = body.scope ?? "all";
 
@@ -213,11 +217,19 @@ app.post("/api/sync", async (c) => {
     let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
 
     if (scope === "all" || scope === "users") {
-      userResult = await syncUsers(apiKey, appKey, c.env.DB, body.tenantId);
+      userResult = await syncUsers(
+        tokenRow.access_token,
+        c.env.DB,
+        body.tenantId,
+      );
     }
 
     if (scope === "all" || scope === "groups") {
-      groupResult = await syncGroups(apiKey, appKey, c.env.DB, body.tenantId);
+      groupResult = await syncGroups(
+        tokenRow.access_token,
+        c.env.DB,
+        body.tenantId,
+      );
     }
 
     // Update connection status
@@ -306,7 +318,7 @@ app.get("/api/status", async (c) => {
 
   if (!connection) {
     return c.json({
-      connector: "datadog",
+      connector: "monday",
       tenantId,
       correlationId,
       status: "not_connected",
@@ -318,14 +330,14 @@ app.get("/api/status", async (c) => {
 
   const recentSyncs = await c.env.DB.prepare(
     `SELECT id, status, created_at, completed_at
-     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'datadog'
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'monday'
      ORDER BY created_at DESC LIMIT 10`,
   )
     .bind(tenantId)
     .all();
 
   return c.json({
-    connector: "datadog",
+    connector: "monday",
     tenantId,
     correlationId,
     status: connection.status,
@@ -337,8 +349,118 @@ app.get("/api/status", async (c) => {
   });
 });
 
-// Webhook handler (not supported for Datadog)
-app.post("/webhooks/datadog/events", (c) => handleDatadogWebhook(c));
+// OAuth2 authorization redirect
+app.get("/auth/authorize", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.query("tenantId");
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId query parameter is required", correlationId },
+      400,
+    );
+  }
+
+  const state = btoa(JSON.stringify({ tenantId, correlationId }));
+  const url = getAuthorizationUrl(
+    c.env as unknown as Record<string, string>,
+    state,
+  );
+
+  return c.redirect(url);
+});
+
+// OAuth2 callback
+app.get("/auth/callback", async (c) => {
+  const correlationId = c.get("correlationId");
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const error = c.req.query("error");
+
+  if (error) {
+    const errorDescription =
+      c.req.query("error_description") ?? "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        message: "OAuth callback error",
+        error,
+        errorDescription,
+      }),
+    );
+    return c.json({ error, errorDescription, correlationId }, 400);
+  }
+
+  if (!code || !state) {
+    return c.json(
+      { error: "Missing code or state parameter", correlationId },
+      400,
+    );
+  }
+
+  let stateData: { tenantId: string; correlationId: string };
+  try {
+    stateData = JSON.parse(atob(state)) as {
+      tenantId: string;
+      correlationId: string;
+    };
+  } catch {
+    return c.json({ error: "Invalid state parameter", correlationId }, 400);
+  }
+
+  try {
+    const tokens = await exchangeCodeForToken(
+      c.env as unknown as Record<string, string>,
+      code,
+    );
+
+    await c.env.DB.prepare(
+      `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        stateData.tenantId,
+        "monday",
+        tokens.access_token,
+        tokens.refresh_token ?? null,
+        new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+        new Date().toISOString(),
+      )
+      .run();
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        message: "OAuth tokens stored",
+        tenantId: stateData.tenantId,
+        connector: "monday",
+      }),
+    );
+
+    return c.json({
+      status: "authorized",
+      tenantId: stateData.tenantId,
+      correlationId,
+    });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        message: "Token exchange failed",
+        error: errorMessage,
+      }),
+    );
+    return c.json({ error: errorMessage, correlationId }, 500);
+  }
+});
+
+// Monday.com webhook receiver
+app.post("/webhooks/monday/events", (c) => handleMondayWebhook(c));
 
 export default app;
 
@@ -380,7 +502,7 @@ async function updateConnectionStatus(
       )
       .bind(
         tenantId,
-        "datadog",
+        "monday",
         error ? "error" : "active",
         error ?? null,
         userCount,

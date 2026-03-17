@@ -5,12 +5,11 @@ interface TokenResponse {
   refresh_token?: string;
   expires_in: number;
   token_type: string;
-  x_refresh_token_expires_in?: number;
 }
 
-const AUTHORIZATION_URL = "https://appcenter.intuit.com/connect/oauth2";
-const TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
-const SCOPES = ["com.intuit.quickbooks.accounting"];
+const AUTHORIZATION_URL = "https://auth.monday.com/oauth2/authorize";
+const TOKEN_URL = "https://auth.monday.com/oauth2/token";
+const SCOPES = ["users:read", "teams:read"];
 const PKCE_ENABLED = false;
 
 export async function authMiddleware(
@@ -24,31 +23,12 @@ export async function authMiddleware(
   await next();
 }
 
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return btoa(String.fromCharCode(...array))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 export function getAuthorizationUrl(
   env: Record<string, string>,
   state: string,
 ): string {
   const params = new URLSearchParams({
-    client_id: env.QUICKBOOKS_CLIENT_ID,
+    client_id: env.MONDAY_CLIENT_ID,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     response_type: "code",
     scope: SCOPES.join(" "),
@@ -56,7 +36,6 @@ export function getAuthorizationUrl(
   });
 
   if (PKCE_ENABLED) {
-    // In production, generate and store code_verifier per request
     params.set("code_challenge_method", "S256");
   }
 
@@ -66,19 +45,14 @@ export function getAuthorizationUrl(
 export async function exchangeCodeForToken(
   env: Record<string, string>,
   code: string,
-  codeVerifier?: string,
 ): Promise<TokenResponse> {
   const body: Record<string, string> = {
     grant_type: "authorization_code",
-    client_id: env.QUICKBOOKS_CLIENT_ID,
-    client_secret: env.QUICKBOOKS_CLIENT_SECRET,
+    client_id: env.MONDAY_CLIENT_ID,
+    client_secret: env.MONDAY_CLIENT_SECRET,
     redirect_uri: env.OAUTH2_REDIRECT_URI,
     code,
   };
-
-  if (PKCE_ENABLED && codeVerifier) {
-    body.code_verifier = codeVerifier;
-  }
 
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -103,8 +77,8 @@ export async function refreshAccessToken(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: env.QUICKBOOKS_CLIENT_ID,
-      client_secret: env.QUICKBOOKS_CLIENT_SECRET,
+      client_id: env.MONDAY_CLIENT_ID,
+      client_secret: env.MONDAY_CLIENT_SECRET,
       refresh_token: refreshToken,
     }).toString(),
   });
