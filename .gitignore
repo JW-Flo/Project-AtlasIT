@@ -108,3 +108,8 @@ docs/cloudflare/compiled.js.map
 docs/cloudflare/output.log
 .env
 packages/shared/dist/
+
+# Vendored reference docs — ignore lockfiles to prevent Dependabot noise
+docs/**/package-lock.json
+docs/**/uv.lock
+context/**/package-lock.json
