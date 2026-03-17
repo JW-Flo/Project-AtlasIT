@@ -1,0 +1,24 @@
+name = "atlasit-adapter-dropbox"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+ADAPTER_NAME = "dropbox"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+OAUTH2_REDIRECT_URI = "https://adapter-dropbox.atlasit.pro/auth/callback"
+
+# Secrets (set via wrangler secret put):
+# ADAPTER_SECRET - HMAC secret for inter-service webhook verification
+# DROPBOX_CLIENT_ID - OAuth2 client ID
+# DROPBOX_CLIENT_SECRET - OAuth2 client secret
+# DROPBOX_WEBHOOK_SECRET - Webhook signature secret
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas-shared-db"
+database_id = "" # Set per environment
+
+[observability.logs]
+enabled = true

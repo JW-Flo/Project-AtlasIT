@@ -103,7 +103,18 @@ app.post("/webhook", async (c) => {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  if (signature !== expectedSig) {
+  // Timing-safe comparison
+  const sigMatch =
+    signature.length === expectedSig.length &&
+    (() => {
+      let mismatch = 0;
+      for (let i = 0; i < signature.length; i++) {
+        mismatch |= signature.charCodeAt(i) ^ expectedSig.charCodeAt(i);
+      }
+      return mismatch === 0;
+    })();
+
+  if (!sigMatch) {
     console.error(
       JSON.stringify({
         level: "error",

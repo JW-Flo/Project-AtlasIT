@@ -282,6 +282,105 @@ export const DEFAULT_APPS = [
     description:
       "Manage organization members and team assignments via GitHub REST API",
   },
+  // CRM / Sales
+  {
+    name: "Salesforce",
+    slug: "salesforce",
+    category: "identity",
+    provider: "Salesforce",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description:
+      "Manage Salesforce users and permission sets via REST API and SCIM",
+  },
+  {
+    name: "HubSpot",
+    slug: "hubspot",
+    category: "identity",
+    provider: "HubSpot",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description: "Manage HubSpot users and team assignments via Settings API",
+  },
+  // File Storage
+  {
+    name: "Dropbox Business",
+    slug: "dropbox",
+    category: "identity",
+    provider: "Dropbox",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description: "Manage Dropbox Business team members and groups via Team API",
+  },
+  // Wiki / Knowledge
+  {
+    name: "Notion",
+    slug: "notion",
+    category: "identity",
+    provider: "Notion",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "group-sync"],
+    description: "Manage Notion workspace members and permissions via API",
+  },
+  // Helpdesk
+  {
+    name: "Zendesk",
+    slug: "zendesk",
+    category: "identity",
+    provider: "Zendesk",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description: "Manage Zendesk agents and group assignments via REST API",
+  },
+  // Project Management
+  {
+    name: "Asana",
+    slug: "asana",
+    category: "identity",
+    provider: "Asana",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "group-sync"],
+    description:
+      "Manage Asana workspace members and team assignments via REST API",
+  },
+  {
+    name: "Monday.com",
+    slug: "monday",
+    category: "identity",
+    provider: "Monday.com",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description: "Manage Monday.com users and teams via GraphQL API",
+  },
+  // Document Signing
+  {
+    name: "DocuSign",
+    slug: "docusign",
+    category: "identity",
+    provider: "DocuSign",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning"],
+    description: "Manage DocuSign users and account access via Admin API",
+  },
+  // Design
+  {
+    name: "Figma",
+    slug: "figma",
+    category: "identity",
+    provider: "Figma",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    description: "Manage Figma organization members and teams via REST API",
+  },
+  {
+    name: "Canva",
+    slug: "canva",
+    category: "identity",
+    provider: "Canva",
+    auth_model: "oauth2",
+    capabilities: ["user-provisioning", "group-sync"],
+    description: "Manage Canva team members and access via REST API",
+  },
 ] as const;
 
 export async function seedDefaultApps(db: D1Database): Promise<number> {

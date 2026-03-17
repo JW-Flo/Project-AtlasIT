@@ -7,6 +7,29 @@ import type {
 
 const API_BASE = "https://graph.microsoft.com/v1.0";
 
+function parseRateLimit(headers: Headers): {
+  remaining: number;
+  resetMs: number;
+} {
+  const remaining = parseInt(
+    headers.get("RateLimit-Remaining") ??
+      headers.get("x-ratelimit-remaining") ??
+      "100",
+    10,
+  );
+  const retryAfter = parseInt(headers.get("Retry-After") ?? "0", 10);
+  return { remaining, resetMs: retryAfter * 1000 };
+}
+
+async function waitForRateLimit(rateLimit: {
+  remaining: number;
+  resetMs: number;
+}): Promise<void> {
+  if (rateLimit.remaining > 1) return;
+  const delay = Math.max(rateLimit.resetMs, 1000);
+  await new Promise((resolve) => setTimeout(resolve, delay));
+}
+
 async function graphFetch<T>(
   url: string,
   accessToken: string,
@@ -25,10 +48,22 @@ async function graphFetch<T>(
 
   const response = await fetch(url, init);
 
+  if (response.status === 429) {
+    const rateLimit = parseRateLimit(response.headers);
+    await waitForRateLimit({
+      remaining: 0,
+      resetMs: rateLimit.resetMs || 5000,
+    });
+    return graphFetch<T>(url, accessToken, method, body);
+  }
+
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "Unknown error");
     throw new Error(`Graph API error (${response.status}): ${errorBody}`);
   }
+
+  const rateLimit = parseRateLimit(response.headers);
+  await waitForRateLimit(rateLimit);
 
   // Some endpoints return 204 No Content
   if (response.status === 204) {

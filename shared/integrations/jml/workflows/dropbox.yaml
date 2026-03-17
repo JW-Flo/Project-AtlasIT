@@ -1,0 +1,33 @@
+id: dropbox
+name: Dropbox Business JML Workflow
+description: Joiner/Mover/Leaver workflow for Dropbox Business via Team API
+
+joiner:
+  steps:
+    - action: api.addTeamMember
+      params:
+        email: "{{ user.email }}"
+        firstName: "{{ user.firstName }}"
+        lastName: "{{ user.lastName }}"
+        role: "{{ config.defaultRole | default: 'member_only' }}"
+    - action: api.addToGroup
+      params:
+        groupId: "{{ config.defaultGroupId }}"
+        memberId: "{{ steps[0].result.teamMemberId }}"
+      condition: "{{ config.defaultGroupId }}"
+
+mover:
+  steps:
+    - action: api.setMemberRole
+      params:
+        teamMemberId: "{{ user.externalId }}"
+        newRole: "{{ user.role }}"
+
+leaver:
+  steps:
+    - action: api.suspendMember
+      params:
+        teamMemberId: "{{ user.externalId }}"
+    - action: api.removeFromAllGroups
+      params:
+        teamMemberId: "{{ user.externalId }}"

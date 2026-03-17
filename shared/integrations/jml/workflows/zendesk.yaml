@@ -1,0 +1,31 @@
+id: zendesk
+name: Zendesk JML Workflow
+description: Joiner/Mover/Leaver workflow for Zendesk via REST API
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        subdomain: "{{ config.subdomain }}"
+        name: "{{ user.displayName }}"
+        email: "{{ user.email }}"
+        role: "{{ config.defaultRole | default: 'agent' }}"
+    - action: api.addToOrganization
+      params:
+        organizationId: "{{ config.defaultOrganizationId }}"
+        userId: "{{ steps[0].result.id }}"
+      condition: "{{ config.defaultOrganizationId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        role: "{{ user.role }}"
+        organizationId: "{{ user.organizationId }}"
+
+leaver:
+  steps:
+    - action: api.suspendUser
+      params:
+        userId: "{{ user.externalId }}"

@@ -33,7 +33,7 @@ export async function syncUsers(
       .prepare(
         `INSERT OR REPLACE INTO directory_users
          (id, tenant_id, external_id, email, display_name, department, title, status, raw_attributes, updated_at)
-         VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+         VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       )
       .bind(
         existing?.id ?? null,
