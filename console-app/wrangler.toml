@@ -52,6 +52,7 @@ COMPLIANCE_BASE = "https://compliance.atlasit.pro/api/compliance"
 CORE_API_BASE = "https://api.atlasit.pro"
 DISPATCH_BASE = "https://dispatch.atlasit.pro"
 ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 # Auth: Cloudflare Access JWT validation (required in production)
 # CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
 # CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)

@@ -69,6 +69,11 @@ bucket_name = "atlasit-evidence"
 [vars]
 AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
+SELF_URL = "https://ai-orchestrator.atlasit.workers.dev"
+ADAPTER_URLS = "{}"   # Override per-env with real adapter URLs
+
+[triggers]
+crons = ["*/5 * * * *"]
 
 [observability.logs]
 enabled = true
@@ -98,6 +103,3 @@ AI_FALLBACKS = "groq,together,cloudflare"
 # Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
 # GROQ_API_KEY — Groq API key for AtlasIT Agent Mesh
 
-# Temporarily disable cron trigger to avoid exceeding free plan limit (5). Re-enable when consolidating other workers.
-# [triggers]
-# crons = ["*/5 * * * *"] 

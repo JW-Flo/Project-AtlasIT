@@ -15,6 +15,10 @@ export type Bindings = {
   EVENT_SOURCE_SECRETS?: string;
   /** When "true", reject events without a valid X-Signature header */
   REQUIRE_EVENT_SIGNATURES?: string;
+  /** JSON map of appId → adapter worker base URL for action dispatch */
+  ADAPTER_URLS?: string;
+  /** Base URL of this worker, used for self-referential event bus calls */
+  SELF_URL?: string;
 };
 
 export type Variables = {
