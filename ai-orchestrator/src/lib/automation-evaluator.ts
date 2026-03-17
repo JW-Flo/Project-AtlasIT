@@ -223,9 +223,9 @@ function rowToRule(row: Record<string, unknown>): AutomationRule {
     description: (row.description as string) ?? undefined,
     enabled: !!row.enabled,
     triggerType: row.trigger_type as AutomationRule["triggerType"],
-    triggerConfig: JSON.parse((row.trigger_config as string) || "{}"),
-    conditions: JSON.parse((row.conditions as string) || "[]"),
-    actions: JSON.parse((row.actions as string) || "[]"),
+    triggerConfig: safeJsonParse(row.trigger_config as string, {}),
+    conditions: safeJsonParse(row.conditions as string, []),
+    actions: safeJsonParse(row.actions as string, []),
     lastRunAt: (row.last_run_at as string) ?? undefined,
     lastStatus: (row.last_status as AutomationRule["lastStatus"]) ?? undefined,
     runCount: (row.run_count as number) ?? 0,
@@ -234,4 +234,13 @@ function rowToRule(row: Record<string, unknown>): AutomationRule {
     updatedAt: row.updated_at as string,
     createdBy: (row.created_by as string) ?? undefined,
   };
+}
+
+function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 }

@@ -13,6 +13,29 @@ const EvaluateSchema = z.object({
 export const automationRoutes = new Hono<AppEnv>();
 
 /**
+ * Resolve and validate tenantId from authenticated context.
+ * The authenticated tenantId (set by auth middleware) takes precedence;
+ * query param is only used as a fallback when no auth context exists.
+ * If both exist, they must match to prevent cross-tenant access.
+ */
+function resolvetenantId(
+  authTenantId: string | undefined,
+  queryTenantId: string | undefined,
+): { tenantId: string | null; error?: string } {
+  if (authTenantId && queryTenantId && authTenantId !== queryTenantId) {
+    return {
+      tenantId: null,
+      error:
+        "Tenant mismatch: query tenantId does not match authenticated tenant",
+    };
+  }
+  const tenantId = authTenantId ?? queryTenantId;
+  return tenantId
+    ? { tenantId }
+    : { tenantId: null, error: "Tenant context required" };
+}
+
+/**
  * POST /api/v1/automation/evaluate
  * Explicitly evaluate automation rules against an event.
  * Used by adapters and workers that want to trigger automation
@@ -36,7 +59,26 @@ automationRoutes.post("/evaluate", async (c) => {
     );
   }
 
-  const { tenantId, type, source, payload } = parsed.data;
+  // Enforce tenant isolation: authenticated tenant must match request
+  const authTenantId = c.get("tenantId");
+  const { tenantId, error } = resolvetenantId(
+    authTenantId,
+    parsed.data.tenantId,
+  );
+  if (!tenantId) {
+    return c.json(
+      {
+        status: "error",
+        code: "FORBIDDEN",
+        message: error,
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      403,
+    );
+  }
+
+  const { type, source, payload } = parsed.data;
 
   const result = await evaluateAutomationRules(
     c.env.DB,
@@ -57,20 +99,24 @@ automationRoutes.post("/evaluate", async (c) => {
 
 /**
  * GET /api/v1/automation/rules
- * List automation rules for a tenant (read-only view from orchestrator).
+ * List automation rules for the authenticated tenant.
  */
 automationRoutes.get("/rules", async (c) => {
-  const tenantId = c.req.query("tenantId") ?? c.get("tenantId");
+  const authTenantId = c.get("tenantId");
+  const { tenantId, error } = resolvetenantId(
+    authTenantId,
+    c.req.query("tenantId"),
+  );
   if (!tenantId) {
     return c.json(
       {
         status: "error",
-        code: "MISSING_TENANT",
-        message: "tenantId query parameter required",
+        code: authTenantId ? "FORBIDDEN" : "MISSING_TENANT",
+        message: error,
         correlationId: c.get("correlationId"),
         timestamp: new Date().toISOString(),
       },
-      400,
+      authTenantId ? 403 : 400,
     );
   }
 
@@ -89,21 +135,25 @@ automationRoutes.get("/rules", async (c) => {
 });
 
 /**
- * GET /api/v1/automation/stats?tenantId=...
+ * GET /api/v1/automation/stats
  * Get per-tenant automation execution stats from the Durable Object.
  */
 automationRoutes.get("/stats", async (c) => {
-  const tenantId = c.req.query("tenantId") ?? c.get("tenantId");
+  const authTenantId = c.get("tenantId");
+  const { tenantId, error } = resolvetenantId(
+    authTenantId,
+    c.req.query("tenantId"),
+  );
   if (!tenantId) {
     return c.json(
       {
         status: "error",
-        code: "MISSING_TENANT",
-        message: "tenantId query parameter required",
+        code: authTenantId ? "FORBIDDEN" : "MISSING_TENANT",
+        message: error,
         correlationId: c.get("correlationId"),
         timestamp: new Date().toISOString(),
       },
-      400,
+      authTenantId ? 403 : 400,
     );
   }
 
