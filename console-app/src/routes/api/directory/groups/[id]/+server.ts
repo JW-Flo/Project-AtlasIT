@@ -100,9 +100,9 @@ export const PATCH: RequestHandler = async ({
 
   const updated = await db
     .prepare(
-      `SELECT id, external_id, name, description, created_at, updated_at FROM directory_groups WHERE id = ?`,
+      `SELECT id, external_id, name, description, created_at, updated_at FROM directory_groups WHERE id = ? AND tenant_id = ?`,
     )
-    .bind(id)
+    .bind(id, tenantId)
     .first();
 
   await writeAudit(db, {

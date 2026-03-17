@@ -88,6 +88,12 @@ export const PATCH: RequestHandler = async ({
     binds.push(title);
   }
   if (status !== undefined) {
+    const allowed = ["active", "inactive", "suspended"];
+    if (!allowed.includes(status))
+      return json(
+        { error: `Invalid status. Must be one of: ${allowed.join(", ")}` },
+        { status: 400 },
+      );
     fields.push("status = ?");
     binds.push(status);
   }
@@ -108,9 +114,9 @@ export const PATCH: RequestHandler = async ({
   const updated = await db
     .prepare(
       `SELECT id, external_id, email, display_name, department, title, status, source, console_user_id, created_at, updated_at
-       FROM directory_users WHERE id = ?`,
+       FROM directory_users WHERE id = ? AND tenant_id = ?`,
     )
-    .bind(id)
+    .bind(id, tenantId)
     .first();
 
   await writeAudit(db, {
