@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import type { Bindings } from "./types.js";
 import {
-  getClientCredentialsToken,
+  getAuthorizationUrl,
+  exchangeCodeForTokens,
   refreshAccessToken,
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
-import { verifyAuth0LogStreamingSignature } from "./webhooks.js";
+import { verifyZendeskWebhookSignature } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -19,8 +20,115 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "0.1.0",
-    service: "auth0-connector",
+    service: "zendesk-connector",
   });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth2 — initiate
+// ---------------------------------------------------------------------------
+app.get("/auth/authorize", (c) => {
+  const tenantId = c.req.query("tenantId");
+  const subdomain = c.req.query("subdomain");
+
+  if (!tenantId || !subdomain) {
+    return c.json(
+      { error: "Missing tenantId or subdomain query parameter" },
+      400,
+    );
+  }
+
+  const redirectUri = new URL("/auth/callback", c.req.url).toString();
+  const state = btoa(JSON.stringify({ tenantId, subdomain }));
+
+  const url = getAuthorizationUrl(
+    subdomain,
+    c.env.ZENDESK_CLIENT_ID,
+    redirectUri,
+    state,
+  );
+
+  return c.redirect(url);
+});
+
+// ---------------------------------------------------------------------------
+// OAuth2 — callback
+// ---------------------------------------------------------------------------
+app.get("/auth/callback", async (c) => {
+  const code = c.req.query("code");
+  const stateRaw = c.req.query("state");
+  const errorParam = c.req.query("error");
+
+  if (errorParam) {
+    return c.json({ error: `OAuth denied: ${errorParam}` }, 400);
+  }
+
+  if (!code || !stateRaw) {
+    return c.json({ error: "Missing code or state" }, 400);
+  }
+
+  let tenantId: string;
+  let subdomain: string;
+  try {
+    const parsed = JSON.parse(atob(stateRaw)) as {
+      tenantId: string;
+      subdomain: string;
+    };
+    tenantId = parsed.tenantId;
+    subdomain = parsed.subdomain;
+  } catch {
+    return c.json({ error: "Invalid state parameter" }, 400);
+  }
+
+  const redirectUri = new URL("/auth/callback", c.req.url).toString();
+
+  const tokens = await exchangeCodeForTokens(
+    subdomain,
+    c.env.ZENDESK_CLIENT_ID,
+    c.env.ZENDESK_CLIENT_SECRET,
+    code,
+    redirectUri,
+  );
+
+  // Encrypt tokens before storing
+  const encryptedAccess = await encryptValue(
+    tokens.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+  const encryptedRefresh = tokens.refresh_token
+    ? await encryptValue(tokens.refresh_token, c.env.CRED_ENCRYPTION_KEY)
+    : null;
+
+  const expiresAt = new Date(
+    Date.now() + tokens.expires_in * 1000,
+  ).toISOString();
+
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO app_oauth_tokens
+     (id, tenant_id, app_id, access_token, refresh_token, token_type, expires_at, scope, raw_response, updated_at)
+     VALUES (
+       COALESCE(
+         (SELECT id FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?),
+         lower(hex(randomblob(16)))
+       ),
+       ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+     )`,
+  )
+    .bind(
+      tenantId,
+      "zendesk",
+      tenantId,
+      "zendesk",
+      encryptedAccess,
+      encryptedRefresh,
+      tokens.token_type,
+      expiresAt,
+      tokens.scope,
+      JSON.stringify({ expires_in: tokens.expires_in }),
+    )
+    .run();
+
+  return c.json({ status: "connected", tenantId });
 });
 
 // ---------------------------------------------------------------------------
@@ -29,12 +137,12 @@ app.get("/health", (c) => {
 app.post("/api/sync", async (c) => {
   const body = await c.req.json<{
     tenantId: string;
-    domain: string;
+    subdomain: string;
   }>();
-  const { tenantId, domain } = body;
+  const { tenantId, subdomain } = body;
 
-  if (!tenantId || !domain) {
-    return c.json({ error: "Missing tenantId or domain" }, 400);
+  if (!tenantId || !subdomain) {
+    return c.json({ error: "Missing tenantId or subdomain" }, 400);
   }
 
   const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
@@ -43,7 +151,7 @@ app.post("/api/sync", async (c) => {
   const tokenRow = await c.env.DB.prepare(
     "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
   )
-    .bind(tenantId, "auth0")
+    .bind(tenantId, "zendesk")
     .first<{
       access_token: string;
       refresh_token: string | null;
@@ -52,7 +160,7 @@ app.post("/api/sync", async (c) => {
 
   if (!tokenRow) {
     return c.json(
-      { error: "No OAuth tokens found — configure Auth0 domain and credentials first" },
+      { error: "No OAuth tokens found — connect first via /auth/authorize" },
       401,
     );
   }
@@ -78,9 +186,9 @@ app.post("/api/sync", async (c) => {
     );
 
     const refreshed = await refreshAccessToken(
-      domain,
-      c.env.AUTH0_CLIENT_ID,
-      c.env.AUTH0_CLIENT_SECRET,
+      subdomain,
+      c.env.ZENDESK_CLIENT_ID,
+      c.env.ZENDESK_CLIENT_SECRET,
       refreshToken,
     );
 
@@ -98,7 +206,7 @@ app.post("/api/sync", async (c) => {
        SET access_token = ?, expires_at = ?, updated_at = datetime('now')
        WHERE tenant_id = ? AND app_id = ?`,
     )
-      .bind(encryptedNewAccess, newExpiresAt, tenantId, "auth0")
+      .bind(encryptedNewAccess, newExpiresAt, tenantId, "zendesk")
       .run();
   }
 
@@ -111,17 +219,22 @@ app.post("/api/sync", async (c) => {
          (SELECT id FROM directory_connections WHERE tenant_id = ?),
          lower(hex(randomblob(16)))
        ),
-       ?, 'auth0', 'syncing', datetime('now')
+       ?, 'zendesk', 'syncing', datetime('now')
      )`,
   )
     .bind(tenantId, tenantId)
     .run();
 
   try {
-    const userResult = await syncUsers(accessToken, domain, c.env.DB, tenantId);
+    const userResult = await syncUsers(
+      accessToken,
+      subdomain,
+      c.env.DB,
+      tenantId,
+    );
     const groupResult = await syncGroups(
       accessToken,
-      domain,
+      subdomain,
       c.env.DB,
       tenantId,
     );
@@ -141,7 +254,7 @@ app.post("/api/sync", async (c) => {
       orchestratorUrl: c.env.ORCHESTRATOR_URL,
       tenantId,
       type: "directory.synced",
-      source: "auth0",
+      source: "zendesk",
       payload: { users: userResult, groups: groupResult },
       correlationId,
     });
@@ -217,89 +330,13 @@ app.get("/api/status", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// OAuth2 — initiate M2M flow
+// Webhooks — Zendesk
 // ---------------------------------------------------------------------------
-app.post("/api/connect", async (c) => {
-  const body = await c.req.json<{
-    tenantId: string;
-    domain: string;
-  }>();
-  const { tenantId, domain } = body;
-
-  if (!tenantId || !domain) {
-    return c.json({ error: "Missing tenantId or domain" }, 400);
-  }
-
-  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
-
-  try {
-    const tokens = await getClientCredentialsToken(
-      domain,
-      c.env.AUTH0_CLIENT_ID,
-      c.env.AUTH0_CLIENT_SECRET,
-    );
-
-    const encryptedAccess = await encryptValue(
-      tokens.access_token,
-      c.env.CRED_ENCRYPTION_KEY,
-    );
-
-    const expiresAt = new Date(
-      Date.now() + tokens.expires_in * 1000,
-    ).toISOString();
-
-    await c.env.DB.prepare(
-      `INSERT OR REPLACE INTO app_oauth_tokens
-       (id, tenant_id, app_id, access_token, refresh_token, token_type, expires_at, scope, raw_response, updated_at)
-       VALUES (
-         COALESCE(
-           (SELECT id FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?),
-           lower(hex(randomblob(16)))
-         ),
-         ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
-       )`,
-    )
-      .bind(
-        tenantId,
-        "auth0",
-        tenantId,
-        "auth0",
-        encryptedAccess,
-        null,
-        tokens.token_type,
-        expiresAt,
-        tokens.scope,
-        JSON.stringify({ expires_in: tokens.expires_in }),
-      )
-      .run();
-
-    return c.json({ status: "connected", tenantId, correlationId });
-  } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown connection error";
-
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        tenantId,
-        message: "Connection failed",
-        error: errorMessage,
-      }),
-    );
-
-    return c.json({ error: errorMessage }, 500);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Webhooks — Auth0 Log Streaming
-// ---------------------------------------------------------------------------
-app.post("/webhooks/auth0/events", async (c) => {
+app.post("/webhooks/zendesk/events", async (c) => {
   const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
   const rawBody = await c.req.text();
 
-  const isValid = await verifyAuth0LogStreamingSignature(
+  const isValid = await verifyZendeskWebhookSignature(
     {
       ...c,
       req: { ...c.req, text: async () => rawBody },
@@ -325,7 +362,7 @@ app.post("/webhooks/auth0/events", async (c) => {
       JSON.stringify({
         level: "info",
         correlationId,
-        message: "Auth0 webhook received",
+        message: "Zendesk webhook received",
         eventType: body.type ?? "unknown",
       }),
     );

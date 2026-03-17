@@ -29,12 +29,12 @@ export function validateConfig(
   }
 
   if (values["domain"] !== undefined && values["domain"] !== null) {
-    try {
-      new URL(String(values["domain"]));
-    } catch {
+    const domain = String(values["domain"]);
+    if (!domain.match(/^[a-zA-Z0-9-]+\.auth0\.com$/)) {
       errors.push({
         field: "domain",
-        message: 'Field "Auth0 Domain" must be a valid URL',
+        message:
+          'Field "Auth0 Domain" must be in format: subdomain.auth0.com',
       });
     }
   }

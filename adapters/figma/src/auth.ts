@@ -1,33 +1,48 @@
 import type { TokenResponse } from "./types.js";
 
-const SCOPES = [
-  "read:users",
-  "read:organizations",
-  "read:organization_members",
-];
+const AUTHORIZATION_URL = "https://www.figma.com/oauth";
+const TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 
-export async function getClientCredentialsToken(
-  domain: string,
+const SCOPES = ["file:read"];
+
+export function getAuthorizationUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: SCOPES.join(" "),
+    state,
+  });
+
+  return `${AUTHORIZATION_URL}?${params.toString()}`;
+}
+
+export async function exchangeCodeForTokens(
   clientId: string,
   clientSecret: string,
+  code: string,
+  redirectUri: string,
 ): Promise<TokenResponse> {
-  const tokenUrl = `https://${domain}/oauth/token`;
-
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
-      audience: `https://${domain}/api/v2/`,
-      grant_type: "client_credentials",
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
     }).toString(),
   });
 
   if (!response.ok) {
     const error = await response.text().catch(() => "Unknown error");
     throw new Error(
-      `Auth0 token exchange failed (${response.status}): ${error}`,
+      `Figma token exchange failed (${response.status}): ${error}`,
     );
   }
 
@@ -35,14 +50,11 @@ export async function getClientCredentialsToken(
 }
 
 export async function refreshAccessToken(
-  domain: string,
   clientId: string,
   clientSecret: string,
   refreshToken: string,
 ): Promise<TokenResponse> {
-  const tokenUrl = `https://${domain}/oauth/token`;
-
-  const response = await fetch(tokenUrl, {
+  const response = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -55,7 +67,9 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const error = await response.text().catch(() => "Unknown error");
-    throw new Error(`Auth0 token refresh failed (${response.status}): ${error}`);
+    throw new Error(
+      `Figma token refresh failed (${response.status}): ${error}`,
+    );
   }
 
   return response.json() as Promise<TokenResponse>;

@@ -1,13 +1,14 @@
 import { Hono } from "hono";
 import type { Bindings } from "./types.js";
 import {
-  getClientCredentialsToken,
+  getAuthorizationUrl,
+  exchangeCodeForTokens,
   refreshAccessToken,
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
-import { verifyAuth0LogStreamingSignature } from "./webhooks.js";
+import { verifyFigmaWebhookSignature } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -19,8 +20,99 @@ app.get("/health", (c) => {
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "0.1.0",
-    service: "auth0-connector",
+    service: "figma-connector",
   });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth2 — initiate
+// ---------------------------------------------------------------------------
+app.get("/auth/authorize", (c) => {
+  const tenantId = c.req.query("tenantId");
+  if (!tenantId) {
+    return c.json({ error: "Missing tenantId query parameter" }, 400);
+  }
+
+  const redirectUri = new URL("/auth/callback", c.req.url).toString();
+  const state = btoa(JSON.stringify({ tenantId }));
+
+  const url = getAuthorizationUrl(c.env.FIGMA_CLIENT_ID, redirectUri, state);
+
+  return c.redirect(url);
+});
+
+// ---------------------------------------------------------------------------
+// OAuth2 — callback
+// ---------------------------------------------------------------------------
+app.get("/auth/callback", async (c) => {
+  const code = c.req.query("code");
+  const stateRaw = c.req.query("state");
+  const errorParam = c.req.query("error");
+
+  if (errorParam) {
+    return c.json({ error: `OAuth denied: ${errorParam}` }, 400);
+  }
+
+  if (!code || !stateRaw) {
+    return c.json({ error: "Missing code or state" }, 400);
+  }
+
+  let tenantId: string;
+  try {
+    const parsed = JSON.parse(atob(stateRaw)) as { tenantId: string };
+    tenantId = parsed.tenantId;
+  } catch {
+    return c.json({ error: "Invalid state parameter" }, 400);
+  }
+
+  const redirectUri = new URL("/auth/callback", c.req.url).toString();
+
+  const tokens = await exchangeCodeForTokens(
+    c.env.FIGMA_CLIENT_ID,
+    c.env.FIGMA_CLIENT_SECRET,
+    code,
+    redirectUri,
+  );
+
+  // Encrypt tokens before storing
+  const encryptedAccess = await encryptValue(
+    tokens.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+  const encryptedRefresh = tokens.refresh_token
+    ? await encryptValue(tokens.refresh_token, c.env.CRED_ENCRYPTION_KEY)
+    : null;
+
+  const expiresAt = new Date(
+    Date.now() + (tokens.expires_in ?? 3600) * 1000,
+  ).toISOString();
+
+  await c.env.DB.prepare(
+    `INSERT OR REPLACE INTO app_oauth_tokens
+     (id, tenant_id, app_id, access_token, refresh_token, token_type, expires_at, scope, raw_response, updated_at)
+     VALUES (
+       COALESCE(
+         (SELECT id FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?),
+         lower(hex(randomblob(16)))
+       ),
+       ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+     )`,
+  )
+    .bind(
+      tenantId,
+      "figma",
+      tenantId,
+      "figma",
+      encryptedAccess,
+      encryptedRefresh,
+      tokens.token_type,
+      expiresAt,
+      "file:read",
+      JSON.stringify({ expires_in: tokens.expires_in ?? 3600 }),
+    )
+    .run();
+
+  return c.json({ status: "connected", tenantId });
 });
 
 // ---------------------------------------------------------------------------
@@ -29,12 +121,12 @@ app.get("/health", (c) => {
 app.post("/api/sync", async (c) => {
   const body = await c.req.json<{
     tenantId: string;
-    domain: string;
+    orgId: string;
   }>();
-  const { tenantId, domain } = body;
+  const { tenantId, orgId } = body;
 
-  if (!tenantId || !domain) {
-    return c.json({ error: "Missing tenantId or domain" }, 400);
+  if (!tenantId || !orgId) {
+    return c.json({ error: "Missing tenantId or orgId" }, 400);
   }
 
   const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
@@ -43,7 +135,7 @@ app.post("/api/sync", async (c) => {
   const tokenRow = await c.env.DB.prepare(
     "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
   )
-    .bind(tenantId, "auth0")
+    .bind(tenantId, "figma")
     .first<{
       access_token: string;
       refresh_token: string | null;
@@ -52,7 +144,7 @@ app.post("/api/sync", async (c) => {
 
   if (!tokenRow) {
     return c.json(
-      { error: "No OAuth tokens found — configure Auth0 domain and credentials first" },
+      { error: "No OAuth tokens found — connect first via /auth/authorize" },
       401,
     );
   }
@@ -78,15 +170,14 @@ app.post("/api/sync", async (c) => {
     );
 
     const refreshed = await refreshAccessToken(
-      domain,
-      c.env.AUTH0_CLIENT_ID,
-      c.env.AUTH0_CLIENT_SECRET,
+      c.env.FIGMA_CLIENT_ID,
+      c.env.FIGMA_CLIENT_SECRET,
       refreshToken,
     );
 
     accessToken = refreshed.access_token;
     const newExpiresAt = new Date(
-      Date.now() + refreshed.expires_in * 1000,
+      Date.now() + (refreshed.expires_in ?? 3600) * 1000,
     ).toISOString();
     const encryptedNewAccess = await encryptValue(
       refreshed.access_token,
@@ -98,7 +189,7 @@ app.post("/api/sync", async (c) => {
        SET access_token = ?, expires_at = ?, updated_at = datetime('now')
        WHERE tenant_id = ? AND app_id = ?`,
     )
-      .bind(encryptedNewAccess, newExpiresAt, tenantId, "auth0")
+      .bind(encryptedNewAccess, newExpiresAt, tenantId, "figma")
       .run();
   }
 
@@ -111,17 +202,17 @@ app.post("/api/sync", async (c) => {
          (SELECT id FROM directory_connections WHERE tenant_id = ?),
          lower(hex(randomblob(16)))
        ),
-       ?, 'auth0', 'syncing', datetime('now')
+       ?, 'figma', 'syncing', datetime('now')
      )`,
   )
     .bind(tenantId, tenantId)
     .run();
 
   try {
-    const userResult = await syncUsers(accessToken, domain, c.env.DB, tenantId);
+    const userResult = await syncUsers(accessToken, orgId, c.env.DB, tenantId);
     const groupResult = await syncGroups(
       accessToken,
-      domain,
+      orgId,
       c.env.DB,
       tenantId,
     );
@@ -141,7 +232,7 @@ app.post("/api/sync", async (c) => {
       orchestratorUrl: c.env.ORCHESTRATOR_URL,
       tenantId,
       type: "directory.synced",
-      source: "auth0",
+      source: "figma",
       payload: { users: userResult, groups: groupResult },
       correlationId,
     });
@@ -217,89 +308,13 @@ app.get("/api/status", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// OAuth2 — initiate M2M flow
+// Webhooks — Figma
 // ---------------------------------------------------------------------------
-app.post("/api/connect", async (c) => {
-  const body = await c.req.json<{
-    tenantId: string;
-    domain: string;
-  }>();
-  const { tenantId, domain } = body;
-
-  if (!tenantId || !domain) {
-    return c.json({ error: "Missing tenantId or domain" }, 400);
-  }
-
-  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
-
-  try {
-    const tokens = await getClientCredentialsToken(
-      domain,
-      c.env.AUTH0_CLIENT_ID,
-      c.env.AUTH0_CLIENT_SECRET,
-    );
-
-    const encryptedAccess = await encryptValue(
-      tokens.access_token,
-      c.env.CRED_ENCRYPTION_KEY,
-    );
-
-    const expiresAt = new Date(
-      Date.now() + tokens.expires_in * 1000,
-    ).toISOString();
-
-    await c.env.DB.prepare(
-      `INSERT OR REPLACE INTO app_oauth_tokens
-       (id, tenant_id, app_id, access_token, refresh_token, token_type, expires_at, scope, raw_response, updated_at)
-       VALUES (
-         COALESCE(
-           (SELECT id FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?),
-           lower(hex(randomblob(16)))
-         ),
-         ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
-       )`,
-    )
-      .bind(
-        tenantId,
-        "auth0",
-        tenantId,
-        "auth0",
-        encryptedAccess,
-        null,
-        tokens.token_type,
-        expiresAt,
-        tokens.scope,
-        JSON.stringify({ expires_in: tokens.expires_in }),
-      )
-      .run();
-
-    return c.json({ status: "connected", tenantId, correlationId });
-  } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown connection error";
-
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        tenantId,
-        message: "Connection failed",
-        error: errorMessage,
-      }),
-    );
-
-    return c.json({ error: errorMessage }, 500);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Webhooks — Auth0 Log Streaming
-// ---------------------------------------------------------------------------
-app.post("/webhooks/auth0/events", async (c) => {
+app.post("/webhooks/figma/events", async (c) => {
   const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
   const rawBody = await c.req.text();
 
-  const isValid = await verifyAuth0LogStreamingSignature(
+  const isValid = await verifyFigmaWebhookSignature(
     {
       ...c,
       req: { ...c.req, text: async () => rawBody },
@@ -325,7 +340,7 @@ app.post("/webhooks/auth0/events", async (c) => {
       JSON.stringify({
         level: "info",
         correlationId,
-        message: "Auth0 webhook received",
+        message: "Figma webhook received",
         eventType: body.type ?? "unknown",
       }),
     );
