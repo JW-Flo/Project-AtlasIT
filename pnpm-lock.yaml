@@ -145,6 +145,9 @@ importers:
 
   console-app:
     dependencies:
+      '@atlasit/shared':
+        specifier: workspace:*
+        version: link:../packages/shared
       '@sveltejs/kit':
         specifier: ^2.43.7
         version: 2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.53.12)(vite@7.3.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2)))(svelte@5.53.12)(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.15)(jiti@1.21.7)(tsx@4.21.0)(yaml@2.8.2))
