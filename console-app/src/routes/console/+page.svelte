@@ -408,7 +408,7 @@
             <div class="font-medium">Review {tenantData.pendingSuggestions} suggested app mapping{tenantData.pendingSuggestions !== 1 ? 's' : ''}</div>
             <div class="text-sm text-muted-foreground mt-1">AtlasIT detected apps that can be mapped to directory groups</div>
           </div>
-          <Button href="/console/directory" size="sm">
+          <Button href="/console/directory?tab=mappings" size="sm">
             Review Suggestions
             <ArrowRight class="h-3.5 w-3.5 ml-1" />
           </Button>
