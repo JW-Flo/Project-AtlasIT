@@ -48,16 +48,25 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 ### Components
 
 - `console-app/` — SvelteKit + Tailwind (Cloudflare Pages). Primary UI with onboarding, compliance, directory, marketplace, workflows, policies, incidents, access requests, admin panel
-- `compliance-worker/` — Compliance scoring, evidence hashing, policy templates
-- `ai-orchestrator/` — Task queue, cron, workflow execution
+- `compliance-worker/` — Compliance scoring, evidence hashing, policy evaluation (Rego-based)
+- `ai-orchestrator/` — Event routing, workflow execution (WorkflowDO), queue consumer, DLQ
+- `core-api/` — Central API (Hono): tenants, events, agents, flags, credentials, dead-letter
 - `onboarding/` — Tenant provisioning
-- `packages/shared/` — Common types, auth, logging
+- `slack-notification-agent/` — Outbound Slack MCP agent (event → Slack webhook)
+- `packages/shared/` — Common types, auth, logging, middleware (rate-limit, security-headers, auth), platform adapters, observability (logger, metrics, tracer, SLOs)
+- `packages/mcp-sdk/` — MCP agent SDK (client + server, HMAC signing)
+- `packages/connector-schema/` — Connector manifest Zod schemas
+- `packages/adapter-gen/` — Adapter code generator pipeline
+- `adapters/okta/` — Okta connector (directory sync, webhooks, SCIM 2.0 provisioning)
+- `adapters/google-workspace/` — Google Workspace connector (OAuth 2.0, user/group sync)
+- `ops/oidc/` — GitHub Actions OIDC → 1Password Connect exchange worker
 
-### Storage (Cloudflare D1/KV/R2)
+### Storage (Cloudflare D1/KV/R2/Queues)
 
-- D1 `ATLAS_SHARED_DB` — tenants, users, preferences, directory, compliance, audit
+- D1 `ATLAS_SHARED_DB` — tenants, users, preferences, directory, compliance, audit, console_user_roles
 - KV `KV_SESSIONS` — session management
-- R2 — policies, evidence, artifacts
+- R2 `atlasit-evidence` — policies, evidence, artifacts
+- Queues `atlasit-step-tasks` — workflow step dispatch
 
 ### Console App Conventions
 

@@ -1,26 +1,56 @@
-# Workspace Status (Sept 2025)
+# AtlasIT Platform Status
 
-| Repo              | Purpose                                       | Implemented Today                                   | Missing (Vision)                                            | Last Update |
-| ----------------- | --------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------- | ----------- |
-| Project-AtlasIT   | Core Workers (onboarding, orchestrator, docs) | 3 workers deployed, alignment plan, roadmap added   | Compliance engine, policy gen, directory sync, UI dashboard | <!--DATE--> |
-| JW-Site           | Front-end prototype staging                   | README aligned, ready for future SvelteKit scaffold | Actual dashboard app, integration calls                     | <!--DATE--> |
-| AWhittleWandering | Tesla telemetry demo (independent)            | Realtime vehicle tracking infra                     | Not tied to AtlasIT (optional future ingestion bridge)      | <!--DATE--> |
+**Last updated:** March 2026
 
-## Reality Gap Summary
+## Current State
 
-The production footprint is intentionally minimal (automation + docs). High-fidelity governance UI and compliance/policy modules are **not built**. Roadmap phases in `Project-AtlasIT/ROADMAP.md` define the implementation path.
+- **Test suite:** 356 tests passing (49/49 files)
+- **Package manager:** pnpm (workspace monorepo)
+- **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues
 
-## Next Priority Candidates
+## Phase Completion
 
-1. Phase 1 scaffold (frontend + compliance score stub)
-2. Compliance D1 schema & periodic score job
-3. Policy template engine + tenant profile model
+| Phase | Status | PR | Key Deliverables |
+|-------|--------|-----|------------------|
+| 0 — Foundation | ✅ Complete | — | 3 workers deployed, D1 schemas, shared types, Vitest harness |
+| 1 — Workflow Durability + Auth | ✅ Complete | #139 | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware |
+| 2 — MCP Orchestration | ✅ Complete | #140 | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests |
+| 3 — Marketplace & Integrations | ✅ Pre-existing | — | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags |
+| 4 — Hardening & Production | ✅ Complete | #141 | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability |
 
-## Verification Checklist
+## Deployed Workers
 
-- [x] README reality disclaimer (Project-AtlasIT)
-- [x] Roadmap file created
-- [x] Legacy branding isolation (ALIGNMENT_PLAN / LEGACY.md)
-- [ ] Phase 1 code scaffold committed (pending)
+| Worker | Purpose |
+|--------|---------|
+| `onboarding` | Tenant provisioning |
+| `ai-orchestrator` | Workflow execution, event routing, queue consumer |
+| `compliance-worker` | Compliance scoring, policy evaluation, evidence |
+| `core-api` | Central API: tenants, events, agents, flags, credentials |
+| `documentation-worker` | Docs serving |
+| `slack-notification-agent` | Outbound Slack notifications via MCP events |
 
-Update this file whenever significant phase progress occurs.
+## Infrastructure
+
+- **D1:** `ATLAS_SHARED_DB` (tenants, users, compliance, audit, console_user_roles, directory)
+- **KV:** `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`, `MCP_STORE`
+- **R2:** `atlasit-evidence` (policies, evidence, artifacts)
+- **Queues:** `atlasit-step-tasks` (workflow step dispatch)
+
+## What's Built
+
+- Console app (SvelteKit + Tailwind, CF Pages)
+- D1-backed RBAC (CF Access JWT → roles from D1, fallback to viewer)
+- Shared auth middleware (core-api, ai-orchestrator)
+- WorkflowDO (Durable Object): state machine, compensation, per-step timeouts, DLQ escalation
+- Event router with fan-out, agent registry, HMAC signature verification
+- MCP agent SDK (`packages/mcp-sdk`)
+- Evidence locker (R2-backed, SHA-256 content addressing)
+- Policy evaluation engine (Rego-based)
+- Rate limiting + security headers middleware
+- Credential vault (AES-GCM envelope encryption)
+- Feature flag system (KV-backed, rollout %, tenant overrides)
+- Okta adapter with SCIM 2.0 provisioning
+- k6 load tests (smoke/load/stress/soak)
+- IaC drift detection (OPA/Conftest policies, GH Actions)
+- CF Workers-native observability (W3C traceparent tracer, Analytics Engine metrics)
+- Structured logging with SLO definitions and burn-rate alerting

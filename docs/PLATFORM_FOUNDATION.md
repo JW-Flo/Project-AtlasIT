@@ -1,8 +1,8 @@
 # AtlasIT Platform Foundation
 
-Status: Draft
+Status: Current
 Owner: Platform Engineering
-Last Updated: 2025-10-01
+Last Updated: 2026-03-16
 
 ## Purpose
 
@@ -24,12 +24,12 @@ Codify the foundational architecture, phases, and governance model for the compl
 
 1. Foundation Hardening ✅
 2. Compliance Snapshot v1 ✅ (cached snapshot persisted in D1/R2)
-3. Evidence Layer Skeleton ⧗ (ingest/search endpoints live; policy evaluate pending)
-4. Policy Evaluation MVP ◻︎
-5. Observability & Retention ◻︎
-6. Hardening & Rollout ◻︎
+3. Evidence Layer ✅ (ingest, search, evaluate, R2-backed evidence locker with SHA-256 content addressing)
+4. Policy Evaluation ✅ (Rego-based engine, 5 compliance frameworks: SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR)
+5. Observability & Retention ✅ (W3C traceparent tracing, Analytics Engine metrics, SLO burn-rate alerting, structured logging)
+6. Hardening & Rollout ✅ (Rate limiting, security headers, k6 load tests, IaC drift detection, OIDC worker)
 
-Each phase produces measurable exit criteria to prevent scope bleed.
+See `ROADMAP.md` for the platform-level phase tracking (Phases 0–4 complete, Phase 5 next).
 
 ## Data Model Primitives
 
