@@ -1,9 +1,21 @@
+import type { Context, Next } from "hono";
 import type { TokenResponse } from "./types.js";
 
 const AUTHORIZATION_URL = "https://www.figma.com/oauth";
 const TOKEN_URL = "https://api.figma.com/v1/oauth/token";
 
 const SCOPES = ["file:read"];
+
+export async function authMiddleware(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid Authorization header" }, 401);
+  }
+  await next();
+}
 
 export function getAuthorizationUrl(
   clientId: string,

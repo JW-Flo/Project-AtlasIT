@@ -1,6 +1,5 @@
 import type { SyncResult } from "../types.js";
-
-const API_BASE = "https://api.figma.com/v1";
+import { listTeams, listTeamMembers } from "../client.js";
 
 export async function syncGroups(
   accessToken: string,
@@ -11,62 +10,93 @@ export async function syncGroups(
   let created = 0;
   let updated = 0;
   let total = 0;
-  let afterCursor: string | undefined;
 
-  do {
-    const url = new URL(
-      `${API_BASE}/organizations/${encodeURIComponent(orgId)}/teams`,
-    );
-    if (afterCursor) {
-      url.searchParams.set("after_cursor", afterCursor);
+  const teams = await listTeams(orgId, accessToken);
+
+  for (const team of teams) {
+    const existing = await db
+      .prepare(
+        "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
+      )
+      .bind(tenantId, team.id)
+      .first<{ id: string }>();
+
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO directory_groups
+         (id, tenant_id, external_id, name, description, updated_at)
+         VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
+      )
+      .bind(
+        existing?.id ?? null,
+        tenantId,
+        team.id,
+        team.name,
+        team.description ?? null,
+      )
+      .run();
+
+    if (existing) {
+      updated++;
+    } else {
+      created++;
     }
+    total++;
 
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) {
-      const error = await response.text().catch(() => "Unknown error");
-      throw new Error(
-        `Figma API teams request failed (${response.status}): ${error}`,
-      );
-    }
-
-    const data = (await response.json()) as {
-      teams?: Array<{ id: string; name: string; icon?: string }>;
-      pagination?: { after_cursor?: string };
-    };
-
-    const teams = data.teams ?? [];
-
-    for (const team of teams) {
-      const existing = await db
-        .prepare(
-          "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
-        )
-        .bind(tenantId, team.id)
-        .first<{ id: string }>();
-
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO directory_groups
-           (id, tenant_id, external_id, name, description, updated_at)
-           VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
-        )
-        .bind(existing?.id ?? null, tenantId, team.id, team.name, null)
-        .run();
-
-      if (existing) {
-        updated++;
-      } else {
-        created++;
-      }
-      total++;
-    }
-
-    afterCursor = data.pagination?.after_cursor;
-    if (!afterCursor) break;
-  } while (afterCursor);
+    // Sync memberships for this team
+    await syncTeamMemberships(accessToken, team.id, db, tenantId);
+  }
 
   return { created, updated, total };
+}
+
+async function syncTeamMemberships(
+  accessToken: string,
+  teamId: string,
+  db: D1Database,
+  tenantId: string,
+): Promise<void> {
+  const groupRow = await db
+    .prepare(
+      "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
+    )
+    .bind(tenantId, teamId)
+    .first<{ id: string }>();
+
+  if (!groupRow) return;
+
+  // Remove stale memberships before re-inserting
+  await db
+    .prepare(
+      "DELETE FROM directory_memberships WHERE tenant_id = ? AND group_id = ?",
+    )
+    .bind(tenantId, groupRow.id)
+    .run();
+
+  let members;
+  try {
+    members = await listTeamMembers(teamId, accessToken);
+  } catch {
+    // If we can't fetch members, skip gracefully
+    return;
+  }
+
+  for (const member of members) {
+    const userRow = await db
+      .prepare(
+        "SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?",
+      )
+      .bind(tenantId, member.id)
+      .first<{ id: string }>();
+
+    if (!userRow) continue;
+
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO directory_memberships (tenant_id, user_id, group_id)
+         VALUES (?, ?, ?)`,
+      )
+      .bind(tenantId, userRow.id, groupRow.id)
+      .run();
+  }
 }

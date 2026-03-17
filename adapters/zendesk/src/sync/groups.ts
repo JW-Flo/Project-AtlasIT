@@ -1,6 +1,5 @@
-import type { ZendeskOrganization, SyncResult } from "../types.js";
-
-const API_BASE = "https://{subdomain}.zendesk.com/api/v2";
+import type { SyncResult } from "../types.js";
+import { listOrganizations } from "../client.js";
 
 export async function syncGroups(
   accessToken: string,
@@ -11,68 +10,39 @@ export async function syncGroups(
   let created = 0;
   let updated = 0;
   let total = 0;
-  let afterCursor: string | undefined;
 
-  do {
-    const url = new URL(
-      `${API_BASE.replace("{subdomain}", subdomain)}/organizations`,
-    );
-    if (afterCursor) {
-      url.searchParams.set("after_cursor", afterCursor);
+  const organizations = await listOrganizations(subdomain, accessToken);
+
+  for (const org of organizations) {
+    const existing = await db
+      .prepare(
+        "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
+      )
+      .bind(tenantId, String(org.id))
+      .first<{ id: string }>();
+
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO directory_groups
+         (id, tenant_id, external_id, name, description, updated_at)
+         VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
+      )
+      .bind(
+        existing?.id ?? null,
+        tenantId,
+        String(org.id),
+        org.name,
+        org.details ?? null,
+      )
+      .run();
+
+    if (existing) {
+      updated++;
+    } else {
+      created++;
     }
-
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) {
-      const error = await response.text().catch(() => "Unknown error");
-      throw new Error(
-        `Zendesk API organizations request failed (${response.status}): ${error}`,
-      );
-    }
-
-    const data = (await response.json()) as {
-      organizations?: ZendeskOrganization[];
-      meta?: { after_cursor?: string; has_more?: boolean };
-    };
-
-    const organizations = data.organizations ?? [];
-
-    for (const org of organizations) {
-      const existing = await db
-        .prepare(
-          "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
-        )
-        .bind(tenantId, String(org.id))
-        .first<{ id: string }>();
-
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO directory_groups
-           (id, tenant_id, external_id, name, description, updated_at)
-           VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
-        )
-        .bind(
-          existing?.id ?? null,
-          tenantId,
-          String(org.id),
-          org.name,
-          org.details ?? null,
-        )
-        .run();
-
-      if (existing) {
-        updated++;
-      } else {
-        created++;
-      }
-      total++;
-    }
-
-    afterCursor = data.meta?.after_cursor;
-    if (!data.meta?.has_more) break;
-  } while (afterCursor);
+    total++;
+  }
 
   return { created, updated, total };
 }

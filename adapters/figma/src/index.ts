@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
-import { validateConfig } from "./config.js";
 import {
+  authMiddleware,
   getAuthorizationUrl,
   exchangeCodeForTokens,
-  refreshAccessToken,
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
+import { handleFigmaWebhook } from "./webhooks.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -33,6 +33,9 @@ app.use("*", async (c, next) => {
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
   );
 });
+
+// Apply auth middleware to protected routes
+app.use("/api/*", authMiddleware);
 
 const requestCounters = new Map<string, { count: number; resetAt: number }>();
 app.use("/api/*", async (c, next) => {
@@ -74,7 +77,7 @@ app.get("/health", (c) => {
   });
 });
 
-// Webhook receiver from orchestrator (internal)
+// Webhook receiver from orchestrator (internal HMAC)
 app.post("/webhook", async (c) => {
   const correlationId = c.get("correlationId");
   const signature = c.req.header("X-Signature");
@@ -145,262 +148,378 @@ app.post("/api/sync", async (c) => {
 
   const syncId = crypto.randomUUID();
 
-  // Get connector config for this tenant
-  const configRow = await c.env.DB.prepare(
-    `SELECT config FROM connector_configs
-     WHERE connector_slug = 'figma' AND tenant_id = ? LIMIT 1`,
+  // Record sync job in D1
+  await c.env.DB.prepare(
+    "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(body.tenantId)
-    .first<{ config: string }>();
+    .bind(syncId, body.tenantId, "figma", "running", new Date().toISOString())
+    .run();
 
-  if (!configRow) {
-    return c.json(
-      {
-        error: "Connector not configured for tenant",
-        correlationId,
-      },
-      404,
-    );
-  }
-
-  const config = JSON.parse(configRow.config) as {
-    teamId: string;
-  };
-
-  // Get access token from credentials
-  const credentialRow = await c.env.DB.prepare(
-    `SELECT credential_data FROM credentials
-     WHERE tenant_id = ? AND connector_slug = 'figma' LIMIT 1`,
-  )
-    .bind(body.tenantId)
-    .first<{ credential_data: string }>();
-
-  if (!credentialRow) {
-    return c.json(
-      {
-        error: "No credentials available for sync",
-        correlationId,
-      },
-      401,
-    );
-  }
-
-  const credentials = JSON.parse(credentialRow.credential_data) as {
-    accessToken: string;
-  };
-
-  let results: SyncResult | null = null;
-  const errors: string[] = [];
-
-  try {
-    // Sync users
-    const userResult = await syncUsers(
-      credentials.accessToken,
-      config.teamId,
-      c.env.DB,
-      body.tenantId,
-    );
-    results = userResult;
-
-    // Sync groups
-    if (body.scope === undefined || body.scope === "groups") {
-      const groupResult = await syncGroups(
-        credentials.accessToken,
-        config.teamId,
-        c.env.DB,
-        body.tenantId,
-      );
-      results = {
-        created: userResult.created + groupResult.created,
-        updated: userResult.updated + groupResult.updated,
-        total: userResult.total + groupResult.total,
-      };
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    errors.push(msg);
-  }
-
-  return c.json({
-    syncId,
-    status: errors.length === 0 ? "completed" : "partial",
-    results,
-    errors: errors.length > 0 ? errors : undefined,
-    correlationId,
-  });
-});
-
-// Get sync status
-app.get("/api/sync/:syncId", async (c) => {
-  const correlationId = c.get("correlationId");
-  const syncId = c.req.param("syncId");
-
-  // In a real implementation, query sync_status table
-  return c.json({
-    syncId,
-    status: "completed",
-    message: "Sync status endpoint placeholder",
-    correlationId,
-  });
-});
-
-// Validate config
-app.post("/api/config/validate", async (c) => {
-  const correlationId = c.get("correlationId");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-
-  if (!body) {
-    return c.json({ error: "Invalid request body", correlationId }, 400);
-  }
-
-  const validation = validateConfig(body);
-  return c.json({
-    valid: validation.valid,
-    errors: validation.errors,
-    correlationId,
-  });
-});
-
-// OAuth2 authorize endpoint (initiate login)
-app.get("/auth/authorize", async (c) => {
-  const correlationId = c.get("correlationId");
-  const state = c.req.query("state");
-
-  if (!state) {
-    return c.json({ error: "Missing state parameter", correlationId }, 400);
-  }
-
-  const authUrl = getAuthorizationUrl(
-    c.env.FIGMA_CLIENT_ID,
-    c.env.OAUTH2_REDIRECT_URI,
-    state,
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      syncId,
+      message: "Sync triggered",
+      tenantId: body.tenantId,
+      connector: "figma",
+    }),
   );
 
-  return c.redirect(authUrl);
-});
+  // Retrieve stored OAuth token for this tenant
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'figma'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
 
-// OAuth2 callback endpoint
-app.get("/auth/callback", async (c) => {
-  const correlationId = c.get("correlationId");
-  const code = c.req.query("code");
-  const state = c.req.query("state");
-  const error = c.req.query("error");
-  const errorDescription = c.req.query("error_description");
-
-  if (error) {
+  if (!tokenRow) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
     return c.json(
       {
-        error,
-        description: errorDescription,
+        error: "No OAuth token found for tenant. Authorize first.",
         correlationId,
       },
       400,
     );
   }
 
-  if (!code) {
-    return c.json({ error: "Missing authorization code", correlationId }, 400);
+  // Retrieve connector config for teamId
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'figma' LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+    return c.json(
+      {
+        error: "No connector config found. Configure Figma teamId first.",
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  const config = JSON.parse(configRow.config) as { teamId: string };
+
+  try {
+    const scope = body.scope ?? "all";
+
+    let userResult: SyncResult = { created: 0, updated: 0, total: 0 };
+    let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
+
+    if (scope === "all" || scope === "users") {
+      userResult = await syncUsers(
+        tokenRow.access_token,
+        config.teamId,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    if (scope === "all" || scope === "groups") {
+      groupResult = await syncGroups(
+        tokenRow.access_token,
+        config.teamId,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    // Update connection status
+    await updateConnectionStatus(
+      c.env.DB,
+      body.tenantId,
+      userResult.total,
+      groupResult.total,
+    );
+
+    // Mark sync job complete
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'completed', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        syncId,
+        message: "Sync completed",
+        tenantId: body.tenantId,
+        users: userResult,
+        groups: groupResult,
+      }),
+    );
+
+    return c.json({
+      status: "synced",
+      syncId,
+      correlationId,
+      data: { users: userResult, groups: groupResult },
+    });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
+
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    await updateConnectionStatus(c.env.DB, body.tenantId, 0, 0, errorMsg);
+
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        syncId,
+        message: "Sync failed",
+        tenantId: body.tenantId,
+        error: errorMsg,
+      }),
+    );
+
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+// Status endpoint
+app.get("/api/status", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.query("tenantId");
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId query parameter is required", correlationId },
+      400,
+    );
+  }
+
+  const connection = await c.env.DB.prepare(
+    `SELECT status, error_msg, last_sync_at, user_count, group_count
+     FROM directory_connections WHERE tenant_id = ?1`,
+  )
+    .bind(tenantId)
+    .first<{
+      status: string;
+      error_msg: string | null;
+      last_sync_at: string | null;
+      user_count: number;
+      group_count: number;
+    }>();
+
+  if (!connection) {
+    return c.json({
+      connector: "figma",
+      tenantId,
+      correlationId,
+      status: "not_connected",
+      lastSyncAt: null,
+      userCount: 0,
+      groupCount: 0,
+    });
+  }
+
+  const recentSyncs = await c.env.DB.prepare(
+    `SELECT id, status, created_at, completed_at
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'figma'
+     ORDER BY created_at DESC LIMIT 10`,
+  )
+    .bind(tenantId)
+    .all();
+
+  return c.json({
+    connector: "figma",
+    tenantId,
+    correlationId,
+    status: connection.status,
+    error: connection.error_msg,
+    lastSyncAt: connection.last_sync_at,
+    userCount: connection.user_count,
+    groupCount: connection.group_count,
+    recentSyncs: recentSyncs.results,
+  });
+});
+
+// OAuth2 authorization redirect
+app.get("/auth/authorize", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.query("tenantId");
+  const state =
+    c.req.query("state") ?? btoa(JSON.stringify({ tenantId, correlationId }));
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId query parameter is required", correlationId },
+      400,
+    );
+  }
+
+  const url = getAuthorizationUrl(
+    c.env.FIGMA_CLIENT_ID,
+    c.env.OAUTH2_REDIRECT_URI,
+    state,
+  );
+
+  return c.redirect(url);
+});
+
+// OAuth2 callback
+app.get("/auth/callback", async (c) => {
+  const correlationId = c.get("correlationId");
+  const code = c.req.query("code");
+  const stateRaw = c.req.query("state");
+  const error = c.req.query("error");
+  const errorDescription = c.req.query("error_description");
+
+  if (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        message: "OAuth callback error",
+        error,
+        errorDescription,
+      }),
+    );
+    return c.json({ error, errorDescription, correlationId }, 400);
+  }
+
+  if (!code || !stateRaw) {
+    return c.json(
+      { error: "Missing code or state parameter", correlationId },
+      400,
+    );
+  }
+
+  let stateData: { tenantId: string; correlationId: string };
+  try {
+    stateData = JSON.parse(atob(stateRaw)) as {
+      tenantId: string;
+      correlationId: string;
+    };
+  } catch {
+    return c.json({ error: "Invalid state parameter", correlationId }, 400);
   }
 
   try {
-    const token = await exchangeCodeForTokens(
+    const tokens = await exchangeCodeForTokens(
       c.env.FIGMA_CLIENT_ID,
       c.env.FIGMA_CLIENT_SECRET,
       code,
       c.env.OAUTH2_REDIRECT_URI,
     );
 
+    await c.env.DB.prepare(
+      `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+    )
+      .bind(
+        crypto.randomUUID(),
+        stateData.tenantId,
+        "figma",
+        tokens.access_token,
+        tokens.refresh_token ?? null,
+        tokens.expires_in
+          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+          : null,
+        new Date().toISOString(),
+      )
+      .run();
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        message: "OAuth tokens stored",
+        tenantId: stateData.tenantId,
+        connector: "figma",
+      }),
+    );
+
     return c.json({
-      status: "success",
-      accessToken: token.access_token,
-      expiresIn: token.expires_in,
-      state,
+      status: "authorized",
+      tenantId: stateData.tenantId,
       correlationId,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
         correlationId,
-        message: "OAuth token exchange failed",
-        error: msg,
+        message: "Token exchange failed",
+        error: errorMessage,
       }),
     );
-    return c.json({ error: msg, correlationId }, 500);
+    return c.json({ error: errorMessage, correlationId }, 500);
   }
 });
 
-// Figma webhook receiver (from Figma API)
-app.post("/webhooks/figma", async (c) => {
-  const correlationId = c.get("correlationId");
-  const signature = c.req.header("X-Figma-Signature");
-
-  if (!signature) {
-    return c.json(
-      { error: "Missing X-Figma-Signature header", correlationId },
-      401,
-    );
-  }
-
-  const rawBody = await c.req.text();
-
-  // Verify HMAC signature (Figma uses hex digest)
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(c.env.FIGMA_WEBHOOK_SECRET),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
-  const expectedSig = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  if (signature.length !== expectedSig.length) {
-    return c.json({ error: "Invalid signature", correlationId }, 401);
-  }
-
-  let mismatch = 0;
-  for (let i = 0; i < signature.length; i++) {
-    mismatch |= signature.charCodeAt(i) ^ expectedSig.charCodeAt(i);
-  }
-
-  if (mismatch !== 0) {
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        message: "Invalid Figma webhook signature",
-      }),
-    );
-    return c.json({ error: "Invalid signature", correlationId }, 401);
-  }
-
-  // Parse and handle webhook event
-  let body: unknown;
-  try {
-    body = JSON.parse(rawBody);
-  } catch {
-    return c.json({ error: "Invalid JSON payload", correlationId }, 400);
-  }
-
-  console.log(
-    JSON.stringify({
-      level: "info",
-      correlationId,
-      message: "Figma webhook received",
-    }),
-  );
-
-  return c.json({ status: "processed", correlationId });
-});
+// Figma webhook receiver
+app.post("/webhooks/figma/events", (c) => handleFigmaWebhook(c));
 
 export default app;
+
+// -- Internal helpers --
+
+async function updateConnectionStatus(
+  db: D1Database,
+  tenantId: string,
+  userCount: number,
+  groupCount: number,
+  error?: string,
+): Promise<void> {
+  const existing = await db
+    .prepare("SELECT id FROM directory_connections WHERE tenant_id = ?1")
+    .bind(tenantId)
+    .first();
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE directory_connections
+         SET status = ?1, error_msg = ?2, last_sync_at = datetime('now'),
+             user_count = ?3, group_count = ?4, updated_at = datetime('now')
+         WHERE tenant_id = ?5`,
+      )
+      .bind(
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+        tenantId,
+      )
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
+      )
+      .bind(
+        tenantId,
+        "figma",
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+      )
+      .run();
+  }
+}

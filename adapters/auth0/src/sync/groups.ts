@@ -1,6 +1,5 @@
-import type { Auth0Organization, Auth0Member, SyncResult } from "../types.js";
-
-const API_BASE = "https://{domain}/api/v2";
+import type { SyncResult } from "../types.js";
+import { listOrganizations, getOrganizationMembers } from "../client.js";
 
 export async function syncGroups(
   accessToken: string,
@@ -11,70 +10,41 @@ export async function syncGroups(
   let created = 0;
   let updated = 0;
   let total = 0;
-  let page = 0;
-  const perPage = 50;
 
-  do {
-    const url = new URL(
-      `${API_BASE.replace("{domain}", domain)}/organizations`,
-    );
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("per_page", String(perPage));
-    url.searchParams.set("include_totals", "true");
+  const organizations = await listOrganizations(domain, accessToken);
 
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  for (const org of organizations) {
+    const existing = await db
+      .prepare(
+        "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
+      )
+      .bind(tenantId, org.id)
+      .first<{ id: string }>();
 
-    if (!response.ok) {
-      const error = await response.text().catch(() => "Unknown error");
-      throw new Error(
-        `Auth0 API organizations request failed (${response.status}): ${error}`,
-      );
+    await db
+      .prepare(
+        `INSERT OR REPLACE INTO directory_groups
+         (id, tenant_id, external_id, name, description, updated_at)
+         VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
+      )
+      .bind(
+        existing?.id ?? null,
+        tenantId,
+        org.id,
+        org.name,
+        org.display_name ?? null,
+      )
+      .run();
+
+    if (existing) {
+      updated++;
+    } else {
+      created++;
     }
+    total++;
 
-    const data = (await response.json()) as {
-      organizations?: Auth0Organization[];
-    };
-
-    const organizations = data.organizations ?? [];
-
-    for (const org of organizations) {
-      const existing = await db
-        .prepare(
-          "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
-        )
-        .bind(tenantId, org.id)
-        .first<{ id: string }>();
-
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO directory_groups
-           (id, tenant_id, external_id, name, description, updated_at)
-           VALUES (COALESCE(?, lower(hex(randomblob(16)))), ?, ?, ?, ?, datetime('now'))`,
-        )
-        .bind(
-          existing?.id ?? null,
-          tenantId,
-          org.id,
-          org.name,
-          org.display_name ?? null,
-        )
-        .run();
-
-      if (existing) {
-        updated++;
-      } else {
-        created++;
-      }
-      total++;
-
-      await syncOrganizationMembers(accessToken, org.id, domain, db, tenantId);
-    }
-
-    if (organizations.length < perPage) break;
-    page++;
-  } while (true);
+    await syncOrganizationMembers(accessToken, org.id, domain, db, tenantId);
+  }
 
   return { created, updated, total };
 }
@@ -86,9 +56,6 @@ async function syncOrganizationMembers(
   db: D1Database,
   tenantId: string,
 ): Promise<void> {
-  let page = 0;
-  const perPage = 50;
-
   const groupRow = await db
     .prepare(
       "SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?",
@@ -98,52 +65,40 @@ async function syncOrganizationMembers(
 
   if (!groupRow) return;
 
-  do {
-    const url = new URL(
-      `${API_BASE.replace("{domain}", domain)}/organizations/${encodeURIComponent(orgId)}/members`,
-    );
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("per_page", String(perPage));
-    url.searchParams.set("include_totals", "true");
+  // Remove stale memberships before re-inserting
+  await db
+    .prepare(
+      "DELETE FROM directory_memberships WHERE tenant_id = ? AND group_id = ?",
+    )
+    .bind(tenantId, groupRow.id)
+    .run();
 
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+  let members;
+  try {
+    members = await getOrganizationMembers(domain, orgId, accessToken);
+  } catch (err) {
+    // 404 means no members or org not found — skip gracefully
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("404")) return;
+    throw err;
+  }
 
-    if (!response.ok) {
-      if (response.status === 404) return;
-      const error = await response.text().catch(() => "Unknown error");
-      throw new Error(
-        `Auth0 API members request failed (${response.status}): ${error}`,
-      );
-    }
+  for (const member of members) {
+    const userRow = await db
+      .prepare(
+        "SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?",
+      )
+      .bind(tenantId, member.user_id)
+      .first<{ id: string }>();
 
-    const data = (await response.json()) as {
-      members?: Auth0Member[];
-    };
+    if (!userRow) continue;
 
-    const members = data.members ?? [];
-
-    for (const member of members) {
-      const userRow = await db
-        .prepare(
-          "SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?",
-        )
-        .bind(tenantId, member.user_id)
-        .first<{ id: string }>();
-
-      if (!userRow) continue;
-
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO directory_memberships (tenant_id, user_id, group_id)
-           VALUES (?, ?, ?)`,
-        )
-        .bind(tenantId, userRow.id, groupRow.id)
-        .run();
-    }
-
-    if (members.length < perPage) break;
-    page++;
-  } while (true);
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO directory_memberships (tenant_id, user_id, group_id)
+         VALUES (?, ?, ?)`,
+      )
+      .bind(tenantId, userRow.id, groupRow.id)
+      .run();
+  }
 }

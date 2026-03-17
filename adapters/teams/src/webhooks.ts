@@ -26,16 +26,41 @@ export async function handleTeamsWebhookValidation(
 }
 
 /**
- * Verify Teams webhook signature using clientState (HMAC-SHA256).
- * The clientState is sent in the request body and used as the HMAC key.
+ * Verify Teams webhook clientState using HMAC-SHA256 with timing-safe comparison.
+ * Teams sends the clientState in the notification payload body.
+ * We sign the notification payload JSON with the secret and compare against
+ * the provided clientState to prevent timing attacks.
  */
 async function verifyClientState(
   secret: string,
   clientState: string,
 ): Promise<boolean> {
-  // Teams uses clientState for validation during subscription setup.
-  // In production, validate that the clientState matches what was configured.
-  return clientState === secret;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const sigBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(clientState),
+  );
+  const expectedSig = Array.from(new Uint8Array(sigBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  // Constant-time comparison via length-check + char-by-char XOR
+  if (clientState.length !== expectedSig.length) return false;
+
+  let mismatch = 0;
+  for (let i = 0; i < clientState.length; i++) {
+    mismatch |= clientState.charCodeAt(i) ^ expectedSig.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 function mapEventToAtlasType(changeType: string): string | null {

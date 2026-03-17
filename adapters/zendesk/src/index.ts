@@ -1,46 +1,379 @@
 import { Hono } from "hono";
-import type { Bindings } from "./types.js";
+import type { Bindings, Variables, SyncResult } from "./types.js";
 import {
+  authMiddleware,
   getAuthorizationUrl,
   exchangeCodeForTokens,
-  refreshAccessToken,
 } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
-import { publishEvent } from "./event-publisher.js";
-import { verifyZendeskWebhookSignature } from "./webhooks.js";
+import { handleZendeskWebhook } from "./webhooks.js";
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// ---------------------------------------------------------------------------
-// Health
-// ---------------------------------------------------------------------------
+// Correlation ID middleware
+app.use("*", async (c, next) => {
+  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
+  c.set("correlationId", correlationId);
+  c.header("X-Correlation-ID", correlationId);
+  await next();
+});
+
+// Security headers middleware
+app.use("*", async (c, next) => {
+  await next();
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "DENY");
+  c.header(
+    "Strict-Transport-Security",
+    "max-age=63072000; includeSubDomains; preload",
+  );
+  c.header(
+    "Content-Security-Policy",
+    "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
+  );
+});
+
+// Apply auth middleware to protected routes
+app.use("/api/*", authMiddleware);
+
+const requestCounters = new Map<string, { count: number; resetAt: number }>();
+app.use("/api/*", async (c, next) => {
+  const tenantId = c.req.header("X-Tenant-ID") ?? "default";
+  const endpoint = c.req.method + " " + new URL(c.req.url).pathname;
+  const key = tenantId + ":" + endpoint;
+  const now = Date.now();
+  const limit = 120;
+  const windowMs = 60_000;
+  const existing = requestCounters.get(key);
+  const current =
+    !existing || existing.resetAt <= now
+      ? { count: 0, resetAt: now + windowMs }
+      : existing;
+  if (current.count >= limit) {
+    return c.json(
+      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
+      429,
+    );
+  }
+  current.count += 1;
+  requestCounters.set(key, current);
+  await next();
+});
+
+// Health endpoint
 app.get("/health", (c) => {
   return c.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
-    version: "0.1.0",
-    service: "zendesk-connector",
+    version: "1.0.0",
+    service: "zendesk",
+    connector: {
+      id: "zendesk",
+      name: "Zendesk",
+      provider: "Zendesk",
+      capabilities: ["user-provisioning", "user-deprovisioning", "group-sync"],
+    },
   });
 });
 
-// ---------------------------------------------------------------------------
-// OAuth2 — initiate
-// ---------------------------------------------------------------------------
-app.get("/auth/authorize", (c) => {
+// Webhook receiver from orchestrator (internal HMAC)
+app.post("/webhook", async (c) => {
+  const correlationId = c.get("correlationId");
+  const signature = c.req.header("X-Signature");
+  const eventId = c.req.header("X-Event-ID") ?? "unknown";
+
+  if (!signature) {
+    return c.json({ error: "Missing signature", correlationId }, 401);
+  }
+
+  const rawBody = await c.req.text();
+
+  // Verify HMAC signature
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(c.env.ADAPTER_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sigBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(rawBody),
+  );
+  const expectedSig = Array.from(new Uint8Array(sigBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  if (signature !== expectedSig) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        eventId,
+        message: "Invalid webhook signature",
+      }),
+    );
+    return c.json({ error: "Invalid signature", correlationId }, 401);
+  }
+
+  const body = JSON.parse(rawBody);
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      eventId,
+      message: "Event received",
+      eventType: body.type,
+      tenantId: body.tenantId ?? "unknown",
+    }),
+  );
+
+  return c.json({ status: "processed", eventId, correlationId });
+});
+
+// Trigger a full directory sync (users + groups)
+app.post("/api/sync", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req
+    .json<{ tenantId: string; scope?: string }>()
+    .catch(() => null);
+
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required", correlationId }, 400);
+  }
+
+  const syncId = crypto.randomUUID();
+
+  // Record sync job in D1
+  await c.env.DB.prepare(
+    "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+  )
+    .bind(syncId, body.tenantId, "zendesk", "running", new Date().toISOString())
+    .run();
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      syncId,
+      message: "Sync triggered",
+      tenantId: body.tenantId,
+      connector: "zendesk",
+    }),
+  );
+
+  // Retrieve stored OAuth token for this tenant
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'zendesk'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+    return c.json(
+      {
+        error: "No OAuth token found for tenant. Authorize first.",
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  // Retrieve subdomain from connector config
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'zendesk' LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+    return c.json(
+      {
+        error: "No connector config found. Configure Zendesk subdomain first.",
+        correlationId,
+      },
+      400,
+    );
+  }
+
+  const config = JSON.parse(configRow.config) as { subdomain: string };
+
+  try {
+    const scope = body.scope ?? "all";
+
+    let userResult: SyncResult = { created: 0, updated: 0, total: 0 };
+    let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
+
+    if (scope === "all" || scope === "users") {
+      userResult = await syncUsers(
+        tokenRow.access_token,
+        config.subdomain,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    if (scope === "all" || scope === "groups") {
+      groupResult = await syncGroups(
+        tokenRow.access_token,
+        config.subdomain,
+        c.env.DB,
+        body.tenantId,
+      );
+    }
+
+    // Update connection status
+    await updateConnectionStatus(
+      c.env.DB,
+      body.tenantId,
+      userResult.total,
+      groupResult.total,
+    );
+
+    // Mark sync job complete
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'completed', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        syncId,
+        message: "Sync completed",
+        tenantId: body.tenantId,
+        users: userResult,
+        groups: groupResult,
+      }),
+    );
+
+    return c.json({
+      status: "synced",
+      syncId,
+      correlationId,
+      data: { users: userResult, groups: groupResult },
+    });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
+
+    await c.env.DB.prepare(
+      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
+    )
+      .bind(new Date().toISOString(), syncId)
+      .run();
+
+    await updateConnectionStatus(c.env.DB, body.tenantId, 0, 0, errorMsg);
+
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        syncId,
+        message: "Sync failed",
+        tenantId: body.tenantId,
+        error: errorMsg,
+      }),
+    );
+
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+// Status endpoint
+app.get("/api/status", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.query("tenantId");
+
+  if (!tenantId) {
+    return c.json(
+      { error: "tenantId query parameter is required", correlationId },
+      400,
+    );
+  }
+
+  const connection = await c.env.DB.prepare(
+    `SELECT status, error_msg, last_sync_at, user_count, group_count
+     FROM directory_connections WHERE tenant_id = ?1`,
+  )
+    .bind(tenantId)
+    .first<{
+      status: string;
+      error_msg: string | null;
+      last_sync_at: string | null;
+      user_count: number;
+      group_count: number;
+    }>();
+
+  if (!connection) {
+    return c.json({
+      connector: "zendesk",
+      tenantId,
+      correlationId,
+      status: "not_connected",
+      lastSyncAt: null,
+      userCount: 0,
+      groupCount: 0,
+    });
+  }
+
+  const recentSyncs = await c.env.DB.prepare(
+    `SELECT id, status, created_at, completed_at
+     FROM sync_jobs WHERE tenant_id = ?1 AND connector_slug = 'zendesk'
+     ORDER BY created_at DESC LIMIT 10`,
+  )
+    .bind(tenantId)
+    .all();
+
+  return c.json({
+    connector: "zendesk",
+    tenantId,
+    correlationId,
+    status: connection.status,
+    error: connection.error_msg,
+    lastSyncAt: connection.last_sync_at,
+    userCount: connection.user_count,
+    groupCount: connection.group_count,
+    recentSyncs: recentSyncs.results,
+  });
+});
+
+// OAuth2 authorization redirect
+app.get("/auth/authorize", async (c) => {
+  const correlationId = c.get("correlationId");
   const tenantId = c.req.query("tenantId");
   const subdomain = c.req.query("subdomain");
 
   if (!tenantId || !subdomain) {
     return c.json(
-      { error: "Missing tenantId or subdomain query parameter" },
+      {
+        error: "tenantId and subdomain query parameters are required",
+        correlationId,
+      },
       400,
     );
   }
 
+  const state = btoa(JSON.stringify({ tenantId, correlationId, subdomain }));
   const redirectUri = new URL("/auth/callback", c.req.url).toString();
-  const state = btoa(JSON.stringify({ tenantId, subdomain }));
-
   const url = getAuthorizationUrl(
     subdomain,
     c.env.ZENDESK_CLIENT_ID,
@@ -51,415 +384,155 @@ app.get("/auth/authorize", (c) => {
   return c.redirect(url);
 });
 
-// ---------------------------------------------------------------------------
-// OAuth2 — callback
-// ---------------------------------------------------------------------------
+// OAuth2 callback
 app.get("/auth/callback", async (c) => {
+  const correlationId = c.get("correlationId");
   const code = c.req.query("code");
   const stateRaw = c.req.query("state");
-  const errorParam = c.req.query("error");
+  const error = c.req.query("error");
 
-  if (errorParam) {
-    return c.json({ error: `OAuth denied: ${errorParam}` }, 400);
+  if (error) {
+    return c.json({ error: `OAuth denied: ${error}`, correlationId }, 400);
   }
 
   if (!code || !stateRaw) {
-    return c.json({ error: "Missing code or state" }, 400);
+    return c.json(
+      { error: "Missing code or state parameter", correlationId },
+      400,
+    );
   }
 
-  let tenantId: string;
-  let subdomain: string;
+  let stateData: { tenantId: string; correlationId: string; subdomain: string };
   try {
-    const parsed = JSON.parse(atob(stateRaw)) as {
+    stateData = JSON.parse(atob(stateRaw)) as {
       tenantId: string;
+      correlationId: string;
       subdomain: string;
     };
-    tenantId = parsed.tenantId;
-    subdomain = parsed.subdomain;
   } catch {
-    return c.json({ error: "Invalid state parameter" }, 400);
+    return c.json({ error: "Invalid state parameter", correlationId }, 400);
   }
 
-  const redirectUri = new URL("/auth/callback", c.req.url).toString();
-
-  const tokens = await exchangeCodeForTokens(
-    subdomain,
-    c.env.ZENDESK_CLIENT_ID,
-    c.env.ZENDESK_CLIENT_SECRET,
-    code,
-    redirectUri,
-  );
-
-  // Encrypt tokens before storing
-  const encryptedAccess = await encryptValue(
-    tokens.access_token,
-    c.env.CRED_ENCRYPTION_KEY,
-  );
-  const encryptedRefresh = tokens.refresh_token
-    ? await encryptValue(tokens.refresh_token, c.env.CRED_ENCRYPTION_KEY)
-    : null;
-
-  const expiresAt = new Date(
-    Date.now() + tokens.expires_in * 1000,
-  ).toISOString();
-
-  await c.env.DB.prepare(
-    `INSERT OR REPLACE INTO app_oauth_tokens
-     (id, tenant_id, app_id, access_token, refresh_token, token_type, expires_at, scope, raw_response, updated_at)
-     VALUES (
-       COALESCE(
-         (SELECT id FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?),
-         lower(hex(randomblob(16)))
-       ),
-       ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
-     )`,
-  )
-    .bind(
-      tenantId,
-      "zendesk",
-      tenantId,
-      "zendesk",
-      encryptedAccess,
-      encryptedRefresh,
-      tokens.token_type,
-      expiresAt,
-      tokens.scope,
-      JSON.stringify({ expires_in: tokens.expires_in }),
-    )
-    .run();
-
-  return c.json({ status: "connected", tenantId });
-});
-
-// ---------------------------------------------------------------------------
-// Directory sync
-// ---------------------------------------------------------------------------
-app.post("/api/sync", async (c) => {
-  const body = await c.req.json<{
-    tenantId: string;
-    subdomain: string;
-  }>();
-  const { tenantId, subdomain } = body;
-
-  if (!tenantId || !subdomain) {
-    return c.json({ error: "Missing tenantId or subdomain" }, 400);
-  }
-
-  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
-
-  // Retrieve encrypted tokens
-  const tokenRow = await c.env.DB.prepare(
-    "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
-  )
-    .bind(tenantId, "zendesk")
-    .first<{
-      access_token: string;
-      refresh_token: string | null;
-      expires_at: string;
-    }>();
-
-  if (!tokenRow) {
-    return c.json(
-      { error: "No OAuth tokens found — connect first via /auth/authorize" },
-      401,
-    );
-  }
-
-  let accessToken = await decryptValue(
-    tokenRow.access_token,
-    c.env.CRED_ENCRYPTION_KEY,
-  );
-
-  // Refresh if expired
-  const expiresAt = new Date(tokenRow.expires_at).getTime();
-  if (Date.now() >= expiresAt - 60_000) {
-    if (!tokenRow.refresh_token) {
-      return c.json(
-        { error: "Access token expired and no refresh token available" },
-        401,
-      );
-    }
-
-    const refreshToken = await decryptValue(
-      tokenRow.refresh_token,
-      c.env.CRED_ENCRYPTION_KEY,
-    );
-
-    const refreshed = await refreshAccessToken(
-      subdomain,
+  try {
+    const redirectUri = new URL("/auth/callback", c.req.url).toString();
+    const tokens = await exchangeCodeForTokens(
+      stateData.subdomain,
       c.env.ZENDESK_CLIENT_ID,
       c.env.ZENDESK_CLIENT_SECRET,
-      refreshToken,
-    );
-
-    accessToken = refreshed.access_token;
-    const newExpiresAt = new Date(
-      Date.now() + refreshed.expires_in * 1000,
-    ).toISOString();
-    const encryptedNewAccess = await encryptValue(
-      refreshed.access_token,
-      c.env.CRED_ENCRYPTION_KEY,
+      code,
+      redirectUri,
     );
 
     await c.env.DB.prepare(
-      `UPDATE app_oauth_tokens
-       SET access_token = ?, expires_at = ?, updated_at = datetime('now')
-       WHERE tenant_id = ? AND app_id = ?`,
+      `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
     )
-      .bind(encryptedNewAccess, newExpiresAt, tenantId, "zendesk")
+      .bind(
+        crypto.randomUUID(),
+        stateData.tenantId,
+        "zendesk",
+        tokens.access_token,
+        tokens.refresh_token ?? null,
+        new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+        new Date().toISOString(),
+      )
       .run();
-  }
 
-  // Update connection status to syncing
-  await c.env.DB.prepare(
-    `INSERT OR REPLACE INTO directory_connections
-     (id, tenant_id, provider, status, updated_at)
-     VALUES (
-       COALESCE(
-         (SELECT id FROM directory_connections WHERE tenant_id = ?),
-         lower(hex(randomblob(16)))
-       ),
-       ?, 'zendesk', 'syncing', datetime('now')
-     )`,
-  )
-    .bind(tenantId, tenantId)
-    .run();
-
-  try {
-    const userResult = await syncUsers(
-      accessToken,
-      subdomain,
-      c.env.DB,
-      tenantId,
-    );
-    const groupResult = await syncGroups(
-      accessToken,
-      subdomain,
-      c.env.DB,
-      tenantId,
-    );
-
-    // Update connection with results
+    // Store subdomain in connector_configs
     await c.env.DB.prepare(
-      `UPDATE directory_connections
-       SET status = 'active', last_sync_at = datetime('now'),
-           user_count = ?, group_count = ?, error_msg = NULL, updated_at = datetime('now')
-       WHERE tenant_id = ?`,
+      `INSERT OR REPLACE INTO connector_configs (id, tenant_id, connector_slug, config, updated_at)
+       VALUES (
+         COALESCE(
+           (SELECT id FROM connector_configs WHERE tenant_id = ?1 AND connector_slug = 'zendesk'),
+           lower(hex(randomblob(16)))
+         ),
+         ?1, 'zendesk', ?2, datetime('now')
+       )`,
     )
-      .bind(userResult.total, groupResult.total, tenantId)
+      .bind(
+        stateData.tenantId,
+        JSON.stringify({ subdomain: stateData.subdomain }),
+      )
       .run();
-
-    // Publish sync events
-    await publishEvent({
-      orchestratorUrl: c.env.ORCHESTRATOR_URL,
-      tenantId,
-      type: "directory.synced",
-      source: "zendesk",
-      payload: { users: userResult, groups: groupResult },
-      correlationId,
-    });
-
-    return c.json({
-      status: "synced",
-      users: userResult,
-      groups: groupResult,
-    });
-  } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown sync error";
-
-    await c.env.DB.prepare(
-      `UPDATE directory_connections
-       SET status = 'error', error_msg = ?, updated_at = datetime('now')
-       WHERE tenant_id = ?`,
-    )
-      .bind(errorMessage, tenantId)
-      .run();
-
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        tenantId,
-        message: "Directory sync failed",
-        error: errorMessage,
-      }),
-    );
-
-    return c.json({ error: errorMessage }, 500);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Sync status
-// ---------------------------------------------------------------------------
-app.get("/api/status", async (c) => {
-  const tenantId = c.req.query("tenantId");
-  if (!tenantId) {
-    return c.json({ error: "Missing tenantId query parameter" }, 400);
-  }
-
-  const row = await c.env.DB.prepare(
-    `SELECT provider, status, error_msg, last_sync_at, user_count, group_count, updated_at
-     FROM directory_connections WHERE tenant_id = ?`,
-  )
-    .bind(tenantId)
-    .first<{
-      provider: string;
-      status: string;
-      error_msg: string | null;
-      last_sync_at: string | null;
-      user_count: number;
-      group_count: number;
-      updated_at: string;
-    }>();
-
-  if (!row) {
-    return c.json({ status: "not_connected" });
-  }
-
-  return c.json({
-    provider: row.provider,
-    status: row.status,
-    error: row.error_msg,
-    lastSyncAt: row.last_sync_at,
-    userCount: row.user_count,
-    groupCount: row.group_count,
-    updatedAt: row.updated_at,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Webhooks — Zendesk
-// ---------------------------------------------------------------------------
-app.post("/webhooks/zendesk/events", async (c) => {
-  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
-  const rawBody = await c.req.text();
-
-  const isValid = await verifyZendeskWebhookSignature(
-    {
-      ...c,
-      req: { ...c.req, text: async () => rawBody },
-    } as any,
-    c.env.CRED_ENCRYPTION_KEY,
-  );
-
-  if (!isValid) {
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        message: "Invalid webhook signature",
-      }),
-    );
-    return c.json({ error: "Invalid signature", correlationId }, 401);
-  }
-
-  try {
-    const body = JSON.parse(rawBody);
 
     console.log(
       JSON.stringify({
         level: "info",
         correlationId,
-        message: "Zendesk webhook received",
-        eventType: body.type ?? "unknown",
+        message: "OAuth tokens stored",
+        tenantId: stateData.tenantId,
+        connector: "zendesk",
       }),
     );
 
-    return c.json({ status: "received", correlationId });
+    return c.json({
+      status: "authorized",
+      tenantId: stateData.tenantId,
+      correlationId,
+    });
   } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
         correlationId,
-        message: "Failed to parse webhook body",
+        message: "Token exchange failed",
+        error: errorMessage,
       }),
     );
-    return c.json({ error: "Invalid JSON", correlationId }, 400);
+    return c.json({ error: errorMessage, correlationId }, 500);
   }
 });
 
-// ---------------------------------------------------------------------------
-// Encryption helpers (AES-GCM, matches shared/credentials/crypto pattern)
-// ---------------------------------------------------------------------------
-const ALGORITHM = "AES-GCM";
-const IV_LENGTH = 12;
-const HKDF_SALT = new TextEncoder().encode("atlasit-credential-vault-v1");
-const HKDF_INFO = new TextEncoder().encode("credential-encryption");
-
-async function deriveKey(masterKey: string): Promise<CryptoKey> {
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(masterKey),
-    "HKDF",
-    false,
-    ["deriveKey"],
-  );
-
-  return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: HKDF_SALT, info: HKDF_INFO },
-    keyMaterial,
-    { name: ALGORITHM, length: 256 },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToArrayBuffer(encoded: string): ArrayBuffer {
-  const binary = atob(encoded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-async function encryptValue(
-  plaintext: string,
-  masterKey: string,
-): Promise<string> {
-  const key = await deriveKey(masterKey);
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const encrypted = await crypto.subtle.encrypt(
-    { name: ALGORITHM, iv },
-    key,
-    new TextEncoder().encode(plaintext),
-  );
-
-  const envelope = JSON.stringify({
-    enc: arrayBufferToBase64(encrypted),
-    iv: arrayBufferToBase64(iv.buffer),
-    v: 1,
-  });
-  return envelope;
-}
-
-async function decryptValue(
-  envelope: string,
-  masterKey: string,
-): Promise<string> {
-  const { enc, iv } = JSON.parse(envelope) as {
-    enc: string;
-    iv: string;
-    v: number;
-  };
-  const key = await deriveKey(masterKey);
-  const decrypted = await crypto.subtle.decrypt(
-    { name: ALGORITHM, iv: new Uint8Array(base64ToArrayBuffer(iv)) },
-    key,
-    base64ToArrayBuffer(enc),
-  );
-  return new TextDecoder().decode(decrypted);
-}
+// Zendesk webhook receiver
+app.post("/webhooks/zendesk/events", (c) => handleZendeskWebhook(c));
 
 export default app;
+
+// -- Internal helpers --
+
+async function updateConnectionStatus(
+  db: D1Database,
+  tenantId: string,
+  userCount: number,
+  groupCount: number,
+  error?: string,
+): Promise<void> {
+  const existing = await db
+    .prepare("SELECT id FROM directory_connections WHERE tenant_id = ?1")
+    .bind(tenantId)
+    .first();
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE directory_connections
+         SET status = ?1, error_msg = ?2, last_sync_at = datetime('now'),
+             user_count = ?3, group_count = ?4, updated_at = datetime('now')
+         WHERE tenant_id = ?5`,
+      )
+      .bind(
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+        tenantId,
+      )
+      .run();
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
+      )
+      .bind(
+        tenantId,
+        "zendesk",
+        error ? "error" : "active",
+        error ?? null,
+        userCount,
+        groupCount,
+      )
+      .run();
+  }
+}

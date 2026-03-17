@@ -2,10 +2,16 @@ export type Bindings = {
   DB: D1Database;
   ZENDESK_CLIENT_ID: string;
   ZENDESK_CLIENT_SECRET: string;
+  ZENDESK_WEBHOOK_SECRET: string;
   CRED_ENCRYPTION_KEY: string;
   ORCHESTRATOR_URL: string;
+  ADAPTER_SECRET: string;
   CONNECTOR_ID: string;
 };
+
+export interface Variables {
+  correlationId: string;
+}
 
 export interface SyncResult {
   created: number;

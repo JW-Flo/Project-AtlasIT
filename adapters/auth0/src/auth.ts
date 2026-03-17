@@ -1,3 +1,4 @@
+import type { Context, Next } from "hono";
 import type { TokenResponse } from "./types.js";
 
 const SCOPES = [
@@ -5,6 +6,17 @@ const SCOPES = [
   "read:organizations",
   "read:organization_members",
 ];
+
+export async function authMiddleware(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid Authorization header" }, 401);
+  }
+  await next();
+}
 
 export async function getClientCredentialsToken(
   domain: string,
@@ -55,7 +67,9 @@ export async function refreshAccessToken(
 
   if (!response.ok) {
     const error = await response.text().catch(() => "Unknown error");
-    throw new Error(`Auth0 token refresh failed (${response.status}): ${error}`);
+    throw new Error(
+      `Auth0 token refresh failed (${response.status}): ${error}`,
+    );
   }
 
   return response.json() as Promise<TokenResponse>;

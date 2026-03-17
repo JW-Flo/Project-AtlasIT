@@ -1,9 +1,18 @@
+import type { Context, Next } from "hono";
 import type { TokenResponse } from "./types.js";
 
-const SCOPES = [
-  "users:read",
-  "organizations:read",
-];
+const SCOPES = ["users:read", "organizations:read"];
+
+export async function authMiddleware(
+  c: Context,
+  next: Next,
+): Promise<Response | void> {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid Authorization header" }, 401);
+  }
+  await next();
+}
 
 export function getAuthorizationUrl(
   subdomain: string,
