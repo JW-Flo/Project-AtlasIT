@@ -1,0 +1,1 @@
+{"version":3,"file":"compliance-mapping.d.ts","sourceRoot":"","sources":["../../src/automation/compliance-mapping.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;GAYG;AAEH,MAAM,WAAW,cAAc;IAC7B,SAAS,EAAE,MAAM,CAAC;IAClB,SAAS,EAAE,MAAM,CAAC;IAClB,WAAW,EAAE,MAAM,CAAC;IACpB,YAAY,EAAE,MAAM,CAAC;CACtB;AAED;;;;;;;;GAQG;AACH,eAAO,MAAM,qBAAqB,EAAE,MAAM,CAAC,MAAM,EAAE,cAAc,EAAE,CA4JlE,CAAC"}
