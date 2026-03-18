@@ -156,6 +156,7 @@ export async function evaluateAutomationRules(
     const startTime = Date.now();
     const actions = sortActions(rule.actions);
     const results: ActionResult[] = [];
+    const executionId = crypto.randomUUID().replace(/-/g, "");
 
     for (const action of actions) {
       try {
@@ -201,7 +202,6 @@ export async function evaluateAutomationRules(
     const summary = buildExecutionSummary(rule, results, durationMs);
 
     // Record execution in D1
-    const executionId = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
 
     await db

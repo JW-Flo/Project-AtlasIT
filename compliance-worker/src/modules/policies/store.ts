@@ -581,7 +581,9 @@ export async function getCoverage(
   });
 
   const totalControls = controlsRows.length;
-  const withEvidence = controlsRows.filter((r) => r.evidenceCount > 0).length;
+  const withEvidence = controlsRows.filter(
+    (r) => r.evidenceCount > 0 || r.automationVerified,
+  ).length;
   const coveragePercent =
     totalControls === 0 ? 0 : Math.round((withEvidence / totalControls) * 100);
 
