@@ -537,6 +537,39 @@ async function executeAction(
       return ok(action.type, `Control ${controlId} → ${newStatus}`);
     }
 
+    case "request_access_review": {
+      const db = ctx.sharedDb;
+      if (!db) return skip(action.type, "no sharedDb binding");
+      const { name, scope, dueDate, gracePeriodDays } = config as {
+        name?: string;
+        scope?: string;
+        dueDate?: string;
+        gracePeriodDays?: number;
+      };
+      if (!name) return fail(action.type, "config.name is required");
+
+      const campaignId = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await db
+        .prepare(
+          `INSERT INTO access_review_campaigns
+             (id, tenant_id, name, scope, status, reviewer_policy, due_date, grace_period_days, created_by, created_at)
+           VALUES (?, ?, ?, ?, 'active', 'manager', ?, ?, 'system', ?)`,
+        )
+        .bind(
+          campaignId,
+          event.tenantId,
+          name,
+          scope ?? "all",
+          dueDate ?? null,
+          gracePeriodDays ?? 7,
+          now,
+        )
+        .run();
+
+      return ok(action.type, `Access review campaign created: ${campaignId}`);
+    }
+
     default:
       return fail(action.type as string, "unknown action type");
   }

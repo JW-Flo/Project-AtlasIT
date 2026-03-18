@@ -20,7 +20,8 @@ export type ActionType =
   | "run_workflow"
   | "sync_directory"
   | "create_incident"
-  | "update_compliance_status";
+  | "update_compliance_status"
+  | "request_access_review";
 
 export type ConditionOperator =
   | "equals"
