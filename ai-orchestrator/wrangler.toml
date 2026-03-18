@@ -87,10 +87,11 @@ AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
 
 [env.production]
-# Dual routing: keep workers.dev for fallback, add custom orchestrator.atlasit.pro
+name = "atlasit-ai-orchestrator"
+workers_dev = true
+# Custom domain route for orchestrator.atlasit.pro
 routes = [
-	"orchestrator.atlasit.workers.dev/*",
-	"orchestrator.atlasit.pro/*"
+	{ pattern = "orchestrator.atlasit.pro/*", zone_name = "atlasit.pro" }
 ]
 usage_model = "bundled"
 
