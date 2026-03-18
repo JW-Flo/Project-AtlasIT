@@ -157,9 +157,10 @@ export async function coverageSummary(
   db: D1Database,
   framework: string,
   tenantId: string,
+  sharedDb?: D1Database,
 ) {
   await ensurePolicyInfrastructure(db);
-  return getCoverage(db, framework, tenantId);
+  return getCoverage(db, framework, tenantId, sharedDb);
 }
 
 export interface ManualControlEvidenceLinkResult {

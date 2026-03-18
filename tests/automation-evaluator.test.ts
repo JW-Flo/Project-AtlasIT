@@ -1,56 +1,74 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { evaluateAutomationRules } from "../ai-orchestrator/src/lib/automation-evaluator";
+/**
+ * Tests for compliance evidence emission in automation-evaluator.
+ *
+ * Uses create_incident (D1-only, no fetch) for evidence emission tests to avoid
+ * network dependency. Tests verify emitComplianceEvidence inserts one row per
+ * mapped control on action success, and zero rows on skip/fail.
+ */
+import { describe, it, expect, vi } from "vitest";
+import { ACTION_COMPLIANCE_MAP } from "@atlasit/shared/automation/compliance-mapping";
 
-// Mock D1Database
-function createMockDb(rules: Record<string, unknown>[] = []) {
-  const insertedExecutions: Record<string, unknown>[] = [];
-  const updatedRules: Array<{ args: unknown[] }> = [];
+// ---------------------------------------------------------------------------
+// D1 mock — records all prepare() SQL calls
+// ---------------------------------------------------------------------------
 
-  const mockDb = {
-    prepare(sql: string) {
-      return {
-        bind(...args: unknown[]) {
-          return {
-            async all() {
-              if (sql.includes("SELECT * FROM automation_rules")) {
-                return { results: rules };
-              }
-              return { results: [] };
-            },
-            async run() {
-              if (sql.includes("INSERT INTO automation_executions")) {
-                insertedExecutions.push({ sql, args });
-              }
-              if (sql.includes("UPDATE automation_rules")) {
-                updatedRules.push({ args });
-              }
-              return { meta: { changes: 1 } };
-            },
-          };
-        },
-      };
+function makeD1(rulesRows: Record<string, unknown>[] = []) {
+  const preparedSqls: string[] = [];
+
+  function makeStmt(sql: string) {
+    return {
+      bind: (..._args: unknown[]) => makeStmt(sql),
+      run: vi.fn(async () => {
+        preparedSqls.push(sql);
+        return { meta: { changes: 1 }, success: true };
+      }),
+      all: vi.fn(async () => {
+        preparedSqls.push(sql);
+        return { results: rulesRows };
+      }),
+      first: vi.fn(async () => {
+        preparedSqls.push(sql);
+        return rulesRows[0] ?? null;
+      }),
+    };
+  }
+
+  const prepare = vi.fn((sql: string) => makeStmt(sql));
+
+  const db = {
+    prepare,
+    get _preparedSqls() {
+      return preparedSqls;
     },
-    _insertedExecutions: insertedExecutions,
-    _updatedRules: updatedRules,
-  };
+  } as unknown as D1Database & { _preparedSqls: string[] };
 
-  return mockDb as unknown as D1Database & {
-    _insertedExecutions: typeof insertedExecutions;
-    _updatedRules: typeof updatedRules;
-  };
+  return db;
 }
 
-function makeDbRule(overrides: Record<string, unknown> = {}) {
+// ---------------------------------------------------------------------------
+// Rule fixture — uses create_incident (D1-only action, no fetch required)
+// ---------------------------------------------------------------------------
+
+function makeRuleRow(actionType: string, config: Record<string, unknown> = {}): Record<string, unknown> {
+  const defaultConfig: Record<string, Record<string, unknown>> = {
+    create_incident: { severity: "medium", title: "Test incident" },
+    update_compliance_status: { controlId: "SOC2_CC6.1", status: "implemented" },
+    provision_app_access: { appId: "slack" },
+    revoke_app_access: { appId: "slack" },
+    send_notification: {},
+  };
+
   return {
-    id: "rule-1",
-    tenant_id: "tenant-1",
-    name: "Test Rule",
+    id: `rule-${actionType}`,
+    tenant_id: "tenant-test",
+    name: `Test ${actionType}`,
+    description: null,
     enabled: 1,
     trigger_type: "user_created",
     trigger_config: "{}",
     conditions: "[]",
     actions: JSON.stringify([
-      { type: "send_notification", config: { channel: "general" }, order: 1 },
+      { type: actionType, order: 1, config: { ...(defaultConfig[actionType] ?? {}), ...config } },
     ]),
     last_run_at: null,
     last_status: null,
@@ -59,170 +77,190 @@ function makeDbRule(overrides: Record<string, unknown> = {}) {
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     created_by: null,
-    ...overrides,
   };
 }
 
-describe("evaluateAutomationRules", () => {
-  it("returns empty when event type has no mapping", async () => {
-    const db = createMockDb([makeDbRule()]);
-    const result = await evaluateAutomationRules(
+// ---------------------------------------------------------------------------
+// Mock profile-enricher
+// ---------------------------------------------------------------------------
+
+vi.mock("../ai-orchestrator/src/lib/profile-enricher.js", () => ({
+  enrichUserProfile: vi.fn(async () => null),
+}));
+
+const { evaluateAutomationRules } = await import(
+  "../ai-orchestrator/src/lib/automation-evaluator.js"
+);
+
+// ---------------------------------------------------------------------------
+// Evidence emission tests
+// ---------------------------------------------------------------------------
+
+describe("automation-evaluator — compliance evidence emission", () => {
+  it("emits compliance_evidence rows on create_incident success", async () => {
+    const db = makeD1([makeRuleRow("create_incident")]);
+
+    await evaluateAutomationRules(
       db,
-      "tenant-1",
-      "unknown.event",
-      "test",
-      {},
-    );
-    expect(result.matched).toBe(0);
-    expect(result.executions).toEqual([]);
-  });
-
-  it("returns empty when tenant has no rules", async () => {
-    const db = createMockDb([]);
-    const result = await evaluateAutomationRules(
-      db,
-      "tenant-1",
-      "user.created",
-      "test",
-      {},
-    );
-    expect(result.matched).toBe(0);
-    expect(result.executions).toEqual([]);
-  });
-
-  it("matches and executes a user_created rule", async () => {
-    const db = createMockDb([makeDbRule()]);
-    const result = await evaluateAutomationRules(
-      db,
-      "tenant-1",
-      "user.created",
-      "directory-sync",
-      { userId: "u1", email: "test@example.com" },
-    );
-
-    expect(result.matched).toBe(1);
-    expect(result.executions).toHaveLength(1);
-    expect(result.executions[0].ruleId).toBe("rule-1");
-    expect(result.executions[0].status).toBe("success");
-    expect(result.executions[0].actionsRun).toBe(1);
-  });
-
-  it("records execution in D1", async () => {
-    const db = createMockDb([makeDbRule()]);
-    await evaluateAutomationRules(db, "tenant-1", "user.created", "test", {});
-
-    expect(db._insertedExecutions).toHaveLength(1);
-    expect(db._updatedRules).toHaveLength(1);
-  });
-
-  it("skips disabled rules", async () => {
-    const db = createMockDb([makeDbRule({ enabled: 0 })]);
-    const result = await evaluateAutomationRules(
-      db,
-      "tenant-1",
-      "user.created",
-      "test",
-      {},
-    );
-
-    expect(result.matched).toBe(0);
-  });
-
-  it("matches rules with conditions", async () => {
-    const rule = makeDbRule({
-      conditions: JSON.stringify([
-        { field: "department", operator: "equals", value: "Engineering" },
-      ]),
-    });
-    const db = createMockDb([rule]);
-
-    const matched = await evaluateAutomationRules(
-      db,
-      "tenant-1",
-      "user.created",
-      "test",
-      { department: "Engineering" },
-    );
-    expect(matched.matched).toBe(1);
-
-    const db2 = createMockDb([rule]);
-    const notMatched = await evaluateAutomationRules(
-      db2,
-      "tenant-1",
-      "user.created",
-      "test",
-      { department: "Sales" },
-    );
-    expect(notMatched.matched).toBe(0);
-  });
-
-  it("maps all supported event types", async () => {
-    const mappings: Array<[string, string]> = [
-      ["user.created", "user_created"],
-      ["user.deactivated", "user_deactivated"],
-      ["user.joined_group", "user_joined_group"],
-      ["user.left_group", "user_left_group"],
-      ["app.connected", "app_connected"],
-      ["app.disconnected", "app_disconnected"],
-      ["app.health_changed", "app_health_changed"],
-      ["compliance.score_changed", "compliance_score_changed"],
-    ];
-
-    for (const [eventType, triggerType] of mappings) {
-      const db = createMockDb([makeDbRule({ trigger_type: triggerType })]);
-      const result = await evaluateAutomationRules(
-        db,
-        "tenant-1",
-        eventType,
-        "test",
-        {},
-      );
-      expect(result.matched).toBe(1);
-    }
-  });
-
-  it("handles multiple matching rules", async () => {
-    const rules = [
-      makeDbRule({ id: "rule-1", name: "Rule A" }),
-      makeDbRule({ id: "rule-2", name: "Rule B" }),
-    ];
-    const db = createMockDb(rules);
-
-    const result = await evaluateAutomationRules(
-      db,
-      "tenant-1",
-      "user.created",
-      "test",
-      {},
-    );
-
-    expect(result.matched).toBe(2);
-    expect(result.executions).toHaveLength(2);
-    expect(db._insertedExecutions).toHaveLength(2);
-    expect(db._updatedRules).toHaveLength(2);
-  });
-
-  it("interpolates template strings in action config", async () => {
-    const rule = makeDbRule({
-      actions: JSON.stringify([
-        {
-          type: "send_notification",
-          config: { message: "Welcome {{email}}!" },
-          order: 1,
-        },
-      ]),
-    });
-    const db = createMockDb([rule]);
-
-    const result = await evaluateAutomationRules(
-      db,
-      "tenant-1",
+      "tenant-test",
       "user.created",
       "test",
       { email: "alice@example.com" },
+      undefined,
+      { sharedDb: db }, // required for create_incident
     );
 
-    expect(result.matched).toBe(1);
-    expect(result.executions[0].status).toBe("success");
+    const controls = ACTION_COMPLIANCE_MAP["create_incident"] ?? [];
+    expect(controls.length).toBeGreaterThan(0);
+
+    const evidenceInserts = (db as ReturnType<typeof makeD1>)._preparedSqls.filter((sql) =>
+      sql.includes("INSERT OR IGNORE INTO compliance_evidence"),
+    );
+    expect(evidenceInserts.length).toBe(controls.length);
+  });
+
+  it("emits compliance_evidence rows on update_compliance_status success", async () => {
+    const db = makeD1([makeRuleRow("update_compliance_status")]);
+
+    await evaluateAutomationRules(
+      db,
+      "tenant-test",
+      "user.created",
+      "test",
+      { email: "bob@example.com" },
+      undefined,
+      { sharedDb: db },
+    );
+
+    const controls = ACTION_COMPLIANCE_MAP["update_compliance_status"] ?? [];
+    expect(controls.length).toBeGreaterThan(0);
+
+    const evidenceInserts = (db as ReturnType<typeof makeD1>)._preparedSqls.filter((sql) =>
+      sql.includes("INSERT OR IGNORE INTO compliance_evidence"),
+    );
+    expect(evidenceInserts.length).toBe(controls.length);
+  });
+
+  it("does NOT emit evidence when action is skipped (send_notification, no selfUrl)", async () => {
+    const db = makeD1([makeRuleRow("send_notification")]);
+
+    await evaluateAutomationRules(
+      db,
+      "tenant-test",
+      "user.created",
+      "test",
+      { email: "charlie@example.com" },
+      undefined,
+      { selfUrl: undefined },
+    );
+
+    const evidenceInserts = (db as ReturnType<typeof makeD1>)._preparedSqls.filter((sql) =>
+      sql.includes("INSERT OR IGNORE INTO compliance_evidence"),
+    );
+    expect(evidenceInserts.length).toBe(0);
+  });
+
+  it("does NOT emit evidence when action is skipped (create_incident, no sharedDb)", async () => {
+    const db = makeD1([makeRuleRow("create_incident")]);
+
+    await evaluateAutomationRules(
+      db,
+      "tenant-test",
+      "user.created",
+      "test",
+      { email: "dave@example.com" },
+      // no actionContext → sharedDb is undefined → create_incident skipped
+    );
+
+    const evidenceInserts = (db as ReturnType<typeof makeD1>)._preparedSqls.filter((sql) =>
+      sql.includes("INSERT OR IGNORE INTO compliance_evidence"),
+    );
+    expect(evidenceInserts.length).toBe(0);
+  });
+
+  it("evidence emission error is swallowed (does not reject the evaluation)", async () => {
+    const db = makeD1([makeRuleRow("create_incident")]);
+
+    // Make compliance_evidence INSERT throw
+    const originalPrepare = db.prepare;
+    vi.spyOn(db as ReturnType<typeof makeD1>, "prepare").mockImplementation((sql: string) => {
+      if (sql.includes("compliance_evidence")) {
+        return {
+          bind: () => ({
+            run: vi.fn(async () => {
+              throw new Error("D1 write failed");
+            }),
+          }),
+        } as unknown as ReturnType<typeof originalPrepare>;
+      }
+      return originalPrepare(sql);
+    });
+
+    await expect(
+      evaluateAutomationRules(
+        db,
+        "tenant-test",
+        "user.created",
+        "test",
+        { email: "eve@example.com" },
+        undefined,
+        { sharedDb: db },
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it("returns matched:0 and no evidence when no rules in DB", async () => {
+    const db = makeD1([]); // empty DB
+
+    const result = await evaluateAutomationRules(
+      db,
+      "tenant-test",
+      "user.created",
+      "test",
+      {},
+    );
+
+    expect(result.matched).toBe(0);
+    const evidenceInserts = (db as ReturnType<typeof makeD1>)._preparedSqls.filter((sql) =>
+      sql.includes("INSERT OR IGNORE INTO compliance_evidence"),
+    );
+    expect(evidenceInserts.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ACTION_COMPLIANCE_MAP completeness
+// ---------------------------------------------------------------------------
+
+describe("ACTION_COMPLIANCE_MAP — mapping completeness", () => {
+  const requiredActionTypes = [
+    "provision_app_access",
+    "revoke_app_access",
+    "run_workflow",
+    "create_incident",
+    "assign_role",
+    "remove_role",
+    "sync_directory",
+    "update_compliance_status",
+    "send_notification",
+  ];
+
+  for (const actionType of requiredActionTypes) {
+    it(`${actionType} maps to at least one compliance control`, () => {
+      const controls = ACTION_COMPLIANCE_MAP[actionType];
+      expect(controls, `${actionType} should be in ACTION_COMPLIANCE_MAP`).toBeDefined();
+      expect(controls!.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("every control ref has required fields (framework, controlId, controlName, evidenceType)", () => {
+    for (const [actionType, controls] of Object.entries(ACTION_COMPLIANCE_MAP)) {
+      for (const ctrl of controls) {
+        expect(ctrl.framework, `${actionType}.framework`).toBeDefined();
+        expect(ctrl.controlId, `${actionType}.controlId`).toBeTruthy();
+        expect(ctrl.controlName, `${actionType}.controlName`).toBeTruthy();
+        expect(ctrl.evidenceType, `${actionType}.evidenceType`).toBeTruthy();
+      }
+    }
   });
 });

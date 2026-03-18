@@ -26,6 +26,7 @@ import type {
   TriggerType,
   CanonicalUserProfile,
 } from "@atlasit/shared/automation/types";
+import { ACTION_COMPLIANCE_MAP } from "@atlasit/shared/automation/compliance-mapping";
 import { enrichUserProfile } from "./profile-enricher";
 
 /** Map of orchestrator event types to automation trigger types */
@@ -155,6 +156,7 @@ export async function evaluateAutomationRules(
     const startTime = Date.now();
     const actions = sortActions(rule.actions);
     const results: ActionResult[] = [];
+    const executionId = crypto.randomUUID().replace(/-/g, "");
 
     for (const action of actions) {
       try {
@@ -177,6 +179,18 @@ export async function evaluateAutomationRules(
           userProfile,
         );
         results.push(result);
+
+        // Emit compliance evidence for each successful action
+        if (result.status === "success") {
+          await emitComplianceEvidence(
+            db,
+            tenantId,
+            action.type,
+            executionId,
+          ).catch(() => {
+            // Non-critical — evidence emission must not block execution
+          });
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
         results.push({ actionType: action.type, status: "failed", message });
@@ -187,7 +201,6 @@ export async function evaluateAutomationRules(
     const summary = buildExecutionSummary(rule, results, durationMs);
 
     // Record execution in D1
-    const executionId = crypto.randomUUID().replace(/-/g, "");
     const now = new Date().toISOString();
 
     await db
@@ -647,6 +660,42 @@ function buildWorkflowSteps(
     ...revokeSteps.map((s) => ({ ...s, id: `old_${s.id}` })),
     ...provisionSteps.map((s) => ({ ...s, id: `new_${s.id}` })),
   ];
+}
+
+/**
+ * Insert one compliance_evidence row per mapped control for a successful action.
+ * Errors are swallowed by the caller — evidence emission is non-critical.
+ */
+async function emitComplianceEvidence(
+  db: D1Database,
+  tenantId: string,
+  actionType: string,
+  executionId: string,
+): Promise<void> {
+  const controls = ACTION_COMPLIANCE_MAP[actionType];
+  if (!controls || controls.length === 0) return;
+
+  const now = new Date().toISOString();
+  for (const control of controls) {
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await db
+      .prepare(
+        `INSERT OR IGNORE INTO compliance_evidence
+          (id, tenant_id, framework, control_id, evidence_type, action_type, execution_id, source, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'automation', ?)`,
+      )
+      .bind(
+        id,
+        tenantId,
+        control.framework,
+        control.controlId,
+        control.evidenceType,
+        actionType,
+        executionId,
+        now,
+      )
+      .run();
+  }
 }
 
 // Row → domain mapper (mirrors console-app/src/lib/server/automation.ts)

@@ -27,6 +27,7 @@ export interface CoverageControlRow {
   controlKey: string;
   title: string;
   evidenceCount: number;
+  automationVerified?: boolean;
 }
 
 export interface CoverageSummary {
@@ -481,6 +482,7 @@ export async function getCoverage(
   db: D1Database,
   framework: string,
   tenantId: string,
+  sharedDb?: D1Database,
 ): Promise<CoverageSummary> {
   const controls = await db
     .prepare(
@@ -499,14 +501,36 @@ export async function getCoverage(
     .bind(tenantId, framework)
     .all<{ key: string; title: string; evidence_count: number }>();
 
-  const controlsRows = (controls.results ?? []).map((row) => ({
-    controlKey: row.key,
-    title: row.title,
-    evidenceCount: row.evidence_count ?? 0,
-  }));
+  // Query automation evidence from ATLAS_SHARED_DB (last 90 days)
+  let automationControlIds = new Set<string>();
+  if (sharedDb) {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const autoRows = await sharedDb
+      .prepare(
+        `SELECT DISTINCT control_id
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND framework = ? AND source = 'automation'
+           AND created_at >= ?`,
+      )
+      .bind(tenantId, framework, cutoff)
+      .all<{ control_id: string }>();
+    automationControlIds = new Set((autoRows.results ?? []).map((r) => r.control_id));
+  }
+
+  const controlsRows = (controls.results ?? []).map((row) => {
+    const automationVerified = automationControlIds.has(row.key);
+    return {
+      controlKey: row.key,
+      title: row.title,
+      evidenceCount: row.evidence_count ?? 0,
+      ...(automationVerified ? { automationVerified: true } : {}),
+    };
+  });
 
   const totalControls = controlsRows.length;
-  const withEvidence = controlsRows.filter((r) => r.evidenceCount > 0).length;
+  const withEvidence = controlsRows.filter(
+    (r) => r.evidenceCount > 0 || r.automationVerified,
+  ).length;
   const coveragePercent =
     totalControls === 0 ? 0 : Math.round((withEvidence / totalControls) * 100);
 
