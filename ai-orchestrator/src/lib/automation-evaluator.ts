@@ -26,6 +26,7 @@ import type {
   TriggerType,
   CanonicalUserProfile,
 } from "@atlasit/shared/automation/types";
+import { ACTION_COMPLIANCE_MAP } from "@atlasit/shared/automation/compliance-mapping";
 import { enrichUserProfile } from "./profile-enricher";
 
 /** Map of orchestrator event types to automation trigger types */
@@ -177,6 +178,19 @@ export async function evaluateAutomationRules(
           userProfile,
         );
         results.push(result);
+
+        // Emit compliance evidence for successful actions that map to controls
+        if (result.status === "success" && actionContext?.sharedDb) {
+          await emitComplianceEvidence(
+            action.type,
+            event,
+            result,
+            actionContext,
+            userProfile,
+          ).catch(() => {
+            // Non-critical — evidence emission must not fail rule execution
+          });
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Unknown error";
         results.push({ actionType: action.type, status: "failed", message });
@@ -525,6 +539,62 @@ async function executeAction(
 
     default:
       return fail(action.type as string, "unknown action type");
+  }
+}
+
+// ── Compliance evidence emission ─────────────────────────────────────────────
+
+/**
+ * Emits one `compliance_evidence` row per control mapped to the action type.
+ * Silently no-ops when the action has no compliance mapping or sharedDb is absent.
+ * Called with .catch(() => {}) so failures never block rule execution.
+ */
+async function emitComplianceEvidence(
+  actionType: string,
+  event: AutomationEvent,
+  result: ActionResult,
+  ctx: ActionContext,
+  profile: CanonicalUserProfile | null,
+): Promise<void> {
+  const controls = ACTION_COMPLIANCE_MAP[actionType] ?? [];
+  if (controls.length === 0 || !ctx.sharedDb) return;
+
+  const timestamp = new Date().toISOString();
+  const actor = profile?.email ?? "system";
+  const subject =
+    profile?.email ?? JSON.stringify(event.payload).slice(0, 100);
+  const metadata = JSON.stringify({
+    actionType,
+    eventType: event.type,
+    eventSource: event.source,
+    result: result.message,
+    ...(result.details ?? {}),
+  });
+
+  for (const control of controls) {
+    await ctx.sharedDb
+      .prepare(
+        `INSERT OR IGNORE INTO compliance_evidence
+         (id, tenant_id, framework, framework_id, control_id, control_name,
+          evidence_type, source, source_id, actor, subject, metadata, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        event.tenantId,
+        control.framework,
+        control.framework, // framework_id alias for backward compat
+        control.controlId,
+        control.controlName,
+        control.evidenceType,
+        "automation",
+        (event.payload.ruleId as string | undefined) ?? null,
+        actor,
+        subject,
+        metadata,
+        timestamp,
+      )
+      .run();
   }
 }
 

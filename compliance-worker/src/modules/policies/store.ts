@@ -27,6 +27,8 @@ export interface CoverageControlRow {
   controlKey: string;
   title: string;
   evidenceCount: number;
+  /** True when automation has emitted evidence for this control in the last 90 days */
+  automationVerified?: boolean;
 }
 
 export interface CoverageSummary {
@@ -482,10 +484,16 @@ export async function getCoverage(
   framework: string,
   tenantId: string,
 ): Promise<CoverageSummary> {
+  // Evidence window: last 90 days for automation-sourced evidence
+  const windowCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 19);
+
   const controls = await db
     .prepare(
       `SELECT c.control_key as key, c.title as title,
-              COALESCE(l.count, 0) as evidence_count
+              COALESCE(l.count, 0) + COALESCE(a.count, 0) as evidence_count,
+              CASE WHEN COALESCE(a.count, 0) > 0 THEN 1 ELSE 0 END as automation_verified
        FROM internal_controls c
        LEFT JOIN (
          SELECT control_key, COUNT(*) as count
@@ -493,16 +501,31 @@ export async function getCoverage(
          WHERE tenant_id = ?
          GROUP BY control_key
        ) l ON l.control_key = c.control_key
+       LEFT JOIN (
+         SELECT control_id, COUNT(*) as count
+         FROM compliance_evidence
+         WHERE tenant_id = ?
+           AND (framework = ? OR framework_id = ?)
+           AND source = 'automation'
+           AND created_at >= ?
+         GROUP BY control_id
+       ) a ON a.control_id = c.control_key
        WHERE c.framework = ?
        ORDER BY c.control_key ASC`,
     )
-    .bind(tenantId, framework)
-    .all<{ key: string; title: string; evidence_count: number }>();
+    .bind(tenantId, tenantId, framework, framework, windowCutoff, framework)
+    .all<{
+      key: string;
+      title: string;
+      evidence_count: number;
+      automation_verified: number;
+    }>();
 
   const controlsRows = (controls.results ?? []).map((row) => ({
     controlKey: row.key,
     title: row.title,
     evidenceCount: row.evidence_count ?? 0,
+    automationVerified: (row.automation_verified ?? 0) > 0,
   }));
 
   const totalControls = controlsRows.length;
