@@ -57,6 +57,27 @@
     latestScore: number;
   }
 
+  interface EvidenceFeedSummary {
+    totalEvidence: number;
+    frameworksCovered: number;
+    controlsCovered: number;
+    positiveCount: number;
+    detrimentalCount: number;
+  }
+
+  interface EvidenceFeedPreviewItem {
+    id: string;
+    framework: string;
+    controlId: string;
+    impact: "positive" | "detrimental" | "neutral";
+    eventType: string;
+    source: string;
+    actor: string;
+    subject: string;
+    reasoning: string;
+    createdAt: string;
+  }
+
   let loading = true;
   let saving = false;
   let error: string | null = null;
@@ -67,6 +88,15 @@
   let filterFramework = "all";
   let history: FrameworkHistory[] = [];
   let historyError: string | null = null;
+  let evidenceFeedSummary: EvidenceFeedSummary = {
+    totalEvidence: 0,
+    frameworksCovered: 0,
+    controlsCovered: 0,
+    positiveCount: 0,
+    detrimentalCount: 0,
+  };
+  let evidenceFeedPreview: EvidenceFeedPreviewItem[] = [];
+  let evidenceFeedError: string | null = null;
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -157,6 +187,11 @@
       .join(" ");
   }
 
+  function evidenceImpactVariant(impact: "positive" | "detrimental" | "neutral"): "success" | "destructive" | "secondary" {
+    if (impact === "positive") return "success";
+    if (impact === "detrimental") return "destructive";
+    return "secondary";
+  }
   async function loadScores() {
     try {
       const res = await fetch("/api/tenant-compliance/scores");
@@ -184,6 +219,34 @@
     }
   }
 
+  async function loadEvidenceFeedPreview() {
+    evidenceFeedError = null;
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      const res = await fetch(`/api/compliance/evidence-feed?since=${encodeURIComponent(since)}&limit=5&offset=0`);
+      if (!res.ok) {
+        evidenceFeedPreview = [];
+        evidenceFeedError = `Failed to load evidence feed (${res.status})`;
+        return;
+      }
+
+      const data = await res.json();
+      evidenceFeedSummary = {
+        totalEvidence: Number(data?.summary?.totalEvidence ?? 0),
+        frameworksCovered: Number(data?.summary?.frameworksCovered ?? 0),
+        controlsCovered: Number(data?.summary?.controlsCovered ?? 0),
+        positiveCount: Number(data?.summary?.positiveCount ?? 0),
+        detrimentalCount: Number(data?.summary?.detrimentalCount ?? 0),
+      };
+      evidenceFeedPreview = Array.isArray(data?.feed) ? data.feed : [];
+    } catch {
+      evidenceFeedPreview = [];
+      evidenceFeedError = "Failed to load evidence feed";
+    }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
@@ -192,6 +255,7 @@
         fetch("/api/tenant-compliance/controls"),
         loadScores(),
         loadHistory(),
+        loadEvidenceFeedPreview(),
       ]);
       if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
       const data = await controlsRes.json();
@@ -454,6 +518,62 @@
         </CardContent>
       </Card>
     {/if}
+
+    <!-- Evidence pipeline hero -->
+    <Card class="mb-6 border-primary/20 bg-primary/5">
+      <CardContent class="pt-5 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Lifecycle → Compliance Evidence Pipeline</h2>
+            <p class="text-sm text-muted-foreground">
+              {evidenceFeedSummary.totalEvidence} evidence events from {evidenceFeedSummary.positiveCount + evidenceFeedSummary.detrimentalCount} lifecycle operations this week.
+            </p>
+          </div>
+          <a href="/console/compliance/feed" class="text-sm text-primary hover:underline">View full feed →</a>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Total Evidence</div>
+            <div class="font-semibold">{evidenceFeedSummary.totalEvidence}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Frameworks Covered</div>
+            <div class="font-semibold">{evidenceFeedSummary.frameworksCovered}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Controls Covered</div>
+            <div class="font-semibold">{evidenceFeedSummary.controlsCovered}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Detrimental Events</div>
+            <div class="font-semibold text-destructive">{evidenceFeedSummary.detrimentalCount}</div>
+          </div>
+        </div>
+
+        {#if evidenceFeedError}
+          <Alert variant="destructive">
+            <AlertTriangle class="h-4 w-4" />
+            <p class="pl-7">{evidenceFeedError}</p>
+          </Alert>
+        {:else if evidenceFeedPreview.length > 0}
+          <div class="rounded-md border bg-background divide-y">
+            {#each evidenceFeedPreview as item}
+              <div class="px-3 py-2 flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-medium">{item.framework} · {item.controlId}</div>
+                  <div class="text-xs text-muted-foreground">{item.eventType} • {item.source} • {item.actor || "system"}</div>
+                </div>
+                <div class="text-right">
+                  <Badge variant={evidenceImpactVariant(item.impact)}>{item.impact}</Badge>
+                  <div class="text-[11px] text-muted-foreground mt-1">{new Date(item.createdAt).toLocaleString()}</div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </CardContent>
+    </Card>
 
     <!-- Overall posture -->
     <Card class="mb-6">

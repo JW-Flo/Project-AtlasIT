@@ -55,6 +55,7 @@
       items: [
         { href: "/console", label: "Dashboard", icon: LayoutDashboard },
         { href: "/console/compliance", label: "Compliance", icon: ShieldCheck },
+        { href: "/console/compliance/feed", label: "Evidence Feed", icon: Activity },
         { href: "/console/directory", label: "Directory", icon: Users },
       ],
     },
