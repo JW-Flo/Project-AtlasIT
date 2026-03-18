@@ -32,12 +32,16 @@ function validateEnv(env: Bindings): void {
     ["ATLAS_SHARED_DB", "D1 shared database binding"],
     ["WORKFLOW", "WorkflowDO Durable Object namespace"],
     ["EVIDENCE", "R2 evidence bucket binding"],
-    ["EVENT_SOURCE_SECRETS", "event source HMAC secrets (required in prod)"],
   ];
   const missing = required.filter(([key]) => !env[key]);
   if (missing.length > 0) {
     throw new Error(
       `Missing required bindings: ${missing.map(([k, d]) => `${k} (${d})`).join(", ")}`,
+    );
+  }
+  if (!env.EVENT_SOURCE_SECRETS) {
+    console.warn(
+      "EVENT_SOURCE_SECRETS not set — event signature verification disabled",
     );
   }
 }
@@ -177,7 +181,11 @@ interface QueueBatch<T = unknown> {
 }
 
 const worker = {
-  fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
+  fetch(
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ): Response | Promise<Response> {
     validateEnv(env);
     return app.fetch(request, env, ctx);
   },
