@@ -36,7 +36,7 @@ ENVIRONMENT = "staging"
 
 [env.production]
 name = "atlasit-core-api"
-routes = ["api.atlasit.pro/api/*"]
+routes = ["api.atlasit.pro/api/*", "api.atlasit.pro/health"]
 
 [env.production.vars]
 ENVIRONMENT = "production"

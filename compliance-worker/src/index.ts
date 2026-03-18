@@ -3240,11 +3240,15 @@ function validateEnv(env: Env): void {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    validateEnv(env);
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const cors = buildCors();
     const headers = mergeHeaders(cors, SECURITY_HEADERS);
+    // Health endpoint bypasses binding validation so probes/tests work without full env
+    if (request.method === "GET" && url.pathname === "/health") {
+      return handleHealth(env, requestId, headers);
+    }
+    validateEnv(env);
     const method = request.method.toUpperCase();
 
     if (method === "OPTIONS") {

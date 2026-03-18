@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import app from "../../index";
+import { app } from "../../index";
 
 function createMockEnv(overrides: Record<string, any> = {}) {
   return {
