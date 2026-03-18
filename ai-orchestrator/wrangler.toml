@@ -72,8 +72,10 @@ AI_FALLBACKS = "groq,together,cloudflare"
 SELF_URL = "https://ai-orchestrator.atlasit.workers.dev"
 ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
 
-[triggers]
-crons = ["*/5 * * * *"]
+# Cron triggers disabled — requires Workers Paid plan.
+# Uncomment after upgrading plan:
+# [triggers]
+# crons = ["*/5 * * * *"]
 
 [observability.logs]
 enabled = true
