@@ -16,70 +16,70 @@
   {
     "name": "Slack",
     "slug": "slack",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_SLACK",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Microsoft 365",
     "slug": "microsoft-365",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_MICROSOFT_365",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Jira",
     "slug": "jira",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_JIRA",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Confluence",
     "slug": "confluence",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_CONFLUENCE",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "QuickBooks",
     "slug": "quickbooks",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_QUICKBOOKS",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Xero",
     "slug": "xero",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_XERO",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Zoom",
     "slug": "zoom",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_ZOOM",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Microsoft Teams",
     "slug": "teams",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_TEAMS",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Discord",
     "slug": "discord",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_DISCORD",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "BambooHR",
     "slug": "bamboohr",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_BAMBOOHR",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -100,14 +100,14 @@
   {
     "name": "Stripe",
     "slug": "stripe",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_STRIPE",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Auth0",
     "slug": "auth0",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_AUTH0",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -121,28 +121,28 @@
   {
     "name": "1Password",
     "slug": "1password",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_1PASSWORD",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "PagerDuty",
     "slug": "pagerduty",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_PAGERDUTY",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Datadog",
     "slug": "datadog",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_DATADOG",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "AWS",
     "slug": "aws",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_AWS",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
@@ -156,84 +156,84 @@
   {
     "name": "Azure",
     "slug": "azure",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_AZURE",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "GitHub",
     "slug": "github",
-    "status": "alpha",
+    "status": "beta",
     "featureFlag": "FEATURE_CONNECTOR_GITHUB",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Salesforce",
     "slug": "salesforce",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_SALESFORCE",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "HubSpot",
     "slug": "hubspot",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_HUBSPOT",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Dropbox Business",
     "slug": "dropbox",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_DROPBOX",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Notion",
     "slug": "notion",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_NOTION",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Zendesk",
     "slug": "zendesk",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_ZENDESK",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Asana",
     "slug": "asana",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_ASANA",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Monday.com",
     "slug": "monday",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_MONDAY",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "DocuSign",
     "slug": "docusign",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_DOCUSIGN",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Figma",
     "slug": "figma",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_FIGMA",
     "createdAt": "2026-03-17T00:00:00.000Z"
   },
   {
     "name": "Canva",
     "slug": "canva",
-    "status": "beta",
+    "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_CANVA",
     "createdAt": "2026-03-17T00:00:00.000Z"
   }

@@ -102,7 +102,7 @@ steps:
 
   - id: create_idp_user
     type: action
-    action_ref: okta.create_user
+    action_ref: microsoft_365.create_user
     retry:
       max_attempts: 6
       backoff: exponential_jitter
@@ -112,7 +112,7 @@ steps:
 
   - id: assign_groups
     type: action
-    action_ref: okta.assign_groups
+    action_ref: microsoft_365.assign_groups
     inputs:
       principal_id: "{{ steps.create_idp_user.outputs.idp_user_id }}"
       groups: "{{ steps.resolve_access_bundle.outputs.access_bundle }}"
@@ -129,7 +129,7 @@ steps:
 
   - id: enforce_mfa
     type: remediate
-    action_ref: okta.enforce_mfa
+    action_ref: microsoft_365.enforce_mfa
     retry:
       max_attempts: 4
       backoff: exponential_jitter
@@ -159,7 +159,7 @@ failure:
   strategy: partial_recovery
   dead_letter_queue: jml.joiner.dlq
   compensation:
-    - action_ref: okta.deactivate_user
+    - action_ref: microsoft_365.disable_user
       when_step_failed_after: create_idp_user
 
 success:

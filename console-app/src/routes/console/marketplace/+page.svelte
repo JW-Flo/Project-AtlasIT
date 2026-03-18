@@ -150,8 +150,9 @@
     } catch {
       // Continue with local disconnect
     }
+    const original = allIntegrations.find((i) => i.id === app.id);
     apps = apps.map((a) =>
-      a.id === app.id ? { ...a, connected: false, status: "planned" } : a,
+      a.id === app.id ? { ...a, connected: false, status: original?.status ?? a.status } : a,
     );
     pushToast({ message: `${app.name} disconnected`, variant: "info" });
   }
@@ -224,7 +225,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[integration.category] || iconMap.productivity} />
               </svg>
             </div>
-            <Badge variant={integration.connected ? 'success' : integration.status === 'beta' ? 'warning' : 'secondary'}>
+            <Badge variant={integration.connected ? 'success' : integration.status === 'stable' ? 'default' : integration.status === 'beta' ? 'warning' : 'secondary'}>
               {integration.connected ? "Connected" : integration.status}
             </Badge>
           </div>
