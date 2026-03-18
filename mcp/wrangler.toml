@@ -14,8 +14,6 @@ binding = "DB"
 database_name = "mcp-store"
 database_id = "ecc7933f-00da-4427-9dc7-3c5d35a8ff38"
 
-[triggers]
-crons = ["*/1 * * * *"]
 
 [env.production]
 route = "mcp.atlasit.workers.dev/*"
