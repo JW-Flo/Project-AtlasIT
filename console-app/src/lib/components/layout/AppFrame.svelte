@@ -65,6 +65,7 @@
         { href: "/console/apps", label: "Apps", icon: AppWindow },
         { href: "/console/workflows", label: "Workflows", icon: Workflow },
         { href: "/console/automation", label: "Automation", icon: Zap },
+        { href: "/console/automation/builder", label: "Rule Builder", icon: Zap },
       ],
     },
     {
