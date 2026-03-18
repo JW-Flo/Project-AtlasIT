@@ -7,6 +7,7 @@ import {
   evaluateAutomationRules,
   type ActionContext,
 } from "../lib/automation-evaluator";
+import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -264,6 +265,57 @@ eventRoutes.post("/", async (c) => {
       c.env.AUTOMATION,
       actionContext,
     ).catch(() => {});
+  }
+
+  // ── Zero-config JML: auto-detect user lifecycle events ────────────────────
+  const JML_EVENT_MAP: Record<string, DirectoryChange["changeType"]> = {
+    "user.created": "created",
+    "user.provisioned": "created",
+    "user.deactivated": "deactivated",
+    "user.suspended": "deactivated",
+    "user.deleted": "deleted",
+    "user.reactivated": "reactivated",
+    "user.profile_updated": "updated",
+  };
+
+  const jmlChangeType = JML_EVENT_MAP[type];
+  if (jmlChangeType) {
+    const jmlPayload = (payload ?? {}) as Record<string, unknown>;
+    const jmlChange: DirectoryChange = {
+      userId:
+        (jmlPayload.userId as string) ?? (jmlPayload.id as string) ?? "unknown",
+      email: jmlPayload.email as string | undefined,
+      changeType: jmlChangeType,
+      delta:
+        (jmlPayload.delta as Record<
+          string,
+          { old?: unknown; new?: unknown }
+        >) ?? {},
+      source,
+    };
+
+    const jmlPromise = classifyAndExecute(tenantId, jmlChange, {
+      db: sharedDb,
+      workflow: c.env.WORKFLOW,
+      adapterUrls,
+      selfUrl: c.env.SELF_URL,
+    }).catch((err) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          message: "JML auto-detection failed",
+          eventId,
+          tenantId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
+
+    try {
+      c.executionCtx.waitUntil(jmlPromise);
+    } catch {
+      // No execution context (tests) — fire and forget
+    }
   }
 
   // Mark event as processing

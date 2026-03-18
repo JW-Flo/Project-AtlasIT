@@ -65,8 +65,44 @@
     ruleInput: any;
   }
 
+  interface JmlPolicy {
+    enabled: boolean;
+    autoJoiner: boolean;
+    autoLeaver: boolean;
+    autoMover: boolean;
+    leaverGraceMs: number;
+    notifyManager: boolean;
+    notifyUser: boolean;
+    requireJoinerApproval: boolean;
+  }
+
+  interface WorkflowRun {
+    id: string;
+    type: string;
+    user_id: string;
+    email: string;
+    status: string;
+    trigger: string;
+    steps_total: number;
+    steps_done: number;
+    started_at: string;
+    completed_at: string | null;
+    duration_ms: number | null;
+  }
+
+  interface ActivityItem {
+    id: number;
+    eventType: string;
+    title: string;
+    detail: string | null;
+    severity: string;
+    entityType: string | null;
+    entityId: string | null;
+    createdAt: string;
+  }
+
   // ---- State ----------------------------------------------------------------
-  let activeTab: "overview" | "rules" | "health" | "history" = "overview";
+  let activeTab: "overview" | "rules" | "health" | "history" | "jml" | "live" = "overview";
   let loading = true;
   let error: string | null = null;
 
@@ -76,6 +112,15 @@
   let suggestions: Suggestion[] = [];
   let selectedExecution: ExecutionDetail | null = null;
   let loadingDetail = false;
+
+  // JML state
+  let jmlPolicy: JmlPolicy | null = null;
+  let jmlRuns: WorkflowRun[] = [];
+  let jmlSaving = false;
+
+  // Live activity state
+  let activities: ActivityItem[] = [];
+  let activityPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // Delete confirmation (P0 #1)
   let showDeleteDialog = false;
@@ -98,7 +143,7 @@
     loading = true;
     error = null;
     try {
-      await Promise.all([fetchRules(), fetchExecutions(), fetchHealth(), fetchSuggestions()]);
+      await Promise.all([fetchRules(), fetchExecutions(), fetchHealth(), fetchSuggestions(), fetchJmlPolicy(), fetchJmlRuns(), fetchActivities()]);
     } catch (e: any) {
       error = e?.message || "Failed to load automation data";
     } finally {
@@ -132,6 +177,66 @@
     if (!res.ok) throw new Error("Failed to load suggestions");
     const data: any = await res.json();
     suggestions = data.suggestions || [];
+  }
+
+  async function fetchJmlPolicy() {
+    const res = await fetch("/api/jml/policy");
+    if (!res.ok) return;
+    const data: any = await res.json();
+    jmlPolicy = data.policy || null;
+  }
+
+  async function fetchJmlRuns() {
+    const res = await fetch("/api/jml/runs?limit=20");
+    if (!res.ok) return;
+    const data: any = await res.json();
+    jmlRuns = data.runs || [];
+  }
+
+  async function fetchActivities() {
+    const res = await fetch("/api/activity?limit=50");
+    if (!res.ok) return;
+    const data: any = await res.json();
+    activities = data.activities || [];
+  }
+
+  async function saveJmlPolicy() {
+    if (!jmlPolicy) return;
+    jmlSaving = true;
+    try {
+      const res = await fetch("/api/jml/policy", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(jmlPolicy),
+      });
+      if (res.ok) {
+        pushToast({ message: "JML policy updated", variant: "success" });
+      }
+    } catch {
+      pushToast({ message: "Failed to save JML policy", variant: "error" });
+    } finally {
+      jmlSaving = false;
+    }
+  }
+
+  function startActivityPoll() {
+    if (activityPollTimer) return;
+    activityPollTimer = setInterval(async () => {
+      const lastId = activities.length > 0 ? activities[0].id : 0;
+      const res = await fetch(`/api/activity?after=${lastId}&limit=20`).catch(() => null);
+      if (!res?.ok) return;
+      const data: any = await res.json();
+      if (data.activities?.length > 0) {
+        activities = [...data.activities, ...activities].slice(0, 100);
+      }
+    }, 3000);
+  }
+
+  function stopActivityPoll() {
+    if (activityPollTimer) {
+      clearInterval(activityPollTimer);
+      activityPollTimer = null;
+    }
   }
 
   // ---- Actions --------------------------------------------------------------
@@ -319,7 +424,12 @@
   $: pagedExecutions = filteredExecutions.slice((historyPage - 1) * pageSize, historyPage * pageSize);
   $: if (historyPage > totalHistoryPages) historyPage = totalHistoryPages;
 
-  onMount(fetchAll);
+  $: if (activeTab === "live") { startActivityPoll(); } else { stopActivityPoll(); }
+
+  onMount(() => {
+    fetchAll();
+    return () => stopActivityPoll();
+  });
 </script>
 
 <div class="px-5 py-5 max-w-[1200px] mx-auto">
@@ -338,9 +448,11 @@
   <div class="flex gap-1 border-b mb-6">
     {#each [
       { id: "overview", label: "Overview" },
+      { id: "jml", label: "JML" },
+      { id: "live", label: "Live Feed" },
       { id: "rules", label: "Rules" },
       { id: "health", label: "Environment Health" },
-      { id: "history", label: "Activity" },
+      { id: "history", label: "History" },
     ] as tab}
       <button
         type="button"
@@ -485,6 +597,153 @@
         </CardContent>
       </Card>
     {/if}
+
+  {:else if activeTab === "jml"}
+    <!-- JML (Joiner/Mover/Leaver) — zero-config lifecycle automation -->
+    <div class="space-y-6">
+      <!-- JML Policy -->
+      {#if jmlPolicy}
+        <Card>
+          <CardHeader>
+            <CardTitle>Lifecycle Automation Policy</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <p class="text-sm text-muted-foreground">
+              JML automatically provisions and revokes app access when users join, move between teams, or leave. No rules needed — it uses your group-to-app mappings.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {#each [
+                { key: "enabled", label: "JML Enabled", desc: "Master switch for automatic lifecycle automation" },
+                { key: "autoJoiner", label: "Auto-Joiner", desc: "Provision apps when new user detected" },
+                { key: "autoLeaver", label: "Auto-Leaver", desc: "Revoke access when user deactivated" },
+                { key: "autoMover", label: "Auto-Mover", desc: "Re-provision when department/group changes" },
+                { key: "notifyManager", label: "Notify Manager", desc: "Send Slack notification to manager" },
+                { key: "notifyUser", label: "Notify User", desc: "Send notification to the user" },
+              ] as toggle}
+                <div class="flex items-center justify-between p-3 rounded-lg border">
+                  <div>
+                    <div class="text-sm font-medium">{toggle.label}</div>
+                    <div class="text-xs text-muted-foreground">{toggle.desc}</div>
+                  </div>
+                  <button
+                    type="button"
+                    on:click={() => { if (jmlPolicy) { jmlPolicy[toggle.key] = !jmlPolicy[toggle.key]; jmlPolicy = jmlPolicy; } }}
+                    class="w-10 h-6 rounded-full relative transition-colors shrink-0"
+                    style="background: {jmlPolicy[toggle.key] ? 'hsl(var(--primary))' : 'hsl(var(--muted))'};"
+                    role="switch"
+                    aria-checked={jmlPolicy[toggle.key]}
+                  >
+                    <span
+                      class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
+                      style="left: {jmlPolicy[toggle.key] ? '22px' : '4px'};"
+                    ></span>
+                  </button>
+                </div>
+              {/each}
+            </div>
+            <div class="flex justify-end pt-2">
+              <Button size="sm" on:click={saveJmlPolicy} disabled={jmlSaving}>
+                {jmlSaving ? "Saving..." : "Save Policy"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      {:else}
+        <Card class="border-dashed">
+          <CardContent class="py-12 text-center">
+            <p class="text-sm text-muted-foreground">JML policy loading...</p>
+          </CardContent>
+        </Card>
+      {/if}
+
+      <!-- Recent JML Workflow Runs -->
+      <div>
+        <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recent Lifecycle Workflows</h2>
+        {#if jmlRuns.length === 0}
+          <Card class="border-dashed">
+            <CardContent class="py-8 text-center">
+              <p class="text-sm text-muted-foreground">No JML workflows yet. They'll appear here when user lifecycle events are detected.</p>
+            </CardContent>
+          </Card>
+        {:else}
+          <Card>
+            <CardContent class="p-0">
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                      <th class="px-4 py-3 font-medium">Type</th>
+                      <th class="px-4 py-3 font-medium">User</th>
+                      <th class="px-4 py-3 font-medium">Status</th>
+                      <th class="px-4 py-3 font-medium">Steps</th>
+                      <th class="px-4 py-3 font-medium text-right">When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each jmlRuns as run}
+                      <tr class="border-t hover:bg-muted/50 transition-colors">
+                        <td class="px-4 py-3">
+                          <Badge variant={run.type === "leaver" ? "destructive" : run.type === "mover" ? "warning" : "success"} class="capitalize">{run.type}</Badge>
+                        </td>
+                        <td class="px-4 py-3">{run.email ?? run.user_id ?? "-"}</td>
+                        <td class="px-4 py-3"><Badge variant={statusVariant(run.status)} class="capitalize">{run.status}</Badge></td>
+                        <td class="px-4 py-3 text-muted-foreground">{run.steps_done}/{run.steps_total}</td>
+                        <td class="px-4 py-3 text-right">
+                          <span class="text-muted-foreground" title={new Date(run.started_at).toLocaleString()}>{timeAgo(run.started_at)}</span>
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        {/if}
+      </div>
+    </div>
+
+  {:else if activeTab === "live"}
+    <!-- Live Activity Feed -->
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span class="text-sm text-muted-foreground">Live — polling every 3s</span>
+        </div>
+        <Button variant="outline" size="sm" on:click={fetchActivities}>Refresh</Button>
+      </div>
+
+      {#if activities.length === 0}
+        <Card class="border-dashed">
+          <CardContent class="py-12 text-center">
+            <p class="text-sm text-muted-foreground">No activity yet. Events will appear here in real-time as automations execute.</p>
+          </CardContent>
+        </Card>
+      {:else}
+        <div class="space-y-1">
+          {#each activities as activity}
+            <Card>
+              <CardContent class="flex items-start gap-3 py-3 px-4">
+                <span class="mt-1 w-2 h-2 rounded-full shrink-0" class:bg-green-500={activity.severity === "success"} class:bg-blue-500={activity.severity === "info"} class:bg-yellow-500={activity.severity === "warning"} class:bg-red-500={activity.severity === "error"}></span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm">{activity.title}</div>
+                  {#if activity.detail}
+                    <div class="text-xs text-muted-foreground mt-0.5">{activity.detail}</div>
+                  {/if}
+                  <div class="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" class="text-[10px]">{activity.eventType}</Badge>
+                    {#if activity.entityType}
+                      <span class="text-[10px] text-muted-foreground">{activity.entityType}</span>
+                    {/if}
+                  </div>
+                </div>
+                <span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap" title={new Date(activity.createdAt).toLocaleString()}>{timeAgo(activity.createdAt)}</span>
+              </CardContent>
+            </Card>
+          {/each}
+        </div>
+      {/if}
+    </div>
 
   {:else if activeTab === "rules"}
     <!-- Rules search (P3 #15) -->

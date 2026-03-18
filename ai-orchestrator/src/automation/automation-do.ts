@@ -17,6 +17,8 @@ interface AutomationState {
   windowStart: number;
   /** Dedup keys with expiry timestamps */
   dedupKeys: Record<string, number>;
+  /** Per-rule rate limit overrides (set via /limits endpoint) */
+  ruleLimits?: Record<string, RuleLimits>;
 }
 
 interface CheckResult {
@@ -29,6 +31,12 @@ const DEFAULT_COOLDOWN_MS = 60_000; // 1 minute between same rule fires
 const DEFAULT_WINDOW_MS = 3_600_000; // 1 hour window
 const DEFAULT_MAX_PER_WINDOW = 100; // max 100 executions per rule per window
 const DEDUP_TTL_MS = 300_000; // 5 minute dedup window
+
+/** Per-rule rate limit overrides */
+interface RuleLimits {
+  cooldownMs?: number;
+  maxPerWindow?: number;
+}
 
 export class AutomationDO implements DurableObject {
   private state: DurableObjectState;
@@ -78,6 +86,14 @@ export class AutomationDO implements DurableObject {
       return this.handleReset();
     }
 
+    if (request.method === "PUT" && path === "/limits") {
+      return this.handleSetLimits(request);
+    }
+
+    if (request.method === "GET" && path === "/limits") {
+      return this.handleGetLimits();
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -107,9 +123,11 @@ export class AutomationDO implements DurableObject {
       }
     }
 
-    // 2. Cooldown check
+    // 2. Cooldown check (per-rule override takes priority)
     const lastExec = state.lastExecutions[body.ruleId];
-    const cooldownMs = body.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+    const ruleLimits = state.ruleLimits?.[body.ruleId];
+    const cooldownMs =
+      ruleLimits?.cooldownMs ?? body.cooldownMs ?? DEFAULT_COOLDOWN_MS;
     if (lastExec && now - lastExec < cooldownMs) {
       result.allowed = false;
       result.reason = "cooldown_active";
@@ -126,7 +144,8 @@ export class AutomationDO implements DurableObject {
       }
     }
 
-    const maxPerWindow = body.maxPerWindow ?? DEFAULT_MAX_PER_WINDOW;
+    const maxPerWindow =
+      ruleLimits?.maxPerWindow ?? body.maxPerWindow ?? DEFAULT_MAX_PER_WINDOW;
     const currentCount = state.windowCounts[body.ruleId] ?? 0;
     if (currentCount >= maxPerWindow) {
       result.allowed = false;
@@ -201,5 +220,38 @@ export class AutomationDO implements DurableObject {
     };
     await this.saveState();
     return Response.json({ reset: true });
+  }
+
+  /**
+   * Set per-rule rate limit overrides.
+   * Body: { ruleId: string, cooldownMs?: number, maxPerWindow?: number }
+   */
+  private async handleSetLimits(request: Request): Promise<Response> {
+    const body = (await request.json()) as {
+      ruleId: string;
+      cooldownMs?: number;
+      maxPerWindow?: number;
+    };
+
+    const state = await this.loadState();
+    if (!state.ruleLimits) state.ruleLimits = {};
+
+    state.ruleLimits[body.ruleId] = {
+      cooldownMs: body.cooldownMs,
+      maxPerWindow: body.maxPerWindow,
+    };
+
+    await this.saveState();
+    return Response.json({
+      updated: true,
+      ruleId: body.ruleId,
+      limits: state.ruleLimits[body.ruleId],
+    });
+  }
+
+  /** Return all per-rule limit overrides. */
+  private async handleGetLimits(): Promise<Response> {
+    const state = await this.loadState();
+    return Response.json({ ruleLimits: state.ruleLimits ?? {} });
   }
 }

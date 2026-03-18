@@ -62,6 +62,14 @@ export interface WorkflowStep {
   timeoutMs: number;
   retryConfig?: { maxRetries: number; backoffMs: number };
   compensate?: string;
+  /** Run this step in parallel with the next step(s) that also have parallel=true */
+  parallel?: boolean;
+  /** Only run if condition evaluates truthy against workflow context */
+  condition?: {
+    field: string;
+    operator: "eq" | "neq" | "exists" | "not_exists";
+    value?: unknown;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -272,11 +280,21 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       });
     }
 
-    // Check if all regular steps are done
-    const nextPendingIndex = this.state.steps.findIndex(
-      (s) => s.status === "pending",
+    // Check if any regular (non-compensation) steps are still running
+    const stillRunning = this.state.steps.some(
+      (s) => s.status === "running" && !s.compensation,
     );
-    if (nextPendingIndex === -1) {
+
+    // If parallel steps are still running, wait for them before advancing
+    if (stillRunning) {
+      return this.jsonResponse({ status: "waiting_parallel" });
+    }
+
+    // Check if all regular steps are done
+    const hasPending = this.state.steps.some(
+      (s) => s.status === "pending" && !s.compensation,
+    );
+    if (!hasPending) {
       this.transition("completed");
       this.state.completedAt = new Date().toISOString();
       await this.ctx.storage.put("state", this.state);
@@ -536,42 +554,110 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
   private async advanceToNextStep(): Promise<void> {
     if (!this.state || !this.definition) return;
 
-    const nextStep = this.state.steps.find((s) => s.status === "pending");
-    if (!nextStep) return;
+    // Collect the next batch of steps to dispatch.
+    // A "parallel" batch is a contiguous run of steps with parallel=true,
+    // or a single non-parallel step.
+    const pendingSteps = this.state.steps.filter(
+      (s) => s.status === "pending" && !s.compensation,
+    );
+    if (pendingSteps.length === 0) return;
 
-    const defStep = this.definition.steps.find((s) => s.id === nextStep.stepId);
-    if (!defStep) return;
+    const batch: StepState[] = [];
+    for (const step of pendingSteps) {
+      const defStep = this.definition.steps.find((s) => s.id === step.stepId);
+      if (!defStep) continue;
 
-    nextStep.status = "running";
-    nextStep.startedAt = new Date().toISOString();
-    nextStep.attempts = 1;
+      // Evaluate condition — skip if condition fails
+      if (defStep.condition && !this.evaluateCondition(defStep.condition)) {
+        step.status = "skipped" as StepStatus;
+        step.completedAt = new Date().toISOString();
+        this.state.history.push({
+          stepId: step.stepId,
+          action: step.action,
+          status: "skipped" as StepStatus,
+          timestamp: step.completedAt,
+          attemptNumber: 0,
+        });
+        continue;
+      }
 
-    if (defStep.timeoutMs > 0) {
-      nextStep.stepDeadline = Date.now() + defStep.timeoutMs;
+      batch.push(step);
+
+      // If this step is not parallel, stop collecting (it runs alone)
+      if (!defStep.parallel) break;
+      // If this step IS parallel, keep collecting until a non-parallel step
     }
 
-    this.state.history.push({
-      stepId: nextStep.stepId,
-      action: nextStep.action,
-      status: "running",
-      timestamp: nextStep.startedAt,
-      attemptNumber: 1,
-    });
+    if (batch.length === 0) {
+      // All remaining steps were skipped — check completion
+      const stillPending = this.state.steps.some(
+        (s) => s.status === "pending" || s.status === "running",
+      );
+      if (!stillPending) {
+        this.transition("completed");
+        this.state.completedAt = new Date().toISOString();
+        await this.ctx.storage.put("state", this.state);
+        await this.ctx.storage.deleteAlarm();
+      }
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const bus = this.getQueueBus();
+
+    for (const step of batch) {
+      const defStep = this.definition.steps.find((s) => s.id === step.stepId)!;
+
+      step.status = "running";
+      step.startedAt = now;
+      step.attempts = 1;
+
+      if (defStep.timeoutMs > 0) {
+        step.stepDeadline = Date.now() + defStep.timeoutMs;
+      }
+
+      this.state.history.push({
+        stepId: step.stepId,
+        action: step.action,
+        status: "running",
+        timestamp: now,
+        attemptNumber: 1,
+      });
+
+      // Dispatch step task via queue
+      if (bus) {
+        const msg: StepTaskMessage = {
+          kind: "step-task",
+          runId: this.state.id,
+          stepId: step.stepId,
+          attempt: step.attempts,
+        };
+        await bus.publish("step-tasks", msg);
+      }
+    }
 
     await this.ctx.storage.put("state", this.state);
-
     this.scheduleNextDeadlineAlarm();
+  }
 
-    // Dispatch step task via queue
-    const bus = this.getQueueBus();
-    if (bus) {
-      const msg: StepTaskMessage = {
-        kind: "step-task",
-        runId: this.state.id,
-        stepId: nextStep.stepId,
-        attempt: nextStep.attempts,
-      };
-      await bus.publish("step-tasks", msg);
+  private evaluateCondition(condition: {
+    field: string;
+    operator: string;
+    value?: unknown;
+  }): boolean {
+    if (!this.state) return false;
+    const fieldValue = getNestedValue(this.state.context, condition.field);
+    switch (condition.operator) {
+      case "eq":
+        return fieldValue === condition.value;
+      case "neq":
+        return fieldValue !== condition.value;
+      case "exists":
+        return fieldValue !== undefined && fieldValue !== null;
+      case "not_exists":
+        return fieldValue === undefined || fieldValue === null;
+      default:
+        return true;
     }
   }
 
@@ -716,4 +802,19 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       headers: { "Content-Type": "application/json" },
     });
   }
+}
+
+// ── Module-level helpers ───────────────────────────────────────────────────
+
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, key) => {
+    if (
+      current &&
+      typeof current === "object" &&
+      key in (current as Record<string, unknown>)
+    ) {
+      return (current as Record<string, unknown>)[key];
+    }
+    return undefined;
+  }, obj);
 }

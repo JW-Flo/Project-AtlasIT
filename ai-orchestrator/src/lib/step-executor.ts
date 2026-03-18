@@ -2,9 +2,14 @@
  * Step executor for WorkflowDO step-task queue messages.
  *
  * Receives a step-task message, loads run state from the WorkflowDO to
- * resolve the handler and context, dispatches to the appropriate adapter
- * or atlas internal operation, then reports success/failure back to the DO.
+ * resolve the handler and context, dispatches via the handler registry,
+ * then reports success/failure back to the DO.
+ *
+ * The handler registry (handler-registry.ts) replaces the old hard-coded
+ * dispatch logic. Built-in handlers are registered at worker startup.
  */
+
+import { resolveHandler, type StepHandlerContext } from "./handler-registry";
 
 interface WorkflowStatusResponse {
   id: string;
@@ -20,12 +25,13 @@ export interface StepTaskEnv {
   WORKFLOW: DurableObjectNamespace;
   ADAPTER_URLS?: string;
   EVIDENCE?: R2Bucket;
+  DB?: D1Database;
 }
 
 /**
  * Execute a step-task message end-to-end:
  * 1. Load run state from WorkflowDO
- * 2. Dispatch handler → adapter call or atlas internal op
+ * 2. Dispatch handler via registry
  * 3. Post step-complete or step-fail back to WorkflowDO
  *
  * Throws if the WorkflowDO is unreachable — caller should retry().
@@ -62,13 +68,32 @@ export async function executeStepTask(
   }
 
   try {
-    const output = await dispatchHandler(
-      step.action,
-      runState.context,
-      runState.tenantId,
+    const handlerCtx: StepHandlerContext = {
+      tenantId: runState.tenantId,
+      workflowRunId: runState.id,
+      stepId: msg.stepId,
+      context: runState.context,
       adapterUrls,
-      env.EVIDENCE,
-    );
+      evidence: env.EVIDENCE,
+      db: env.DB,
+    };
+
+    // Try registry first
+    const registeredHandler = resolveHandler(step.action);
+    let output: unknown;
+
+    if (registeredHandler) {
+      output = await registeredHandler(handlerCtx);
+    } else {
+      // Fallback: legacy direct dispatch for unregistered handlers
+      output = await legacyDispatch(
+        step.action,
+        runState.context,
+        runState.tenantId,
+        adapterUrls,
+        env.EVIDENCE,
+      );
+    }
 
     await stub.fetch(
       new Request(`http://workflow/step/${msg.stepId}/complete`, {
@@ -90,9 +115,9 @@ export async function executeStepTask(
   }
 }
 
-// ── Handler dispatch ──────────────────────────────────────────────────────────
+// ── Legacy dispatch (kept for backwards compatibility) ──────────────────────
 
-async function dispatchHandler(
+async function legacyDispatch(
   handler: string,
   context: Record<string, unknown>,
   tenantId: string,
@@ -104,7 +129,33 @@ async function dispatchHandler(
   const operation = dotIdx >= 0 ? handler.slice(dotIdx + 1) : "";
 
   if (appId === "atlas") {
-    return handleAtlasOp(operation, context, tenantId, evidence);
+    switch (operation) {
+      case "resolve_access_bundle":
+        return {
+          resolvedApps: context.appAccess ?? [],
+          resolvedGroups: context.groups ?? [],
+          email: context.email,
+          userId: context.userId,
+        };
+      case "emit_evidence":
+        if (evidence) {
+          const evidenceId = crypto.randomUUID().replace(/-/g, "");
+          const key = `workflow-evidence/${tenantId}/${evidenceId}.json`;
+          await evidence.put(
+            key,
+            JSON.stringify({
+              evidenceId,
+              tenantId,
+              capturedAt: new Date().toISOString(),
+              context,
+            }),
+          );
+          return { evidenceId, key };
+        }
+        return { evidenceId: null, skipped: true };
+      default:
+        throw new Error(`Unknown atlas operation: "${operation}"`);
+    }
   }
 
   const adapterUrl = adapterUrls[appId];
@@ -137,46 +188,6 @@ async function dispatchHandler(
   }
 
   throw new Error(`Unknown operation "${operation}" for handler "${handler}"`);
-}
-
-// ── Atlas internal operations ─────────────────────────────────────────────────
-
-async function handleAtlasOp(
-  operation: string,
-  context: Record<string, unknown>,
-  tenantId: string,
-  evidence?: R2Bucket,
-): Promise<unknown> {
-  switch (operation) {
-    case "resolve_access_bundle": {
-      // Return user's resolved access from context (seeded by run_workflow action)
-      return {
-        resolvedApps: context.appAccess ?? [],
-        resolvedGroups: context.groups ?? [],
-        email: context.email,
-        userId: context.userId,
-      };
-    }
-    case "emit_evidence": {
-      if (evidence) {
-        const evidenceId = crypto.randomUUID().replace(/-/g, "");
-        const key = `workflow-evidence/${tenantId}/${evidenceId}.json`;
-        await evidence.put(
-          key,
-          JSON.stringify({
-            evidenceId,
-            tenantId,
-            capturedAt: new Date().toISOString(),
-            context,
-          }),
-        );
-        return { evidenceId, key };
-      }
-      return { evidenceId: null, skipped: true };
-    }
-    default:
-      throw new Error(`Unknown atlas operation: "${operation}"`);
-  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
