@@ -9,11 +9,17 @@ import { healthRoute } from "./routes/health";
 import { workflowRoutes } from "./routes/workflows";
 import { deadLetterRoutes } from "./routes/dead-letter";
 import { automationRoutes } from "./routes/automation";
+import { jmlRoutes } from "./routes/jml";
+import { streamRoutes } from "./routes/stream";
 import {
   evaluateAutomationRules,
   type ActionContext,
 } from "./lib/automation-evaluator";
 import { executeStepTask } from "./lib/step-executor";
+import { registerBuiltinHandlers } from "./lib/handler-registry";
+
+// Register built-in step handlers at module load
+registerBuiltinHandlers();
 
 const app = new Hono<AppEnv>();
 
@@ -100,6 +106,8 @@ app.route("/api/v1/agents", agentRoutes);
 app.route("/api/v1/workflows", workflowRoutes);
 app.route("/api/v1/dead-letter", deadLetterRoutes);
 app.route("/api/v1/automation", automationRoutes);
+app.route("/api/v1/jml", jmlRoutes);
+app.route("/api/v1/stream", streamRoutes);
 
 export { WorkflowDO } from "./workflow/workflow-do";
 export { AutomationDO } from "./automation/automation-do";
