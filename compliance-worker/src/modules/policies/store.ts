@@ -483,37 +483,83 @@ export async function getCoverage(
   db: D1Database,
   framework: string,
   tenantId: string,
+  /** Optional: ATLAS_SHARED_DB for cross-worker automation evidence lookup */
+  sharedDb?: D1Database,
 ): Promise<CoverageSummary> {
   // Evidence window: last 90 days for automation-sourced evidence
   const windowCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 19);
 
-  const controls = await db
-    .prepare(
-      `SELECT c.control_key as key, c.title as title,
-              COALESCE(l.count, 0) + COALESCE(a.count, 0) as evidence_count,
-              CASE WHEN COALESCE(a.count, 0) > 0 THEN 1 ELSE 0 END as automation_verified
-       FROM internal_controls c
-       LEFT JOIN (
-         SELECT control_key, COUNT(*) as count
-         FROM control_evidence_links
-         WHERE tenant_id = ?
-         GROUP BY control_key
-       ) l ON l.control_key = c.control_key
-       LEFT JOIN (
-         SELECT control_id, COUNT(*) as count
+  // Determine which DB holds compliance_evidence.
+  // If sharedDb is bound, automation evidence is in ATLAS_SHARED_DB.
+  // Otherwise fall back to the compliance DB (supports both deployment configs).
+  const evidenceDb = sharedDb ?? db;
+
+  // Fetch automation evidence counts separately when using a different DB
+  let automationEvidenceCounts: Map<string, number> = new Map();
+  if (evidenceDb !== db) {
+    const automationRows = await evidenceDb
+      .prepare(
+        `SELECT control_id, COUNT(*) as count
          FROM compliance_evidence
          WHERE tenant_id = ?
            AND (framework = ? OR framework_id = ?)
            AND source = 'automation'
            AND created_at >= ?
-         GROUP BY control_id
-       ) a ON a.control_id = c.control_key
-       WHERE c.framework = ?
-       ORDER BY c.control_key ASC`,
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, framework, framework, windowCutoff)
+      .all<{ control_id: string; count: number }>();
+    for (const row of automationRows.results ?? []) {
+      automationEvidenceCounts.set(row.control_id, row.count);
+    }
+  }
+
+  const controls = await db
+    .prepare(
+      evidenceDb === db
+        ? // Single-DB path: JOIN compliance_evidence in the same database
+          `SELECT c.control_key as key, c.title as title,
+                  COALESCE(l.count, 0) + COALESCE(a.count, 0) as evidence_count,
+                  CASE WHEN COALESCE(a.count, 0) > 0 THEN 1 ELSE 0 END as automation_verified
+           FROM internal_controls c
+           LEFT JOIN (
+             SELECT control_key, COUNT(*) as count
+             FROM control_evidence_links
+             WHERE tenant_id = ?
+             GROUP BY control_key
+           ) l ON l.control_key = c.control_key
+           LEFT JOIN (
+             SELECT control_id, COUNT(*) as count
+             FROM compliance_evidence
+             WHERE tenant_id = ?
+               AND (framework = ? OR framework_id = ?)
+               AND source = 'automation'
+               AND created_at >= ?
+             GROUP BY control_id
+           ) a ON a.control_id = c.control_key
+           WHERE c.framework = ?
+           ORDER BY c.control_key ASC`
+        : // Cross-DB path: only join control_evidence_links (automation counts fetched above)
+          `SELECT c.control_key as key, c.title as title,
+                  COALESCE(l.count, 0) as evidence_count,
+                  0 as automation_verified
+           FROM internal_controls c
+           LEFT JOIN (
+             SELECT control_key, COUNT(*) as count
+             FROM control_evidence_links
+             WHERE tenant_id = ?
+             GROUP BY control_key
+           ) l ON l.control_key = c.control_key
+           WHERE c.framework = ?
+           ORDER BY c.control_key ASC`,
     )
-    .bind(tenantId, tenantId, framework, framework, windowCutoff, framework)
+    .bind(
+      ...(evidenceDb === db
+        ? [tenantId, tenantId, framework, framework, windowCutoff, framework]
+        : [tenantId, framework]),
+    )
     .all<{
       key: string;
       title: string;
@@ -521,12 +567,18 @@ export async function getCoverage(
       automation_verified: number;
     }>();
 
-  const controlsRows = (controls.results ?? []).map((row) => ({
-    controlKey: row.key,
-    title: row.title,
-    evidenceCount: row.evidence_count ?? 0,
-    automationVerified: (row.automation_verified ?? 0) > 0,
-  }));
+  const controlsRows = (controls.results ?? []).map((row) => {
+    const automationCount = automationEvidenceCounts.get(row.key) ?? 0;
+    const totalEvidence = (row.evidence_count ?? 0) + automationCount;
+    const automationVerified =
+      (row.automation_verified ?? 0) > 0 || automationCount > 0;
+    return {
+      controlKey: row.key,
+      title: row.title,
+      evidenceCount: totalEvidence,
+      automationVerified,
+    };
+  });
 
   const totalControls = controlsRows.length;
   const withEvidence = controlsRows.filter((r) => r.evidenceCount > 0).length;

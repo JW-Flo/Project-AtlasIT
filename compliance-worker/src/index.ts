@@ -1702,7 +1702,7 @@ async function handlePolicyCoverage(
   }
 
   try {
-    const summary = await coverageSummary(db, framework, tenant.tenantId);
+    const summary = await coverageSummary(db, framework, tenant.tenantId, env.ATLAS_SHARED_DB);
     const responseHeaders = options.deprecated
       ? mergeHeaders(headers, { Deprecation: "true" })
       : headers;
@@ -1984,7 +1984,7 @@ async function buildSnapshot(
     const frameworkSummary: ComplianceSnapshot["frameworkSummary"] = [];
     for (const fw of frameworks) {
       try {
-        const coverage = await coverageSummary(db, fw, tenantId);
+        const coverage = await coverageSummary(db, fw, tenantId, env.ATLAS_SHARED_DB);
         const withEvidence = coverage.controls.filter(
           (c) => c.evidenceCount > 0,
         ).length;
