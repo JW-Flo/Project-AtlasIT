@@ -18,6 +18,7 @@
     { href: "/console/settings/users", label: "Users" },
     { href: "/console/settings/audit-log", label: "Audit Log" },
     { href: "/console/settings/billing", label: "Billing" },
+    { href: "/console/settings/trust", label: "Trust Center" },
   ];
   $: current = $page.url.pathname;
 
