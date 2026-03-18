@@ -1,4 +1,4 @@
-import type { Handle } from "@sveltejs/kit";
+import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { activeProviders, type UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
@@ -317,4 +317,31 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   return resolve(event);
+};
+
+/**
+ * Normalizes unhandled server errors so the UI never receives raw stack
+ * traces, HTML error pages, or internal exception messages.
+ *
+ * SvelteKit calls this when a +server.ts or +page.server.ts throws an
+ * unhandled error. The returned object becomes the `$page.error` value.
+ * For API routes, SvelteKit serializes it as JSON automatically.
+ */
+export const handleError: HandleServerError = ({ error, event }) => {
+  const message =
+    error instanceof Error ? error.message : "Internal server error";
+
+  console.error(
+    JSON.stringify({
+      level: "error",
+      event: "request.unhandled_error",
+      message,
+      path: event.url.pathname,
+      method: event.request.method,
+      ts: new Date().toISOString(),
+    }),
+  );
+
+  // Never expose internal details to the client.
+  return { message: "An unexpected error occurred", code: "INTERNAL_ERROR" };
 };

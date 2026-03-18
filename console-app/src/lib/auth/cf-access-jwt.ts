@@ -85,11 +85,25 @@ function extractJwtHeader(
   }
 }
 
+/** In-memory JWKS cache keyed by certs URL. Persists across requests within a Worker isolate. */
+const JWKS_CACHE = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
+
+/** JWKS cache TTL: 1 hour (keys rotate infrequently). */
+const JWKS_TTL_MS = 60 * 60 * 1000;
+
 /**
  * Fetches and returns the JWK Set from the certs endpoint.
+ * Results are cached in memory for JWKS_TTL_MS to avoid a fetch on every
+ * request. The cache is keyed by URL so multiple team domains are supported.
  * Returns null on any network or parsing error.
  */
 async function fetchCerts(certsUrl: string): Promise<JsonWebKey[] | null> {
+  const now = Date.now();
+  const cached = JWKS_CACHE.get(certsUrl);
+  if (cached && now - cached.fetchedAt < JWKS_TTL_MS) {
+    return cached.keys;
+  }
+
   try {
     const resp = await fetch(certsUrl, {
       // Cache-friendly: CF certs rotate infrequently
@@ -98,6 +112,7 @@ async function fetchCerts(certsUrl: string): Promise<JsonWebKey[] | null> {
     if (!resp.ok) return null;
     const body = (await resp.json()) as { keys?: JsonWebKey[] };
     if (!Array.isArray(body.keys)) return null;
+    JWKS_CACHE.set(certsUrl, { keys: body.keys, fetchedAt: now });
     return body.keys;
   } catch {
     return null;

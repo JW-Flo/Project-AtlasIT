@@ -3219,8 +3219,28 @@ async function handlePoliciesRetentionPurge(
   }
 }
 
+/**
+ * Fail fast at request time if required bindings are absent.
+ * compliance-worker supports two binding name variants (D1_COMPLIANCE /
+ * atlasit_compliance, EVIDENCE_BUCKET / atlasit_evidence) — at least one of
+ * each pair must be present for the worker to function.
+ */
+function validateEnv(env: Env): void {
+  const missing: string[] = [];
+  if (!resolveD1(env)) {
+    missing.push("D1_COMPLIANCE or atlasit_compliance (D1 database binding)");
+  }
+  if (!resolveR2(env)) {
+    missing.push("EVIDENCE_BUCKET or atlasit_evidence (R2 evidence bucket)");
+  }
+  if (missing.length > 0) {
+    throw new Error(`Missing required bindings: ${missing.join(", ")}`);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    validateEnv(env);
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const cors = buildCors();

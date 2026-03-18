@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware as sharedAuthMiddleware } from "@atlasit/shared";
 import type { MiddlewareHandler } from "hono";
-import type { AppEnv } from "./types";
+import type { AppEnv, Bindings } from "./types";
 import { healthRoute } from "./routes/health";
 import { tenantRoutes } from "./routes/tenants";
 import { eventRoutes } from "./routes/events";
@@ -11,6 +11,25 @@ import { flagRoutes } from "./routes/flags";
 import { credentialRoutes } from "./routes/credentials";
 
 export type { Bindings, Variables, AppEnv } from "./types";
+
+/**
+ * Fail fast at request time if required bindings are absent.
+ * This surfaces misconfigured deployments immediately rather than producing
+ * opaque 500s deep inside a handler.
+ */
+function validateEnv(env: Bindings): void {
+  const required: [keyof Bindings, string][] = [
+    ["DB", "D1 database binding"],
+    ["CRED_ENCRYPTION_KEY", "credential encryption key"],
+    ["KV_SESSIONS", "KV sessions namespace"],
+  ];
+  const missing = required.filter(([key]) => !env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required bindings: ${missing.map(([k, d]) => `${k} (${d})`).join(", ")}`,
+    );
+  }
+}
 
 const app = new Hono<AppEnv>();
 
@@ -131,4 +150,9 @@ app.route("/api/v1/events", eventRoutes);
 app.route("/api/v1/flags", flagRoutes);
 app.route("/api/v1/credentials", credentialRoutes);
 
-export default app;
+export default {
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
+    validateEnv(env);
+    return app.fetch(request, env, ctx);
+  },
+};

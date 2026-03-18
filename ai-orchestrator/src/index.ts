@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware as sharedAuthMiddleware } from "@atlasit/shared";
 import type { MiddlewareHandler } from "hono";
-import type { AppEnv } from "./types";
+import type { AppEnv, Bindings } from "./types";
 import { eventRoutes } from "./routes/events";
 import { agentRoutes } from "./routes/agents";
 import { healthRoute } from "./routes/health";
@@ -20,6 +20,25 @@ import { registerBuiltinHandlers } from "./lib/handler-registry";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
+
+/**
+ * Fail fast at request time if required bindings are absent.
+ * This surfaces misconfigured deployments immediately rather than producing
+ * opaque 500s deep inside a handler.
+ */
+function validateEnv(env: Bindings): void {
+  const required: [keyof Bindings, string][] = [
+    ["ATLAS_SHARED_DB", "D1 shared database binding"],
+    ["WORKFLOW", "WorkflowDO Durable Object namespace"],
+    ["EVIDENCE", "R2 evidence bucket binding"],
+  ];
+  const missing = required.filter(([key]) => !env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required bindings: ${missing.map(([k, d]) => `${k} (${d})`).join(", ")}`,
+    );
+  }
+}
 
 const app = new Hono<AppEnv>();
 
@@ -156,7 +175,10 @@ interface QueueBatch<T = unknown> {
 }
 
 const worker = {
-  fetch: app.fetch,
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
+    validateEnv(env);
+    return app.fetch(request, env, ctx);
+  },
   async scheduled(
     event: { cron: string },
     env: AppEnv["Bindings"],
