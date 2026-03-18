@@ -5,6 +5,11 @@ compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
+# Custom domain route
+routes = [
+	{ pattern = "orchestrator.atlasit.pro/*", zone_name = "atlasit.pro" }
+]
+
 # KV Namespace for task tracking
 [[kv_namespaces]]
 binding = "TASKS"
@@ -66,9 +71,10 @@ max_batch_size = 10
 max_retries = 3
 
 [vars]
+ENVIRONMENT = "production"
 AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
-SELF_URL = "https://ai-orchestrator.atlasit.workers.dev"
+SELF_URL = "https://orchestrator.atlasit.pro"
 ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
 
 [triggers]
@@ -86,20 +92,5 @@ ENVIRONMENT = "development"
 AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
 
-[env.production]
-name = "atlasit-ai-orchestrator"
-workers_dev = true
-# Custom domain route for orchestrator.atlasit.pro
-routes = [
-	{ pattern = "orchestrator.atlasit.pro/*", zone_name = "atlasit.pro" }
-]
-usage_model = "bundled"
-
-[env.production.vars]
-ENVIRONMENT = "production"
-AI_PROVIDER = "groq"
-AI_FALLBACKS = "groq,together,cloudflare"
-
 # Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
 # GROQ_API_KEY — Groq API key for AtlasIT Agent Mesh
-

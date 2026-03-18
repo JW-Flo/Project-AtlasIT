@@ -52,7 +52,7 @@ jobs:
       - name: Ensure queue exists
         run: npx wrangler queues create atlasit-step-tasks || true
       - name: Deploy
-        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml --env production
+        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
       - name: Smoke test
         continue-on-error: true
         run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
