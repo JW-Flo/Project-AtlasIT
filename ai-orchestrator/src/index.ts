@@ -32,6 +32,7 @@ function validateEnv(env: Bindings): void {
     ["ATLAS_SHARED_DB", "D1 shared database binding"],
     ["WORKFLOW", "WorkflowDO Durable Object namespace"],
     ["EVIDENCE", "R2 evidence bucket binding"],
+    ["EVENT_SOURCE_SECRETS", "event source HMAC secrets (required in prod)"],
   ];
   const missing = required.filter(([key]) => !env[key]);
   if (missing.length > 0) {

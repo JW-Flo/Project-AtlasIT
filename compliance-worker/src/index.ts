@@ -2667,7 +2667,7 @@ async function handleSnapshot(
       error: (err as Error).message,
     });
     return new Response(
-      JSON.stringify({ error: "Internal error", requestId }),
+      JSON.stringify({ error: "Internal error", code: "INTERNAL_ERROR", message: "Internal error", requestId }),
       {
         status: 500,
         headers: mergeHeaders(headers, { "content-type": "application/json" }),

@@ -12,7 +12,7 @@ export type Bindings = {
   API_ALLOWED_KEYS?: string;
   ENVIRONMENT?: string;
   /** JSON map of sourceId → HMAC secret for inbound event signature verification */
-  EVENT_SOURCE_SECRETS?: string;
+  EVENT_SOURCE_SECRETS: string;
   /** When "true", reject events without a valid X-Signature header */
   REQUIRE_EVENT_SIGNATURES?: string;
   /** JSON map of appId → adapter worker base URL for action dispatch */
