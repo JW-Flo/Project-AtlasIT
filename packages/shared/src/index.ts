@@ -16,3 +16,4 @@ export * from "./credentials/index";
 export * from "./events/index";
 export * from "./crypto/index";
 export * from "./automation/index";
+export * from "./evidence/index";

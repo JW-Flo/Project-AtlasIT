@@ -9,6 +9,7 @@ import {
   type ActionContext,
 } from "../lib/automation-evaluator";
 import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
+import { classifyEvent, storeEvidence } from "@atlasit/shared/evidence";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -188,6 +189,51 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       JSON.stringify({ id: eventId, status: "pending" }),
       { expirationTtl: 86400 },
     );
+  }
+
+  // ── Universal evidence classification: every tenant event is potential evidence ──
+  const evidencePayload = (payload ?? {}) as Record<string, unknown>;
+  const evidenceActor = (evidencePayload.actor as string) ??
+    (evidencePayload.user as Record<string, unknown>)?.email as string ??
+    "system";
+  const evidenceSubject = (evidencePayload.subject as string) ??
+    (evidencePayload.user as Record<string, unknown>)?.email as string ??
+    (evidencePayload.email as string) ??
+    null;
+
+  const classified = classifyEvent(
+    tenantId,
+    type,
+    source,
+    evidenceActor,
+    evidenceSubject,
+    evidencePayload,
+  );
+
+  if (classified) {
+    const evidenceDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+    const evidenceBucket = c.env.EVIDENCE ?? null;
+    const evidencePromise = storeEvidence(
+      { db: evidenceDb, bucket: evidenceBucket },
+      classified,
+    ).catch((err) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          message: "Evidence locker write failed",
+          eventId,
+          tenantId,
+          eventType: type,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
+
+    try {
+      c.executionCtx.waitUntil(evidencePromise);
+    } catch {
+      // No execution context (tests) — fire and forget
+    }
   }
 
   // Fan out to subscribed agents (async, non-blocking)
