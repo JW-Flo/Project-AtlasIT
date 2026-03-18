@@ -14,7 +14,7 @@
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import {
     AlertTriangle, ShieldCheck, FileText, ClipboardCheck, Download,
-    Play, Link2, Upload, Search, Settings,
+    Play, Link2, Upload, Search, Settings, TrendingUp, TrendingDown, Minus,
   } from "lucide-svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
@@ -44,6 +44,19 @@
     status: string;
   }
 
+  interface HistoryPoint {
+    date: string;
+    score: number;
+    grade: string;
+  }
+
+  interface FrameworkHistory {
+    framework: string;
+    points: HistoryPoint[];
+    trend: "up" | "down" | "flat";
+    latestScore: number;
+  }
+
   let loading = true;
   let saving = false;
   let error: string | null = null;
@@ -52,6 +65,7 @@
   let scores: FrameworkScore[] = [];
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
+  let history: FrameworkHistory[] = [];
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -110,6 +124,36 @@
     });
   }
 
+  function trendVariant(trend: "up" | "down" | "flat"): "success" | "destructive" | "secondary" {
+    if (trend === "up") return "success";
+    if (trend === "down") return "destructive";
+    return "secondary";
+  }
+
+  function trendLabel(trend: "up" | "down" | "flat"): string {
+    if (trend === "up") return "Up";
+    if (trend === "down") return "Down";
+    return "Flat";
+  }
+
+  function sparklinePoints(points: HistoryPoint[]): string {
+    if (!points || points.length === 0) return "";
+
+    const width = 160;
+    const height = 48;
+    const min = Math.min(...points.map((p) => p.score));
+    const max = Math.max(...points.map((p) => p.score));
+    const range = Math.max(1, max - min);
+
+    return points
+      .map((p, i) => {
+        const x = points.length === 1 ? width / 2 : (i / (points.length - 1)) * width;
+        const y = height - ((p.score - min) / range) * height;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }
+
   async function loadScores() {
     try {
       const res = await fetch("/api/tenant-compliance/scores");
@@ -120,6 +164,18 @@
     } catch {}
   }
 
+  async function loadHistory() {
+    try {
+      const res = await fetch("/api/tenant-compliance/history?days=30");
+      if (res.ok) {
+        const data = await res.json();
+        history = data.history || [];
+      }
+    } catch {
+      history = [];
+    }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
@@ -127,6 +183,7 @@
       const [controlsRes] = await Promise.all([
         fetch("/api/tenant-compliance/controls"),
         loadScores(),
+        loadHistory(),
       ]);
       if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
       const data = await controlsRes.json();
@@ -458,6 +515,51 @@
         {/each}
       {/if}
     </div>
+
+    <!-- Score history -->
+    <h2 class="text-lg font-semibold mb-3">Score History (30 days)</h2>
+    {#if history.length === 0}
+      <Card class="mb-6 border-dashed">
+        <CardContent class="py-6 text-sm text-muted-foreground">No compliance history available yet.</CardContent>
+      </Card>
+    {:else}
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+        {#each history as h}
+          <Card>
+            <CardContent class="pt-5">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold">{h.framework}</h3>
+                <Badge variant={trendVariant(h.trend)} class="gap-1">
+                  {#if h.trend === "up"}
+                    <TrendingUp class="h-3 w-3" />
+                  {:else if h.trend === "down"}
+                    <TrendingDown class="h-3 w-3" />
+                  {:else}
+                    <Minus class="h-3 w-3" />
+                  {/if}
+                  {trendLabel(h.trend)}
+                </Badge>
+              </div>
+
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-2xl font-bold">{Math.round(h.latestScore)}%</span>
+                <span class="text-xs text-muted-foreground">{h.points.length} points</span>
+              </div>
+
+              <svg viewBox="0 0 160 48" class="w-full h-12" role="img" aria-label={`30-day trend for ${h.framework}`}>
+                <polyline
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="text-primary"
+                  points={sparklinePoints(h.points)}
+                />
+              </svg>
+            </CardContent>
+          </Card>
+        {/each}
+      </div>
+    {/if}
 
     <!-- Quick actions -->
     <h2 class="text-lg font-semibold mb-3">Quick Actions</h2>
