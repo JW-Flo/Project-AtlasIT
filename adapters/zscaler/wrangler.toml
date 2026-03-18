@@ -1,0 +1,29 @@
+name = "atlasit-adapter-zscaler"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+ADAPTER_NAME = "zscaler"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+# Secrets (set via wrangler secret put):
+# ADAPTER_SECRET         - HMAC secret for webhook verification
+# ZSCALER_CLIENT_ID      - OneAPI OAuth2 client ID
+# ZSCALER_CLIENT_SECRET  - OneAPI OAuth2 client secret
+# ZSCALER_VANITY_DOMAIN  - e.g. "acmecorp"
+# ZSCALER_CLOUD          - e.g. "zscaler", "zscalerone", "zscloud"
+# ZSCALER_CUSTOMER_ID    - ZPA customer ID for SCIM group operations
+
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlas-shared-db"
+database_id = "" # Set per environment
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "" # Set per environment
+
+[observability.logs]
+enabled = true
