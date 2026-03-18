@@ -39,6 +39,7 @@ export type JmlAction = "joiner" | "leaver" | "mover" | "rehire";
 export interface DirectoryChange {
   userId: string;
   email?: string;
+  externalId?: string;
   changeType: "created" | "updated" | "deactivated" | "deleted" | "reactivated";
   delta: Record<string, { old?: unknown; new?: unknown }>;
   source: string;
@@ -138,6 +139,7 @@ async function classify(
   const profile = await enrichUserProfile(db, tenantId, {
     email: change.email,
     userId: change.userId,
+    externalId: change.externalId,
   }).catch(() => null);
 
   switch (change.changeType) {

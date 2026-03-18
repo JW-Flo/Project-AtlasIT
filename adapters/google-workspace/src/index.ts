@@ -6,7 +6,7 @@ import {
   refreshAccessToken,
   SCOPES,
 } from "./auth/oauth2.js";
-import { syncUsers } from "./sync/users.js";
+import { syncUsers, type LifecycleChange } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
 
@@ -229,7 +229,7 @@ app.post("/api/sync", async (c) => {
       .bind(userResult.total, groupResult.total, tenantId)
       .run();
 
-    // Publish sync events
+    // Publish sync event
     await publishEvent({
       orchestratorUrl: c.env.ORCHESTRATOR_URL,
       tenantId,
@@ -239,10 +239,34 @@ app.post("/api/sync", async (c) => {
       correlationId,
     });
 
+    // Publish lifecycle events from diff (fire-and-forget, errors are non-fatal)
+    for (const change of userResult.lifecycleChanges ?? []) {
+      publishEvent({
+        orchestratorUrl: c.env.ORCHESTRATOR_URL,
+        tenantId,
+        type: change.type,
+        source: "google-workspace",
+        payload: change.payload,
+        idempotencyKey: `gws-${change.type}-${change.payload.user.externalId}-${correlationId}`,
+        correlationId,
+      }).catch((err: Error) => {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            message: "Failed to publish lifecycle event",
+            eventType: change.type,
+            userId: change.payload.user.externalId,
+            error: err.message,
+          }),
+        );
+      });
+    }
+
     return c.json({
       status: "synced",
       users: userResult,
       groups: groupResult,
+      lifecycleEvents: userResult.lifecycleChanges?.length ?? 0,
     });
   } catch (err) {
     const errorMessage =
@@ -390,5 +414,139 @@ async function decryptValue(
   );
   return new TextDecoder().decode(decrypted);
 }
+
+// ---------------------------------------------------------------------------
+// Provisioning — un-suspend user in Google Workspace
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const body = await c
+    .req
+    .json<{ userProfile?: { externalId?: string; email?: string } }>()
+    .catch(() => ({}));
+  const userId =
+    (body as { userProfile?: { externalId?: string; email?: string } })
+      ?.userProfile?.externalId ??
+    (body as { userProfile?: { externalId?: string; email?: string } })
+      ?.userProfile?.email;
+  if (!userId) {
+    return c.json(
+      { error: "userProfile.externalId or userProfile.email required" },
+      400,
+    );
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(tenantId, "google-workspace")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth tokens found for tenant" }, 401);
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  const res = await fetch(
+    `https://admin.googleapis.com/admin/directory/v1/users/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ suspended: false }),
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => "Unknown error");
+    return c.json(
+      { error: `Google API error: ${err}` },
+      (res.status >= 400 && res.status < 600 ? res.status : 500) as
+        | 400
+        | 401
+        | 403
+        | 500,
+    );
+  }
+
+  return c.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// Deprovisioning — suspend user in Google Workspace
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const body = await c
+    .req
+    .json<{ userProfile?: { externalId?: string; email?: string } }>()
+    .catch(() => ({}));
+  const userId =
+    (body as { userProfile?: { externalId?: string; email?: string } })
+      ?.userProfile?.externalId ??
+    (body as { userProfile?: { externalId?: string; email?: string } })
+      ?.userProfile?.email;
+  if (!userId) {
+    return c.json(
+      { error: "userProfile.externalId or userProfile.email required" },
+      400,
+    );
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(tenantId, "google-workspace")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth tokens found for tenant" }, 401);
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  const res = await fetch(
+    `https://admin.googleapis.com/admin/directory/v1/users/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ suspended: true }),
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => "Unknown error");
+    return c.json(
+      { error: `Google API error: ${err}` },
+      (res.status >= 400 && res.status < 600 ? res.status : 500) as
+        | 400
+        | 401
+        | 403
+        | 500,
+    );
+  }
+
+  return c.json({ success: true });
+});
 
 export default app;
