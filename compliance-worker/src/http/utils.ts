@@ -32,11 +32,27 @@ export function jsonResponse(
   });
 }
 
+function statusToCode(status: number): string {
+  if (status === 400) return "BAD_REQUEST";
+  if (status === 401) return "UNAUTHORIZED";
+  if (status === 403) return "FORBIDDEN";
+  if (status === 404) return "NOT_FOUND";
+  if (status === 409) return "CONFLICT";
+  if (status === 422) return "UNPROCESSABLE";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 503) return "SERVICE_UNAVAILABLE";
+  return "INTERNAL_ERROR";
+}
+
 export function errorResponse(
   status: number,
   requestId: string,
   headers: Record<string, string>,
   message: string,
 ): Response {
-  return jsonResponse({ error: message, requestId }, status, headers);
+  return jsonResponse(
+    { error: message, code: statusToCode(status), message, requestId },
+    status,
+    headers,
+  );
 }
