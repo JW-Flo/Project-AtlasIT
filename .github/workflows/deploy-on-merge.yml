@@ -297,7 +297,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        slug: ${{ github.event.inputs.force_all == 'true' && fromJSON('["microsoft-365","slack","jira","confluence","github","stripe","aws","azure","zoom","teams","discord","bamboohr","workday","adp","quickbooks","xero","auth0","crowdstrike","1password","pagerduty","datadog","gcp"]') || fromJSON(needs.detect-changes.outputs.changed-adapters) }}
+        slug: ${{ github.event.inputs.force_all == 'true' && fromJSON('["microsoft-365","slack","jira","confluence","github","stripe","aws","azure","zoom","teams","discord","bamboohr","workday","adp","quickbooks","xero","auth0","crowdstrike","1password","pagerduty","datadog","gcp","zscaler"]') || fromJSON(needs.detect-changes.outputs.changed-adapters) }}
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

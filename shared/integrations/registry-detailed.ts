@@ -2724,6 +2724,97 @@ const canva: IntegrationDetail = {
   },
 };
 
+const zscaler: IntegrationDetail = {
+  id: "zscaler",
+  name: "Zscaler",
+  category: "security",
+  tier: "extended",
+  auth: {
+    type: "oauth2",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+        helpText: "OneAPI OAuth2 client ID from Zscaler Admin Portal",
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+        helpText: "OneAPI OAuth2 client secret",
+      },
+      {
+        key: "vanity_domain",
+        label: "Vanity Domain",
+        type: "text",
+        required: true,
+        placeholder: "acmecorp",
+        helpText: "Your Zscaler vanity domain (e.g. acmecorp for acmecorp.zscaler.com)",
+      },
+      {
+        key: "cloud",
+        label: "Cloud",
+        type: "text",
+        required: true,
+        placeholder: "zscaler",
+        helpText: "Zscaler cloud identifier: zscaler, zscalerone, zscloud, etc.",
+      },
+      {
+        key: "customer_id",
+        label: "Customer ID",
+        type: "text",
+        required: true,
+        helpText: "ZPA customer ID for SCIM group operations",
+      },
+    ],
+    oauth: {
+      authorizeUrl: "",
+      tokenUrl: "https://{vanityDomain}.{cloud}/api/v1/auth/token",
+      grantTypes: ["client_credentials"],
+      scopes: [],
+      adminConsentRequired: true,
+      domainWideDelegation: false,
+    },
+  },
+  api: {
+    baseUrl: "https://{vanityDomain}.{cloud}",
+    version: "v1",
+    endpoints: {
+      createUser: "POST /admin/api/v1/users",
+      getUser: "GET /admin/api/v1/users/{id}",
+      updateUser: "PUT /admin/api/v1/users/{id}",
+      deleteUser: "DELETE /admin/api/v1/users/{id}",
+      listUsers: "GET /admin/api/v1/users",
+      listGroups: "GET /admin/api/v1/groups",
+      addToGroup: "POST /admin/api/v1/groups/{groupId}/users/{userId}",
+      removeFromGroup: "DELETE /admin/api/v1/groups/{groupId}/users/{userId}",
+    },
+    rateLimits: "Varies by endpoint; consult Zscaler OneAPI docs",
+    scim: {
+      supported: true,
+      endpoint: "/zpa/mgmtconfig/v1/admin/customers/{customerId}/scimgroup",
+      notes: "ZPA SCIM groups for access policy assignment",
+    },
+  },
+  sdk: {
+    npm: null,
+    docsUrl: "https://help.zscaler.com/zidentity/about-zidentity-api",
+    exampleImport: "// REST API via OneAPI - no official npm SDK",
+  },
+  webhooks: {
+    supported: false,
+    type: "polling",
+    eventTypes: [],
+  },
+  sandbox: {
+    available: false,
+    notes: "No free developer sandbox. Use a ZIA/ZPA trial account.",
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
@@ -2763,6 +2854,7 @@ export const integrationRegistry: Record<string, IntegrationDetail> = {
   docusign,
   figma,
   canva,
+  zscaler,
 };
 
 export const integrationList: IntegrationDetail[] =

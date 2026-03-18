@@ -324,6 +324,54 @@ export const integrations: Integration[] = [
       },
     ],
   },
+  {
+    id: "zscaler",
+    category: "security",
+    name: "Zscaler",
+    status: "beta",
+    auth: "tenant_oauth",
+    tier: "extended",
+    description:
+      "Zero Trust network security platform. Provision users and manage access policies across ZIA and ZPA via ZIdentity.",
+    credentialFields: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        type: "text",
+        required: true,
+        helpText: "OneAPI OAuth2 client ID from Zscaler Admin Portal",
+      },
+      {
+        key: "client_secret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+      },
+      {
+        key: "vanity_domain",
+        label: "Vanity Domain",
+        type: "text",
+        required: true,
+        placeholder: "acmecorp",
+        helpText: "Your Zscaler vanity domain (e.g. acmecorp for acmecorp.zscaler.com)",
+      },
+      {
+        key: "cloud",
+        label: "Cloud",
+        type: "text",
+        required: true,
+        placeholder: "zscaler",
+        helpText: "Zscaler cloud identifier: zscaler, zscalerone, zscloud, etc.",
+      },
+      {
+        key: "customer_id",
+        label: "Customer ID",
+        type: "text",
+        required: true,
+        helpText: "ZPA customer ID for SCIM group operations",
+      },
+    ],
+  },
   // Infrastructure
   {
     id: "aws",

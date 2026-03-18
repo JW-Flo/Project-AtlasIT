@@ -236,5 +236,18 @@
     "status": "alpha",
     "featureFlag": "FEATURE_CONNECTOR_CANVA",
     "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "id": "zscaler",
+    "name": "Zscaler",
+    "slug": "zscaler",
+    "category": "security",
+    "description": "Zero Trust network security platform. Provision users and manage access policies across ZIA and ZPA via ZIdentity.",
+    "authModel": "oauth2",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_ZSCALER",
+    "workerName": "atlasit-adapter-zscaler",
+    "logoUrl": "https://logo.clearbit.com/zscaler.com",
+    "createdAt": "2026-03-18T00:00:00.000Z"
   }
 ]

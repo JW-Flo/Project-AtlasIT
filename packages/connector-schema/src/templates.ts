@@ -2265,6 +2265,86 @@ export const CANVA_MANIFEST: ConnectorManifest = {
   minimumTier: "starter",
 };
 
+export const ZSCALER_MANIFEST: ConnectorManifest = {
+  id: "zscaler",
+  name: "Zscaler",
+  slug: "zscaler",
+  version: "1.0.0",
+  description:
+    "Zero Trust network security platform. Provision users and manage access policies across ZIA and ZPA via ZIdentity.",
+  provider: "Zscaler",
+  category: "identity",
+  logoUrl: "https://logo.clearbit.com/zscaler.com",
+  documentationUrl: "https://help.zscaler.com/zidentity/about-zidentity-api",
+  auth: {
+    model: "oauth2",
+    oauth2: {
+      // Client credentials flow — no authorization URL needed
+      authorizationUrl: "https://help.zscaler.com/zidentity/about-zidentity-api",
+      tokenUrl: "https://example.zscaler.com/api/v1/auth/token",
+      scopes: [],
+      clientIdEnvVar: "ZSCALER_CLIENT_ID",
+      clientSecretEnvVar: "ZSCALER_CLIENT_SECRET",
+      pkce: false,
+    },
+  },
+  capabilities: [
+    "user-provisioning",
+    "user-deprovisioning",
+    "directory-sync",
+    "group-management",
+  ],
+  configFields: [
+    {
+      key: "clientId",
+      label: "Client ID",
+      type: "string",
+      required: true,
+      description: "OneAPI OAuth2 client ID from Zscaler Admin Portal",
+    },
+    {
+      key: "clientSecret",
+      label: "Client Secret",
+      type: "secret",
+      required: true,
+      description: "OneAPI OAuth2 client secret",
+    },
+    {
+      key: "vanityDomain",
+      label: "Vanity Domain",
+      type: "string",
+      required: true,
+      description: "Your Zscaler vanity domain (e.g. acmecorp for acmecorp.zscaler.com)",
+    },
+    {
+      key: "cloud",
+      label: "Cloud",
+      type: "string",
+      required: true,
+      description: "Zscaler cloud identifier: zscaler, zscalerone, zscloud, etc.",
+    },
+    {
+      key: "customerId",
+      label: "Customer ID",
+      type: "string",
+      required: true,
+      description: "ZPA customer ID for SCIM group operations",
+    },
+  ],
+  events: {
+    emits: ["user.provisioned", "user.deprovisioned", "group.synced"],
+    subscribes: ["user.created", "user.deleted", "user.updated"],
+  },
+  lifecycle: {
+    hooks: ["onInstall", "onUninstall", "onEnable", "onDisable"],
+  },
+  rateLimit: {
+    requestsPerSecond: 10,
+    burstSize: 20,
+  },
+  minimumTier: "professional",
+};
+
 // ---------------------------------------------------------------------------
 // All manifests collection
 // ---------------------------------------------------------------------------
@@ -2304,4 +2384,5 @@ export const ALL_MANIFESTS: ConnectorManifest[] = [
   DOCUSIGN_MANIFEST,
   FIGMA_MANIFEST,
   CANVA_MANIFEST,
+  ZSCALER_MANIFEST,
 ];
