@@ -56,15 +56,14 @@ new_sqlite_classes = ["AutomationDO"]
 binding = "EVIDENCE"
 bucket_name = "atlasit-evidence"
 
-# Queue bindings disabled — requires Workers Paid plan. Uncomment after upgrade.
-# [[queues.producers]]
-# binding = "STEP_TASKS"
-# queue = "atlasit-step-tasks"
-#
-# [[queues.consumers]]
-# queue = "atlasit-step-tasks"
-# max_batch_size = 10
-# max_retries = 3
+[[queues.producers]]
+binding = "STEP_TASKS"
+queue = "atlasit-step-tasks"
+
+[[queues.consumers]]
+queue = "atlasit-step-tasks"
+max_batch_size = 10
+max_retries = 3
 
 [vars]
 AI_PROVIDER = "groq"
@@ -72,10 +71,8 @@ AI_FALLBACKS = "groq,together,cloudflare"
 SELF_URL = "https://ai-orchestrator.atlasit.workers.dev"
 ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
 
-# Cron triggers disabled — requires Workers Paid plan.
-# Uncomment after upgrading plan:
-# [triggers]
-# crons = ["*/5 * * * *"]
+[triggers]
+crons = ["*/5 * * * *"]
 
 [observability.logs]
 enabled = true
