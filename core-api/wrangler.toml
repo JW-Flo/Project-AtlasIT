@@ -6,8 +6,8 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "atlas_core_db"
-database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 [[kv_namespaces]]
 binding = "KV_SESSIONS"

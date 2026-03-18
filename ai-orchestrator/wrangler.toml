@@ -23,11 +23,11 @@ binding = "IDEMPOTENCY_CACHE"
 id = "51f84cb9b5624496b062d46b4019d7c7"
 preview_id = "1528c13cdf7b4c45ac7648adf5b84425"
 
-# D1 Database (shared ATLAS_CORE_DB) — used for workflow orchestration state
+# D1 Database (atlasit-shared) — all platform data lives here
 [[d1_databases]]
 binding = "DB"
-database_name = "ATLAS_CORE_DB"
-database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 # D1 Database (ATLAS_SHARED_DB) — automation rules and execution records live here
 [[d1_databases]]
