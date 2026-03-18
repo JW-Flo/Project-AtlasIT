@@ -180,15 +180,16 @@ export async function evaluateAutomationRules(
         );
         results.push(result);
 
-        // Emit compliance evidence for each successful action
-        if (result.status === "success") {
+        // Emit compliance evidence for successful actions that map to controls
+        if (result.status === "success" && actionContext?.sharedDb) {
           await emitComplianceEvidence(
-            db,
-            tenantId,
             action.type,
-            executionId,
+            event,
+            result,
+            actionContext,
+            userProfile,
           ).catch(() => {
-            // Non-critical — evidence emission must not block execution
+            // Non-critical — evidence emission must not fail rule execution
           });
         }
       } catch (err: unknown) {
@@ -541,6 +542,62 @@ async function executeAction(
   }
 }
 
+// ── Compliance evidence emission ─────────────────────────────────────────────
+
+/**
+ * Emits one `compliance_evidence` row per control mapped to the action type.
+ * Silently no-ops when the action has no compliance mapping or sharedDb is absent.
+ * Called with .catch(() => {}) so failures never block rule execution.
+ */
+async function emitComplianceEvidence(
+  actionType: string,
+  event: AutomationEvent,
+  result: ActionResult,
+  ctx: ActionContext,
+  profile: CanonicalUserProfile | null,
+): Promise<void> {
+  const controls = ACTION_COMPLIANCE_MAP[actionType] ?? [];
+  if (controls.length === 0 || !ctx.sharedDb) return;
+
+  const timestamp = new Date().toISOString();
+  const actor = profile?.email ?? "system";
+  const subject =
+    profile?.email ?? JSON.stringify(event.payload).slice(0, 100);
+  const metadata = JSON.stringify({
+    actionType,
+    eventType: event.type,
+    eventSource: event.source,
+    result: result.message,
+    ...(result.details ?? {}),
+  });
+
+  for (const control of controls) {
+    await ctx.sharedDb
+      .prepare(
+        `INSERT OR IGNORE INTO compliance_evidence
+         (id, tenant_id, framework, framework_id, control_id, control_name,
+          evidence_type, source, source_id, actor, subject, metadata, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        event.tenantId,
+        control.framework,
+        control.framework, // framework_id alias for backward compat
+        control.controlId,
+        control.controlName,
+        control.evidenceType,
+        "automation",
+        (event.payload.ruleId as string | undefined) ?? null,
+        actor,
+        subject,
+        metadata,
+        timestamp,
+      )
+      .run();
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function ok(
@@ -660,42 +717,6 @@ function buildWorkflowSteps(
     ...revokeSteps.map((s) => ({ ...s, id: `old_${s.id}` })),
     ...provisionSteps.map((s) => ({ ...s, id: `new_${s.id}` })),
   ];
-}
-
-/**
- * Insert one compliance_evidence row per mapped control for a successful action.
- * Errors are swallowed by the caller — evidence emission is non-critical.
- */
-async function emitComplianceEvidence(
-  db: D1Database,
-  tenantId: string,
-  actionType: string,
-  executionId: string,
-): Promise<void> {
-  const controls = ACTION_COMPLIANCE_MAP[actionType];
-  if (!controls || controls.length === 0) return;
-
-  const now = new Date().toISOString();
-  for (const control of controls) {
-    const id = crypto.randomUUID().replace(/-/g, "");
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO compliance_evidence
-          (id, tenant_id, framework, control_id, evidence_type, action_type, execution_id, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'automation', ?)`,
-      )
-      .bind(
-        id,
-        tenantId,
-        control.framework,
-        control.controlId,
-        control.evidenceType,
-        actionType,
-        executionId,
-        now,
-      )
-      .run();
-  }
 }
 
 // Row → domain mapper (mirrors console-app/src/lib/server/automation.ts)

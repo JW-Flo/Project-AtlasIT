@@ -1,7 +1,8 @@
 export interface Env {
   D1_COMPLIANCE?: D1Database;
   atlasit_compliance?: D1Database;
-  /** Shared DB (ATLAS_SHARED_DB) — used to query automation-emitted compliance_evidence rows */
+  /** Shared database (also used by ai-orchestrator). Contains compliance_evidence
+   *  rows emitted by automation action executions. */
   ATLAS_SHARED_DB?: D1Database;
   EVIDENCE_BUCKET?: R2Bucket;
   atlasit_evidence?: R2Bucket;
