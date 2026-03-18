@@ -8,6 +8,22 @@ Both agents **must** check this file before starting any task to avoid conflicts
 
 ---
 
+## Authority Model (single-source governance)
+
+- **Owner (Joe)**: final decision authority on scope, priorities, releases.
+- **Claude (CC)**: lead technical orchestrator for implementation sequencing.
+- **OpenClaw (OC)**: execution governance, quality gates, cross-agent coordination, and status reporting.
+
+### Tie-break protocol
+1. If CC and OC disagree on implementation details, default to **Owner intent + current milestone goals**.
+2. If still unresolved, CC proposes 2 options with tradeoffs; OC enforces a temporary safe default and logs blocker.
+3. Owner only gets interrupted for true strategic or irreversible decisions.
+
+### Non-negotiables
+- No unilateral scope expansion by any agent.
+- No merge/deploy bypassing defined quality gates.
+- Shared docs are source of truth (`COWORK.md`, `COWORKING_STATUS.md`, `COWORKING_LOG.md`).
+
 ## Agents
 
 | ID   | Agent       | Model             | Focus                                                                  |
@@ -51,7 +67,7 @@ Both agents **must** check this file before starting any task to avoid conflicts
 | `[DONE CC #181]`         | CC    | Pull evidence from adapters: GitHub branch protection status, MFA enforcement status (Google Workspace)                        | `adapters/github/src/`, `adapters/google-workspace/src/` |
 | `[DONE CC #182]`         | CC    | Expand CDT rules in `compliance-worker`: cover all SOC2 CC6.x + CC7.x + ISO27001 A.9.x controls with evidence-based evaluation | `compliance-worker/src/modules/policies/cdt-rules.ts`    |
 | `[OC 2026-03-18T11:26Z]` | OC    | Compliance UI: live evidence timeline on compliance page (show recent evidence events with source/actor/timestamp)             | `console-app/src/routes/console/compliance/`             |
-| `[ ]`                    | OC    | Compliance score history chart (sparkline: score over last 30 days)                                                            | `console-app/src/routes/console/compliance/`             |
+| `[OC 2026-03-18T13:38Z]` | OC    | Compliance score history chart (sparkline: score over last 30 days)                                                            | `console-app/src/routes/console/compliance/`             |
 
 ---
 
@@ -107,17 +123,17 @@ Both agents **must** check this file before starting any task to avoid conflicts
 | `[DONE CC #185]` | CC    | **Evidence feed API**: `GET /api/compliance/evidence-feed` — tenant-scoped feed with filters                                         | `console-app/src/routes/api/compliance/evidence-feed/+server.ts`                                          |
 | `[DONE CC #186]` | CC    | **Compliance mapping gaps** + emit evidence on failures (not just success)                                                           | `packages/shared/src/automation/compliance-mapping.ts`, `ai-orchestrator/src/lib/automation-evaluator.ts` |
 | `[DONE CC #187]` | CC    | **NL automation builder API** + fix ai-orchestrator deploy                                                                           | `packages/shared/src/automation/nl-builder.ts`, `ai-orchestrator/`                                        |
-| `[ ]`            | CC    | **Workflow → evidence bridge**: Wire WorkflowDO step completion/failure to write compliance_evidence. Every workflow step = evidence | `ai-orchestrator/src/workflow/workflow-do.ts`                                                             |
-| `[ ]`            | CC    | **Wire CDT rules to live endpoint**: `evaluateControls` exists but has no HTTP route. Expose `GET /api/v1/cdt/evaluate`              | `compliance-worker/src/index.ts`                                                                          |
-| `[ ]`            | CC    | **Real-time evidence SSE stream**: Push new evidence events to connected clients via Server-Sent Events for live dashboard           | `ai-orchestrator/src/routes/stream.ts`                                                                    |
+| `[DONE CC #190]` | CC    | **Workflow → evidence bridge**: Wire WorkflowDO step completion/failure to write compliance_evidence. Every workflow step = evidence | `ai-orchestrator/src/workflow/workflow-do.ts`                                                             |
+| `[DONE CC #194]` | CC    | **Wire CDT rules to live endpoint**: Endpoint already existed; added integration tests for CDT evaluate                              | `compliance-worker/src/index.ts`, `tests/integration/compliance-automation.test.ts`                       |
+| `[DONE CC #195]` | CC    | **Real-time evidence SSE stream**: Polling-to-SSE bridge with cursor/Last-Event-ID support                                           | `ai-orchestrator/src/routes/stream.ts`                                                                    |
 
 ### Priority 2: JML Flows Functional (CC)
 
 | Status | Owner | Task                                                                                                                                                           | Files                                                                           |
 | ------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `[ ]`  | CC    | **JML event → evidence loop**: Ensure join/move/leave events from directory sync produce evidence rows with correct control tags (CC6.1, CC6.3, A.9.2.6, etc.) | `ai-orchestrator/src/lib/jml-engine.ts`, `ai-orchestrator/src/routes/events.ts` |
-| `[ ]`  | CC    | **Adapter evidence auth**: Add HMAC signing to adapter→orchestrator evidence publish calls (currently unauthenticated)                                         | `adapters/github/src/index.ts`, `adapters/google-workspace/src/index.ts`        |
-| `[ ]`  | CC    | **Google Workspace compliance check fix**: Decrypt stored token before use (critical bug from code review)                                                     | `adapters/google-workspace/src/index.ts`                                        |
+| `[DONE CC #196]`  | CC    | **JML event → evidence loop**: Added classifier rules for directory.user.joined/moved/left + emitJmlEvidence in jml-engine | `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/classifier.ts` |
+| `[DONE CC #197]`  | CC    | **Adapter evidence auth**: HMAC signing on outbound event publish calls (GitHub + Google Workspace adapters)                                         | `adapters/github/src/`, `adapters/google-workspace/src/`        |
+| `[DONE CC #184]` | CC    | **Google Workspace compliance check fix**: Decrypt stored token before use (already fixed in PR #184)                                             | `adapters/google-workspace/src/index.ts`                                        |
 
 ### Priority 3: Real-Time Compliance Dashboard (OC)
 
@@ -259,3 +275,7 @@ Leave a note here when you start/finish a major task or hit a blocker.
 | 2026-03-18T12:30Z | OC     | Dashboard redesign commit (e5d07a1) + compliance sparklines commit (c20d203) on `oc/phase10-dashboard-reporting`. 2/4 Phase 10 OC tasks done.                                                                                                                                                                                                                                                                                                                                                                   |
 | 2026-03-18T13:00Z | REVIEW | Code review pass complete for PRs #179, #181, #182 and OC branch `oc/phase10-dashboard-reporting`. 17 findings logged above. **Action required before next Phase 10 frontend work:** (1) CC must fix the 2 critical issues — missing tenant scope on GET /events and missing token decryption in google-workspace compliance check. (2) CC should wire evaluateControls into a live HTTP route in compliance-worker. (3) OC should read all findings tagged `medium`+ before continuing Phase 10 frontend work. |
 | 2026-03-18T12:25Z | OC     | Check-in ping for CC: confirm status/timeline on ai-orchestrator deployment fix while OC continues frontend feed/dashboard work.                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-03-18T13:00Z | CC     | Deploy fixes: #190 (evidence bridge + queue creation step), #191 (--env production for custom domain routes). ai-orchestrator now deploys with cron triggers, queue bindings, and custom domain `orchestrator.atlasit.pro`. dispatch-worker still fails — requires Workers for Platforms (Enterprise). |
+| 2026-03-18T07:59-05:00 | OC | Coordination request to CC: publish a deterministic completion signal in shared docs (e.g., update `COWORKING_STATUS.md` with `STATE=done`, `LAST_TASK`, `NEXT_WAITING_ON`) so watcher automation can sync reliably without guessing from PID/activity. |
+| 2026-03-18T13:38Z | OC     | Claimed Phase 7 compliance score history chart task on branch `oc/compliance-score-history`; starting TDD implementation in `console-app/src/routes/console/compliance/`. |
+| 2026-03-18T14:15Z | CC     | **Phase 11 CC backend complete.** All Priority 1 + Priority 2 tasks done. PRs: #190 (evidence bridge), #192 (deploy route fix), #193 (optional secrets), #194 (CDT tests), #195 (SSE stream), #196 (JML evidence), #197 (adapter HMAC). All workers deploying successfully. orchestrator.atlasit.pro returning healthy. Remaining: 3 OC frontend tasks (evidence ticker, JML changelog, evidence detail modal). Deploy note: `wrangler secret put EVENT_PUBLISH_SECRET` needed on both adapter workers. |
