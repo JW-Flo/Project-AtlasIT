@@ -49,6 +49,8 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Ensure queue exists
+        run: npx wrangler queues create atlasit-step-tasks || true
       - name: Deploy
         run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
       - name: Smoke test
