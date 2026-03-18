@@ -49,6 +49,7 @@ import {
 } from "./http/utils";
 import { log } from "./log";
 import { webhookRoutes } from "./routes/webhooks";
+import { evaluateControls, scoreFromEvaluations } from "./modules/policies/cdt-rules";
 
 // ----------------------------------------------------------------------------------
 // TODO (Codex Ownership Notes): The following pending enhancements are delegated to
@@ -648,6 +649,26 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
 
   if (url.pathname === "/api/v1/policy/evaluate" && method === "POST") {
     return handlePolicyEvaluate(request, env, requestId, headers);
+  }
+
+  // CDT (Compliance Decision Tree) evaluation — evidence-based control status
+  if (url.pathname === "/api/v1/cdt/evaluate" && method === "GET") {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, ["policies:read"]);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      throw err;
+    }
+
+    const sharedDb = resolveD1(env);
+    if (!sharedDb) return errorResponse(503, requestId, headers, "Database unavailable");
+
+    const framework = url.searchParams.get("framework") ?? undefined;
+    const evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    const scores = scoreFromEvaluations(evaluations);
+
+    return jsonResponse({ controls: evaluations, scores, requestId }, 200, headers);
   }
 
   if (url.pathname === "/api/v1/policies/coverage" && method === "GET") {
