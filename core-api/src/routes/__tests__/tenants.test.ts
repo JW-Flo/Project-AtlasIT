@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import app from "../../index";
+import { app } from "../../index";
 
 type TenantRow = Record<string, unknown>;
 

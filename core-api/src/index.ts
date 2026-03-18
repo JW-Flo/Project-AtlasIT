@@ -150,6 +150,8 @@ app.route("/api/v1/events", eventRoutes);
 app.route("/api/v1/flags", flagRoutes);
 app.route("/api/v1/credentials", credentialRoutes);
 
+export { app };
+
 export default {
   fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
     validateEnv(env);
