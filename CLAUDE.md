@@ -41,6 +41,37 @@
 - Groq: 1Password item "Groq Atlas IT API Credentials"
 - GH_PAT: 1Password item "GH_PAT" or "GitHub PAT - Atlas IT"
 
+## GitHub & PR Workflow
+
+Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
+Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
+
+Full PR workflow:
+1. Create feature branch: `feat/<desc>` or `phase<N>/<desc>`
+2. Commit with concise why-focused messages (no session URLs)
+3. Push and open PR: `gh pr create --title "..." --body "..."`
+4. Request Copilot review: `gh pr edit <num> --add-reviewer copilot`
+5. Wait ~60s, check: `gh pr view <num> --json reviews,comments`
+6. Address actionable findings; if no findings after 1-2 checks → merge
+7. Merge: `gh pr merge <num> --squash`
+8. Delete remote branch: `git push origin --delete <branch>`
+
+Do not poll Copilot more than 2-3 times. If nothing reported, merge and move on.
+
+## Parallel Agent Rules
+
+Write agents (those that edit files) MUST use isolated worktrees.
+Pass `isolation: "worktree"` on the Task tool for any agent that modifies files.
+Read-only/Explore agents may run in parallel without isolation.
+Never launch multiple write agents against the same branch — they will overwrite each other.
+
+## Agent Model Selection
+
+- **haiku**: scaffolding, boilerplate, pattern-following codegen, file searches, templated work
+- **sonnet**: implementing against existing patterns, code review, judgment calls, most feature work
+- **opus**: novel architecture decisions, hard debugging, system design trade-offs
+Do not use opus for cookie-cutter or pattern-following work.
+
 ## Project Architecture
 
 AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
@@ -55,11 +86,11 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 - `slack-notification-agent/` — Outbound Slack MCP agent (event → Slack webhook)
 - `packages/shared/` — Common types, auth, logging, middleware (rate-limit, security-headers, auth), platform adapters, observability (logger, metrics, tracer, SLOs)
 - `packages/mcp-sdk/` — MCP agent SDK (client + server, HMAC signing)
-- `packages/connector-schema/` — ConnectorManifest Zod schemas + manifest templates for all 24 apps
+- `packages/connector-schema/` — ConnectorManifest Zod schemas + manifest templates for all 35 apps
 - `packages/adapter-gen/` — Adapter code generator (manifest JSON → full CF Worker scaffold)
 - `adapters/okta/` — Okta connector (directory sync, webhooks, SCIM 2.0 provisioning)
 - `adapters/google-workspace/` — Google Workspace connector (OAuth 2.0, user/group sync)
-- `adapters/<slug>/` — 22 scaffolded adapters (7 with hand-written core implementations)
+- `adapters/<slug>/` — 33 adapters (9 core-tier hand-written, 24 scaffolded + Zscaler)
 - `ops/oidc/` — GitHub Actions OIDC → 1Password Connect exchange worker
 
 ### Storage (Cloudflare D1/KV/R2/Queues)
