@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
+import { toCamel } from "$lib/utils/dto";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user as any;
@@ -25,7 +26,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     .all()
     .then((r: any) => r.results || []);
 
-  return json({ mappings: rows });
+  return json({ mappings: toCamel(rows) });
 };
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
@@ -79,5 +80,5 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     .bind(id)
     .first();
 
-  return json({ mapping: row });
+  return json({ mapping: toCamel(row) });
 };

@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
+import { toCamel } from "$lib/utils/dto";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
@@ -22,7 +23,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     return json({ error: "Tenant not found" }, { status: 404 });
   }
 
-  return json(tenant);
+  return json(toCamel(tenant));
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {

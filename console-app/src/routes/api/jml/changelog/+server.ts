@@ -1,4 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { toCamel } from "$lib/utils/dto";
 
 /** GET — list directory changelog entries */
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
@@ -30,7 +31,7 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
     .bind(...params)
     .all();
 
-  return json({ entries: results ?? [] });
+  return json({ entries: toCamel(results ?? []) });
 };
 
 function getSharedDb(platform: any): D1Database | null {

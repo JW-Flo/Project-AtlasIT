@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
+import { toCamel } from "$lib/utils/dto";
 
 export const PATCH: RequestHandler = async ({
   params,
@@ -76,7 +77,7 @@ export const PATCH: RequestHandler = async ({
     .bind(mappingId)
     .first();
 
-  return json({ mapping: updated });
+  return json({ mapping: toCamel(updated) });
 };
 
 export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
