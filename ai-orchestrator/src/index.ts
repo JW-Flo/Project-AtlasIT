@@ -17,6 +17,7 @@ import {
 } from "./lib/automation-evaluator";
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
+import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -204,8 +205,8 @@ const worker = {
       sharedDb,
     };
 
-    await Promise.allSettled(
-      (results ?? []).map((row) =>
+    await Promise.allSettled([
+      ...(results ?? []).map((row) =>
         evaluateAutomationRules(
           sharedDb,
           row.tenant_id,
@@ -216,7 +217,8 @@ const worker = {
           actionContext,
         ),
       ),
-    );
+      processExpiredCampaigns({ sharedDb, adapterUrls }),
+    ]);
   },
   async queue(
     batch: QueueBatch<AnyStepMessage>,
