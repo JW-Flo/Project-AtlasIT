@@ -149,9 +149,10 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
 
   const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
 
-  // Idempotency check via KV (24h TTL)
-  if (idempotencyKey) {
-    const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyKey);
+  // Idempotency check via KV (24h TTL) — namespace by tenantId to prevent cross-tenant collisions
+  const idempotencyCacheKey = idempotencyKey ? `${tenantId}:${idempotencyKey}` : null;
+  if (idempotencyCacheKey) {
+    const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyCacheKey);
     if (existing) {
       return c.json({
         status: "success",
@@ -180,10 +181,10 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     )
     .run();
 
-  // Cache idempotency key
-  if (idempotencyKey) {
+  // Cache idempotency key (tenant-scoped)
+  if (idempotencyCacheKey) {
     await c.env.IDEMPOTENCY_CACHE.put(
-      idempotencyKey,
+      idempotencyCacheKey,
       JSON.stringify({ id: eventId, status: "pending" }),
       { expirationTtl: 86400 },
     );
@@ -341,7 +342,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       metadata?: unknown;
     };
     if (ep.controlId && ep.framework) {
-      sharedDb
+      const evidencePromise = sharedDb
         .prepare(
           `INSERT INTO compliance_evidence
              (id, tenant_id, framework, framework_id, control_id, control_name,
@@ -374,6 +375,12 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
             }),
           );
         });
+
+      try {
+        c.executionCtx.waitUntil(evidencePromise);
+      } catch {
+        // No execution context (tests) — already running
+      }
     }
   }
 
@@ -401,13 +408,14 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
 
 // GET /api/v1/events -- list events
 eventRoutes.get("/", async (c) => {
+  const tenantId = c.get("tenantId");
   const status = c.req.query("status");
   const type = c.req.query("type");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
   const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
 
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: string[] = ["tenant_id = ?"];
+  const params: unknown[] = [tenantId];
   if (status) {
     conditions.push("status = ?");
     params.push(status);
@@ -416,8 +424,7 @@ eventRoutes.get("/", async (c) => {
     conditions.push("type = ?");
     params.push(type);
   }
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const results = await c.env.DB.prepare(
     `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -436,9 +443,10 @@ eventRoutes.get("/", async (c) => {
 
 // GET /api/v1/events/:id -- get event with delivery status
 eventRoutes.get("/:id", async (c) => {
+  const tenantId = c.get("tenantId");
   const { id } = c.req.param();
-  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ?")
-    .bind(id)
+  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ? AND tenant_id = ?")
+    .bind(id, tenantId)
     .first();
 
   if (!event) {

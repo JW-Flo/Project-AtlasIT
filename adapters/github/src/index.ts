@@ -90,25 +90,27 @@ app.post("/webhook", async (c) => {
 
   const rawBody = await c.req.text();
 
-  // Verify HMAC signature
+  // Verify HMAC signature using constant-time comparison
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(c.env.ADAPTER_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    ["verify"],
   );
-  const sigBuffer = await crypto.subtle.sign(
+  // Convert hex signature to Uint8Array for crypto.subtle.verify
+  const sigBytes = new Uint8Array(
+    (signature.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)),
+  );
+  const isValid = await crypto.subtle.verify(
     "HMAC",
     key,
+    sigBytes,
     encoder.encode(rawBody),
   );
-  const expectedSig = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 
-  if (signature !== expectedSig) {
+  if (!isValid) {
     console.error(
       JSON.stringify({
         level: "error",
@@ -572,7 +574,9 @@ app.post("/api/compliance/check", async (c) => {
         },
       },
     }),
-  }).catch(() => {});
+  }).catch((err: Error) => {
+    console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.7 evidence", error: err.message, tenantId: body.tenantId, correlationId }));
+  });
 
   return c.json({
     ok: true,
