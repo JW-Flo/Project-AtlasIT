@@ -22,6 +22,7 @@ import { CloudflareEvidenceStore } from "../../../packages/shared/src/platform/c
 import { CloudflareQueueBus } from "../../../packages/shared/src/platform/cloudflare/queue-bus";
 import { moveToDeadLetter } from "../lib/dead-letter";
 import type { DeadLetterEntry } from "../lib/dead-letter";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 // ---------------------------------------------------------------------------
 // Env bindings expected by WorkflowDO
@@ -663,14 +664,59 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
   private async emitEvidence(step: StepState): Promise<void> {
     if (!this.state) return;
+
+    // 1. Write immutable R2 envelope (existing behavior)
     const emitter = this.getEvidenceEmitter();
-    if (!emitter) return;
+    if (emitter) {
+      try {
+        await emitter.emit(this.state, step);
+      } catch (err) {
+        console.error(
+          "R2 evidence emission failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    // 2. Bridge to D1 compliance_evidence via evidence classifier
+    // This makes workflow step evidence queryable for scoring + feed
     try {
-      await emitter.emit(this.state, step);
+      const eventType =
+        step.status === "completed"
+          ? `workflow.step.${step.action}.completed`
+          : `workflow.step.${step.action}.failed`;
+
+      const classified = classifyEvent(
+        this.state.tenantId,
+        eventType,
+        "workflow-do",
+        this.state.actor,
+        this.state.userId !== "unknown" ? this.state.userId : null,
+        {
+          runId: this.state.id,
+          stepId: step.stepId,
+          action: step.action,
+          workflowType: this.state.type,
+          status: step.status,
+          durationMs: step.durationMs,
+          error: step.error,
+          context: this.state.context,
+        },
+      );
+
+      if (classified && this.env?.DB) {
+        await storeEvidence(
+          {
+            db: this.env.DB,
+            bucket: (this.env.EVIDENCE as unknown as R2Bucket) ?? undefined,
+          },
+          classified,
+        );
+      }
     } catch (err) {
-      // Evidence emission failure should not block workflow execution
+      // D1 evidence bridge failure should not block workflow execution
       console.error(
-        "Evidence emission failed:",
+        "D1 evidence bridge failed:",
         err instanceof Error ? err.message : err,
       );
     }
