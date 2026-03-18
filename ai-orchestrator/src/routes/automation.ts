@@ -6,6 +6,7 @@ import {
   evaluateAutomationRules,
   type ActionContext,
 } from "../lib/automation-evaluator";
+import { buildAutomationFromNL } from "../lib/nl-automation-builder";
 
 const EvaluateSchema = z.object({
   tenantId: z.string().min(1),
@@ -195,4 +196,101 @@ automationRoutes.get("/stats", async (c) => {
     correlationId: c.get("correlationId"),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ── NL Automation Builder ─────────────────────────────────────────────────────
+
+const NLBuildSchema = z.object({
+  prompt: z.string().min(5).max(1000),
+  connectedApps: z.array(z.string()).optional(),
+  directoryGroups: z.array(z.string()).optional(),
+});
+
+/**
+ * POST /api/v1/automation/nl
+ * Translate natural language into a structured automation rule with compliance mapping preview.
+ *
+ * Request body:
+ *   { prompt: string, connectedApps?: string[], directoryGroups?: string[] }
+ *
+ * Response:
+ *   { rule: CreateRuleInput, compliancePreview: [...], confidence: number, reasoning: string }
+ */
+automationRoutes.post("/nl", requireRole("member"), async (c) => {
+  const body = await c.req.json();
+  const parsed = NLBuildSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json(
+      {
+        status: "error",
+        code: "VALIDATION_FAILED",
+        message: "Invalid NL build request",
+        details: parsed.error.flatten(),
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      400,
+    );
+  }
+
+  // Enrich with tenant context if not provided
+  const tenantId = c.get("tenantId");
+  const sharedDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+  const req = parsed.data;
+
+  // Auto-populate connected apps if not provided
+  if (!req.connectedApps) {
+    try {
+      const { results } = await sharedDb
+        .prepare(
+          "SELECT DISTINCT app_name FROM connected_apps WHERE tenant_id = ? AND status = 'active'",
+        )
+        .bind(tenantId)
+        .all<{ app_name: string }>();
+      req.connectedApps = results?.map((r) => r.app_name) ?? [];
+    } catch {
+      // table may not exist yet — continue without context
+    }
+  }
+
+  // Auto-populate directory groups if not provided
+  if (!req.directoryGroups) {
+    try {
+      const { results } = await sharedDb
+        .prepare(
+          "SELECT DISTINCT name FROM directory_groups WHERE tenant_id = ? LIMIT 50",
+        )
+        .bind(tenantId)
+        .all<{ name: string }>();
+      req.directoryGroups = results?.map((r) => r.name) ?? [];
+    } catch {
+      // table may not exist yet — continue without context
+    }
+  }
+
+  try {
+    const result = await buildAutomationFromNL(
+      c.env as Record<string, unknown>,
+      req,
+    );
+    return c.json({
+      status: "success",
+      data: result,
+      correlationId: c.get("correlationId"),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "AI generation failed";
+    return c.json(
+      {
+        status: "error",
+        code: "NL_BUILD_FAILED",
+        message,
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      422,
+    );
+  }
 });

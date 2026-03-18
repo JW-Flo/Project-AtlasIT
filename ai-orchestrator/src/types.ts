@@ -15,6 +15,12 @@ export type Bindings = {
   EVENT_SOURCE_SECRETS: string;
   /** When "true", reject events without a valid X-Signature header */
   REQUIRE_EVENT_SIGNATURES?: string;
+  /** Groq API key for AI features (NL automation builder, policy suggestions) */
+  GROQ_API_KEY?: string;
+  /** Primary AI provider (default: groq) */
+  AI_PROVIDER?: string;
+  /** Comma-separated fallback AI provider chain */
+  AI_FALLBACKS?: string;
   /** JSON map of appId → adapter worker base URL for action dispatch */
   ADAPTER_URLS?: string;
   /** Base URL of this worker, used for self-referential event bus calls */

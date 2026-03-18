@@ -9,7 +9,7 @@ import {
   type ActionContext,
 } from "../lib/automation-evaluator";
 import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
-import { classifyEvent, storeEvidence } from "@atlasit/shared/evidence";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -151,7 +151,9 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
 
   // Idempotency check via KV (24h TTL) — namespace by tenantId to prevent cross-tenant collisions
-  const idempotencyCacheKey = idempotencyKey ? `${tenantId}:${idempotencyKey}` : null;
+  const idempotencyCacheKey = idempotencyKey
+    ? `${tenantId}:${idempotencyKey}`
+    : null;
   if (idempotencyCacheKey) {
     const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyCacheKey);
     if (existing) {
@@ -193,11 +195,13 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
 
   // ── Universal evidence classification: every tenant event is potential evidence ──
   const evidencePayload = (payload ?? {}) as Record<string, unknown>;
-  const evidenceActor = (evidencePayload.actor as string) ??
-    (evidencePayload.user as Record<string, unknown>)?.email as string ??
+  const evidenceActor =
+    (evidencePayload.actor as string) ??
+    ((evidencePayload.user as Record<string, unknown>)?.email as string) ??
     "system";
-  const evidenceSubject = (evidencePayload.subject as string) ??
-    (evidencePayload.user as Record<string, unknown>)?.email as string ??
+  const evidenceSubject =
+    (evidencePayload.subject as string) ??
+    ((evidencePayload.user as Record<string, unknown>)?.email as string) ??
     (evidencePayload.email as string) ??
     null;
 
@@ -338,8 +342,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
         (jmlPayload.userId as string) ??
         (jmlPayload.id as string) ??
         "unknown",
-      email:
-        (jmlUser.email as string) ?? (jmlPayload.email as string),
+      email: (jmlUser.email as string) ?? (jmlPayload.email as string),
       externalId: (jmlUser.externalId as string) ?? undefined,
       changeType: jmlChangeType,
       delta:
@@ -491,7 +494,9 @@ eventRoutes.get("/", async (c) => {
 eventRoutes.get("/:id", async (c) => {
   const tenantId = c.get("tenantId");
   const { id } = c.req.param();
-  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ? AND tenant_id = ?")
+  const event = await c.env.DB.prepare(
+    "SELECT * FROM events WHERE id = ? AND tenant_id = ?",
+  )
     .bind(id, tenantId)
     .first();
 

@@ -7,7 +7,7 @@ export {
   type ControlClassification,
   type EvidenceImpact,
   type EvidenceCategory,
-} from "./classifier.ts";
+} from "./classifier";
 
 export {
   storeEvidence,
@@ -15,4 +15,4 @@ export {
   type EvidenceLockerItem,
   type LockerWriteResult,
   type LockerDependencies,
-} from "./locker.ts";
+} from "./locker";
