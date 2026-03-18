@@ -9,6 +9,7 @@ import {
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleGitHubWebhook } from "./webhooks.js";
+import { signPayload } from "../../../packages/shared/src/crypto/hmac.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -547,11 +548,9 @@ app.post("/api/compliance/check", async (c) => {
   const total = protectedCount + unprotectedCount;
   const allProtected = total > 0 && unprotectedCount === 0;
 
-  // Publish compliance evidence event
-  await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  // Publish compliance evidence event (HMAC-signed when EVENT_PUBLISH_SECRET is set)
+  {
+    const eventBody = JSON.stringify({
       tenantId: body.tenantId,
       type: "compliance.evidence.collected",
       source: "adapter:github",
@@ -573,10 +572,19 @@ app.post("/api/compliance/check", async (c) => {
           checkedAt: new Date().toISOString(),
         },
       },
-    }),
-  }).catch((err: Error) => {
-    console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.7 evidence", error: err.message, tenantId: body.tenantId, correlationId }));
-  });
+    });
+    const eventHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      eventHeaders["X-Signature"] = await signPayload(eventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: eventHeaders,
+      body: eventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.7 evidence", error: err.message, tenantId: body.tenantId, correlationId }));
+    });
+  }
 
   return c.json({
     ok: true,

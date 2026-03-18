@@ -5,6 +5,8 @@ export type Bindings = {
   CRED_ENCRYPTION_KEY: string;
   ORCHESTRATOR_URL: string;
   CONNECTOR_ID: string;
+  /** HMAC secret for signing outbound event publish calls to the orchestrator. */
+  EVENT_PUBLISH_SECRET: string;
 };
 
 export interface SyncResult {

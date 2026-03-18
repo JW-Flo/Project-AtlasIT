@@ -9,6 +9,8 @@ export interface Bindings {
   GITHUB_CLIENT_SECRET: string;
   GITHUB_WEBHOOK_SECRET: string;
   OAUTH2_REDIRECT_URI: string;
+  /** HMAC secret for signing outbound event publish calls to the orchestrator. */
+  EVENT_PUBLISH_SECRET: string;
 }
 
 export interface Variables {
