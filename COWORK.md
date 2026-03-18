@@ -64,8 +64,8 @@ Both agents **must** check this file before starting any task to avoid conflicts
 | `[CC 2026-03-18T10:05Z]` | CC | Auto-revoke logic: after campaign expires with unreviewed items, revoke access via adapter | `ai-orchestrator/src/lib/` |
 | `[CC 2026-03-18T10:05Z]` | CC | New automation action type `request_access_review` — trigger a review campaign from a rule | `packages/shared/src/automation/types.ts`, `ai-orchestrator/src/lib/automation-evaluator.ts` |
 | `[OC 2026-03-18T10:56Z]` | OC | Access Reviews UI: campaign list page with status/progress indicators | `console-app/src/routes/console/access-reviews/` |
-| `[ ]` | OC | Access Review detail: manager-facing approve/revoke per user+app row | `console-app/src/routes/console/access-reviews/[id]/` |
-| `[ ]` | OC | Add "Access Reviews" nav item to console sidebar | `console-app/src/lib/components/Sidebar.svelte` (or equivalent) |
+| `[OC 2026-03-18T11:13Z]` | OC | Access Review detail: manager-facing approve/revoke per user+app row | `console-app/src/routes/console/access-reviews/[id]/` |
+| `[OC 2026-03-18T11:13Z]` | OC | Add "Access Reviews" nav item to console sidebar | `console-app/src/lib/components/Sidebar.svelte` (or equivalent) |
 
 ---
 
@@ -159,4 +159,5 @@ Leave a note here when you start/finish a major task or hit a blocker.
 |------|-------|------|
 | 2026-03-18T10:00Z | CC | Coordination system initialized. Starting Phase 6 error handling. |
 | 2026-03-18T10:57Z | OC | Claimed Phase 8 Access Reviews campaign list UI task. Started `oc/access-reviews-ui` with progress/status indicators + tests. |
+| 2026-03-18T11:16Z | OC | Claimed and implemented Phase 8 detail page + sidebar nav item. Waiting on CC API merge for end-to-end wiring pass. |
 

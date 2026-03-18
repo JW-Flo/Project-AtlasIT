@@ -71,6 +71,7 @@
       title: "Operations",
       items: [
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
+        { href: "/console/access-reviews", label: "Access Reviews", icon: FolderCog },
         { href: "/incidents", label: "Incidents", icon: AlertTriangle },
         { href: "/console/policies", label: "Policy Generator", icon: FileText },
       ],
