@@ -327,6 +327,56 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     }
   }
 
+  // ── Zero-config compliance evidence: write directly when adapters emit evidence ──
+  if (type === "compliance.evidence.collected") {
+    const ep = (payload ?? {}) as {
+      framework?: string;
+      controlId?: string;
+      controlName?: string;
+      evidenceType?: string;
+      source?: string;
+      sourceId?: string;
+      actor?: string;
+      subject?: string;
+      metadata?: unknown;
+    };
+    if (ep.controlId && ep.framework) {
+      sharedDb
+        .prepare(
+          `INSERT INTO compliance_evidence
+             (id, tenant_id, framework, framework_id, control_id, control_name,
+              evidence_type, source, source_id, actor, subject, metadata, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          tenantId,
+          ep.framework,
+          ep.framework,
+          ep.controlId,
+          ep.controlName ?? null,
+          ep.evidenceType ?? "automated",
+          ep.source ?? source,
+          ep.sourceId ?? null,
+          ep.actor ?? "system",
+          ep.subject ?? null,
+          ep.metadata ? JSON.stringify(ep.metadata) : null,
+          new Date().toISOString(),
+        )
+        .run()
+        .catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              message: "compliance_evidence insert failed",
+              error: err instanceof Error ? err.message : String(err),
+              tenantId,
+            }),
+          );
+        });
+    }
+  }
+
   // Mark event as processing
   await c.env.DB.prepare("UPDATE events SET status = 'processing' WHERE id = ?")
     .bind(eventId)

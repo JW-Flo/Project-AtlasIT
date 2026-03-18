@@ -549,4 +549,113 @@ app.post("/api/deprovision", async (c) => {
   return c.json({ success: true });
 });
 
+// ── Compliance evidence collection ──────────────────────────────────────────
+// POST /api/compliance/check — check MFA enforcement status in Google Workspace
+// and publish compliance.evidence.collected events to the orchestrator.
+app.post("/api/compliance/check", async (c) => {
+  const body = await c.req.json<{ tenantId: string }>().catch(() => null);
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required" }, 400);
+  }
+
+  // Load OAuth token
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(body.tenantId, "google-workspace")
+    .first<{ access_token: string; refresh_token: string; expires_at: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No Google Workspace token for tenant" }, 404);
+  }
+
+  let accessToken = tokenRow.access_token;
+
+  // Check if MFA (2-Step Verification) is enforced for the domain
+  // Uses the Google Admin SDK Reports API or Directory API
+  const mfaRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/customers/my_customer/organizations",
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  // Fallback: use Google Admin Directory to check security settings
+  const securityRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=1&fields=users(isEnrolledIn2Sv,isEnforcedIn2Sv)",
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  let mfaEnforced = false;
+  let mfaEnrolledCount = 0;
+  let mfaUnenrolledCount = 0;
+
+  if (securityRes.ok) {
+    const data = (await securityRes.json()) as {
+      users?: Array<{ isEnrolledIn2Sv?: boolean; isEnforcedIn2Sv?: boolean }>;
+    };
+    // If any user has isEnforcedIn2Sv = true, the policy is enforced
+    mfaEnforced = (data.users ?? []).some((u) => u.isEnforcedIn2Sv === true);
+  }
+
+  // Also check using the Reports API for a broader signal (best-effort)
+  const reportsRes = await fetch(
+    "https://www.googleapis.com/admin/reports/v1/activity/users/all/applications/login?eventName=2sv_disable&maxResults=1",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  const hasRecentMfaDisable = reportsRes.ok && reportsRes.status !== 204;
+
+  // Publish compliance evidence
+  await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tenantId: body.tenantId,
+      type: "compliance.evidence.collected",
+      source: "adapter:google-workspace",
+      payload: {
+        framework: "ISO27001",
+        controlId: "A.9.4.2",
+        controlName: "MFA Enforcement — Google Workspace",
+        evidenceType: "automated",
+        source: "adapter:google-workspace",
+        sourceId: "google-workspace",
+        actor: "system",
+        subject: "Google Workspace domain",
+        metadata: {
+          mfaEnforced,
+          hasRecentMfaDisable,
+          checkedAt: new Date().toISOString(),
+        },
+      },
+    }),
+  }).catch(() => {});
+
+  // Also emit SOC2 CC6.8 evidence
+  await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tenantId: body.tenantId,
+      type: "compliance.evidence.collected",
+      source: "adapter:google-workspace",
+      payload: {
+        framework: "SOC2",
+        controlId: "CC6.8",
+        controlName: "MFA Enforcement — Google Workspace",
+        evidenceType: "automated",
+        source: "adapter:google-workspace",
+        sourceId: "google-workspace",
+        actor: "system",
+        subject: "Google Workspace domain",
+        metadata: { mfaEnforced, checkedAt: new Date().toISOString() },
+      },
+    }),
+  }).catch(() => {});
+
+  return c.json({ ok: true, mfaEnforced, tenantId: body.tenantId });
+});
+
 export default app;
