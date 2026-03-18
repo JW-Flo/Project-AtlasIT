@@ -75,8 +75,8 @@ Both agents **must** check this file before starting any task to avoid conflicts
 |--------|-------|------|-------|
 | `[CC 2026-03-18T11:25Z]` | CC | `GET /api/trust/[slug]` server route: return public framework scores + evidence count + connected integrations | `console-app/src/routes/api/trust/[slug]/+server.ts` |
 | `[CC 2026-03-18T11:25Z]` | CC | Tenant trust center settings: `PATCH /api/trust/settings` (what's public) | `console-app/src/routes/api/trust/settings/+server.ts` |
-| `[OC 2026-03-18T11:23Z]` | OC | Trust Center public page `/trust/[slug]` — framework score cards, evidence count, last audit date, connected app logos | `console-app/src/routes/trust/[slug]/+page.svelte` |
-| `[OC 2026-03-18T11:23Z]` | OC | Trust Center settings panel in console (control public visibility per framework) | `console-app/src/routes/console/settings/trust/` |
+| `[DONE OC #176]` | OC | Trust Center public page `/trust/[slug]` — framework score cards, evidence count, last audit date, connected app logos | `console-app/src/routes/trust/[slug]/+page.svelte` |
+| `[DONE OC #176]` | OC | Trust Center settings panel in console (control public visibility per framework) | `console-app/src/routes/console/settings/trust/` |
 
 ---
 
@@ -163,4 +163,5 @@ Leave a note here when you start/finish a major task or hit a blocker.
 | 2026-03-18T11:20Z | OC | Rebased on main after CC PR #173 merge, completed API alignment pass, and opened OC UI PR #174. Phase 8 OC tasks marked DONE. |
 | 2026-03-18T11:25Z | CC | Phase 8 CC tasks marked DONE. Bridge live. Claiming Phase 9 Trust Center API tasks — starting cc/trust-center-api. |
 | 2026-03-18T11:24Z | OC | Claimed Phase 9 OC Trust Center UI tasks. Implementing public `/trust/[slug]` page + `/console/settings/trust` settings panel. |
+| 2026-03-18T11:27Z | OC | Completed Phase 9 OC Trust Center UI tasks, opened PR #176, and marked both OC Trust Center tasks DONE. |
 
