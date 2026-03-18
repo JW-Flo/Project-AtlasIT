@@ -4,80 +4,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      force_all:
-        description: "Deploy all workers regardless of changed paths"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  detect-changes:
-    name: Detect Changed Workers
-    runs-on: ubuntu-latest
-    outputs:
-      core-api: ${{ steps.filter.outputs.core-api }}
-      orchestrator: ${{ steps.filter.outputs.orchestrator }}
-      compliance: ${{ steps.filter.outputs.compliance }}
-      console: ${{ steps.filter.outputs.console }}
-      onboarding: ${{ steps.filter.outputs.onboarding }}
-      slack-agent: ${{ steps.filter.outputs.slack-agent }}
-      dispatch: ${{ steps.filter.outputs.dispatch }}
-      changed-adapters: ${{ steps.adapter-changes.outputs.slugs }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-      - name: Detect path changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            core-api:
-              - 'core-api/**'
-              - 'index.js'
-              - 'wrangler.toml'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            orchestrator:
-              - 'ai-orchestrator/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            compliance:
-              - 'compliance-worker/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            console:
-              - 'console-app/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            onboarding:
-              - 'onboarding/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            slack-agent:
-              - 'slack-notification-agent/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-            dispatch:
-              - 'dispatch-worker/**'
-              - 'packages/shared/**'
-              - '.github/workflows/deploy-on-merge.yml'
-      - name: Detect changed adapters
-        id: adapter-changes
-        run: |
-          SLUGS=$(git diff --name-only HEAD~1 HEAD -- adapters/ | cut -d/ -f2 | sort -u | grep -v 'registry.json' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "slugs=$SLUGS" >> "$GITHUB_OUTPUT"
-
   deploy-core-api:
     name: Deploy core-api
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.core-api == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,18 +25,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-      - name: Check pending migrations (core-api DB)
-        run: |
-          pending=$(npx wrangler d1 migrations list atlas_core_db --config wrangler.toml 2>&1 | grep -c "pending" || true)
-          if [ "$pending" -gt 0 ]; then
-            echo "::warning::$pending pending migration(s) detected for atlas_core_db. Apply before or after deploy."
-          fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Deploy core-api
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
         run: npx wrangler deploy --config wrangler.toml
       - name: Smoke test
         continue-on-error: true
@@ -110,10 +34,6 @@ jobs:
 
   deploy-orchestrator:
     name: Deploy ai-orchestrator
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.orchestrator == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -127,9 +47,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-      - name: Deploy ai-orchestrator
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
         run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
       - name: Smoke test
         continue-on-error: true
@@ -137,10 +56,6 @@ jobs:
 
   deploy-compliance:
     name: Deploy compliance-worker
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.compliance == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -154,21 +69,11 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Install compliance-worker deps
         run: pnpm install --no-frozen-lockfile
         working-directory: compliance-worker
-      - name: Check pending migrations (compliance DB)
-        run: |
-          pending=$(npx wrangler d1 migrations list atlasit_compliance --config compliance-worker/wrangler.toml 2>&1 | grep -c "pending" || true)
-          if [ "$pending" -gt 0 ]; then
-            echo "::warning::$pending pending migration(s) detected for atlasit_compliance. Apply before or after deploy."
-          fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Deploy compliance-worker
+      - name: Deploy
         run: npx wrangler deploy --config compliance-worker/wrangler.toml
       - name: Smoke test
         continue-on-error: true
@@ -176,10 +81,6 @@ jobs:
 
   deploy-console:
     name: Deploy console-app
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.console == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -193,15 +94,14 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install root deps
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Install console deps
         run: pnpm install --no-frozen-lockfile
         working-directory: console-app
-      - name: Build console
+      - name: Build
         run: pnpm run build && touch .svelte-kit/cloudflare/.assetsignore
         working-directory: console-app
-      - name: Deploy console-app
+      - name: Deploy
         run: npx wrangler deploy --config console-app/wrangler.toml
       - name: Smoke test
         continue-on-error: true
@@ -209,10 +109,6 @@ jobs:
 
   deploy-onboarding:
     name: Deploy onboarding
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.onboarding == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -226,17 +122,12 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-      - name: Deploy onboarding
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
         run: npx wrangler deploy --config onboarding/wrangler.toml --env production
 
   deploy-slack-agent:
     name: Deploy slack-notification-agent
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.slack-agent == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -250,17 +141,12 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-      - name: Deploy slack-notification-agent
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
         run: npx wrangler deploy --config slack-notification-agent/wrangler.toml
 
   deploy-dispatch:
     name: Deploy dispatch-worker
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.dispatch == 'true' ||
-      github.event.inputs.force_all == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
@@ -275,47 +161,12 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - name: Install root deps
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Install dispatch-worker deps
         run: pnpm install --no-frozen-lockfile
         working-directory: dispatch-worker
-      - name: Deploy dispatch-worker
+      - name: Deploy
         run: npx wrangler deploy --config dispatch-worker/wrangler.toml
       - name: Smoke test
         continue-on-error: true
         run: bash scripts/smoke-test.sh dispatch-worker https://dispatch.atlasit.pro
-
-  # ---------------------------------------------------------------------------
-  # Adapter deploys (one job per changed adapter, using dynamic matrix)
-  # ---------------------------------------------------------------------------
-  deploy-adapters:
-    name: Deploy adapter/${{ matrix.slug }}
-    needs: detect-changes
-    if: >-
-      needs.detect-changes.outputs.changed-adapters != '[]' ||
-      github.event.inputs.force_all == 'true'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        slug: ${{ github.event.inputs.force_all == 'true' && fromJSON('["microsoft-365","slack","jira","confluence","github","stripe","aws","azure","zoom","teams","discord","bamboohr","workday","adp","quickbooks","xero","auth0","crowdstrike","1password","pagerduty","datadog","gcp","zscaler"]') || fromJSON(needs.detect-changes.outputs.changed-adapters) }}
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-      - name: Deploy adapter
-        run: npx wrangler deploy --config adapters/${{ matrix.slug }}/wrangler.toml
-      - name: Smoke test
-        run: bash scripts/smoke-adapter.sh ${{ matrix.slug }}
