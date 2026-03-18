@@ -62,7 +62,15 @@ const apiAuth: MiddlewareHandler = async (c, next) => {
     return sharedAuthMiddleware({ allowApiKey: true })(c, next);
   }
   // No API keys configured and no Bearer token — pass through with default tenant
-  c.set("tenantId", c.req.header("X-Tenant-ID") ?? "default");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "default";
+  c.set("tenantId", tenantId);
+  c.set("auth", {
+    tenantId,
+    userId: "",
+    email: "",
+    roles: ["admin"],
+    tokenType: "api-key" as const,
+  });
   await next();
 };
 app.use("/api/*", apiAuth);

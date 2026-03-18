@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 import {
   evaluateAutomationRules,
@@ -44,7 +45,7 @@ function resolvetenantId(
  * Used by adapters and workers that want to trigger automation
  * without going through the event publication flow.
  */
-automationRoutes.post("/evaluate", async (c) => {
+automationRoutes.post("/evaluate", requireRole("member"), async (c) => {
   const body = await c.req.json();
   const parsed = EvaluateSchema.safeParse(body);
 

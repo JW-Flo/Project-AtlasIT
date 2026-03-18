@@ -7,6 +7,7 @@ import {
   deleteFlag,
   listFlags,
   evaluateFlag,
+  requireRole,
 } from "@atlasit/shared";
 import type { FeatureFlag } from "@atlasit/shared";
 
@@ -80,7 +81,7 @@ flagRoutes.get("/:key", async (c) => {
 });
 
 // POST / — create flag
-flagRoutes.post("/", async (c) => {
+flagRoutes.post("/", requireRole("admin"), async (c) => {
   const body = await c.req.json();
   const parsed = CreateFlagSchema.safeParse(body);
 
@@ -133,7 +134,7 @@ flagRoutes.post("/", async (c) => {
 });
 
 // PATCH /:key — update flag
-flagRoutes.patch("/:key", async (c) => {
+flagRoutes.patch("/:key", requireRole("admin"), async (c) => {
   const { key } = c.req.param();
   const body = await c.req.json();
   const parsed = UpdateFlagSchema.safeParse(body);
@@ -184,7 +185,7 @@ flagRoutes.patch("/:key", async (c) => {
 });
 
 // DELETE /:key — delete flag
-flagRoutes.delete("/:key", async (c) => {
+flagRoutes.delete("/:key", requireRole("admin"), async (c) => {
   const { key } = c.req.param();
   const existing = await getFlag(c.env.KV_FEATURE_FLAGS, key);
 
@@ -256,7 +257,7 @@ flagRoutes.post("/:key/evaluate", async (c) => {
 });
 
 // POST /:key/kill — toggle kill switch
-flagRoutes.post("/:key/kill", async (c) => {
+flagRoutes.post("/:key/kill", requireRole("admin"), async (c) => {
   const { key } = c.req.param();
   const flag = await getFlag(c.env.KV_FEATURE_FLAGS, key);
 

@@ -9,6 +9,7 @@
  */
 
 import { Hono } from "hono";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 import {
   classifyAndExecute,
@@ -36,7 +37,7 @@ jmlRoutes.get("/policy", async (c) => {
 });
 
 /** PUT /api/v1/jml/policy — update tenant JML policy */
-jmlRoutes.put("/policy", async (c) => {
+jmlRoutes.put("/policy", requireRole("admin"), async (c) => {
   const tenantId = c.get("tenantId");
   const db = c.env.ATLAS_SHARED_DB ?? c.env.DB;
   const body = await c.req.json<Partial<JmlPolicy>>();
@@ -60,7 +61,7 @@ jmlRoutes.put("/policy", async (c) => {
 // ── Manual JML trigger ──────────────────────────────────────────────────────
 
 /** POST /api/v1/jml/trigger — manually trigger JML for a user */
-jmlRoutes.post("/trigger", async (c) => {
+jmlRoutes.post("/trigger", requireRole("member"), async (c) => {
   const tenantId = c.get("tenantId");
   const body = await c.req.json<{
     userId: string;

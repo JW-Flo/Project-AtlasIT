@@ -104,6 +104,32 @@ export function requireRoles(...roles: string[]): MiddlewareHandler {
   };
 }
 
+/**
+ * Hierarchical role check middleware.
+ * Role hierarchy: viewer < member < admin
+ * A user with "admin" passes a check for "member" or "viewer".
+ */
+const ROLE_HIERARCHY = ["viewer", "member", "admin"] as const;
+export type RoleLevel = (typeof ROLE_HIERARCHY)[number];
+
+export function requireRole(role: RoleLevel): MiddlewareHandler {
+  return async (c, next) => {
+    const auth = c.get("auth");
+    if (!auth) {
+      throw new AuthError(401, "Not authenticated");
+    }
+    const requiredLevel = ROLE_HIERARCHY.indexOf(role);
+    const userLevel = Math.max(
+      ...auth.roles.map((r) => ROLE_HIERARCHY.indexOf(r as RoleLevel)),
+      -1,
+    );
+    if (userLevel < requiredLevel) {
+      throw new AuthError(403, `Insufficient role: requires ${role}`);
+    }
+    await next();
+  };
+}
+
 export function tenantGuard(): MiddlewareHandler {
   return async (c, next) => {
     const auth = c.get("auth");

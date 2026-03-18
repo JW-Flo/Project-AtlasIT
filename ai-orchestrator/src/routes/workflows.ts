@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 
 type WorkflowBindings = AppEnv["Bindings"] & {
@@ -42,7 +43,7 @@ const StartWorkflowSchema = z.object({
 
 export const workflowRoutes = new Hono<WorkflowEnv>();
 
-workflowRoutes.post("/", async (c) => {
+workflowRoutes.post("/", requireRole("member"), async (c) => {
   const body = await c.req.json();
   const parsed = StartWorkflowSchema.safeParse(body);
   if (!parsed.success) {
@@ -127,59 +128,67 @@ workflowRoutes.get("/:id", async (c) => {
   });
 });
 
-workflowRoutes.post("/:id/steps/:stepId/complete", async (c) => {
-  const { id, stepId } = c.req.param();
-  const body = await c.req.json().catch(() => ({}));
-  const doId = c.env.WORKFLOW.idFromName(id);
-  const stub = c.env.WORKFLOW.get(doId);
+workflowRoutes.post(
+  "/:id/steps/:stepId/complete",
+  requireRole("member"),
+  async (c) => {
+    const { id, stepId } = c.req.param();
+    const body = await c.req.json().catch(() => ({}));
+    const doId = c.env.WORKFLOW.idFromName(id);
+    const stub = c.env.WORKFLOW.get(doId);
 
-  const response = await stub.fetch(
-    new Request(`http://workflow/step/${stepId}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
+    const response = await stub.fetch(
+      new Request(`http://workflow/step/${stepId}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
 
-  const result = await response.json();
-  return c.json(
-    {
-      status: "success",
-      data: result,
-      correlationId: c.get("correlationId"),
-      timestamp: new Date().toISOString(),
-    },
-    response.status as 200,
-  );
-});
+    const result = await response.json();
+    return c.json(
+      {
+        status: "success",
+        data: result,
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      response.status as 200,
+    );
+  },
+);
 
-workflowRoutes.post("/:id/steps/:stepId/fail", async (c) => {
-  const { id, stepId } = c.req.param();
-  const body = (await c.req.json()) as { error: string };
-  const doId = c.env.WORKFLOW.idFromName(id);
-  const stub = c.env.WORKFLOW.get(doId);
+workflowRoutes.post(
+  "/:id/steps/:stepId/fail",
+  requireRole("member"),
+  async (c) => {
+    const { id, stepId } = c.req.param();
+    const body = (await c.req.json()) as { error: string };
+    const doId = c.env.WORKFLOW.idFromName(id);
+    const stub = c.env.WORKFLOW.get(doId);
 
-  const response = await stub.fetch(
-    new Request(`http://workflow/step/${stepId}/fail`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  );
+    const response = await stub.fetch(
+      new Request(`http://workflow/step/${stepId}/fail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
 
-  const result = await response.json();
-  return c.json(
-    {
-      status: "success",
-      data: result,
-      correlationId: c.get("correlationId"),
-      timestamp: new Date().toISOString(),
-    },
-    response.status as 200,
-  );
-});
+    const result = await response.json();
+    return c.json(
+      {
+        status: "success",
+        data: result,
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      response.status as 200,
+    );
+  },
+);
 
-workflowRoutes.post("/:id/cancel", async (c) => {
+workflowRoutes.post("/:id/cancel", requireRole("member"), async (c) => {
   const { id } = c.req.param();
   const doId = c.env.WORKFLOW.idFromName(id);
   const stub = c.env.WORKFLOW.get(doId);
