@@ -554,7 +554,11 @@ function resolveAdapterUrl(
   ctx: ActionContext,
 ): string | undefined {
   if (!appId) return undefined;
-  return (ctx.adapterUrls ?? {})[appId];
+  // Explicit override wins (custom domains, per-env overrides)
+  const override = (ctx.adapterUrls ?? {})[appId];
+  if (override) return override;
+  // Fall back to canonical worker URL: atlasit-adapter-{appId}.atlasit.workers.dev
+  return `https://atlasit-adapter-${appId}.atlasit.workers.dev`;
 }
 
 /** Map CanonicalUserProfile → SCIM 2.0 User resource for Okta */
