@@ -358,6 +358,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       workflow: c.env.WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
+      evidenceBucket: c.env.EVIDENCE ?? undefined,
     }).catch((err) => {
       console.error(
         JSON.stringify({
