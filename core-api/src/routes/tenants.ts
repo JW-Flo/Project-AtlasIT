@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 
 const CreateTenantSchema = z.object({
@@ -79,7 +80,7 @@ tenantRoutes.get("/:id", async (c) => {
 });
 
 // POST /api/v1/tenants — create tenant
-tenantRoutes.post("/", async (c) => {
+tenantRoutes.post("/", requireRole("admin"), async (c) => {
   const body = await c.req.json();
   const parsed = CreateTenantSchema.safeParse(body);
 
@@ -138,7 +139,7 @@ tenantRoutes.post("/", async (c) => {
 });
 
 // PATCH /api/v1/tenants/:id — update tenant
-tenantRoutes.patch("/:id", async (c) => {
+tenantRoutes.patch("/:id", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
   const parsed = UpdateTenantSchema.safeParse(body);
@@ -230,7 +231,7 @@ tenantRoutes.patch("/:id", async (c) => {
 });
 
 // DELETE /api/v1/tenants/:id — delete tenant
-tenantRoutes.delete("/:id", async (c) => {
+tenantRoutes.delete("/:id", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
 
   const existing = await c.env.DB.prepare("SELECT id FROM tenants WHERE id = ?")

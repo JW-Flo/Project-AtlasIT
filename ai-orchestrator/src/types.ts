@@ -24,6 +24,13 @@ export type Bindings = {
 export type Variables = {
   correlationId: string;
   tenantId: string;
+  auth: {
+    tenantId: string;
+    userId: string;
+    email: string;
+    roles: string[];
+    tokenType: "jwt" | "api-key";
+  };
 };
 
 export type AppEnv = { Bindings: Bindings; Variables: Variables };

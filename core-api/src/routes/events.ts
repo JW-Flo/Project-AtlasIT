@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 
 const CreateEventSchema = z.object({
@@ -13,7 +14,7 @@ const CreateEventSchema = z.object({
 export const eventRoutes = new Hono<AppEnv>();
 
 // POST /api/v1/events — publish event
-eventRoutes.post("/", async (c) => {
+eventRoutes.post("/", requireRole("member"), async (c) => {
   const body = await c.req.json();
   const parsed = CreateEventSchema.safeParse(body);
 

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv, AgentSubscription } from "../types";
 import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
@@ -32,7 +33,7 @@ function getSourceSecrets(
 export const eventRoutes = new Hono<AppEnv>();
 
 // POST /api/v1/events -- publish event and fan out
-eventRoutes.post("/", async (c) => {
+eventRoutes.post("/", requireRole("member"), async (c) => {
   // --- Inbound HMAC verification ---
   const signature = c.req.header("X-Signature");
   const requireSignatures = c.env.REQUIRE_EVENT_SIGNATURES === "true";

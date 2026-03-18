@@ -237,4 +237,52 @@ describe("Event Routes", () => {
       expect(body.message).toBe("Event not found");
     });
   });
+
+  describe("RBAC enforcement", () => {
+    function createApiKeyEnv() {
+      const { db } = createMockDB();
+      return {
+        DB: db,
+        KV_SESSIONS: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        KV_CACHE: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        KV_FEATURE_FLAGS: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        API_ALLOWED_KEYS: "test-key",
+      };
+    }
+
+    it("should return 403 for POST /api/v1/events with insufficient role", async () => {
+      const env = createApiKeyEnv();
+      const res = await app.request(
+        "/api/v1/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": "test-key",
+          },
+          body: JSON.stringify({
+            tenantId: "550e8400-e29b-41d4-a716-446655440000",
+            type: "test.event",
+            source: "test",
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.code).toBe("FORBIDDEN");
+    });
+  });
 });

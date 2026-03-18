@@ -497,4 +497,80 @@ describe("Tenant Routes", () => {
       expect(body.code).toBe("NOT_FOUND");
     });
   });
+
+  describe("RBAC enforcement", () => {
+    // API-key auth assigns roles: ["api-key"], which is not in the
+    // viewer < member < admin hierarchy, so all requireRole checks fail.
+    function createApiKeyEnv() {
+      const { db } = createMockDB();
+      return {
+        DB: db,
+        KV_SESSIONS: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        KV_CACHE: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        KV_FEATURE_FLAGS: {
+          get: async () => null,
+          put: async () => {},
+          delete: async () => {},
+        },
+        API_ALLOWED_KEYS: "test-key",
+      };
+    }
+
+    it("should return 403 for POST /api/v1/tenants with insufficient role", async () => {
+      const env = createApiKeyEnv();
+      const res = await app.request(
+        "/api/v1/tenants",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": "test-key",
+          },
+          body: JSON.stringify({ name: "Test", slug: "test-co" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 for PATCH /api/v1/tenants/:id with insufficient role", async () => {
+      const env = createApiKeyEnv();
+      const res = await app.request(
+        "/api/v1/tenants/some-id",
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": "test-key",
+          },
+          body: JSON.stringify({ name: "Updated" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("should return 403 for DELETE /api/v1/tenants/:id with insufficient role", async () => {
+      const env = createApiKeyEnv();
+      const res = await app.request(
+        "/api/v1/tenants/some-id",
+        {
+          method: "DELETE",
+          headers: { "X-API-Key": "test-key" },
+        },
+        env,
+      );
+      expect(res.status).toBe(403);
+    });
+  });
 });

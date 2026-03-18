@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 
 const RegisterAgentSchema = z.object({
@@ -22,7 +23,7 @@ const UpdateAgentSchema = z.object({
 export const agentRoutes = new Hono<AppEnv>();
 
 // POST /api/v1/agents — register a new agent
-agentRoutes.post("/", async (c) => {
+agentRoutes.post("/", requireRole("admin"), async (c) => {
   const body = await c.req.json();
   const parsed = RegisterAgentSchema.safeParse(body);
   if (!parsed.success) {
@@ -199,7 +200,7 @@ agentRoutes.get("/:id", async (c) => {
 });
 
 // PATCH /api/v1/agents/:id — update agent
-agentRoutes.patch("/:id", async (c) => {
+agentRoutes.patch("/:id", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
   const parsed = UpdateAgentSchema.safeParse(body);
@@ -286,7 +287,7 @@ agentRoutes.patch("/:id", async (c) => {
 });
 
 // DELETE /api/v1/agents/:id — deregister agent
-agentRoutes.delete("/:id", async (c) => {
+agentRoutes.delete("/:id", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
   const existing = await c.env.DB.prepare(
     "SELECT id FROM agent_registry WHERE id = ?",
@@ -325,7 +326,7 @@ agentRoutes.delete("/:id", async (c) => {
 });
 
 // POST /api/v1/agents/:id/subscriptions — add event subscription
-agentRoutes.post("/:id/subscriptions", async (c) => {
+agentRoutes.post("/:id/subscriptions", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
   const body = await c.req.json();
   const schema = z.object({
@@ -406,7 +407,7 @@ agentRoutes.post("/:id/subscriptions", async (c) => {
 });
 
 // POST /api/v1/agents/:id/health — report health check result
-agentRoutes.post("/:id/health", async (c) => {
+agentRoutes.post("/:id/health", requireRole("member"), async (c) => {
   const { id } = c.req.param();
   const agent = await c.env.DB.prepare(
     "SELECT id, health_check_url FROM agent_registry WHERE id = ?",

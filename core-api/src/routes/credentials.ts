@@ -7,6 +7,7 @@ import {
   deleteCredential,
   listCredentials,
   rotateCredential,
+  requireRole,
 } from "@atlasit/shared";
 
 const StoreCredentialSchema = z.object({
@@ -22,7 +23,7 @@ const RotateCredentialSchema = z.object({
 export const credentialRoutes = new Hono<AppEnv>();
 
 // POST /api/v1/credentials — store credential
-credentialRoutes.post("/", async (c) => {
+credentialRoutes.post("/", requireRole("admin"), async (c) => {
   const body = await c.req.json();
   const parsed = StoreCredentialSchema.safeParse(body);
 
@@ -111,7 +112,7 @@ credentialRoutes.get("/:tenantId/:appId", async (c) => {
 });
 
 // PUT /api/v1/credentials/:tenantId/:appId — rotate credential
-credentialRoutes.put("/:tenantId/:appId", async (c) => {
+credentialRoutes.put("/:tenantId/:appId", requireRole("admin"), async (c) => {
   const { tenantId, appId } = c.req.param();
   const body = await c.req.json();
   const parsed = RotateCredentialSchema.safeParse(body);
@@ -165,60 +166,68 @@ credentialRoutes.put("/:tenantId/:appId", async (c) => {
 });
 
 // DELETE /api/v1/credentials/:tenantId/:appId — delete credential
-credentialRoutes.delete("/:tenantId/:appId", async (c) => {
-  const { tenantId, appId } = c.req.param();
+credentialRoutes.delete(
+  "/:tenantId/:appId",
+  requireRole("admin"),
+  async (c) => {
+    const { tenantId, appId } = c.req.param();
 
-  await deleteCredential(c.env.DB, tenantId, appId);
+    await deleteCredential(c.env.DB, tenantId, appId);
 
-  return c.json({
-    status: "success" as const,
-    data: { tenantId, appId, deleted: true },
-    correlationId: c.get("correlationId"),
-    timestamp: new Date().toISOString(),
-  });
-});
+    return c.json({
+      status: "success" as const,
+      data: { tenantId, appId, deleted: true },
+      correlationId: c.get("correlationId"),
+      timestamp: new Date().toISOString(),
+    });
+  },
+);
 
 // POST /api/v1/credentials/:tenantId/:appId/test — test credential health
-credentialRoutes.post("/:tenantId/:appId/test", async (c) => {
-  const { tenantId, appId } = c.req.param();
+credentialRoutes.post(
+  "/:tenantId/:appId/test",
+  requireRole("admin"),
+  async (c) => {
+    const { tenantId, appId } = c.req.param();
 
-  const exists = await c.env.DB.prepare(
-    "SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?",
-  )
-    .bind(tenantId, appId)
-    .first();
+    const exists = await c.env.DB.prepare(
+      "SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?",
+    )
+      .bind(tenantId, appId)
+      .first();
 
-  if (!exists) {
-    return c.json(
-      {
-        status: "error" as const,
-        code: "NOT_FOUND",
-        message: "Credential not found",
-        correlationId: c.get("correlationId"),
-        timestamp: new Date().toISOString(),
-      },
-      404,
-    );
-  }
+    if (!exists) {
+      return c.json(
+        {
+          status: "error" as const,
+          code: "NOT_FOUND",
+          message: "Credential not found",
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        404,
+      );
+    }
 
-  // Placeholder: mark as healthy. Real implementation would call the app's API.
-  await c.env.DB.prepare(
-    `UPDATE app_credentials
+    // Placeholder: mark as healthy. Real implementation would call the app's API.
+    await c.env.DB.prepare(
+      `UPDATE app_credentials
        SET healthy = 1, last_test_at = datetime('now')
        WHERE tenant_id = ? AND app_id = ?`,
-  )
-    .bind(tenantId, appId)
-    .run();
+    )
+      .bind(tenantId, appId)
+      .run();
 
-  return c.json({
-    status: "success" as const,
-    data: {
-      tenantId,
-      appId,
-      healthy: true,
-      testedAt: new Date().toISOString(),
-    },
-    correlationId: c.get("correlationId"),
-    timestamp: new Date().toISOString(),
-  });
-});
+    return c.json({
+      status: "success" as const,
+      data: {
+        tenantId,
+        appId,
+        healthy: true,
+        testedAt: new Date().toISOString(),
+      },
+      correlationId: c.get("correlationId"),
+      timestamp: new Date().toISOString(),
+    });
+  },
+);

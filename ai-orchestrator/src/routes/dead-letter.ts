@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireRole } from "@atlasit/shared";
 import type { AppEnv } from "../types";
 import { replayDeadLetter } from "../lib/dead-letter";
 
@@ -98,7 +99,7 @@ deadLetterRoutes.get("/:id", async (c) => {
 });
 
 // POST /api/v1/dead-letter/:id/replay — replay a dead letter entry
-deadLetterRoutes.post("/:id/replay", async (c) => {
+deadLetterRoutes.post("/:id/replay", requireRole("admin"), async (c) => {
   const { id } = c.req.param();
   const orchestratorUrl = c.req.url.split("/api/v1/dead-letter")[0]; // self-reference
 
@@ -126,7 +127,7 @@ deadLetterRoutes.post("/:id/replay", async (c) => {
 });
 
 // POST /api/v1/dead-letter/replay-all — replay all unreplayed entries
-deadLetterRoutes.post("/replay-all", async (c) => {
+deadLetterRoutes.post("/replay-all", requireRole("admin"), async (c) => {
   const tenantId = c.req.query("tenantId");
   const conditions: string[] = ["replay_status IS NULL"];
   const params: unknown[] = [];
