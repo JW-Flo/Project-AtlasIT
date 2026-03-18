@@ -1,4 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { toCamel } from "$lib/utils/dto";
 
 /** GET — list JML workflow runs for tenant */
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
@@ -35,7 +36,7 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
     .bind(...params)
     .all();
 
-  return json({ runs: results ?? [] });
+  return json({ runs: toCamel(results ?? []) });
 };
 
 function getSharedDb(platform: any): D1Database | null {

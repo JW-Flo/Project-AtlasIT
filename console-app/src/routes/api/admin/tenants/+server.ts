@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireSuperAdmin } from "$lib/server/guards";
+import { toCamel } from "$lib/utils/dto";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const denied = requireSuperAdmin(locals.user);
@@ -17,5 +18,5 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     )
     .all();
 
-  return json(result.results ?? []);
+  return json(toCamel(result.results ?? []));
 };
