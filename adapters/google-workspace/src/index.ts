@@ -9,6 +9,7 @@ import {
 import { syncUsers, type LifecycleChange } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
+import { signPayload } from "../../../packages/shared/src/crypto/hmac.js";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -237,6 +238,7 @@ app.post("/api/sync", async (c) => {
       source: "google-workspace",
       payload: { users: userResult, groups: groupResult },
       correlationId,
+      secret: c.env.EVENT_PUBLISH_SECRET,
     });
 
     // Publish lifecycle events from diff (fire-and-forget, errors are non-fatal)
@@ -249,6 +251,7 @@ app.post("/api/sync", async (c) => {
         payload: change.payload,
         idempotencyKey: `gws-${change.type}-${change.payload.user.externalId}-${correlationId}`,
         correlationId,
+        secret: c.env.EVENT_PUBLISH_SECRET,
       }).catch((err: Error) => {
         console.error(
           JSON.stringify({
@@ -610,11 +613,9 @@ app.post("/api/compliance/check", async (c) => {
   );
   const hasRecentMfaDisable = reportsRes.ok && reportsRes.status !== 204;
 
-  // Publish compliance evidence
-  await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  // Publish compliance evidence (HMAC-signed when EVENT_PUBLISH_SECRET is set)
+  {
+    const isoEventBody = JSON.stringify({
       tenantId: body.tenantId,
       type: "compliance.evidence.collected",
       source: "adapter:google-workspace",
@@ -633,16 +634,23 @@ app.post("/api/compliance/check", async (c) => {
           checkedAt: new Date().toISOString(),
         },
       },
-    }),
-  }).catch((err: Error) => {
-    console.error(JSON.stringify({ level: "error", message: "Failed to publish ISO27001 A.9.4.2 evidence", error: err.message, tenantId: body.tenantId }));
-  });
+    });
+    const isoHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      isoHeaders["X-Signature"] = await signPayload(isoEventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: isoHeaders,
+      body: isoEventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish ISO27001 A.9.4.2 evidence", error: err.message, tenantId: body.tenantId }));
+    });
+  }
 
   // Also emit SOC2 CC6.8 evidence
-  await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  {
+    const soc2EventBody = JSON.stringify({
       tenantId: body.tenantId,
       type: "compliance.evidence.collected",
       source: "adapter:google-workspace",
@@ -657,10 +665,19 @@ app.post("/api/compliance/check", async (c) => {
         subject: "Google Workspace domain",
         metadata: { mfaEnforced, checkedAt: new Date().toISOString() },
       },
-    }),
-  }).catch((err: Error) => {
-    console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.8 evidence", error: err.message, tenantId: body.tenantId }));
-  });
+    });
+    const soc2Headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      soc2Headers["X-Signature"] = await signPayload(soc2EventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: soc2Headers,
+      body: soc2EventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.8 evidence", error: err.message, tenantId: body.tenantId }));
+    });
+  }
 
   return c.json({ ok: true, mfaEnforced, tenantId: body.tenantId });
 });
