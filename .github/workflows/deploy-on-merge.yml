@@ -50,7 +50,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Deploy
-        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml --no-schedule
+        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
       - name: Smoke test
         continue-on-error: true
         run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
