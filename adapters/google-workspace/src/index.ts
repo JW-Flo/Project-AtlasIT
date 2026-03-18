@@ -569,7 +569,10 @@ app.post("/api/compliance/check", async (c) => {
     return c.json({ error: "No Google Workspace token for tenant" }, 404);
   }
 
-  let accessToken = tokenRow.access_token;
+  let accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
 
   // Check if MFA (2-Step Verification) is enforced for the domain
   // Uses the Google Admin SDK Reports API or Directory API
@@ -631,7 +634,9 @@ app.post("/api/compliance/check", async (c) => {
         },
       },
     }),
-  }).catch(() => {});
+  }).catch((err: Error) => {
+    console.error(JSON.stringify({ level: "error", message: "Failed to publish ISO27001 A.9.4.2 evidence", error: err.message, tenantId: body.tenantId }));
+  });
 
   // Also emit SOC2 CC6.8 evidence
   await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
@@ -653,7 +658,9 @@ app.post("/api/compliance/check", async (c) => {
         metadata: { mfaEnforced, checkedAt: new Date().toISOString() },
       },
     }),
-  }).catch(() => {});
+  }).catch((err: Error) => {
+    console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.8 evidence", error: err.message, tenantId: body.tenantId }));
+  });
 
   return c.json({ ok: true, mfaEnforced, tenantId: body.tenantId });
 });
