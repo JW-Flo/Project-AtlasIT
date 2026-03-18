@@ -113,6 +113,25 @@ class MockD1Database {
   >();
   private evidenceByHash = new Map<string, number>();
 
+  // CDT compliance_evidence rows: keyed by `${tenantId}:${controlId}`
+  private complianceEvidence = new Map<
+    string,
+    { cnt: number; last_at: string }
+  >();
+
+  /** Seed a compliance_evidence row for CDT evaluation tests. */
+  seedComplianceEvidence(
+    tenantId: string,
+    controlId: string,
+    count: number,
+    lastAt: string,
+  ) {
+    this.complianceEvidence.set(`${tenantId}:${controlId}`, {
+      cnt: count,
+      last_at: lastAt,
+    });
+  }
+
   private workflowTemplates = new Map<
     string,
     { payload: string; updatedAt: string }
@@ -586,6 +605,20 @@ class MockD1Database {
       return { results } as T;
     }
 
+    // CDT evaluateControls query: SELECT control_id, COUNT(*) AS cnt, MAX(created_at) AS last_at
+    //   FROM compliance_evidence WHERE tenant_id = ? AND control_id IN (...)
+    if (query.includes("FROM compliance_evidence") && query.includes("cnt")) {
+      const [tenantId, ...controlIds] = bindings as string[];
+      const results: Array<{ control_id: string; cnt: number; last_at: string | null }> = [];
+      for (const controlId of controlIds) {
+        const row = this.complianceEvidence.get(`${tenantId}:${controlId}`);
+        if (row) {
+          results.push({ control_id: controlId, cnt: row.cnt, last_at: row.last_at });
+        }
+      }
+      return { results } as T;
+    }
+
     if (query.includes("FROM evidence_index")) {
       const limit = Number(bindings[bindings.length - 1]);
       const values = bindings.slice(0, bindings.length - 1);
@@ -886,5 +919,168 @@ describe("compliance automation integration (red)", () => {
     expect(body.automation).toHaveProperty("executions24h");
     expect(body).toHaveProperty("latency");
     expect(body.latency).toHaveProperty("workflowExecute");
+  });
+});
+
+describe("CDT evaluate endpoint — GET /api/v1/cdt/evaluate", () => {
+  let env: TestEnv;
+  let readerKey: string;
+  let noRoleKey: string;
+
+  beforeEach(async () => {
+    env = createEnv();
+    readerKey = "cdt-reader-token";
+    noRoleKey = "cdt-norole-token";
+
+    const readerHash = await sha256Hex(readerKey);
+    await env.API_TOKENS.put(
+      `token:${readerHash}`,
+      JSON.stringify({ tenantId: "tenant-cdt", roles: ["policies:read"] }),
+    );
+
+    const noRoleHash = await sha256Hex(noRoleKey);
+    await env.API_TOKENS.put(
+      `token:${noRoleHash}`,
+      JSON.stringify({ tenantId: "tenant-cdt", roles: ["viewer"] }),
+    );
+  });
+
+  it("returns 401 when no API key is provided", async () => {
+    const res = await invoke(env, "/api/v1/cdt/evaluate");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 when token lacks policies:read role", async () => {
+    const res = await invoke(env, "/api/v1/cdt/evaluate", {
+      headers: { "x-api-key": noRoleKey },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns all controls as not_started when there is no evidence", async () => {
+    const res = await invoke(env, "/api/v1/cdt/evaluate", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.controls)).toBe(true);
+    expect(body.controls.length).toBeGreaterThan(0);
+    // With no evidence every control is not_started
+    for (const control of body.controls) {
+      expect(control.status).toBe("not_started");
+      expect(control.evidenceCount).toBe(0);
+      expect(control.lastEvidenceAt).toBeNull();
+    }
+    // Scores array must be present
+    expect(Array.isArray(body.scores)).toBe(true);
+  });
+
+  it("filters controls by framework query param", async () => {
+    const res = await invoke(env, "/api/v1/cdt/evaluate?framework=SOC2", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.controls)).toBe(true);
+    expect(body.controls.length).toBeGreaterThan(0);
+    for (const control of body.controls) {
+      expect(control.framework).toBe("SOC2");
+    }
+  });
+
+  it("returns implemented status for a control with recent evidence", async () => {
+    const recentDate = new Date(Date.now() - 5 * 86_400_000).toISOString(); // 5 days ago
+    (env.atlasit_compliance as unknown as MockD1Database).seedComplianceEvidence(
+      "tenant-cdt",
+      "CC6.1",
+      3,
+      recentDate,
+    );
+
+    const res = await invoke(env, "/api/v1/cdt/evaluate?framework=SOC2", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const cc61 = body.controls.find(
+      (c: { controlId: string }) => c.controlId === "CC6.1",
+    );
+    expect(cc61).toBeDefined();
+    expect(cc61.status).toBe("implemented");
+    expect(cc61.evidenceCount).toBe(3);
+    expect(cc61.lastEvidenceAt).toBe(recentDate);
+  });
+
+  it("returns in_progress status for a control with stale evidence", async () => {
+    const staleDate = new Date(Date.now() - 45 * 86_400_000).toISOString(); // 45 days ago
+    (env.atlasit_compliance as unknown as MockD1Database).seedComplianceEvidence(
+      "tenant-cdt",
+      "CC7.2",
+      1,
+      staleDate,
+    );
+
+    const res = await invoke(env, "/api/v1/cdt/evaluate?framework=SOC2", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const cc72 = body.controls.find(
+      (c: { controlId: string }) => c.controlId === "CC7.2",
+    );
+    expect(cc72).toBeDefined();
+    expect(cc72.status).toBe("in_progress");
+  });
+
+  it("returns a score summary with grade and per-status counts", async () => {
+    const recentDate = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    (env.atlasit_compliance as unknown as MockD1Database).seedComplianceEvidence(
+      "tenant-cdt",
+      "CC6.1",
+      2,
+      recentDate,
+    );
+
+    const res = await invoke(env, "/api/v1/cdt/evaluate?framework=SOC2", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.scores)).toBe(true);
+
+    const soc2Score = body.scores.find(
+      (s: { framework: string }) => s.framework === "SOC2",
+    );
+    expect(soc2Score).toBeDefined();
+    expect(typeof soc2Score.score).toBe("number");
+    expect(["A", "B", "C", "D", "F"]).toContain(soc2Score.grade);
+    expect(typeof soc2Score.controlsTotal).toBe("number");
+    expect(soc2Score.controlsTotal).toBeGreaterThan(0);
+    expect(typeof soc2Score.controlsImplemented).toBe("number");
+    expect(soc2Score.controlsImplemented).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns requestId in the response body", async () => {
+    const res = await invoke(env, "/api/v1/cdt/evaluate", {
+      headers: { "x-api-key": readerKey },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.requestId).toBe("string");
+    expect(body.requestId.length).toBeGreaterThan(0);
+  });
+
+  it("returns empty controls array for an unknown framework", async () => {
+    const res = await invoke(
+      env,
+      "/api/v1/cdt/evaluate?framework=UNKNOWNXYZ",
+      { headers: { "x-api-key": readerKey } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.controls)).toBe(true);
+    expect(body.controls).toHaveLength(0);
+    expect(Array.isArray(body.scores)).toBe(true);
+    expect(body.scores).toHaveLength(0);
   });
 });
