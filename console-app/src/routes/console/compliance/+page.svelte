@@ -66,6 +66,7 @@
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
   let history: FrameworkHistory[] = [];
+  let historyError: string | null = null;
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -143,12 +144,14 @@
     const height = 48;
     const min = Math.min(...points.map((p) => p.score));
     const max = Math.max(...points.map((p) => p.score));
-    const range = Math.max(1, max - min);
+    const range = max - min;
 
     return points
       .map((p, i) => {
         const x = points.length === 1 ? width / 2 : (i / (points.length - 1)) * width;
-        const y = height - ((p.score - min) / range) * height;
+        const y = range === 0
+          ? height / 2
+          : height - ((p.score - min) / range) * height;
         return `${x},${y}`;
       })
       .join(" ");
@@ -165,14 +168,19 @@
   }
 
   async function loadHistory() {
+    historyError = null;
     try {
       const res = await fetch("/api/tenant-compliance/history?days=30");
-      if (res.ok) {
-        const data = await res.json();
-        history = data.history || [];
+      if (!res.ok) {
+        history = [];
+        historyError = `Failed to load score history (${res.status})`;
+        return;
       }
+      const data = await res.json();
+      history = data.history || [];
     } catch {
       history = [];
+      historyError = "Failed to load score history";
     }
   }
 
@@ -374,7 +382,10 @@
     loadEvidence();
   }
 
-  onMount(loadData);
+  onMount(() => {
+    loadData();
+    loadEvidence();
+  });
 </script>
 
 <div>
@@ -518,7 +529,12 @@
 
     <!-- Score history -->
     <h2 class="text-lg font-semibold mb-3">Score History (30 days)</h2>
-    {#if history.length === 0}
+    {#if historyError}
+      <Alert variant="destructive" class="mb-6">
+        <AlertTriangle class="h-4 w-4" />
+        <p class="pl-7">{historyError}</p>
+      </Alert>
+    {:else if history.length === 0}
       <Card class="mb-6 border-dashed">
         <CardContent class="py-6 text-sm text-muted-foreground">No compliance history available yet.</CardContent>
       </Card>
@@ -559,6 +575,36 @@
           </Card>
         {/each}
       </div>
+    {/if}
+
+    <!-- Evidence timeline -->
+    <h2 class="text-lg font-semibold mb-3">Recent Evidence Timeline</h2>
+    {#if evidenceLoading}
+      <div class="space-y-2 mb-6">
+        {#each [1, 2, 3] as _}
+          <Skeleton class="h-10 rounded-lg" />
+        {/each}
+      </div>
+    {:else if evidenceItems.length === 0}
+      <Card class="mb-6 border-dashed">
+        <CardContent class="py-6 text-sm text-muted-foreground">No evidence events recorded yet.</CardContent>
+      </Card>
+    {:else}
+      <Card class="mb-6">
+        <CardContent class="p-0">
+          <div class="divide-y">
+            {#each evidenceItems.slice(0, 8) as item}
+              <div class="px-4 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">{item.pack || "manual"}</div>
+                  <div class="text-xs text-muted-foreground">Actor: {item.subject || "system"}</div>
+                </div>
+                <div class="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</div>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Quick actions -->

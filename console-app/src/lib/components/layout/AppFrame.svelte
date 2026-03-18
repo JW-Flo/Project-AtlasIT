@@ -71,6 +71,8 @@
       title: "Operations",
       items: [
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
+        { href: "/console/automation/runs", label: "Automation Runs", icon: Workflow },
+        { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
         { href: "/incidents", label: "Incidents", icon: AlertTriangle },
         { href: "/console/policies", label: "Policy Generator", icon: FileText },
       ],

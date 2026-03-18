@@ -162,8 +162,9 @@
         const incidents: Incident[] = Array.isArray(incidentsData?.items)
           ? incidentsData.items
           : [];
-        openIncidents = incidents.filter(
-          (incident) => incident.status !== "resolved" && incident.status !== "closed",
+        const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
+        openIncidents = incidents.filter((incident) =>
+          OPEN_INCIDENT_STATUSES.has(String(incident.status || "").toLowerCase()),
         ).length;
       } else {
         openIncidents = 0;
