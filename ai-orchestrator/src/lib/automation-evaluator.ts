@@ -596,6 +596,123 @@ async function emitComplianceEvidence(
       )
       .run();
   }
+
+  // Update matching controls in tenant_preferences.compliance_controls to 'implemented'
+  await updateControlStatusFromEvidence(event.tenantId, controls, ctx.sharedDb).catch(() => {
+    // Non-critical — don't fail evidence emission if control update fails
+  });
+}
+
+/**
+ * Maps (framework, evidenceType) → high-level control category name as stored
+ * in tenant_preferences.compliance_controls blob (matches buildDefaultControls).
+ */
+const EVIDENCE_CATEGORY_MAP: Record<string, Record<string, string>> = {
+  SOC2: {
+    access_grant: "Access Control",
+    access_revoke: "Access Control",
+    offboarding: "Access Control",
+    incident: "Incident Response",
+    audit_log: "Change Management",
+    policy_change: "Risk Assessment",
+  },
+  ISO27001: {
+    access_grant: "Access Control",
+    access_revoke: "Access Control",
+    offboarding: "Access Control",
+    incident: "Access Control",
+    audit_log: "Asset Management",
+    policy_change: "Information Security Policy",
+  },
+  "NIST CSF": {
+    access_grant: "Protect",
+    access_revoke: "Protect",
+    offboarding: "Protect",
+    audit_log: "Protect",
+    incident: "Respond",
+    policy_change: "Identify",
+  },
+  HIPAA: {
+    access_grant: "Security Rule",
+    access_revoke: "Security Rule",
+    offboarding: "Security Rule",
+    incident: "Breach Notification",
+    audit_log: "Administrative Safeguards",
+    policy_change: "Administrative Safeguards",
+  },
+  GDPR: {
+    access_grant: "Data Mapping",
+    access_revoke: "Data Mapping",
+    offboarding: "Data Subject Rights",
+    incident: "Breach Notification",
+    policy_change: "Data Subject Rights",
+  },
+};
+
+/** Normalize framework identifiers to match tenant_preferences blob keys. */
+function normalizeFramework(fw: string): string {
+  // ACTION_COMPLIANCE_MAP uses NIST_CSF; blob uses "NIST CSF"
+  return fw === "NIST_CSF" ? "NIST CSF" : fw;
+}
+
+interface ControlBlob {
+  id: string;
+  framework: string;
+  name: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+async function updateControlStatusFromEvidence(
+  tenantId: string,
+  evidenceControls: Array<{ framework: string; evidenceType: string }>,
+  db: D1Database,
+): Promise<void> {
+  const row = await db
+    .prepare(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
+    )
+    .bind(tenantId)
+    .first<{ value: string }>();
+
+  if (!row?.value) return;
+
+  let controlsBlob: ControlBlob[];
+  try {
+    controlsBlob = JSON.parse(row.value) as ControlBlob[];
+  } catch {
+    return;
+  }
+
+  let changed = false;
+
+  for (const evidence of evidenceControls) {
+    const normalizedFw = normalizeFramework(evidence.framework);
+    const categoryName = EVIDENCE_CATEGORY_MAP[normalizedFw]?.[evidence.evidenceType];
+    if (!categoryName) continue;
+
+    // Expected blob control ID (matches buildDefaultControls in console-app)
+    const expectedId = `${normalizedFw.toLowerCase().replace(/\s+/g, "_")}_${categoryName.toLowerCase().replace(/\s+/g, "_")}`;
+
+    for (const control of controlsBlob) {
+      if (
+        control.id === expectedId &&
+        (control.status === "not_started" || control.status === "in_progress")
+      ) {
+        control.status = "implemented";
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) return;
+
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value) VALUES (?, 'compliance_controls', ?)`,
+    )
+    .bind(tenantId, JSON.stringify(controlsBlob))
+    .run();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

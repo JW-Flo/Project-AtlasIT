@@ -8,16 +8,24 @@ import type { CanonicalUserProfile } from "@atlasit/shared/automation/types";
 export async function enrichUserProfile(
   db: D1Database,
   tenantId: string,
-  lookup: { email?: string; userId?: string },
+  lookup: { email?: string; userId?: string; externalId?: string },
 ): Promise<CanonicalUserProfile | null> {
-  // 1. Load directory_users row
+  // 1. Load directory_users row — prefer email, then external_id, then internal id
+  let lookupQuery: string;
+  let lookupVal: string | undefined;
+  if (lookup.email) {
+    lookupQuery = "SELECT * FROM directory_users WHERE tenant_id = ? AND email = ? LIMIT 1";
+    lookupVal = lookup.email;
+  } else if (lookup.externalId) {
+    lookupQuery = "SELECT * FROM directory_users WHERE tenant_id = ? AND external_id = ? LIMIT 1";
+    lookupVal = lookup.externalId;
+  } else {
+    lookupQuery = "SELECT * FROM directory_users WHERE tenant_id = ? AND id = ? LIMIT 1";
+    lookupVal = lookup.userId;
+  }
   const row = await db
-    .prepare(
-      lookup.email
-        ? "SELECT * FROM directory_users WHERE tenant_id = ? AND email = ? LIMIT 1"
-        : "SELECT * FROM directory_users WHERE tenant_id = ? AND id = ? LIMIT 1",
-    )
-    .bind(tenantId, lookup.email ?? lookup.userId)
+    .prepare(lookupQuery)
+    .bind(tenantId, lookupVal)
     .first<Record<string, unknown>>();
 
   if (!row) return null;

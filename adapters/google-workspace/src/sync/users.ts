@@ -2,15 +2,52 @@ import type { GoogleUser, SyncResult } from "../types.js";
 
 const ADMIN_API_BASE = "https://admin.googleapis.com/admin/directory/v1";
 
+export interface LifecycleChange {
+  type:
+    | "user.created"
+    | "user.deactivated"
+    | "user.reactivated"
+    | "user.profile_updated"
+    | "user.deleted";
+  payload: {
+    user: {
+      externalId: string;
+      email: string;
+      department?: string | null;
+      title?: string | null;
+      orgUnit?: string | null;
+      delta?: Record<string, { old: unknown; new: unknown }>;
+    };
+  };
+}
+
 export async function syncUsers(
   accessToken: string,
   domain: string,
   db: D1Database,
   tenantId: string,
-): Promise<SyncResult> {
+): Promise<SyncResult & { lifecycleChanges: LifecycleChange[] }> {
+  // Snapshot existing users from D1 for lifecycle diff
+  const { results: existingRows } = await db
+    .prepare(
+      "SELECT id, external_id, email, status, department, title FROM directory_users WHERE tenant_id = ?",
+    )
+    .bind(tenantId)
+    .all<{
+      id: string;
+      external_id: string;
+      email: string;
+      status: string;
+      department: string | null;
+      title: string | null;
+    }>();
+  const existingMap = new Map(existingRows.map((r) => [r.external_id, r]));
+
   let created = 0;
   let updated = 0;
   let total = 0;
+  const lifecycleChanges: LifecycleChange[] = [];
+  const seenIds = new Set<string>();
   let pageToken: string | undefined;
 
   do {
@@ -43,17 +80,66 @@ export async function syncUsers(
     for (const user of users) {
       const department = user.organizations?.[0]?.department ?? null;
       const title = user.organizations?.[0]?.title ?? null;
+      const orgUnit = user.orgUnitPath ?? null;
       const displayName =
         user.name.fullName ??
         `${user.name.givenName ?? ""} ${user.name.familyName ?? ""}`.trim();
-      const status = user.suspended ? "suspended" : "active";
+      const newStatus = user.suspended ? "suspended" : "active";
 
-      const existing = await db
-        .prepare(
-          "SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?",
-        )
-        .bind(tenantId, user.id)
-        .first<{ id: string }>();
+      const existing = existingMap.get(user.id);
+      seenIds.add(user.id);
+
+      // ── Lifecycle detection ─────────────────────────────────────────────
+      if (!existing) {
+        lifecycleChanges.push({
+          type: "user.created",
+          payload: {
+            user: {
+              externalId: user.id,
+              email: user.primaryEmail,
+              department,
+              title,
+              orgUnit,
+            },
+          },
+        });
+      } else {
+        const wasActive = existing.status === "active";
+        const isNowActive = !user.suspended;
+
+        if (wasActive && !isNowActive) {
+          lifecycleChanges.push({
+            type: "user.deactivated",
+            payload: { user: { externalId: user.id, email: user.primaryEmail } },
+          });
+        } else if (!wasActive && isNowActive) {
+          lifecycleChanges.push({
+            type: "user.reactivated",
+            payload: { user: { externalId: user.id, email: user.primaryEmail } },
+          });
+        }
+
+        const delta: Record<string, { old: unknown; new: unknown }> = {};
+        if (existing.department !== department) {
+          delta.department = { old: existing.department, new: department };
+        }
+        if (existing.title !== title) {
+          delta.title = { old: existing.title, new: title };
+        }
+        if (Object.keys(delta).length > 0) {
+          lifecycleChanges.push({
+            type: "user.profile_updated",
+            payload: {
+              user: {
+                externalId: user.id,
+                email: user.primaryEmail,
+                department,
+                delta,
+              },
+            },
+          });
+        }
+      }
 
       await db
         .prepare(
@@ -69,7 +155,7 @@ export async function syncUsers(
           displayName,
           department,
           title,
-          status,
+          newStatus,
           JSON.stringify(user),
         )
         .run();
@@ -85,5 +171,19 @@ export async function syncUsers(
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  return { created, updated, total };
+  // Detect users removed from Google (in D1 but not seen in this sync)
+  for (const [extId, existing] of existingMap) {
+    if (
+      !seenIds.has(extId) &&
+      existing.status !== "deleted" &&
+      existing.status !== "suspended"
+    ) {
+      lifecycleChanges.push({
+        type: "user.deleted",
+        payload: { user: { externalId: extId, email: existing.email } },
+      });
+    }
+  }
+
+  return { created, updated, total, lifecycleChanges };
 }

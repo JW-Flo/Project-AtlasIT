@@ -282,13 +282,21 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   const jmlChangeType = JML_EVENT_MAP[type];
   if (jmlChangeType) {
     const jmlPayload = (payload ?? {}) as Record<string, unknown>;
+    // Adapters publish payload as { user: { externalId, email, ... } } (nested)
+    const jmlUser = (jmlPayload.user as Record<string, unknown>) ?? jmlPayload;
     const jmlChange: DirectoryChange = {
       userId:
-        (jmlPayload.userId as string) ?? (jmlPayload.id as string) ?? "unknown",
-      email: jmlPayload.email as string | undefined,
+        (jmlUser.externalId as string) ??
+        (jmlUser.userId as string) ??
+        (jmlPayload.userId as string) ??
+        (jmlPayload.id as string) ??
+        "unknown",
+      email:
+        (jmlUser.email as string) ?? (jmlPayload.email as string),
+      externalId: (jmlUser.externalId as string) ?? undefined,
       changeType: jmlChangeType,
       delta:
-        (jmlPayload.delta as Record<
+        ((jmlUser.delta ?? jmlPayload.delta) as Record<
           string,
           { old?: unknown; new?: unknown }
         >) ?? {},
