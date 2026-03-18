@@ -99,7 +99,7 @@ Directory Event / Schedule / Webhook
 - Rate limiting middleware (KV-backed, per-endpoint)
 - Security headers middleware (CSP, HSTS, X-Frame-Options)
 
-## Phase 5 — Adapter Scaffolding ✅ (PR #158, #159)
+## Phase 5 — Adapter Scaffolding ✅ (PR #158, #159, #163, #166)
 
 - [x] Registry data for all 33 apps (`shared/integrations/registry-detailed.ts`)
 - [x] ConnectorManifest templates for all apps (`packages/connector-schema/src/templates.ts`, 2300+ lines)
@@ -109,18 +109,127 @@ Directory Event / Schedule / Webhook
 - [x] Update `adapters/registry.json` with all 33 entries
 - [x] Add adapter deploy jobs to CI/CD (`deploy-on-merge.yml` — dynamic matrix)
 - [x] Expand adapter catalog from 24 → 33 apps (added Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva)
-- [ ] Update console-app integration statuses to match registry (planned → alpha/beta)
-- [ ] Seed marketplace DB with all 33 apps
-- [ ] Add missing JML workflow YAMLs
+- [x] Update console-app integration statuses to match registry (planned → alpha/beta) — PR #163
+- [x] Seed marketplace DB with all 33 apps — PR #163
+- [x] Add missing JML workflow YAMLs — PR #163
+- [x] Add Zscaler Zero Trust adapter (ZIA + ZPA + ZIdentity, OAuth2) — PR #166
 
-## Phase 6 — Contract Stability & Auth Hardening (Next)
+## Phase 6 — Contract Stability & Auth Hardening (In Progress)
 
-- [ ] Standardize DTO mapping (snake_case → camelCase) across all BFF proxy routes
+- [x] Expand RBAC permission matrix — 27 mutation routes guarded (PR #164)
+- [x] Standardize DTO mapping (snake_case → camelCase) across all BFF proxy routes (PR #165)
 - [ ] Normalize error handling: no raw HTML/JSON crashes surfaced to UI; all errors must be actionable
-- [ ] Expand RBAC permission matrix until every mutation route is guarded
 - [ ] Add startup-failing assertions for missing prod secrets (CRED_ENCRYPTION_KEY, D1 bindings, etc.)
 - [ ] CF Access JWT signing key rotation readiness (dynamic key fetch, not hard-pinned)
 - [ ] Slack webhook verification alignment with Slack's replay window algorithm
+
+## Phase 7 — Compliance-as-Automation (Unique Moat — Build Next)
+
+> **Strategic context**: No competitor combines IT lifecycle automation + compliance evidence collection.
+> Vanta/Drata collect evidence passively; AtlasIT creates evidence actively through operations.
+> Every JML workflow step should auto-emit tamper-evident compliance artifacts — making compliance
+> a byproduct of running IT operations, not a separate tool.
+
+- [ ] Expand CDT rules from 7 → 50+ (cover all major SOC 2 + ISO 27001 controls)
+- [ ] Map automation action types to compliance control keys
+  - `revoke_app_access` → SOC2_CC6.1 (logical access removal), SOC2_CC6.2
+  - `provision_app_access` → SOC2_CC6.1 (access provisioning), ISO27001_A.9.2.2
+  - `run_workflow` (leaver) → SOC2_CC6.3 (offboarding evidence)
+  - `create_incident` → SOC2_CC7.4 (incident response)
+- [ ] Auto-link workflow evidence envelopes to compliance controls in `compliance-worker`
+- [ ] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
+- [ ] Continuous compliance score from operational data (not manual checkbox)
+- [ ] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/automation-evaluator.ts`
+
+## Phase 8 — Access Reviews (Table Stakes for IGA)
+
+> Required for SOC 2 CC6.1/CC6.3 and ISO 27001 A.9.2.5. Lumos, Zluri, ConductorOne all have this.
+> Currently the biggest feature gap for compliance-conscious SMB buyers.
+
+- [ ] Campaign creation (scope: all apps / specific apps / departments)
+- [ ] Manager-facing review UI — approve/revoke per user/app
+- [ ] Auto-revoke on campaign expiry (configurable grace period)
+- [ ] Evidence generation per review cycle (R2 artifact + compliance control linkage)
+- [ ] New D1 tables: `access_review_campaigns`, `access_review_items`, `access_review_decisions`
+- [ ] Files: `console-app/src/routes/console/access-reviews/`, new D1 migration, new automation action type `request_access_review`
+
+## Phase 9 — Trust Center (Compete with Vanta Trust Reports)
+
+> Public-facing, tenant-branded compliance portal. Powered by real operational evidence —
+> more credible than Vanta's checkbox-driven trust reports.
+
+- [ ] Public route `/trust/{tenantSlug}` — framework scores, last audit date, connected integrations, evidence count
+- [ ] Tenant controls visibility via settings (what's public vs. private)
+- [ ] PDF export for auditor packages
+- [ ] Files: `console-app/src/routes/trust/`, new `GET /api/trust/[slug]` server route
+
+## Phase 10 — AI Policy Suggestions (Compete with Lumos)
+
+> Lumos charges premium for AI policy generation. AtlasIT's learner already does pattern-based
+> suggestions — extending it to compliance inference closes that gap.
+
+- [ ] Extend `packages/shared/src/automation/learner.ts` to suggest RBAC/ABAC policies from access patterns
+- [ ] Compliance suggestion types: "missing evidence for control X", "access pattern violates SoD"
+- [ ] Feed automation execution history into compliance scoring
+- [ ] NL automation builder: `/api/automation/nl` → translates natural language to rule JSON (Workers AI)
+- [ ] Files: `packages/shared/src/automation/learner.ts`, `console-app/src/routes/console/automation/`
+
+## Phase 11 — SaaS Discovery (Shadow IT Detection)
+
+> BetterCloud, Torii, Zluri all lead with discovery. AtlasIT can leverage existing
+> Google Workspace + M365 adapters to detect OAuth grants = shadow IT.
+
+- [ ] Analyze OAuth grants from Google Workspace / M365 admin APIs (adapters already exist)
+- [ ] Dashboard: discovered vs. managed apps with risk classification
+- [ ] Auto-suggest marketplace install for discovered apps already in catalog
+- [ ] Files: New module in `ai-orchestrator/src/lib/`, console dashboard additions
+
+## Phase 12 — Non-Human Identity Management (2026–2027 Frontier)
+
+> Fastest-growing attack surface. Lumos identified this as the next IGA frontier.
+> Most platforms ignore service accounts, API tokens, bot credentials.
+
+- [ ] Extend directory schema: `identity_type: human | service | bot | api_key`
+- [ ] Token expiry tracking + auto-rotation workflows
+- [ ] Surface non-human identities in directory UI + access reviews
+- [ ] Non-human identity provisioning via adapters (GitHub tokens, AWS IAM roles, etc.)
+
+## Phase 13 — Directory Reality (Previously Phase 7)
+
+- [ ] Replace synthetic directory sync with real provider sync (Okta, Google Workspace, Microsoft 365)
+- [ ] Directory CRUD + detail pages (users / groups / memberships)
+- [ ] Surface "Coming Soon" for unimplemented sync rather than silent 501
+- [ ] Group→app mapping based on real directory data (Engineering→GitHub/Jira etc.)
+
+## Phase 14 — Marketplace & OAuth Hardening (Previously Phase 8)
+
+- [ ] OAuth failure UX: actionable error messages + retry paths (no raw redirect errors)
+- [ ] Connector health checks + "status honesty" UI (planned → disabled; functional → enabled)
+- [ ] Credential encryption enforcement: remove silent plaintext fallback in prod
+- [ ] Admin endpoint isolation: cron endpoints behind internal-only access
+
+## Phase 15 — Workflow Trust & Evidence Integrity (Previously Phase 9)
+
+- [ ] Workflow execution reliability: idempotency, DLQ visibility in UI, confidence threshold surfacing
+- [ ] Evidence/policy integrity as first-class UX (ingest → verify → display pipeline)
+- [ ] Execution history UI with step-level status and compensation visibility
+- [ ] R2 evidence deletion protections and access scoping
+
+## Phase 16 — Continuous Validation (Previously Phase 10)
+
+- [ ] Scheduled synthetic crawl + a11y budgets (Playwright + axe, WCAG 2.2)
+- [ ] k6 smoke SLO gates for key endpoints (LCP ≤ 2.5s, INP ≤ 200ms at p75)
+- [ ] Security scanning: Snyk (pnpm monorepo) + ZAP baseline
+- [ ] Platform Status "truthfulness" SLO (functional checks, not just reachability)
+- [ ] Journey completion rate metrics: login → dashboard → connect → workflow → evidence
+
+## Phase 17 — Market Readiness (Previously Phase 11)
+
+- [ ] Multi-tenant billing and usage metering (flat-rate tiers: Free/$99/$299/Custom)
+- [ ] LLM-backed policy refinement with redline diff
+- [ ] Real-time risk anomaly detection + compliance drift alerting
+- [ ] Plugin API for third-party compliance packs
+- [ ] Advanced analytics and reporting
 
 ## Phase 7 — Directory Reality (Future)
 
