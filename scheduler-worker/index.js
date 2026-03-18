@@ -48,7 +48,7 @@ function buildJobs(env) {
       return fetchWithRetry(url, { method: "POST", headers });
     },
     quarter_hour_monitor: async () => {
-      const url = `${orchestratorBase}/status`; // lightweight status endpoint
+      const url = `${orchestratorBase}/health`;
       return fetchWithRetry(url, { method: "GET", headers });
     },
   };
