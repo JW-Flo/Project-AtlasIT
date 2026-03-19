@@ -71,6 +71,8 @@ export interface WorkflowStep {
     operator: "eq" | "neq" | "exists" | "not_exists";
     value?: unknown;
   };
+  /** Delay before dispatching this step (e.g. leaver grace period). Uses DO alarm. */
+  delayMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,6 +480,39 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
     const now = Date.now();
 
+    // Check for delayed steps ready to dispatch
+    const waitingSteps = this.state.steps.filter(
+      (s) => (s.status as string) === "waiting",
+    );
+    for (const step of waitingSteps) {
+      const delayTarget = (await this.ctx.storage.get(
+        `delay:${step.stepId}`,
+      )) as number | undefined;
+      if (delayTarget && now >= delayTarget) {
+        // Grace period elapsed — dispatch the step
+        step.status = "running";
+        step.attempts = 1;
+        const bus = this.getQueueBus();
+        if (bus) {
+          await bus.publish("step-tasks", {
+            kind: "step-task",
+            runId: this.state.id,
+            stepId: step.stepId,
+            attempt: 1,
+          });
+        }
+        this.state.history.push({
+          stepId: step.stepId,
+          action: step.action,
+          status: "running",
+          timestamp: new Date().toISOString(),
+          attemptNumber: 1,
+        });
+        await this.ctx.storage.delete(`delay:${step.stepId}`);
+        await this.ctx.storage.put("state", this.state);
+      }
+    }
+
     if (
       this.state.status === "running" ||
       this.state.status === "compensating"
@@ -608,6 +643,30 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
     for (const step of batch) {
       const defStep = this.definition.steps.find((s) => s.id === step.stepId)!;
+
+      // If this step has a delay, mark it as waiting and set an alarm
+      if (defStep.delayMs && defStep.delayMs > 0) {
+        step.status = "waiting" as StepStatus;
+        step.startedAt = now;
+        step.stepDeadline = Date.now() + defStep.delayMs + defStep.timeoutMs;
+
+        this.state.history.push({
+          stepId: step.stepId,
+          action: step.action,
+          status: "waiting" as StepStatus,
+          timestamp: now,
+          attemptNumber: 0,
+        });
+
+        // Store the delay target so alarm() can dispatch when ready
+        await this.ctx.storage.put(
+          `delay:${step.stepId}`,
+          Date.now() + defStep.delayMs,
+        );
+        await this.ctx.storage.setAlarm(Date.now() + defStep.delayMs);
+        await this.ctx.storage.put("state", this.state);
+        return; // Wait for alarm to dispatch this step
+      }
 
       step.status = "running";
       step.startedAt = now;
