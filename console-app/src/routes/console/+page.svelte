@@ -55,6 +55,15 @@
     pendingSuggestions: number;
     recentActivity: any[];
     workflows: { total: number };
+    compliance?: {
+      scores: Array<{ framework: string; score: number; grade: string; controlsTotal: number; controlsImplemented: number; controlsVerified: number; calculatedAt: string }>;
+      overallScore: number | null;
+      evidenceCount: number;
+    };
+    automation?: {
+      activeRules: number;
+      executions24h: number;
+    };
   } | null = null;
 
   // Invite
@@ -399,6 +408,53 @@
         </Card>
       </a>
     </div>
+
+    <!-- Compliance Posture -->
+    {#if tenantData.compliance}
+      <Card class="mb-6">
+        <CardHeader class="flex-row items-center justify-between">
+          <CardTitle>Compliance Posture</CardTitle>
+          <Button href="/console/compliance" variant="ghost" size="sm">
+            View Details
+            <ArrowRight class="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {#if tenantData.compliance.scores.length > 0}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {#each tenantData.compliance.scores as fw}
+                <div class="flex items-center gap-3 p-3 rounded-lg border">
+                  <div class="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm {fw.score >= 80 ? 'bg-green-500/15 text-green-500' : fw.score >= 50 ? 'bg-yellow-500/15 text-yellow-500' : 'bg-red-500/15 text-red-500'}">
+                    {fw.grade}
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium">{fw.framework}</div>
+                    <div class="flex items-center gap-2 mt-1">
+                      <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div class="h-full rounded-full transition-all {fw.score >= 80 ? 'bg-green-500' : fw.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: {fw.score}%"></div>
+                      </div>
+                      <span class="text-xs text-muted-foreground shrink-0">{Math.round(fw.score)}%</span>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <div class="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
+              <span>{tenantData.compliance.evidenceCount} evidence item{tenantData.compliance.evidenceCount !== 1 ? 's' : ''} collected</span>
+              <span>{tenantData.automation?.activeRules ?? 0} active automation rule{(tenantData.automation?.activeRules ?? 0) !== 1 ? 's' : ''}</span>
+              {#if tenantData.automation?.executions24h}
+                <span>{tenantData.automation.executions24h} execution{tenantData.automation.executions24h !== 1 ? 's' : ''} (24h)</span>
+              {/if}
+            </div>
+          {:else}
+            <div class="text-center py-4">
+              <p class="text-sm text-muted-foreground mb-2">No compliance scores yet. Visit Compliance to evaluate your configuration.</p>
+              <Button href="/console/compliance" variant="outline" size="sm">Evaluate Compliance</Button>
+            </div>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
 
     <!-- Pending suggestions CTA -->
     {#if tenantData.pendingSuggestions > 0}

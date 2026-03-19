@@ -132,6 +132,10 @@
       const data = await controlsRes.json();
       frameworks = data.frameworks || [];
       controls = data.controls || [];
+
+      // Auto-evaluate configuration on page load (non-blocking, silent)
+      // This ensures controls advance from "not_started" based on actual tenant state
+      runEvaluation(true).catch(() => {});
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
     } finally {
@@ -293,7 +297,7 @@
     }
   }
 
-  async function runEvaluation() {
+  async function runEvaluation(silent = false) {
     evaluating = true;
     try {
       const res = await fetch("/api/tenant-compliance/evaluate", { method: "POST" });
@@ -301,13 +305,20 @@
       const data: { tenantState: Record<string, boolean>; evaluations: any[]; controlsUpdated: boolean } = await res.json();
       lastEvaluation = data;
       if (data.controlsUpdated) {
-        pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
-        await loadData();
+        if (!silent) pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
+        // Reload controls and scores to reflect updated statuses
+        const controlsRes = await fetch("/api/tenant-compliance/controls");
+        if (controlsRes.ok) {
+          const cData = await controlsRes.json();
+          frameworks = cData.frameworks || [];
+          controls = cData.controls || [];
+        }
+        await loadScores();
       } else {
-        pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
+        if (!silent) pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
       }
     } catch (e: any) {
-      pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
+      if (!silent) pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
     } finally {
       evaluating = false;
     }

@@ -31,6 +31,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     pendingSuggestions,
     recentAudit,
     workflowCount,
+    complianceScores,
+    automationRuleCount,
+    automationExecCount,
+    evidenceCount,
   ] = await Promise.all([
     db
       .prepare(
@@ -88,6 +92,40 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .bind(tenantId)
       .first()
       .catch(() => ({ count: 0 })),
+    // Compliance scores
+    db
+      .prepare(
+        `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified, calculated_at
+         FROM compliance_scores WHERE tenant_id = ? ORDER BY framework`,
+      )
+      .bind(tenantId)
+      .all()
+      .then((r: any) => r.results || [])
+      .catch(() => []),
+    // Active automation rules
+    db
+      .prepare(
+        `SELECT COUNT(*) as count FROM automation_rules WHERE tenant_id = ? AND enabled = 1`,
+      )
+      .bind(tenantId)
+      .first()
+      .catch(() => ({ count: 0 })),
+    // Automation executions (last 24h)
+    db
+      .prepare(
+        `SELECT COUNT(*) as count FROM automation_executions WHERE tenant_id = ? AND started_at > datetime('now', '-24 hours')`,
+      )
+      .bind(tenantId)
+      .first()
+      .catch(() => ({ count: 0 })),
+    // Evidence items
+    db
+      .prepare(
+        `SELECT COUNT(*) as count FROM compliance_evidence WHERE tenant_id = ?`,
+      )
+      .bind(tenantId)
+      .first()
+      .catch(() => ({ count: 0 })),
   ]);
 
   return json({
@@ -121,5 +159,24 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       targetId: row.target_id,
     })),
     workflows: { last24h: workflowCount?.count ?? 0 },
+    compliance: {
+      scores: (complianceScores as any[]).map((row: any) => ({
+        framework: row.framework,
+        score: row.score,
+        grade: row.grade,
+        controlsTotal: row.controls_total,
+        controlsImplemented: row.controls_implemented,
+        controlsVerified: row.controls_verified,
+        calculatedAt: row.calculated_at,
+      })),
+      overallScore: (complianceScores as any[]).length > 0
+        ? Math.round((complianceScores as any[]).reduce((sum: number, r: any) => sum + (r.score ?? 0), 0) / (complianceScores as any[]).length)
+        : null,
+      evidenceCount: evidenceCount?.count ?? 0,
+    },
+    automation: {
+      activeRules: automationRuleCount?.count ?? 0,
+      executions24h: automationExecCount?.count ?? 0,
+    },
   });
 };

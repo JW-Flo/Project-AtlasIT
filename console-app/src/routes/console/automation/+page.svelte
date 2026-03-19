@@ -180,10 +180,13 @@
   }
 
   async function fetchJmlPolicy() {
-    const res = await fetch("/api/jml/policy");
-    if (!res.ok) return;
-    const data: any = await res.json();
-    jmlPolicy = data.policy || null;
+    try {
+      const res = await fetch("/api/jml/policy");
+      const data: any = await res.json();
+      jmlPolicy = data.policy ?? { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
+    } catch {
+      jmlPolicy = { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
+    }
   }
 
   async function fetchJmlRuns() {
