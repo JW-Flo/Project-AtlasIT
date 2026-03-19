@@ -196,7 +196,7 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(req.url);
-    if (url.pathname === "/__health")
+    if (url.pathname === "/__health" || url.pathname === "/health")
       return json({
         ok: true,
         service: "atlasit-dispatch",
