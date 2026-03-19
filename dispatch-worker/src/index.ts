@@ -195,6 +195,8 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
+    if (!env.dispatcher)
+      throw new Error("Missing required binding: dispatcher");
     const url = new URL(req.url);
     if (url.pathname === "/__health" || url.pathname === "/health")
       return json({

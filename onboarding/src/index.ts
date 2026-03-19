@@ -54,6 +54,8 @@ export default {
       actor = provided; // MVP actor attribution = raw API key (consider hashing later)
     }
 
+    if (!env.DB) throw new Error("Missing required binding: DB");
+
     if (!envValidated) {
       try {
         validateEnv(commonEnvSpec as any, env as any);
