@@ -54,18 +54,6 @@ function buildJobs(env) {
   };
 }
 
-function cronToJobs(cronExpression) {
-  // Map specific cron strings to job arrays. Keep simple pattern match.
-  switch (cronExpression) {
-    case "0 2 * * *":
-      return ["daily_etl"];
-    case "15 * * * *":
-      return ["quarter_hour_monitor"];
-    default:
-      return [];
-  }
-}
-
 async function runJobs(jobNames, jobs) {
   const results = [];
   for (const name of jobNames) {
@@ -147,21 +135,5 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
-  },
-  async scheduled(event, env, ctx) {
-    const cron = event.cron;
-    const jobs = buildJobs(env);
-    const jobNames = cronToJobs(cron).filter((j) => jobs[j]);
-    if (!jobNames.length) {
-      log("debug", "cron.noop", { cron });
-      return;
-    }
-    log("info", "cron.start", { cron, jobs: jobNames });
-    ctx.waitUntil(
-      (async () => {
-        await runJobs(jobNames, jobs);
-        log("info", "cron.end", { cron, jobs: jobNames });
-      })(),
-    );
   },
 };
