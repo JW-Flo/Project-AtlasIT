@@ -18,6 +18,7 @@ import {
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
+import { collectAllAdapterEvidence } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -231,7 +232,75 @@ const worker = {
       processExpiredCampaigns({ sharedDb, adapterUrls }),
     ]);
 
-    // ── Duty 2: Self health-check (replaces scheduler-worker monitor) ──────
+    // ── Duty 2: Scheduled evidence collection from adapters ────────────────
+    //    Collect compliance evidence from connected adapters for all tenants
+    //    and write to compliance_evidence in D1.
+    let evidenceCollected = 0;
+    if (Object.keys(adapterUrls).length > 0) {
+      // Get distinct tenant IDs from tenants table
+      const { results: tenantRows } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const collectSettled = await Promise.allSettled(
+        (tenantRows ?? []).map(async (row) => {
+          const adapterResults = await collectAllAdapterEvidence(
+            adapterUrls,
+            row.id,
+          );
+          let rowsWritten = 0;
+          for (const result of adapterResults) {
+            for (const item of result.items) {
+              for (const controlRef of item.controlRefs) {
+                const dashIdx = controlRef.indexOf("-");
+                const framework =
+                  dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
+                const controlId =
+                  dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+                try {
+                  await sharedDb
+                    .prepare(
+                      `INSERT INTO compliance_evidence
+                       (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    )
+                    .bind(
+                      crypto.randomUUID(),
+                      row.id,
+                      framework,
+                      controlId,
+                      controlRef,
+                      "adapter_pull",
+                      `adapter:${result.slug}`,
+                      `${result.slug}:${item.type}`,
+                      "system",
+                      null,
+                      JSON.stringify({
+                        evidenceType: item.type,
+                        status: item.status,
+                        details: item.details,
+                        collectedAt: result.collectedAt,
+                      }),
+                      new Date().toISOString(),
+                    )
+                    .run();
+                  rowsWritten++;
+                } catch {
+                  // duplicate or schema not ready — skip
+                }
+              }
+            }
+          }
+          return rowsWritten;
+        }),
+      );
+
+      for (const r of collectSettled) {
+        if (r.status === "fulfilled") evidenceCollected += r.value;
+      }
+    }
+
+    // ── Duty 3: Self health-check (replaces scheduler-worker monitor) ──────
     const checks: Record<string, { status: string; ms: number }> = {};
     const d1Start = Date.now();
     try {
@@ -263,6 +332,7 @@ const worker = {
         cron: event.cron,
         tenantsEvaluated: results?.length ?? 0,
         automationFailures,
+        evidenceCollected,
         checks,
       }),
     );

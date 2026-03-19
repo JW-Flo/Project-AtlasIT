@@ -4,7 +4,7 @@ import { makeQueue } from "../../platform-cf/queue";
 import { telemetry } from "./telemetry";
 import { makeControlRepo } from "./state/controlRepo";
 import { makeEvidenceRepo } from "./state/evidenceRepo";
-import { runControlEval } from "./evaluation/engine";
+import { runControlEval, ALL_CONTROL_IDS } from "./evaluation/engine";
 import { verifySignature } from "./auth";
 import type { CdtEvent, ControlState } from "./models";
 import { enforceIdempotency, persistIdempotency } from "./idempotency";
@@ -56,15 +56,7 @@ export default {
         });
       }
       const ev = (await req.json()) as CdtEvent;
-      const controls = [
-        "SOC2-CC6.2",
-        "ISO-27001-A.9.2.3",
-        "SOC2-CC1.1",
-        "ISO-27001-A.12.6.1",
-        "ISO-27001-A.9.4.2",
-        "SOC2-CC7.2",
-        "ISO-27001-A.13.1.1",
-      ];
+      const controls = ALL_CONTROL_IDS;
       const started = Date.now();
       const results: any[] = [];
       for (const cid of controls) {

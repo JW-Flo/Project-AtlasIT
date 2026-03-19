@@ -79,8 +79,8 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 | 4 — Hardening & Production | ✅ (PR #141) | Okta SCIM, k6 load tests, IaC drift detection, OIDC worker, CF observability |
 | 5 — Adapter Scaffolding | ✅ (PR #158, #159) | 33 adapters: registry, manifests, scaffolds, 9 core-tier implementations, CI/CD |
 | 6 — Contract Stability & Auth Hardening | ✅ (PR #164, #165) | RBAC expansion, DTO normalization, safeProxyFetch, startup assertions |
-| 7 — Compliance-as-Automation | ⚠️ Partial | 53 CDT rules, evidence classifier/locker, JML auto-evidence. **Gaps: scoring disconnected, storeEvidence unwired, CDT twin runs 7/53 rules** |
-| 7.5 — Compliance Integration | Next | Unify scoring paths, wire evidence pipeline, expand CDT twin, scheduled collection |
+| 7 — Compliance-as-Automation | ✅ | 53 CDT rules, evidence classifier/locker, JML auto-evidence, 40+ control mappings |
+| 7.5 — Compliance Integration | ⚠️ In Progress | Scoring unified, scheduled evidence collection, CDT twin expanded. **Remaining:** twin KV bridge, policy eval, remediation catalog |
 | 8 — Access Reviews | Future | Campaign creation, manager review UI, auto-revoke, evidence generation |
 | 9 — Trust Center | Future | Public compliance portal, PDF export |
 
@@ -90,29 +90,30 @@ The compliance system has three disconnected evaluation paths discovered during 
 
 | Path | What It Does | Where Scores Live | Used By UI? |
 |------|-------------|-------------------|-------------|
-| **A: UI-Driven** | Manual checklist + shallow auto-promotion | `tenant_preferences.compliance_controls` | ✅ Yes — this is what users see |
-| **B: Evidence-Grounded** | Queries `compliance_evidence` for recency/count per control | Returned from `GET /api/v1/cdt/evaluate` | ❌ No — never feeds back to UI |
-| **C: CDT Twin** | Evaluates CdtEvent payloads against rule functions | KV (`STATE_NS`) + R2 (`EVIDENCE_BUCKET`) | ❌ No — isolated, nothing reads KV |
+| **A: UI-Driven** | ~~Manual checklist~~ → Now proxies to Path B | `compliance_scores` (via compliance-worker) | ✅ Yes — unified via Phase 7.5 |
+| **B: Evidence-Grounded** | Queries `compliance_evidence` for recency/count per control | Returned from `GET /api/v1/cdt/evaluate` | ✅ Yes — console scores endpoint reads from this |
+| **C: CDT Twin** | Evaluates CdtEvent payloads against all 53 rule functions | KV (`STATE_NS`) + R2 (`EVIDENCE_BUCKET`) | ❌ No — still isolated, nothing reads KV |
 
-### Critical Gaps
+### Gap Resolution Status
 
-| # | Gap | Impact | Priority |
-|---|-----|--------|----------|
-| 1 | UI scoring reads manual checklist, not real evidence | Dashboard shows stale/inaccurate compliance posture | **P0** |
-| 2 | `storeEvidence()` (classifier + locker) is never called | Evidence pipeline is defined but disconnected — no automatic evidence ingestion | **P1** |
-| 3 | CDT twin runs 7 of 53 rules (hardcoded subset) | 46 rules are dead code | **P2** |
-| 4 | CDT twin KV state is invisible to rest of platform | Twin evaluations have no downstream effect | **P2** |
-| 5 | No scheduled evidence collection | `POST /api/v1/evidence/collect` works but nothing invokes it | **P1** |
-| 6 | `evaluatePolicy()` is a hash stub, not real policy logic | Policy evaluation claims are aspirational | **P3** |
+| # | Gap | Status | Resolution |
+|---|-----|--------|------------|
+| 1 | UI scoring reads manual checklist, not real evidence | ✅ **Resolved** | Console scores endpoint now calls compliance-worker CDT evaluate |
+| 2 | `storeEvidence()` never called | ✅ **Was already wired** | Orchestrator `events.ts` classifies + stores every event via `waitUntil` |
+| 3 | CDT twin runs 7 of 53 rules | ✅ **Resolved** | Twin now uses `ALL_CONTROL_IDS` (53 rules) exported from engine |
+| 4 | CDT twin KV state invisible to platform | ⬚ **Open** | KV state still not bridged to `compliance_evidence` |
+| 5 | No scheduled evidence collection | ✅ **Resolved** | Orchestrator cron Duty 2 collects adapter evidence for all tenants |
+| 6 | `evaluatePolicy()` is a hash stub | ⬚ **Open** | Policy evaluation remains aspirational |
 
-### What Works End-to-End Today
+### What Works End-to-End Now
 
+- Event → `classifyEvent()` → `storeEvidence()` → `compliance_evidence` D1 + R2 (every event)
+- Adapter evidence collection on cron schedule (Duty 2, every 5 min, all tenants)
+- `compliance_evidence` → CDT evaluate → weighted scores → `compliance_scores` → UI dashboard
+- CDT twin evaluates all 53 rules across 5 frameworks
 - WorkflowDO + queue consumer + step executor (fully functional)
 - JML auto-trigger: `user.created`/`user.deactivated` → provision/deprovision workflows
-- Orchestrator cron (`*/5 * * * *`) + automation rules
 - Manual evidence upload with SHA-256 hashing and control linking
-- `POST /api/v1/evidence/collect` (functional if `ADAPTER_URLS` configured)
-- 6 adapter evidence endpoints (GitHub, Okta, Google Workspace, M365, AWS, Slack)
 
 ---
 

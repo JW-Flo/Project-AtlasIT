@@ -147,51 +147,49 @@ Directory Event / Schedule / Webhook
 - [x] CDT twin Worker with mTLS + HMAC auth, idempotency, remediation queue
 - [x] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`, `adapters/*/src/index.ts`
 
-### Integration Gaps (Phase 7.5 — see below)
+### Integration Gaps (resolved in Phase 7.5)
 
-- [ ] **Scoring paths are disconnected** — UI reads `tenant_preferences.compliance_controls` (manual checklist); compliance-worker computes evidence-grounded scores via `/api/v1/cdt/evaluate` but these never feed back to the UI
-- [ ] **`storeEvidence()` is never called** — classifier + locker are defined in `packages/shared` but no caller wires them into the orchestrator event consumer or any route handler
-- [ ] **CDT twin runs 7 of 53 rules** — `/twin/event` handler has a hardcoded 7-control subset; remaining 46 rules are dead code
+- [x] **Scoring paths unified** — Console `/api/tenant-compliance/scores` now reads evidence-grounded scores from compliance-worker CDT evaluate endpoint, falling back to cached scores
+- [x] **`storeEvidence()` already wired** — orchestrator event consumer (`ai-orchestrator/src/routes/events.ts`) classifies and stores every event via `waitUntil`
+- [x] **CDT twin now evaluates all 53 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
+- [x] **Scheduled evidence collection** — orchestrator cron (Duty 2) collects adapter evidence for all tenants every 5 minutes
 - [ ] **CDT twin state is isolated in KV** — no other component reads the twin's KV state or R2 evidence blobs
-- [ ] **No scheduled evidence collection** — `POST /api/v1/evidence/collect` works but nothing calls it on a schedule
 - [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
 
-## Phase 7.5 — Compliance Integration (Close the Loop)
+## Phase 7.5 — Compliance Integration (Close the Loop) ⚠️ In Progress
 
-> **Why this matters**: All compliance building blocks exist but are disconnected. The dashboard
-> shows a manual checklist while real evidence-grounded scores sit unused. Closing these gaps
+> **Why this matters**: All compliance building blocks exist but were disconnected. Closing these gaps
 > turns the compliance system from a demo into a differentiator.
 
-### P0 — Unify Scoring (UI shows real evidence-grounded scores)
+### P0 — Unify Scoring (UI shows real evidence-grounded scores) ✅
 
-- [ ] Console `/api/tenant-compliance/scores` reads from `compliance_evidence` (via compliance-worker CDT evaluate) instead of `tenant_preferences.compliance_controls`
-- [ ] Evidence-grounded scores write to `compliance_scores` + `compliance_history` tables (same as today)
-- [ ] Deprecate `tenant_preferences.compliance_controls` as score source; retain for manual status overrides only
+- [x] Console `/api/tenant-compliance/scores` reads from `compliance_evidence` (via compliance-worker CDT evaluate) instead of `tenant_preferences.compliance_controls`
+- [x] Evidence-grounded scores write to `compliance_scores` + `compliance_history` tables (same as today)
+- [x] `tenant_preferences.compliance_controls` deprecated as score source; UI now shows evidence-grounded scores with `source: "evidence"` indicator
 
-### P1 — Wire Evidence Pipeline End-to-End
+### P1 — Wire Evidence Pipeline End-to-End ✅
 
-- [ ] Orchestrator event consumer calls `storeEvidence()` for every classified event flowing through the system
-- [ ] Adapter evidence collection runs on a schedule (cron in `scheduler-worker` or orchestrator automation rule)
-- [ ] Evidence from adapters and events appears in `compliance_evidence` → feeds scoring → feeds UI
+- [x] Orchestrator event consumer already calls `classifyEvent()` + `storeEvidence()` for every event (was wired in `events.ts`, not a gap)
+- [x] Adapter evidence collection runs on orchestrator cron schedule (Duty 2, every 5 minutes, all tenants)
+- [x] Evidence from adapters and events appears in `compliance_evidence` → feeds CDT evaluate scoring → feeds UI
 
-### P2 — Expand CDT Twin Coverage
+### P2 — Expand CDT Twin Coverage ✅
 
-- [ ] CDT twin `/twin/event` evaluates all 53 rules (remove hardcoded 7-control subset)
+- [x] CDT twin `/twin/event` evaluates all 53 rules (exported `ALL_CONTROL_IDS` from engine, replaced hardcoded list)
 - [ ] Bridge CDT twin KV state back to `compliance_evidence` or deprecate twin in favor of compliance-worker path
 - [ ] Expand remediation catalog beyond 2 controls (currently: `SOC2-CC6.2`, `ISO-27001-A.9.2.3` only)
 
-### P3 — Policy Evaluation
+### P3 — Policy Evaluation (Future)
 
 - [ ] Replace stub `evaluatePolicy()` with real policy logic (Boolean allow/deny decisions)
 - [ ] Wire policy evaluation into compliance scoring (policy pass/fail → control status)
 
-### Files
+### Files Changed
 
-- `console-app/src/routes/api/tenant-compliance/scores/+server.ts`
-- `ai-orchestrator/src/lib/event-consumer.ts` (or equivalent)
-- `scheduler-worker/` (add evidence collection cron)
-- `shared/services/cdt/src/index.ts` (expand twin evaluation loop)
-- `compliance-worker/src/modules/policies/evaluation.ts`
+- `console-app/src/routes/api/tenant-compliance/scores/+server.ts` — unified scoring via compliance-worker
+- `ai-orchestrator/src/index.ts` — added Duty 2: scheduled adapter evidence collection
+- `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (53 controls)
+- `shared/services/cdt/src/index.ts` — twin now evaluates all 53 rules
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 

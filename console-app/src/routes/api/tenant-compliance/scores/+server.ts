@@ -1,9 +1,9 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import {
-  buildDefaultControls,
-  type Control,
-} from "$lib/compliance/framework-controls";
+  getWorkerBase,
+  safeProxyFetch,
+} from "../../_proxy-helpers";
 
 interface FrameworkScore {
   framework: string;
@@ -59,88 +59,119 @@ async function ensureScoreTables(db: any): Promise<void> {
   ]);
 }
 
-async function calculateScores(
+// ── Evidence-grounded scoring via compliance-worker ──────────────────────────
+
+interface CdtControlEvaluation {
+  controlId: string;
+  controlName: string;
+  framework: string;
+  status: string;
+  evidenceCount: number;
+  lastEvidenceAt: string | null;
+}
+
+interface CdtEvaluateResponse {
+  controls: CdtControlEvaluation[];
+  scores: Array<{
+    framework: string;
+    score: number;
+    grade: string;
+    controlsTotal: number;
+    controlsNotStarted: number;
+    controlsInProgress: number;
+    controlsImplemented: number;
+    controlsVerified: number;
+  }>;
+}
+
+/**
+ * Fetch evidence-grounded scores from the compliance-worker CDT evaluate endpoint.
+ * Returns null if the compliance-worker is unavailable.
+ */
+async function fetchEvidenceGroundedScores(
+  platform: any,
+  tenantId: string,
+  frameworks: string[],
+): Promise<FrameworkScore[] | null> {
+  const base = getWorkerBase(platform);
+  const allScores: FrameworkScore[] = [];
+
+  // The CDT evaluate endpoint supports a framework query param.
+  // Fetch each framework separately since the compliance-worker evaluates
+  // SOC2 and ISO27001 controls (the two with defined control definitions).
+  // For other frameworks, we'll still get results if evidence exists.
+  for (const fw of frameworks) {
+    const url = `${base}/api/v1/cdt/evaluate?framework=${encodeURIComponent(fw)}`;
+    const result = await safeProxyFetch(platform, url, {
+      headers: {
+        "x-tenant-id": tenantId,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!result.ok) continue;
+
+    try {
+      const data = (await result.response.json()) as CdtEvaluateResponse;
+      if (data.scores && data.scores.length > 0) {
+        for (const s of data.scores) {
+          allScores.push({
+            framework: s.framework,
+            score: s.score,
+            grade: s.grade,
+            controlsTotal: s.controlsTotal,
+            controlsImplemented: s.controlsImplemented + s.controlsVerified,
+            controlsVerified: s.controlsVerified,
+          });
+        }
+      } else if (data.controls && data.controls.length > 0) {
+        // Compute score from controls if scores array wasn't returned
+        const controls = data.controls;
+        const total = controls.length;
+        const weightSum = controls.reduce(
+          (sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0),
+          0,
+        );
+        const score =
+          total > 0
+            ? Math.round((weightSum / total) * 100 * 100) / 100
+            : 0;
+        const implemented = controls.filter(
+          (c) => c.status === "implemented" || c.status === "verified",
+        ).length;
+        const verified = controls.filter(
+          (c) => c.status === "verified",
+        ).length;
+
+        allScores.push({
+          framework: fw,
+          score,
+          grade: computeGrade(score),
+          controlsTotal: total,
+          controlsImplemented: implemented,
+          controlsVerified: verified,
+        });
+      }
+    } catch {
+      // JSON parse failed — skip this framework
+      continue;
+    }
+  }
+
+  return allScores.length > 0 ? allScores : null;
+}
+
+// ── Persist scores to D1 ─────────────────────────────────────────────────────
+
+async function persistScores(
   db: any,
   tenantId: string,
-): Promise<FrameworkScore[]> {
-  // Read tenant frameworks
-  let frameworks: string[] = [];
-  try {
-    const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
-      )
-      .bind(tenantId)
-      .first();
-    if (row?.value) {
-      frameworks = JSON.parse(row.value as string);
-    }
-  } catch {
-    // no frameworks set
-  }
-  if (frameworks.length === 0) {
-    frameworks = ["SOC2", "ISO27001", "NIST CSF"];
-  }
-
-  // Read tenant controls
-  let controls: Control[] | null = null;
-  try {
-    const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
-      )
-      .bind(tenantId)
-      .first();
-    if (row?.value) {
-      controls = JSON.parse(row.value as string);
-    }
-  } catch {
-    // no saved controls
-  }
-  if (!controls) {
-    controls = buildDefaultControls(frameworks);
-  }
-
-  // Calculate per-framework scores
-  const scores: FrameworkScore[] = [];
+  scores: FrameworkScore[],
+): Promise<void> {
   const upsertStmts: any[] = [];
   const historyStmts: any[] = [];
 
-  for (const fw of frameworks) {
-    const fwControls = controls.filter((c) => c.framework === fw);
-    const total = fwControls.length;
-    if (total === 0) {
-      scores.push({
-        framework: fw,
-        score: 0,
-        grade: "F",
-        controlsTotal: 0,
-        controlsImplemented: 0,
-        controlsVerified: 0,
-      });
-      continue;
-    }
-
-    const weightSum = fwControls.reduce(
-      (sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0),
-      0,
-    );
-    const score = Math.round((weightSum / total) * 100 * 100) / 100;
-    const grade = computeGrade(score);
-    const implemented = fwControls.filter(
-      (c) => c.status === "implemented" || c.status === "verified",
-    ).length;
-    const verified = fwControls.filter((c) => c.status === "verified").length;
-
-    scores.push({
-      framework: fw,
-      score,
-      grade,
-      controlsTotal: total,
-      controlsImplemented: implemented,
-      controlsVerified: verified,
-    });
-
+  for (const fw of scores) {
     upsertStmts.push(
       db
         .prepare(
@@ -154,7 +185,15 @@ async function calculateScores(
              controls_verified = excluded.controls_verified,
              calculated_at = excluded.calculated_at`,
         )
-        .bind(tenantId, fw, score, grade, total, implemented, verified),
+        .bind(
+          tenantId,
+          fw.framework,
+          fw.score,
+          fw.grade,
+          fw.controlsTotal,
+          fw.controlsImplemented,
+          fw.controlsVerified,
+        ),
     );
 
     historyStmts.push(
@@ -163,16 +202,16 @@ async function calculateScores(
           `INSERT INTO compliance_history (id, tenant_id, framework, score, grade, recorded_at)
            VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, datetime('now'))`,
         )
-        .bind(tenantId, fw, score, grade),
+        .bind(tenantId, fw.framework, fw.score, fw.grade),
     );
   }
 
   if (upsertStmts.length > 0) {
     await db.batch([...upsertStmts, ...historyStmts]);
   }
-
-  return scores;
 }
+
+// ── Handlers ─────────────────────────────────────────────────────────────────
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
@@ -183,9 +222,98 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
   await ensureScoreTables(db);
-  const scores = await calculateScores(db, user.tenantId);
 
-  return json({ scores });
+  // Read tenant frameworks
+  let frameworks: string[] = [];
+  try {
+    const row = await db
+      .prepare(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
+      )
+      .bind(user.tenantId)
+      .first();
+    if (row?.value) {
+      frameworks = JSON.parse(row.value as string);
+    }
+  } catch {
+    // no frameworks set
+  }
+  if (frameworks.length === 0) {
+    frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+  }
+
+  // Try evidence-grounded scoring from compliance-worker first
+  const evidenceScores = await fetchEvidenceGroundedScores(
+    platform,
+    user.tenantId,
+    frameworks,
+  );
+
+  if (evidenceScores && evidenceScores.length > 0) {
+    await persistScores(db, user.tenantId, evidenceScores);
+
+    // Fill in any frameworks that the compliance-worker doesn't cover
+    // (e.g. NIST CSF, HIPAA, GDPR — no control definitions in cdt-rules yet)
+    const coveredFrameworks = new Set(evidenceScores.map((s) => s.framework));
+    const uncoveredFrameworks = frameworks.filter(
+      (fw) => !coveredFrameworks.has(fw),
+    );
+
+    if (uncoveredFrameworks.length > 0) {
+      // For uncovered frameworks, return zero scores (no evidence-grounded data yet)
+      for (const fw of uncoveredFrameworks) {
+        evidenceScores.push({
+          framework: fw,
+          score: 0,
+          grade: "F",
+          controlsTotal: 0,
+          controlsImplemented: 0,
+          controlsVerified: 0,
+        });
+      }
+    }
+
+    return json({ scores: evidenceScores, source: "evidence" });
+  }
+
+  // Fallback: return cached scores from DB (if any previous calculation exists)
+  const { results: cachedRows } = await db
+    .prepare(
+      `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified
+       FROM compliance_scores WHERE tenant_id = ?`,
+    )
+    .bind(user.tenantId)
+    .all<{
+      framework: string;
+      score: number;
+      grade: string;
+      controls_total: number;
+      controls_implemented: number;
+      controls_verified: number;
+    }>();
+
+  if (cachedRows && cachedRows.length > 0) {
+    const scores: FrameworkScore[] = cachedRows.map((row) => ({
+      framework: row.framework,
+      score: row.score,
+      grade: row.grade,
+      controlsTotal: row.controls_total,
+      controlsImplemented: row.controls_implemented,
+      controlsVerified: row.controls_verified,
+    }));
+    return json({ scores, source: "cached" });
+  }
+
+  // No scores available at all — return empty
+  const emptyScores: FrameworkScore[] = frameworks.map((fw) => ({
+    framework: fw,
+    score: 0,
+    grade: "F",
+    controlsTotal: 0,
+    controlsImplemented: 0,
+    controlsVerified: 0,
+  }));
+  return json({ scores: emptyScores, source: "empty" });
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
@@ -197,6 +325,25 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
   await ensureScoreTables(db);
+
+  // Read tenant frameworks
+  let frameworks: string[] = [];
+  try {
+    const row = await db
+      .prepare(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
+      )
+      .bind(user.tenantId)
+      .first();
+    if (row?.value) {
+      frameworks = JSON.parse(row.value as string);
+    }
+  } catch {
+    // no frameworks set
+  }
+  if (frameworks.length === 0) {
+    frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+  }
 
   // Read previous scores before recalculation to detect changes
   const { results: prevRows } = await db
@@ -210,37 +357,84 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     previousScores[row.framework] = row.score;
   }
 
-  const scores = await calculateScores(db, user.tenantId);
+  // Recalculate from evidence via compliance-worker
+  const scores = await fetchEvidenceGroundedScores(
+    platform,
+    user.tenantId,
+    frameworks,
+  );
 
-  // Emit compliance.score_changed for any framework whose score changed
-  const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
-  if (orchestratorUrl) {
-    for (const fw of scores) {
-      const previousScore = previousScores[fw.framework];
-      if (previousScore !== undefined && previousScore !== fw.score) {
-        fetch(`${orchestratorUrl}/api/v1/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tenantId: user.tenantId,
-            type: "compliance.score_changed",
-            source: "compliance-scores-api",
-            payload: {
-              framework: fw.framework,
-              score: fw.score,
-              previousScore,
-              grade: fw.grade,
-              direction: fw.score < previousScore ? "below" : "above",
-              controlsTotal: fw.controlsTotal,
-              controlsImplemented: fw.controlsImplemented,
-              controlsVerified: fw.controlsVerified,
-            },
-            idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
-          }),
-        }).catch(() => {}); // best-effort, non-blocking
+  if (scores && scores.length > 0) {
+    // Fill uncovered frameworks with zero scores
+    const covered = new Set(scores.map((s) => s.framework));
+    for (const fw of frameworks) {
+      if (!covered.has(fw)) {
+        scores.push({
+          framework: fw,
+          score: 0,
+          grade: "F",
+          controlsTotal: 0,
+          controlsImplemented: 0,
+          controlsVerified: 0,
+        });
       }
     }
+
+    await persistScores(db, user.tenantId, scores);
+
+    // Emit compliance.score_changed for any framework whose score changed
+    const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+    if (orchestratorUrl) {
+      for (const fw of scores) {
+        const previousScore = previousScores[fw.framework];
+        if (previousScore !== undefined && previousScore !== fw.score) {
+          fetch(`${orchestratorUrl}/api/v1/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenantId: user.tenantId,
+              type: "compliance.score_changed",
+              source: "compliance-scores-api",
+              payload: {
+                framework: fw.framework,
+                score: fw.score,
+                previousScore,
+                grade: fw.grade,
+                direction: fw.score < previousScore ? "below" : "above",
+                controlsTotal: fw.controlsTotal,
+                controlsImplemented: fw.controlsImplemented,
+                controlsVerified: fw.controlsVerified,
+              },
+              idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
+            }),
+          }).catch(() => {}); // best-effort, non-blocking
+        }
+      }
+    }
+
+    return json({ scores, recalculated: true, source: "evidence" });
   }
 
-  return json({ scores, recalculated: true });
+  // Compliance-worker unavailable — return stale cached scores
+  const cachedScores: FrameworkScore[] = (prevRows ?? []).map((row) => ({
+    framework: row.framework,
+    score: row.score,
+    grade: computeGrade(row.score),
+    controlsTotal: 0,
+    controlsImplemented: 0,
+    controlsVerified: 0,
+  }));
+
+  return json({
+    scores: cachedScores.length > 0 ? cachedScores : frameworks.map((fw) => ({
+      framework: fw,
+      score: 0,
+      grade: "F",
+      controlsTotal: 0,
+      controlsImplemented: 0,
+      controlsVerified: 0,
+    })),
+    recalculated: false,
+    source: "cached",
+  });
 };
