@@ -14,6 +14,8 @@ export interface Env {
   GROQ_API_KEY?: string;
   WEBHOOK_SECRET?: string;
   ORCHESTRATOR_URL?: string;
+  /** JSON map of adapter slug → worker URL, same format as ai-orchestrator */
+  ADAPTER_URLS?: string;
 }
 
 export function resolveD1(env: Env): D1Database | undefined {

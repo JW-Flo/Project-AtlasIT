@@ -19,7 +19,7 @@
 | 4 — Hardening & Production     | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                            |
 | 5 — Adapter Scaffolding        | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                       |
 | 6 — Contract Stability         | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                            |
-| 7 — Compliance-as-Automation   | 🔄 In Progress  | —          | 53 CDT rules, evidence pipeline, JML auto-evidence, compliance scoring, 40+ control mappings; remaining: grace period, mover workflows, GDPR/HIPAA rules |
+| 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence pipeline, JML auto-evidence, compliance scoring, 40+ control mappings, adapter evidence pull (6 adapters), manual evidence upload |
 
 ## Deployed Workers
 

@@ -682,4 +682,92 @@ app.post("/api/compliance/check", async (c) => {
   return c.json({ ok: true, mfaEnforced, tenantId: body.tenantId });
 });
 
+// ---------------------------------------------------------------------------
+// Evidence collection — POST /api/evidence
+// Returns structured AdapterEvidenceItem[] for compliance frameworks.
+// ---------------------------------------------------------------------------
+app.post("/api/evidence", async (c) => {
+  const body = await c.req.json<{ tenantId: string }>().catch(() => null);
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required" }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(body.tenantId, "google-workspace")
+    .first<{ access_token: string; refresh_token: string; expires_at: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  // --- mfa_enforcement ---
+  let mfaStatus: "pass" | "fail" | "unknown" = "unknown";
+  let mfaDetails: Record<string, unknown> = {};
+
+  try {
+    const mfaRes = await fetch(
+      "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=1&fields=users(isEnrolledIn2Sv,isEnforcedIn2Sv)",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (mfaRes.ok) {
+      const data = (await mfaRes.json()) as {
+        users?: Array<{ isEnrolledIn2Sv?: boolean; isEnforcedIn2Sv?: boolean }>;
+      };
+      const users = data.users ?? [];
+      const enforced = users.some((u) => u.isEnforcedIn2Sv === true);
+      mfaStatus = enforced ? "pass" : "fail";
+      mfaDetails = {
+        enforcedSample: enforced,
+        sampledUsers: users.length,
+        checkedAt: new Date().toISOString(),
+      };
+    } else {
+      mfaDetails = {
+        reason: `Google API returned ${mfaRes.status}`,
+        checkedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    mfaDetails = {
+      reason: err instanceof Error ? err.message : "Unknown error",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const items = [
+    {
+      type: "mfa_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+      status: mfaStatus,
+      details: mfaDetails,
+    },
+    {
+      type: "dlp_rules",
+      controlRefs: ["SOC2-CC6.7", "GDPR-Art.5(1)(f)"],
+      status: "unknown" as const,
+      details: {
+        reason: "Requires additional API scope (DLP API)",
+      },
+    },
+    {
+      type: "sharing_settings",
+      controlRefs: ["SOC2-CC6.6", "ISO-27001-A.9.1.2"],
+      status: "unknown" as const,
+      details: {
+        reason: "Requires additional API scope (Reports API)",
+      },
+    },
+  ];
+
+  return c.json({ items });
+});
+
 export default app;

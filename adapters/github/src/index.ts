@@ -597,6 +597,202 @@ app.post("/api/compliance/check", async (c) => {
   });
 });
 
+// ── Adapter evidence collection ──────────────────────────────────────────────
+// POST /api/evidence — return compliance evidence items for this tenant's GitHub org.
+app.post("/api/evidence", async (c) => {
+  const CONTROL_REFS = {
+    branch_protection: ["SOC2-CC8.1", "ISO-27001-A.12.6.1"],
+    mfa_enforcement: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+    sso_enforcement: ["SOC2-CC6.1", "ISO-27001-A.9.2.1"],
+  } as const;
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  // Resolve tenantId from header or JSON body
+  const tenantId =
+    c.req.header("X-Tenant-ID") ??
+    (await c.req.json<{ tenantId?: string }>().catch(() => ({})))?.tenantId;
+
+  if (!tenantId) {
+    return c.json({ items: [] });
+  }
+
+  // Load OAuth token
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  // Load org config
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ items: [] });
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+  const org = config.orgName;
+
+  const headers = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  // Fetch org details (MFA + SSO)
+  const orgRes = await fetch(`https://api.github.com/orgs/${org}`, { headers });
+
+  if (!orgRes.ok && orgRes.status === 403) {
+    // Insufficient scope — mark org-level checks as unknown
+    // Still try to gather repo data for branch protection
+    let branchProtectionItem: EvidenceItem = {
+      type: "branch_protection",
+      controlRefs: [...CONTROL_REFS.branch_protection],
+      status: "unknown",
+      details: { org, reason: "403 — insufficient scope to read repos" },
+    };
+
+    const reposRes = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=30&sort=updated`,
+      { headers },
+    );
+
+    if (reposRes.ok) {
+      const repos = (await reposRes.json()) as Array<{
+        name: string;
+        default_branch: string;
+      }>;
+
+      let protectedCount = 0;
+      let unprotectedCount = 0;
+      for (const repo of repos) {
+        const branchRes = await fetch(
+          `https://api.github.com/repos/${org}/${repo.name}/branches/${repo.default_branch}`,
+          { headers },
+        );
+        if (!branchRes.ok) continue;
+        const branch = (await branchRes.json()) as { protected: boolean };
+        if (branch.protected) protectedCount++;
+        else unprotectedCount++;
+      }
+
+      const total = protectedCount + unprotectedCount;
+      const allProtected = total > 0 && unprotectedCount === 0;
+
+      branchProtectionItem = {
+        type: "branch_protection",
+        controlRefs: [...CONTROL_REFS.branch_protection],
+        status: total === 0 ? "unknown" : allProtected ? "pass" : "fail",
+        details: { org, totalRepos: total, protectedCount, unprotectedCount, allProtected },
+      };
+    }
+
+    const items: EvidenceItem[] = [
+      branchProtectionItem,
+      {
+        type: "mfa_enforcement",
+        controlRefs: [...CONTROL_REFS.mfa_enforcement],
+        status: "unknown",
+        details: { org, reason: "403 — admin:org scope required" },
+      },
+      {
+        type: "sso_enforcement",
+        controlRefs: [...CONTROL_REFS.sso_enforcement],
+        status: "unknown",
+        details: { org, reason: "403 — admin:org scope required" },
+      },
+    ];
+
+    return c.json({ items });
+  }
+
+  if (!orgRes.ok) {
+    return c.json({ items: [] });
+  }
+
+  const orgData = (await orgRes.json()) as {
+    two_factor_requirement_enabled?: boolean;
+    saml_sso_enabled?: boolean;
+    saml_sso_required?: boolean;
+  };
+
+  // Fetch repos for branch protection check
+  const reposRes = await fetch(
+    `https://api.github.com/orgs/${org}/repos?per_page=30&sort=updated`,
+    { headers },
+  );
+
+  if (!reposRes.ok) {
+    return c.json({ items: [] });
+  }
+
+  const repos = (await reposRes.json()) as Array<{
+    name: string;
+    default_branch: string;
+  }>;
+
+  let protectedCount = 0;
+  let unprotectedCount = 0;
+
+  for (const repo of repos) {
+    const branchRes = await fetch(
+      `https://api.github.com/repos/${org}/${repo.name}/branches/${repo.default_branch}`,
+      { headers },
+    );
+    if (!branchRes.ok) continue;
+    const branch = (await branchRes.json()) as { protected: boolean };
+    if (branch.protected) protectedCount++;
+    else unprotectedCount++;
+  }
+
+  const total = protectedCount + unprotectedCount;
+  const allProtected = total > 0 && unprotectedCount === 0;
+
+  const twoFactorRequired = orgData.two_factor_requirement_enabled ?? false;
+  const samlSsoEnabled =
+    orgData.saml_sso_enabled === true || orgData.saml_sso_required === true;
+
+  const items: EvidenceItem[] = [
+    {
+      type: "branch_protection",
+      controlRefs: [...CONTROL_REFS.branch_protection],
+      status: total === 0 ? "unknown" : allProtected ? "pass" : "fail",
+      details: { org, totalRepos: total, protectedCount, unprotectedCount, allProtected },
+    },
+    {
+      type: "mfa_enforcement",
+      controlRefs: [...CONTROL_REFS.mfa_enforcement],
+      status: twoFactorRequired ? "pass" : "fail",
+      details: { org, twoFactorRequired },
+    },
+    {
+      type: "sso_enforcement",
+      controlRefs: [...CONTROL_REFS.sso_enforcement],
+      status: samlSsoEnabled ? "pass" : "fail",
+      details: { org, samlSsoEnabled, samlSsoRequired: orgData.saml_sso_required ?? false },
+    },
+  ];
+
+  return c.json({ items });
+});
+
 export default app;
 
 // -- Internal helpers --
