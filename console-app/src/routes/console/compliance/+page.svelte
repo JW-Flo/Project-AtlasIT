@@ -328,7 +328,63 @@
     loadEvidence();
   }
 
-  onMount(loadData);
+  // Evidence feed (real-time evidence from automations)
+  interface EvidenceFeedItem {
+    id: string;
+    framework: string;
+    controlId: string;
+    category: string;
+    source: string;
+    actor: string;
+    subject: string | null;
+    impact: string;
+    createdAt: string;
+  }
+
+  let evidenceFeed: EvidenceFeedItem[] = [];
+  let feedSummary: { totalEvidence: number; frameworksCovered: number; controlsCovered: number } | null = null;
+
+  // Score history
+  interface ScoreHistoryPoint { date: string; score: number; grade: string }
+  interface FrameworkHistory { framework: string; points: ScoreHistoryPoint[]; trend: "up" | "down" | "flat"; latestScore: number }
+  let scoreHistory: FrameworkHistory[] = [];
+
+  async function loadEvidenceFeed() {
+    try {
+      const res = await fetch("/api/compliance/evidence-feed?limit=10");
+      if (res.ok) {
+        const data = await res.json();
+        evidenceFeed = data.feed || [];
+        feedSummary = data.summary || null;
+      }
+    } catch {}
+  }
+
+  async function loadScoreHistory() {
+    try {
+      const res = await fetch("/api/tenant-compliance/history?days=30");
+      if (res.ok) {
+        const data = await res.json();
+        scoreHistory = data.history || [];
+      }
+    } catch {}
+  }
+
+  function feedTimeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  onMount(() => {
+    loadData();
+    loadEvidenceFeed();
+    loadScoreHistory();
+  });
 </script>
 
 <div>
@@ -519,6 +575,88 @@
         </Card>
       </button>
     </div>
+
+    <!-- Evidence Activity Feed -->
+    <div class="mt-6">
+      <h2 class="text-lg font-semibold mb-3">Evidence Activity</h2>
+      {#if evidenceFeed.length > 0}
+        <Card>
+          <CardContent class="p-0">
+            {#each evidenceFeed as item}
+              <div class="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors">
+                <span class="w-2 h-2 rounded-full shrink-0 {item.impact === 'positive' ? 'bg-green-500' : item.impact === 'detrimental' ? 'bg-red-500' : 'bg-blue-500'}"></span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm">
+                    <span class="font-medium">{item.controlId}</span>
+                    <span class="text-muted-foreground"> — {item.category.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <Badge variant="outline" class="text-[10px]">{item.framework}</Badge>
+                    <span class="text-[10px] text-muted-foreground">{item.source}</span>
+                    {#if item.actor}
+                      <span class="text-[10px] text-muted-foreground">{item.actor}</span>
+                    {/if}
+                  </div>
+                </div>
+                <span class="text-xs text-muted-foreground shrink-0">{feedTimeAgo(item.createdAt)}</span>
+              </div>
+            {/each}
+          </CardContent>
+        </Card>
+        {#if feedSummary}
+          <div class="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+            <span>{feedSummary.totalEvidence} total evidence items</span>
+            <span>{feedSummary.frameworksCovered} framework{feedSummary.frameworksCovered !== 1 ? 's' : ''} covered</span>
+            <span>{feedSummary.controlsCovered} control{feedSummary.controlsCovered !== 1 ? 's' : ''} covered</span>
+          </div>
+        {/if}
+      {:else}
+        <Card class="border-dashed">
+          <CardContent class="py-8 text-center">
+            <p class="text-sm text-muted-foreground">No evidence activity yet. Evidence is auto-generated when automations and workflows execute.</p>
+          </CardContent>
+        </Card>
+      {/if}
+    </div>
+
+    <!-- Score Trend -->
+    {#if scoreHistory.length > 0}
+      <div class="mt-6">
+        <h2 class="text-lg font-semibold mb-3">Score Trend (30 days)</h2>
+        <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {#each scoreHistory as fw}
+            <Card>
+              <CardContent class="pt-4 pb-4">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-medium">{fw.framework}</span>
+                  <div class="flex items-center gap-1.5">
+                    {#if fw.trend === "up"}
+                      <span class="text-green-500 text-xs font-medium">Improving</span>
+                    {:else if fw.trend === "down"}
+                      <span class="text-red-500 text-xs font-medium">Declining</span>
+                    {:else}
+                      <span class="text-muted-foreground text-xs">Stable</span>
+                    {/if}
+                    <span class="text-lg font-bold">{Math.round(fw.latestScore)}%</span>
+                  </div>
+                </div>
+                {#if fw.points.length > 1}
+                  <!-- Simple sparkline using SVG -->
+                  <svg class="w-full h-8" viewBox="0 0 {fw.points.length * 10} 40" preserveAspectRatio="none">
+                    <polyline
+                      fill="none"
+                      stroke={fw.trend === "up" ? "rgb(34, 197, 94)" : fw.trend === "down" ? "rgb(239, 68, 68)" : "rgb(148, 163, 184)"}
+                      stroke-width="2"
+                      points={fw.points.map((p, i) => `${i * 10},${40 - (p.score / 100) * 40}`).join(" ")}
+                    />
+                  </svg>
+                {/if}
+              </CardContent>
+            </Card>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
   {:else if activeTab === "controls"}
     <!-- Controls tab -->

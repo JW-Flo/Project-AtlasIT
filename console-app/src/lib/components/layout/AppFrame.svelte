@@ -22,6 +22,7 @@
     FolderCog,
     Settings,
     ShieldCheck,
+    ClipboardCheck,
     Bell,
     Sun,
     Moon,
@@ -70,8 +71,9 @@
     {
       title: "Operations",
       items: [
+        { href: "/console/access-reviews", label: "Access Reviews", icon: ClipboardCheck },
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
-        { href: "/incidents", label: "Incidents", icon: AlertTriangle },
+        { href: "/console/incidents", label: "Incidents", icon: AlertTriangle },
         { href: "/console/policies", label: "Policy Generator", icon: FileText },
       ],
     },

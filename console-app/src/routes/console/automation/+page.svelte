@@ -138,6 +138,13 @@
   // Apply loading (P5 #24)
   let applyingId: string | null = null;
 
+  // NL automation builder
+  let showNlDialog = false;
+  let nlPrompt = "";
+  let nlLoading = false;
+  let nlResult: any = null;
+  let nlError: string | null = null;
+
   // ---- Data fetching --------------------------------------------------------
   async function fetchAll() {
     loading = true;
@@ -348,6 +355,53 @@
   function closeExecutionDetail() {
     selectedExecution = null;
     loadingDetail = false;
+  }
+
+  // ---- NL Builder -----------------------------------------------------------
+  async function buildFromNL() {
+    if (!nlPrompt.trim() || nlPrompt.length < 5) return;
+    nlLoading = true;
+    nlError = null;
+    nlResult = null;
+    try {
+      const res = await fetch("/api/automation/nl", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: nlPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        nlError = data.error || "Failed to generate automation";
+        return;
+      }
+      nlResult = data.data;
+    } catch {
+      nlError = "Request failed. Please try again.";
+    } finally {
+      nlLoading = false;
+    }
+  }
+
+  async function applyNlResult() {
+    if (!nlResult?.rule) return;
+    try {
+      const res = await fetch("/api/automation/rules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(nlResult.rule),
+      });
+      if (res.ok) {
+        pushToast({ message: `Rule "${nlResult.rule.name}" created`, variant: "success" });
+        showNlDialog = false;
+        nlPrompt = "";
+        nlResult = null;
+        await fetchRules();
+      } else {
+        pushToast({ message: "Failed to create rule", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to create rule", variant: "error" });
+    }
   }
 
   // ---- Helpers --------------------------------------------------------------
@@ -749,12 +803,17 @@
     </div>
 
   {:else if activeTab === "rules"}
-    <!-- Rules search (P3 #15) -->
-    {#if rules.length > 0}
-      <div class="mb-4">
+    <!-- Rules header with NL builder -->
+    <div class="flex items-center justify-between mb-4">
+      {#if rules.length > 0}
         <Input placeholder="Search rules by name or description..." bind:value={searchRules} class="max-w-sm" />
-      </div>
-    {/if}
+      {:else}
+        <div></div>
+      {/if}
+      <Button variant="outline" size="sm" on:click={() => { showNlDialog = true; nlResult = null; nlError = null; }}>
+        Create from Text
+      </Button>
+    </div>
 
     {#if rules.length === 0}
       <Card class="border-dashed">
@@ -1030,5 +1089,71 @@
         {/if}
       </div>
     {/if}
+  </Dialog>
+
+  <!-- NL Automation Builder Dialog -->
+  <Dialog open={showNlDialog} onClose={() => { showNlDialog = false; nlResult = null; nlError = null; }} title="Create Automation from Text">
+    <div class="space-y-4">
+      <p class="text-sm text-muted-foreground">Describe what you want to automate in plain English. AtlasIT will generate the rule for you.</p>
+      <div>
+        <textarea
+          bind:value={nlPrompt}
+          placeholder="e.g. When a user is deactivated in the directory, revoke their access to all connected apps and notify the security team on Slack"
+          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+          disabled={nlLoading}
+        ></textarea>
+      </div>
+
+      {#if nlError}
+        <Alert variant="destructive">
+          <p class="text-sm">{nlError}</p>
+        </Alert>
+      {/if}
+
+      {#if nlResult}
+        <Card>
+          <CardHeader>
+            <CardTitle class="text-sm">Generated Rule</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-2">
+            <div>
+              <div class="text-xs text-muted-foreground">Name</div>
+              <div class="text-sm font-medium">{nlResult.rule?.name || "Unnamed rule"}</div>
+            </div>
+            {#if nlResult.rule?.description}
+              <div>
+                <div class="text-xs text-muted-foreground">Description</div>
+                <div class="text-sm">{nlResult.rule.description}</div>
+              </div>
+            {/if}
+            <div class="flex items-center gap-2">
+              <Badge variant="outline">{triggerLabel(nlResult.rule?.triggerType || "")}</Badge>
+              <span class="text-xs text-muted-foreground">{nlResult.rule?.actions?.length || 0} action(s)</span>
+            </div>
+            {#if nlResult.complianceControls && nlResult.complianceControls.length > 0}
+              <div>
+                <div class="text-xs text-muted-foreground mb-1">Compliance Controls Covered</div>
+                <div class="flex flex-wrap gap-1">
+                  {#each nlResult.complianceControls as control}
+                    <Badge variant="secondary" class="text-[10px]">{control}</Badge>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </CardContent>
+        </Card>
+      {/if}
+
+      <DialogFooter>
+        <Button variant="outline" on:click={() => { showNlDialog = false; nlResult = null; nlError = null; }}>Cancel</Button>
+        {#if nlResult}
+          <Button on:click={applyNlResult}>Create Rule</Button>
+        {:else}
+          <Button on:click={buildFromNL} disabled={nlLoading || nlPrompt.trim().length < 5}>
+            {nlLoading ? "Generating..." : "Generate Rule"}
+          </Button>
+        {/if}
+      </DialogFooter>
+    </div>
   </Dialog>
 </div>
