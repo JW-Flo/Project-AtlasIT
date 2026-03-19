@@ -65,6 +65,14 @@ import { evalNIST_PR_AC_3 } from "./rules/nist.pr_ac_3";
 import { evalNIST_PR_AC_4 } from "./rules/nist.pr_ac_4";
 import { evalNIST_RS_CO_2 } from "./rules/nist.rs_co_2";
 import { evalNIST_DE_CM_1 } from "./rules/nist.de_cm_1";
+// GDPR Article 5
+import { evalGDPR_Art5_1a } from "./rules/gdpr.art5_1a";
+import { evalGDPR_Art5_1b } from "./rules/gdpr.art5_1b";
+import { evalGDPR_Art5_1c } from "./rules/gdpr.art5_1c";
+import { evalGDPR_Art5_1d } from "./rules/gdpr.art5_1d";
+import { evalGDPR_Art5_1e } from "./rules/gdpr.art5_1e";
+import { evalGDPR_Art5_1f } from "./rules/gdpr.art5_1f";
+import { evalGDPR_Art5_2 } from "./rules/gdpr.art5_2";
 
 export function runControlEval(control_id: string, ev: CdtEvent) {
   switch (control_id) {
@@ -135,6 +143,14 @@ export function runControlEval(control_id: string, ev: CdtEvent) {
   case "NIST-CSF-PR.AC-4":        return evalNIST_PR_AC_4(ev);
   case "NIST-CSF-RS.CO-2":        return evalNIST_RS_CO_2(ev);
   case "NIST-CSF-DE.CM-1":        return evalNIST_DE_CM_1(ev);
+  // GDPR Article 5
+  case "GDPR-Art.5(1)(a)":        return evalGDPR_Art5_1a(ev);
+  case "GDPR-Art.5(1)(b)":        return evalGDPR_Art5_1b(ev);
+  case "GDPR-Art.5(1)(c)":        return evalGDPR_Art5_1c(ev);
+  case "GDPR-Art.5(1)(d)":        return evalGDPR_Art5_1d(ev);
+  case "GDPR-Art.5(1)(e)":        return evalGDPR_Art5_1e(ev);
+  case "GDPR-Art.5(1)(f)":        return evalGDPR_Art5_1f(ev);
+  case "GDPR-Art.5(2)":           return evalGDPR_Art5_2(ev);
     default: return { decision: "unknown" as const, rationale: ["no rule"], references: [] };
   }
 }

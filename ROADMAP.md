@@ -130,16 +130,16 @@ Directory Event / Schedule / Webhook
 > Every JML workflow step should auto-emit tamper-evident compliance artifacts — making compliance
 > a byproduct of running IT operations, not a separate tool.
 
-- [x] Expand CDT rules from 7 → 53 (SOC 2, ISO 27001, HIPAA, NIST CSF coverage)
+- [x] Expand CDT rules from 7 → 60 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
 - [x] Map 9 automation action types to 40+ compliance control keys (`packages/shared/src/automation/compliance-mapping.ts`)
 - [x] Auto-link workflow evidence envelopes to compliance controls via evidence classifier + locker
 - [x] Evidence pipeline: event → classify → R2 content-addressed storage + D1 queryable index
 - [x] Continuous compliance score from operational data (evidence-driven, recency-based)
 - [x] JML engine auto-emits tamper-evident evidence on every joiner/mover/leaver classification
-- [ ] Enforce leaver grace period (policy stored, not yet enforced in workflow execution)
-- [ ] Generate mover/leaver workflows for remaining 13+ adapters (only 6 of 19 have full JML coverage)
-- [ ] GDPR Article 5 + HIPAA 164.312 formal control definitions in CDT rules
-- [ ] Manual evidence upload UI for controls without automated evidence sources
+- [x] Enforce leaver grace period via WorkflowDO alarm-based delay (leaverGraceMs)
+- [x] Generate mover/leaver workflows for all 19 adapters (full JML coverage)
+- [x] GDPR Article 5 formal control definitions in CDT rules (7 rules: Art.5(1)(a)-(f) + Art.5(2))
+- [x] Manual evidence upload UI with SHA-256 hashing, pack types, and control linking
 - [ ] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
 - [ ] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`
 
