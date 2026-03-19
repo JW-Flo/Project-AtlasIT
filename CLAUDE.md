@@ -104,13 +104,27 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 - `packages/adapter-gen/` — Adapter code generator (manifest JSON → full CF Worker scaffold)
 - `adapters/okta/` — Okta connector (directory sync, webhooks, SCIM 2.0 provisioning)
 - `adapters/google-workspace/` — Google Workspace connector (OAuth 2.0, user/group sync)
-- `adapters/<slug>/` — 33 adapters (9 core-tier hand-written, 24 scaffolded + Zscaler)
+- `adapters/<slug>/` — 35 adapters (9 core-tier hand-written, 2 production, 24 scaffolded)
+- `dispatch-worker/` — Queue-driven workflow step dispatch
+- `scheduler-worker/` — Cron-based scheduled task execution
+- `marketplace/` — App catalog and install/uninstall management
+- `apex-redirect-worker/` — Root domain redirect handling
+- `mcp/` — MCP server (desktop agent protocol)
+- `mcp-idp/` — MCP identity provider (OIDC/SAML bridge)
+- `mcp-mobile/` — MCP mobile client endpoint
+- `slack-approval-worker/` — Slack interactive approval workflows
+- `apps/atlasit-web/` — Marketing / landing site
+- `infra/github-proxy/` — GitHub API proxy for CI
+- `shared/services/cdt/` — Compliance Definition & Testing rule engine (53 rules)
 - `ops/oidc/` — GitHub Actions OIDC → 1Password Connect exchange worker
 
 ### Storage (Cloudflare D1/KV/R2/Queues)
 
 - D1 `ATLAS_SHARED_DB` — tenants, users, preferences, directory, compliance, audit, console_user_roles
 - KV `KV_SESSIONS` — session management
+- KV `KV_CACHE` — general cache (compliance scores, API responses)
+- KV `KV_FEATURE_FLAGS` — feature flag storage (rollout %, tenant overrides)
+- KV `MCP_STORE` — MCP agent state and configuration
 - R2 `atlasit-evidence` — policies, evidence, artifacts
 - Queues `atlasit-step-tasks` — workflow step dispatch
 
@@ -131,7 +145,7 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 
 ### Adapter Pipeline
 
-- **Registry**: `shared/integrations/registry-detailed.ts` — OAuth URLs, scopes, API endpoints for all 24 apps
+- **Registry**: `shared/integrations/registry-detailed.ts` — OAuth URLs, scopes, API endpoints for all 35 apps
 - **Manifests**: `packages/connector-schema/src/templates.ts` — ConnectorManifest JSON per app (auth, capabilities, config, events, webhooks)
 - **Scaffold**: `packages/adapter-gen/src/scaffold.ts` — `scaffoldAdapter(manifest, outputDir)` generates full CF Worker
 - **Output**: `adapters/<slug>/` — `src/index.ts`, `src/auth.ts`, `src/config.ts`, `wrangler.toml`, `package.json`, `tsconfig.json`, `migrations/`
