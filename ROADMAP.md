@@ -123,7 +123,7 @@ Directory Event / Schedule / Webhook
 - [x] CF Access JWT signing key rotation readiness (dynamic JWKS fetch + rotation event logging)
 - [x] Slack webhook verification alignment (HMAC-SHA256, 5-min replay window, correlationId on failures)
 
-## Phase 7 — Compliance-as-Automation (Unique Moat — In Progress)
+## Phase 7 — Compliance-as-Automation (Unique Moat) ✅
 
 > **Strategic context**: No competitor combines IT lifecycle automation + compliance evidence collection.
 > Vanta/Drata collect evidence passively; AtlasIT creates evidence actively through operations.
@@ -140,8 +140,8 @@ Directory Event / Schedule / Webhook
 - [x] Generate mover/leaver workflows for all 19 adapters (full JML coverage)
 - [x] GDPR Article 5 formal control definitions in CDT rules (7 rules: Art.5(1)(a)-(f) + Art.5(2))
 - [x] Manual evidence upload UI with SHA-256 hashing, pack types, and control linking
-- [ ] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
-- [ ] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`
+- [x] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
+- [x] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`, `adapters/*/src/index.ts`
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 
