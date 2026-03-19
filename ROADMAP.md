@@ -153,7 +153,7 @@ Directory Event / Schedule / Webhook
 - [x] **`storeEvidence()` already wired** — orchestrator event consumer (`ai-orchestrator/src/routes/events.ts`) classifies and stores every event via `waitUntil`
 - [x] **CDT twin now evaluates all 60 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
 - [x] **Scheduled evidence collection** — orchestrator cron (Duty 2) collects adapter evidence for all tenants every 5 minutes
-- [ ] **CDT twin state is isolated in KV** — no other component reads the twin's KV state or R2 evidence blobs
+- [x] **CDT twin state bridged to D1** — state transitions now write to `compliance_evidence` via `ATLAS_SHARED_DB`, making twin results visible to the scoring pipeline
 - [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
 
 ## Phase 7.5 — Compliance Integration (Close the Loop) ⚠️ In Progress
@@ -176,8 +176,8 @@ Directory Event / Schedule / Webhook
 ### P2 — Expand CDT Twin Coverage ✅
 
 - [x] CDT twin `/twin/event` evaluates all 60 rules (exported `ALL_CONTROL_IDS` from engine, replaced hardcoded list)
-- [ ] Bridge CDT twin KV state back to `compliance_evidence` or deprecate twin in favor of compliance-worker path
-- [ ] Expand remediation catalog beyond 2 controls (currently: `SOC2-CC6.2`, `ISO-27001-A.9.2.3` only)
+- [x] Bridge CDT twin KV state to `compliance_evidence` D1 — state transitions now write a row via `ATLAS_SHARED_DB` binding
+- [x] Expand remediation catalog from 2 → 37 controls across all 5 frameworks (16 distinct action types)
 
 ### P3 — Policy Evaluation (Future)
 
@@ -189,7 +189,9 @@ Directory Event / Schedule / Webhook
 - `console-app/src/routes/api/tenant-compliance/scores/+server.ts` — unified scoring via compliance-worker
 - `ai-orchestrator/src/index.ts` — added Duty 2: scheduled adapter evidence collection
 - `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (60 controls)
-- `shared/services/cdt/src/index.ts` — twin now evaluates all 60 rules
+- `shared/services/cdt/src/index.ts` — twin evaluates all 60 rules + bridges state changes to D1
+- `shared/services/cdt/src/remediation/catalog.ts` — expanded from 2 to 37 control-to-action mappings
+- `shared/services/cdt/wrangler.toml` — added `ATLAS_SHARED_DB` D1 binding
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 

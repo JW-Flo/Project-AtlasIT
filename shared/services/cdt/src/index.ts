@@ -15,6 +15,7 @@ declare const EVIDENCE_BUCKET: R2Bucket;
 declare const STATE_NS: KVNamespace;
 declare const REMEDIATION_Q: Queue;
 declare const IDEMP_NS: KVNamespace;
+declare const ATLAS_SHARED_DB: D1Database;
 
 export default {
   async fetch(req: Request, env: any): Promise<Response> {
@@ -93,6 +94,46 @@ export default {
           );
           updated.evidence_ids.push(evidence.id);
           await controlRepo.put(updated);
+
+          // Bridge to D1 compliance_evidence so the compliance-worker scoring
+          // path can see CDT twin state transitions.
+          if (typeof ATLAS_SHARED_DB !== "undefined" && ATLAS_SHARED_DB) {
+            const dashIdx = cid.indexOf("-");
+            const framework = dashIdx > 0 ? cid.slice(0, dashIdx) : cid;
+            const controlId = dashIdx > 0 ? cid.slice(dashIdx + 1) : cid;
+            try {
+              await ATLAS_SHARED_DB.prepare(
+                `INSERT INTO compliance_evidence
+                 (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+                .bind(
+                  evidence.id,
+                  ev.tenant,
+                  framework,
+                  controlId,
+                  cid,
+                  "cdt_eval",
+                  "cdt-twin",
+                  evidence.uri,
+                  ev.payload.actor ?? "system",
+                  ev.payload.subject ?? null,
+                  JSON.stringify({
+                    decision: updated.state,
+                    before,
+                    rationale: res.rationale,
+                    references: res.references,
+                    traceId: ev.trace_id,
+                    r2Uri: evidence.uri,
+                    contentHash: evidence.sha256,
+                  }),
+                  new Date().toISOString(),
+                )
+                .run();
+            } catch {
+              // D1 write is best-effort — twin still functions without it
+            }
+          }
         }
         telemetry.metric("cdt.eval.count", 1, {
           control_id: cid,

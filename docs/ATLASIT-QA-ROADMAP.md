@@ -80,7 +80,7 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 | 5 — Adapter Scaffolding | ✅ (PR #158, #159) | 33 adapters: registry, manifests, scaffolds, 9 core-tier implementations, CI/CD |
 | 6 — Contract Stability & Auth Hardening | ✅ (PR #164, #165) | RBAC expansion, DTO normalization, safeProxyFetch, startup assertions |
 | 7 — Compliance-as-Automation | ✅ | 60 CDT rules, evidence classifier/locker, JML auto-evidence, 40+ control mappings |
-| 7.5 — Compliance Integration | ⚠️ In Progress | Scoring unified, scheduled evidence collection, CDT twin expanded. **Remaining:** twin KV bridge, policy eval, remediation catalog |
+| 7.5 — Compliance Integration | ⚠️ In Progress | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules + D1 bridge), remediation catalog (37 controls). **Remaining:** policy eval stub |
 | 8 — Access Reviews | Future | Campaign creation, manager review UI, auto-revoke, evidence generation |
 | 9 — Trust Center | Future | Public compliance portal, PDF export |
 
@@ -101,7 +101,7 @@ The compliance system has three disconnected evaluation paths discovered during 
 | 1 | UI scoring reads manual checklist, not real evidence | ✅ **Resolved** | Console scores endpoint now calls compliance-worker CDT evaluate |
 | 2 | `storeEvidence()` never called | ✅ **Was already wired** | Orchestrator `events.ts` classifies + stores every event via `waitUntil` |
 | 3 | CDT twin runs 7 of 60 rules | ✅ **Resolved** | Twin now uses `ALL_CONTROL_IDS` (60 rules) exported from engine |
-| 4 | CDT twin KV state invisible to platform | ⬚ **Open** | KV state still not bridged to `compliance_evidence` |
+| 4 | CDT twin KV state invisible to platform | ✅ **Resolved** | Twin now writes state transitions to `compliance_evidence` via `ATLAS_SHARED_DB` D1 binding |
 | 5 | No scheduled evidence collection | ✅ **Resolved** | Orchestrator cron Duty 2 collects adapter evidence for all tenants |
 | 6 | `evaluatePolicy()` is a hash stub | ⬚ **Open** | Policy evaluation remains aspirational |
 

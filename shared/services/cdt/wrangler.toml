@@ -21,3 +21,7 @@ bucket_name = "atlasit-evidence-dev"
 [[queues.producers]]
 queue = "REMEDIATION_Q"
 binding = "REMEDIATION_Q"
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlas-shared"
+database_id = "atlas-shared-dev"
