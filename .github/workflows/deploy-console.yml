@@ -1,14 +1,11 @@
 name: Deploy Console Worker
 
 on:
-    push:
-        branches: [main]
-        paths:
-            - "console-app/**"
-            - "packages/shared/**"
-            - ".github/workflows/deploy-console.yml"
-            - "docs/DEPLOY_ENV.md"
     workflow_dispatch:
+
+concurrency:
+    group: deploy-console-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
     deploy:

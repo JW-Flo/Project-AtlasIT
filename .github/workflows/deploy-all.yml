@@ -8,6 +8,10 @@ on:
         required: false
         default: "all"
 
+concurrency:
+  group: deploy-all
+  cancel-in-progress: true
+
 jobs:
   deploy-core:
     if: >-

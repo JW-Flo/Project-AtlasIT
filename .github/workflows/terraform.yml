@@ -6,7 +6,12 @@ on:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
   schedule:
-    - cron: "0 */6 * * *"
+    # Daily at 06:00 UTC (reduced from every 6h to save CI minutes)
+    - cron: "0 6 * * *"
+
+concurrency:
+  group: terraform-drift-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
