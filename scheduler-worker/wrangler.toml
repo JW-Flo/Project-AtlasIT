@@ -12,8 +12,5 @@ ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 [observability.logs]
 enabled = true
 
-[triggers]
-crons = [
-  "0 2 * * *",    # ETL daily 02:00
-  "15 * * * *"     # budget / monitoring every 15m
-]
+# Cron triggers removed — duties consolidated into orchestrator's */5 cron.
+# Manual trigger still available via POST /internal/run?jobs=daily_etl,quarter_hour_monitor

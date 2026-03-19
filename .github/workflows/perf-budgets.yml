@@ -10,6 +10,10 @@ on:
       - package.json
       - package-lock.json
 
+concurrency:
+  group: perf-budgets-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   check-bundles:
     name: Enforce bundle size guardrail

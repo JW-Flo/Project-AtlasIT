@@ -9,6 +9,10 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
+concurrency:
+  group: deploy-on-merge-${{ github.sha }}
+  cancel-in-progress: true
+
 jobs:
   deploy-core-api:
     name: Deploy core-api

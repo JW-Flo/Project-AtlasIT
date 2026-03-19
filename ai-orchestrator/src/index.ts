@@ -194,6 +194,8 @@ const worker = {
     env: AppEnv["Bindings"],
   ): Promise<void> {
     const sharedDb = env.ATLAS_SHARED_DB ?? env.DB;
+
+    // ── Duty 1: Evaluate scheduled automation rules ────────────────────────
     const { results } = await sharedDb
       .prepare(
         "SELECT tenant_id FROM automation_rules WHERE trigger_type = 'schedule' AND enabled = 1",
@@ -214,7 +216,7 @@ const worker = {
       sharedDb,
     };
 
-    await Promise.allSettled([
+    const automationSettled = await Promise.allSettled([
       ...(results ?? []).map((row) =>
         evaluateAutomationRules(
           sharedDb,
@@ -228,6 +230,42 @@ const worker = {
       ),
       processExpiredCampaigns({ sharedDb, adapterUrls }),
     ]);
+
+    // ── Duty 2: Self health-check (replaces scheduler-worker monitor) ──────
+    const checks: Record<string, { status: string; ms: number }> = {};
+    const d1Start = Date.now();
+    try {
+      await sharedDb.prepare("SELECT 1").first();
+      checks.d1 = { status: "pass", ms: Date.now() - d1Start };
+    } catch {
+      checks.d1 = { status: "fail", ms: Date.now() - d1Start };
+    }
+    const kvStart = Date.now();
+    try {
+      await env.TASKS.get("__health__");
+      checks.kv = { status: "pass", ms: Date.now() - kvStart };
+    } catch {
+      checks.kv = { status: "fail", ms: Date.now() - kvStart };
+    }
+
+    const automationFailures = automationSettled.filter(
+      (r) => r.status === "rejected",
+    ).length;
+
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level:
+          automationFailures > 0 || checks.d1.status === "fail"
+            ? "warn"
+            : "info",
+        event: "cron.complete",
+        cron: event.cron,
+        tenantsEvaluated: results?.length ?? 0,
+        automationFailures,
+        checks,
+      }),
+    );
   },
   async queue(
     batch: QueueBatch<AnyStepMessage>,
