@@ -33,6 +33,19 @@
 - Write concise commit messages focused on "why" not "what"
 - Prefer small, focused commits
 
+## Checkpoint SOP
+
+Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), pause to checkpoint before continuing:
+
+1. **Review** — Diff branch against main, verify all changes are intentional and tests pass
+2. **Rebase** — `git fetch origin main && git rebase origin/main` to resolve conflicts early
+3. **PR** — Open a PR with a summary and test plan (`gh pr create`)
+4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --merge`)
+5. **Validate** — Smoke-test deployed endpoints (health checks, key routes) to confirm deployment
+6. **Continue** — Create a new branch for the next batch of work
+
+Do not accumulate unbounded work on a branch without checkpointing. This prevents painful rebases, ensures incremental review, and catches deployment issues early.
+
 ## Secrets
 
 - Secrets are managed in 1Password (vault: AWW_SHARED). Use `op` CLI with service account token.
@@ -47,6 +60,7 @@ Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
 Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
 
 Full PR workflow:
+
 1. Create feature branch: `feat/<desc>` or `phase<N>/<desc>`
 2. Commit with concise why-focused messages (no session URLs)
 3. Push and open PR: `gh pr create --title "..." --body "..."`
@@ -70,7 +84,7 @@ Never launch multiple write agents against the same branch — they will overwri
 - **haiku**: scaffolding, boilerplate, pattern-following codegen, file searches, templated work
 - **sonnet**: implementing against existing patterns, code review, judgment calls, most feature work
 - **opus**: novel architecture decisions, hard debugging, system design trade-offs
-Do not use opus for cookie-cutter or pattern-following work.
+  Do not use opus for cookie-cutter or pattern-following work.
 
 ## Project Architecture
 
