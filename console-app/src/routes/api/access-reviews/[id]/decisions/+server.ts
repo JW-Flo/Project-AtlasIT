@@ -52,5 +52,55 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
     detail: JSON.stringify({ campaignId, decision }),
   });
 
+  // Emit compliance evidence for the access review decision
+  const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
+  if (orchestratorUrl) {
+    const eventType = decision === "revoked"
+      ? "access_review.completed"
+      : "access_review.completed";
+    fetch(`${orchestratorUrl}/api/v1/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId,
+        type: eventType,
+        source: "access-reviews",
+        payload: {
+          campaignId,
+          campaignName: campaign.name,
+          itemId,
+          decision,
+          decidedBy: user.email ?? user.userId ?? "unknown",
+          scope: campaign.scope,
+        },
+        idempotencyKey: `ar-decision-${itemId}-${decision}-${Date.now()}`,
+      }),
+    }).catch(() => {}); // best-effort, non-blocking
+  }
+
+  // Check if campaign just completed (all items decided)
+  const updatedCampaign = await getCampaign(db, tenantId, campaignId);
+  if (updatedCampaign?.status === "completed" && orchestratorUrl) {
+    fetch(`${orchestratorUrl}/api/v1/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId,
+        type: "access_review.completed",
+        source: "access-reviews",
+        payload: {
+          campaignId,
+          campaignName: campaign.name,
+          scope: campaign.scope,
+          totalItems: updatedCampaign.totalItems,
+          approvedItems: updatedCampaign.approvedItems,
+          revokedItems: updatedCampaign.revokedItems,
+          completedAt: updatedCampaign.completedAt,
+        },
+        idempotencyKey: `ar-complete-${campaignId}-${Date.now()}`,
+      }),
+    }).catch(() => {}); // best-effort, non-blocking
+  }
+
   return json({ ok: true });
 };

@@ -193,17 +193,17 @@ Directory Event / Schedule / Webhook
 - `shared/services/cdt/src/remediation/catalog.ts` — expanded from 2 to 37 control-to-action mappings
 - `shared/services/cdt/wrangler.toml` — added `ATLAS_SHARED_DB` D1 binding
 
-## Phase 8 — Access Reviews (Table Stakes for IGA)
+## Phase 8 — Access Reviews (Table Stakes for IGA) ✅
 
 > Required for SOC 2 CC6.1/CC6.3 and ISO 27001 A.9.2.5. Lumos, Zluri, ConductorOne all have this.
-> Currently the biggest feature gap for compliance-conscious SMB buyers.
 
-- [ ] Campaign creation (scope: all apps / specific apps / departments)
-- [ ] Manager-facing review UI — approve/revoke per user/app
-- [ ] Auto-revoke on campaign expiry (configurable grace period)
-- [ ] Evidence generation per review cycle (R2 artifact + compliance control linkage)
-- [ ] New D1 tables: `access_review_campaigns`, `access_review_items`, `access_review_decisions`
-- [ ] Files: `console-app/src/routes/console/access-reviews/`, new D1 migration, new automation action type `request_access_review`
+- [x] Campaign creation (scope: all apps / specific apps / departments) — `console-app/src/lib/server/access-reviews.ts`
+- [x] Manager-facing review UI — approve/revoke per user/app — `console-app/src/routes/api/access-reviews/`
+- [x] Auto-revoke on campaign expiry (configurable grace period) — `ai-orchestrator/src/lib/access-review-auto-revoke.ts`, runs in cron Duty 1
+- [x] Evidence generation per review cycle — decisions emit `access_review.completed` events to orchestrator; auto-revoke emits via `classifyEvent` + `storeEvidence`; both flow through evidence pipeline to `compliance_evidence` → scoring
+- [x] D1 tables: `access_review_campaigns`, `access_review_items`, `access_review_decisions` — migration `0021_access_reviews.sql`
+- [x] Automation action type `request_access_review` with compliance control mappings (SOC2 CC6.1, CC6.3, ISO27001 A.9.2.5, HIPAA 164.312(a)(1))
+- [x] Files: `console-app/src/routes/api/access-reviews/`, `ai-orchestrator/src/lib/access-review-auto-revoke.ts`, `migrations/0021_access_reviews.sql`
 
 ## Phase 9 — Trust Center (Compete with Vanta Trust Reports)
 

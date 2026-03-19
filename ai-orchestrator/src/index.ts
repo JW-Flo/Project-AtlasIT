@@ -229,7 +229,7 @@ const worker = {
           actionContext,
         ),
       ),
-      processExpiredCampaigns({ sharedDb, adapterUrls }),
+      processExpiredCampaigns({ sharedDb, adapterUrls, evidenceBucket: env.EVIDENCE }),
     ]);
 
     // ── Duty 2: Scheduled evidence collection from adapters ────────────────
