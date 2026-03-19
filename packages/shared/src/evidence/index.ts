@@ -16,3 +16,13 @@ export {
   type LockerWriteResult,
   type LockerDependencies,
 } from "./locker";
+
+export {
+  collectAdapterEvidence,
+  collectAllAdapterEvidence,
+  ADAPTER_EVIDENCE_REGISTRY,
+  type AdapterEvidenceConfig,
+  type AdapterEvidenceType,
+  type AdapterEvidenceResult,
+  type AdapterEvidenceItem,
+} from "./adapter-collector";
