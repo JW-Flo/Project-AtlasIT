@@ -208,6 +208,92 @@
   let linkingEvidenceId: number | null = null;
   let linkControlKey = "";
 
+  // Evidence tagging
+  interface EvidenceTag {
+    id: string;
+    tag: string;
+    tagType: string;
+    color: string | null;
+    createdBy: string;
+  }
+
+  let tagsByEvidence: Record<string, EvidenceTag[]> = {};
+  let taggingEvidenceId: string | null = null;
+  let newTagValue = "";
+  let newTagType: "label" | "flag" | "priority" | "status" = "label";
+  let availableTags: Array<{ tag: string; tag_type: string; color: string | null; usage_count: number }> = [];
+
+  const TAG_COLORS: Record<string, string> = {
+    label: "#6366f1",
+    flag: "#ef4444",
+    priority: "#f59e0b",
+    status: "#22c55e",
+  };
+
+  async function loadTenantTags() {
+    try {
+      const res = await fetch("/api/compliance/evidence/tags");
+      if (res.ok) {
+        const data = await res.json();
+        availableTags = data.tags || [];
+      }
+    } catch {}
+  }
+
+  async function loadEvidenceTags(evidenceId: string) {
+    try {
+      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`);
+      if (res.ok) {
+        const data = await res.json();
+        tagsByEvidence[evidenceId] = data.tags || [];
+        tagsByEvidence = tagsByEvidence; // trigger reactivity
+      }
+    } catch {}
+  }
+
+  async function addTag(evidenceId: string) {
+    if (!newTagValue.trim()) return;
+    try {
+      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tag: newTagValue.trim(),
+          tagType: newTagType,
+          color: TAG_COLORS[newTagType] || null,
+        }),
+      });
+      if (res.ok) {
+        newTagValue = "";
+        await loadEvidenceTags(evidenceId);
+        await loadTenantTags();
+      } else {
+        const data = await res.json();
+        pushToast({ message: data.error || "Failed to add tag", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to add tag", variant: "error" });
+    }
+  }
+
+  async function removeTag(evidenceId: string, tagId: string) {
+    try {
+      await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tagId }),
+      });
+      await loadEvidenceTags(evidenceId);
+    } catch {}
+  }
+
+  function startTagging(evidenceId: string) {
+    taggingEvidenceId = evidenceId;
+    if (!tagsByEvidence[evidenceId]) {
+      loadEvidenceTags(evidenceId);
+    }
+  }
+
   const INTERNAL_CONTROLS = [
     { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
     { key: "SOC2_CC2.2", framework: "SOC2", title: "Communication and information" },
@@ -326,6 +412,7 @@
 
   $: if (activeTab === "evidence" && evidenceItems.length === 0 && !evidenceLoading && !evidenceError) {
     loadEvidence();
+    loadTenantTags();
   }
 
   // Evidence feed (real-time evidence from automations)
@@ -803,6 +890,7 @@
                 <th class="px-4 py-3 font-medium">Pack</th>
                 <th class="px-4 py-3 font-medium">Subject</th>
                 <th class="px-4 py-3 font-medium">Date</th>
+                <th class="px-4 py-3 font-medium">Tags</th>
                 <th class="px-4 py-3 font-medium">Link to Control</th>
               </tr>
             </thead>
@@ -817,6 +905,59 @@
                   </td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
+                  <td class="px-4 py-3">
+                    <div class="flex flex-wrap items-center gap-1">
+                      {#if tagsByEvidence[String(item.id)]}
+                        {#each tagsByEvidence[String(item.id)] as tag}
+                          <span
+                            class="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                            style="background-color: {tag.color || TAG_COLORS[tag.tagType] || '#6b7280'}"
+                          >
+                            {tag.tag}
+                            <button
+                              type="button"
+                              class="ml-0.5 hover:opacity-70"
+                              on:click={() => removeTag(String(item.id), tag.id)}
+                              aria-label="Remove tag {tag.tag}"
+                            >&times;</button>
+                          </span>
+                        {/each}
+                      {/if}
+                      {#if taggingEvidenceId === String(item.id)}
+                        <div class="flex items-center gap-1">
+                          <input
+                            bind:value={newTagValue}
+                            placeholder="Tag..."
+                            list="tag-suggestions"
+                            class="h-6 w-24 rounded border border-input bg-background px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring"
+                            on:keydown={(e) => { if (e.key === "Enter") addTag(String(item.id)); }}
+                          />
+                          <select
+                            bind:value={newTagType}
+                            class="h-6 rounded border border-input bg-background px-1 text-[11px]"
+                          >
+                            <option value="label">Label</option>
+                            <option value="flag">Flag</option>
+                            <option value="priority">Priority</option>
+                            <option value="status">Status</option>
+                          </select>
+                          <button type="button" class="text-[11px] text-primary hover:underline" on:click={() => addTag(String(item.id))}>Add</button>
+                          <button type="button" class="text-[11px] text-muted-foreground hover:underline" on:click={() => { taggingEvidenceId = null; newTagValue = ""; }}>Done</button>
+                        </div>
+                      {:else}
+                        <button
+                          type="button"
+                          class="text-[11px] text-muted-foreground hover:text-primary transition-colors"
+                          on:click={() => startTagging(String(item.id))}
+                        >+ tag</button>
+                      {/if}
+                    </div>
+                    <datalist id="tag-suggestions">
+                      {#each availableTags as at}
+                        <option value={at.tag}>{at.tag} ({at.usage_count})</option>
+                      {/each}
+                    </datalist>
+                  </td>
                   <td class="px-4 py-3">
                     {#if item.linkedControl}
                       <Badge variant="success">{item.linkedControl}</Badge>

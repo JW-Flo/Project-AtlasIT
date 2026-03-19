@@ -145,6 +145,15 @@
   let nlResult: any = null;
   let nlError: string | null = null;
 
+  // Compliance mapping for rule detail
+  let expandedRuleId: string | null = null;
+  let complianceLoading = false;
+  let complianceData: {
+    ruleName: string;
+    actions: Array<{ type: string; controls: Array<{ framework: string; controlId: string; controlName: string; evidenceType: string }> }>;
+    summary: { totalControls: number; frameworks: string[] };
+  } | null = null;
+
   // ---- Data fetching --------------------------------------------------------
   async function fetchAll() {
     loading = true;
@@ -355,6 +364,28 @@
   function closeExecutionDetail() {
     selectedExecution = null;
     loadingDetail = false;
+  }
+
+  // ---- Compliance Mapping ---------------------------------------------------
+  async function toggleComplianceView(ruleId: string) {
+    if (expandedRuleId === ruleId) {
+      expandedRuleId = null;
+      complianceData = null;
+      return;
+    }
+    expandedRuleId = ruleId;
+    complianceLoading = true;
+    complianceData = null;
+    try {
+      const res = await fetch(`/api/automation/rules/${ruleId}/compliance`);
+      if (res.ok) {
+        complianceData = await res.json();
+      }
+    } catch {
+      // silently fail
+    } finally {
+      complianceLoading = false;
+    }
   }
 
   // ---- NL Builder -----------------------------------------------------------
@@ -877,8 +908,53 @@
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 </button>
               </div>
-              {#if rule.description}
-                <p class="text-xs text-muted-foreground mt-2 ml-14">{rule.description}</p>
+              <div class="flex items-center gap-2 mt-2 ml-14">
+                {#if rule.description}
+                  <p class="text-xs text-muted-foreground flex-1">{rule.description}</p>
+                {/if}
+                <button
+                  type="button"
+                  class="text-[11px] text-muted-foreground hover:text-primary transition-colors shrink-0"
+                  on:click={() => toggleComplianceView(rule.id)}
+                >
+                  {expandedRuleId === rule.id ? "Hide" : "Show"} Compliance Coverage
+                </button>
+              </div>
+
+              {#if expandedRuleId === rule.id}
+                <div class="mt-3 ml-14 p-3 rounded-md bg-muted/50 border border-border/50">
+                  {#if complianceLoading}
+                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Skeleton class="h-3 w-3 rounded-full" /> Loading compliance data...
+                    </div>
+                  {:else if complianceData}
+                    <div class="space-y-3">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium">{complianceData.summary.totalControls} control{complianceData.summary.totalControls !== 1 ? 's' : ''} covered</span>
+                        {#each complianceData.summary.frameworks as fw}
+                          <Badge variant="outline" class="text-[10px]">{fw}</Badge>
+                        {/each}
+                      </div>
+                      {#each complianceData.actions as action}
+                        {#if action.controls.length > 0}
+                          <div>
+                            <div class="text-[11px] font-medium text-muted-foreground mb-1">{triggerLabel(action.type) || action.type.replace(/_/g, ' ')}</div>
+                            <div class="flex flex-wrap gap-1">
+                              {#each action.controls as ctrl}
+                                <span class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] bg-background" title="{ctrl.controlName} ({ctrl.evidenceType})">
+                                  <span class="font-medium">{ctrl.framework}</span>
+                                  <span class="text-muted-foreground">{ctrl.controlId}</span>
+                                </span>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
+                  {:else}
+                    <p class="text-xs text-muted-foreground">No compliance data available for this rule.</p>
+                  {/if}
+                </div>
               {/if}
             </CardContent>
           </Card>
