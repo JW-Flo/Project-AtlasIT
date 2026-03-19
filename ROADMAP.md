@@ -114,14 +114,14 @@ Directory Event / Schedule / Webhook
 - [x] Add missing JML workflow YAMLs — PR #163
 - [x] Add Zscaler Zero Trust adapter (ZIA + ZPA + ZIdentity, OAuth2) — PR #166
 
-## Phase 6 — Contract Stability & Auth Hardening (In Progress)
+## Phase 6 — Contract Stability & Auth Hardening ✅
 
 - [x] Expand RBAC permission matrix — 27 mutation routes guarded (PR #164)
 - [x] Standardize DTO mapping (snake_case → camelCase) across all BFF proxy routes (PR #165)
-- [ ] Normalize error handling: no raw HTML/JSON crashes surfaced to UI; all errors must be actionable
-- [ ] Add startup-failing assertions for missing prod secrets (CRED_ENCRYPTION_KEY, D1 bindings, etc.)
-- [ ] CF Access JWT signing key rotation readiness (dynamic key fetch, not hard-pinned)
-- [ ] Slack webhook verification alignment with Slack's replay window algorithm
+- [x] Normalize error handling: `safeProxyFetch` wrapper with standard error shape (code, message, correlationId)
+- [x] Startup-failing assertions for missing prod secrets (slack-agent, dispatch-worker, onboarding)
+- [x] CF Access JWT signing key rotation readiness (dynamic JWKS fetch + rotation event logging)
+- [x] Slack webhook verification alignment (HMAC-SHA256, 5-min replay window, correlationId on failures)
 
 ## Phase 7 — Compliance-as-Automation (Unique Moat — In Progress)
 
