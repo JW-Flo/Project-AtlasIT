@@ -93,7 +93,7 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 ### Components
 
 - `console-app/` — SvelteKit + Tailwind (Cloudflare Pages). Primary UI with onboarding, compliance, directory, marketplace, workflows, policies, incidents, access requests, admin panel
-- `compliance-worker/` — Compliance scoring, evidence hashing, policy evaluation (Rego-based)
+- `compliance-worker/` — Evidence-grounded compliance scoring, adapter evidence collection, policy evaluation (stub — hashing only, no Rego runtime)
 - `ai-orchestrator/` — Event routing, workflow execution (WorkflowDO), queue consumer, DLQ
 - `core-api/` — Central API (Hono): tenants, events, agents, flags, credentials, dead-letter
 - `onboarding/` — Tenant provisioning

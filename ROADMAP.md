@@ -43,7 +43,7 @@ Directory Event / Schedule / Webhook
 - **WorkflowDO** — durable joiner/mover/leaver with per-step timeouts and DLQ-backed compensation
 - **35 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, Salesforce, HubSpot, and 22 more
 - **MCP agent bus** — HMAC-verified agent webhooks; Slack notifier live, extensible to PagerDuty, email, Jira
-- **compliance-worker** — Rego-based policy eval, R2 evidence storage, auto-scoring across 5 frameworks
+- **compliance-worker** — Evidence-grounded scoring across 5 frameworks, R2 evidence storage, adapter evidence collection
 
 > Everything in the phases below is infrastructure to make these automations reliable, observable, and trustworthy.
 
@@ -123,25 +123,75 @@ Directory Event / Schedule / Webhook
 - [x] CF Access JWT signing key rotation readiness (dynamic JWKS fetch + rotation event logging)
 - [x] Slack webhook verification alignment (HMAC-SHA256, 5-min replay window, correlationId on failures)
 
-## Phase 7 — Compliance-as-Automation (Unique Moat) ✅
+## Phase 7 — Compliance-as-Automation (Unique Moat) ⚠️ Partially Complete
 
 > **Strategic context**: No competitor combines IT lifecycle automation + compliance evidence collection.
 > Vanta/Drata collect evidence passively; AtlasIT creates evidence actively through operations.
 > Every JML workflow step should auto-emit tamper-evident compliance artifacts — making compliance
 > a byproduct of running IT operations, not a separate tool.
 
-- [x] Expand CDT rules from 7 → 60 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
+### Completed
+
+- [x] Expand CDT rules from 7 → 53 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
 - [x] Map 9 automation action types to 40+ compliance control keys (`packages/shared/src/automation/compliance-mapping.ts`)
-- [x] Auto-link workflow evidence envelopes to compliance controls via evidence classifier + locker
-- [x] Evidence pipeline: event → classify → R2 content-addressed storage + D1 queryable index
-- [x] Continuous compliance score from operational data (evidence-driven, recency-based)
+- [x] Evidence classifier maps 30+ event types to compliance controls (`packages/shared/src/evidence/classifier.ts`)
+- [x] Evidence locker writes to R2 (content-addressed) + D1 (`compliance_evidence`) (`packages/shared/src/evidence/locker.ts`)
+- [x] CDT evaluate endpoint computes evidence-grounded scores per framework (`compliance-worker GET /api/v1/cdt/evaluate`)
 - [x] JML engine auto-emits tamper-evident evidence on every joiner/mover/leaver classification
 - [x] Enforce leaver grace period via WorkflowDO alarm-based delay (leaverGraceMs)
 - [x] Generate mover/leaver workflows for all 19 adapters (full JML coverage)
 - [x] GDPR Article 5 formal control definitions in CDT rules (7 rules: Art.5(1)(a)-(f) + Art.5(2))
 - [x] Manual evidence upload UI with SHA-256 hashing, pack types, and control linking
-- [x] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
+- [x] Adapter evidence endpoints for 6 adapters (GitHub, Okta, Google Workspace, M365, AWS, Slack)
+- [x] `POST /api/v1/evidence/collect` pulls evidence from connected adapters via `ADAPTER_URLS`
+- [x] CDT twin Worker with mTLS + HMAC auth, idempotency, remediation queue
 - [x] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`, `adapters/*/src/index.ts`
+
+### Integration Gaps (Phase 7.5 — see below)
+
+- [ ] **Scoring paths are disconnected** — UI reads `tenant_preferences.compliance_controls` (manual checklist); compliance-worker computes evidence-grounded scores via `/api/v1/cdt/evaluate` but these never feed back to the UI
+- [ ] **`storeEvidence()` is never called** — classifier + locker are defined in `packages/shared` but no caller wires them into the orchestrator event consumer or any route handler
+- [ ] **CDT twin runs 7 of 53 rules** — `/twin/event` handler has a hardcoded 7-control subset; remaining 46 rules are dead code
+- [ ] **CDT twin state is isolated in KV** — no other component reads the twin's KV state or R2 evidence blobs
+- [ ] **No scheduled evidence collection** — `POST /api/v1/evidence/collect` works but nothing calls it on a schedule
+- [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
+
+## Phase 7.5 — Compliance Integration (Close the Loop)
+
+> **Why this matters**: All compliance building blocks exist but are disconnected. The dashboard
+> shows a manual checklist while real evidence-grounded scores sit unused. Closing these gaps
+> turns the compliance system from a demo into a differentiator.
+
+### P0 — Unify Scoring (UI shows real evidence-grounded scores)
+
+- [ ] Console `/api/tenant-compliance/scores` reads from `compliance_evidence` (via compliance-worker CDT evaluate) instead of `tenant_preferences.compliance_controls`
+- [ ] Evidence-grounded scores write to `compliance_scores` + `compliance_history` tables (same as today)
+- [ ] Deprecate `tenant_preferences.compliance_controls` as score source; retain for manual status overrides only
+
+### P1 — Wire Evidence Pipeline End-to-End
+
+- [ ] Orchestrator event consumer calls `storeEvidence()` for every classified event flowing through the system
+- [ ] Adapter evidence collection runs on a schedule (cron in `scheduler-worker` or orchestrator automation rule)
+- [ ] Evidence from adapters and events appears in `compliance_evidence` → feeds scoring → feeds UI
+
+### P2 — Expand CDT Twin Coverage
+
+- [ ] CDT twin `/twin/event` evaluates all 53 rules (remove hardcoded 7-control subset)
+- [ ] Bridge CDT twin KV state back to `compliance_evidence` or deprecate twin in favor of compliance-worker path
+- [ ] Expand remediation catalog beyond 2 controls (currently: `SOC2-CC6.2`, `ISO-27001-A.9.2.3` only)
+
+### P3 — Policy Evaluation
+
+- [ ] Replace stub `evaluatePolicy()` with real policy logic (Boolean allow/deny decisions)
+- [ ] Wire policy evaluation into compliance scoring (policy pass/fail → control status)
+
+### Files
+
+- `console-app/src/routes/api/tenant-compliance/scores/+server.ts`
+- `ai-orchestrator/src/lib/event-consumer.ts` (or equivalent)
+- `scheduler-worker/` (add evidence collection cron)
+- `shared/services/cdt/src/index.ts` (expand twin evaluation loop)
+- `compliance-worker/src/modules/policies/evaluation.ts`
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 

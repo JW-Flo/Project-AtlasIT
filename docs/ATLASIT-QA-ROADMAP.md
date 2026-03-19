@@ -16,7 +16,7 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 |--------|------|-------|--------|---------|
 | Core API (`core-api/`) | ✅ | ✅ | ✅ | Hono app: tenants, events, agents, flags, credentials, DLQ |
 | AI Orchestrator (`ai-orchestrator/`) | ✅ | ✅ | ✅ | WorkflowDO, event routing, queue consumer, DLQ |
-| Compliance Worker (`compliance-worker/`) | ✅ | ✅ | ✅ | Scoring, policy evaluation (Rego), evidence hashing |
+| Compliance Worker (`compliance-worker/`) | ✅ | ✅ | ✅ | Evidence-grounded scoring, evidence collection, policy eval (stub) |
 | Onboarding (`onboarding/`) | ✅ | ✅ | ✅ | Tenant provisioning |
 | Console App (`console-app/`) | ✅ | ✅ | ✅ | SvelteKit + Tailwind on CF Pages |
 | Slack Agent (`slack-notification-agent/`) | ✅ | ✅ | ✅ | MCP event → Slack webhook |
@@ -78,9 +78,41 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 | 3 — Marketplace & Integrations | ✅ | Marketplace API, connectors, credential vault, feature flags |
 | 4 — Hardening & Production | ✅ (PR #141) | Okta SCIM, k6 load tests, IaC drift detection, OIDC worker, CF observability |
 | 5 — Adapter Scaffolding | ✅ (PR #158, #159) | 33 adapters: registry, manifests, scaffolds, 9 core-tier implementations, CI/CD |
-| 6 — Contract Stability & Auth Hardening | Next | DTO normalization, error handling, RBAC expansion, secret assertions |
-| 7 — Directory Reality | Future | Real provider sync, directory CRUD, group→app mapping |
-| 8 — Market Readiness | Future | Billing, LLM policy refinement, anomaly detection |
+| 6 — Contract Stability & Auth Hardening | ✅ (PR #164, #165) | RBAC expansion, DTO normalization, safeProxyFetch, startup assertions |
+| 7 — Compliance-as-Automation | ⚠️ Partial | 53 CDT rules, evidence classifier/locker, JML auto-evidence. **Gaps: scoring disconnected, storeEvidence unwired, CDT twin runs 7/53 rules** |
+| 7.5 — Compliance Integration | Next | Unify scoring paths, wire evidence pipeline, expand CDT twin, scheduled collection |
+| 8 — Access Reviews | Future | Campaign creation, manager review UI, auto-revoke, evidence generation |
+| 9 — Trust Center | Future | Public compliance portal, PDF export |
+
+## 9. Compliance System Integration Audit (March 2026)
+
+The compliance system has three disconnected evaluation paths discovered during deep code audit:
+
+| Path | What It Does | Where Scores Live | Used By UI? |
+|------|-------------|-------------------|-------------|
+| **A: UI-Driven** | Manual checklist + shallow auto-promotion | `tenant_preferences.compliance_controls` | ✅ Yes — this is what users see |
+| **B: Evidence-Grounded** | Queries `compliance_evidence` for recency/count per control | Returned from `GET /api/v1/cdt/evaluate` | ❌ No — never feeds back to UI |
+| **C: CDT Twin** | Evaluates CdtEvent payloads against rule functions | KV (`STATE_NS`) + R2 (`EVIDENCE_BUCKET`) | ❌ No — isolated, nothing reads KV |
+
+### Critical Gaps
+
+| # | Gap | Impact | Priority |
+|---|-----|--------|----------|
+| 1 | UI scoring reads manual checklist, not real evidence | Dashboard shows stale/inaccurate compliance posture | **P0** |
+| 2 | `storeEvidence()` (classifier + locker) is never called | Evidence pipeline is defined but disconnected — no automatic evidence ingestion | **P1** |
+| 3 | CDT twin runs 7 of 53 rules (hardcoded subset) | 46 rules are dead code | **P2** |
+| 4 | CDT twin KV state is invisible to rest of platform | Twin evaluations have no downstream effect | **P2** |
+| 5 | No scheduled evidence collection | `POST /api/v1/evidence/collect` works but nothing invokes it | **P1** |
+| 6 | `evaluatePolicy()` is a hash stub, not real policy logic | Policy evaluation claims are aspirational | **P3** |
+
+### What Works End-to-End Today
+
+- WorkflowDO + queue consumer + step executor (fully functional)
+- JML auto-trigger: `user.created`/`user.deactivated` → provision/deprovision workflows
+- Orchestrator cron (`*/5 * * * *`) + automation rules
+- Manual evidence upload with SHA-256 hashing and control linking
+- `POST /api/v1/evidence/collect` (functional if `ADAPTER_URLS` configured)
+- 6 adapter evidence endpoints (GitHub, Okta, Google Workspace, M365, AWS, Slack)
 
 ---
 
