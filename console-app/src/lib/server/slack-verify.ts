@@ -53,6 +53,7 @@ export async function requireSlackSignature(
   request: Request,
   env: Record<string, unknown>,
 ): Promise<{ body: string } | Response> {
+  const correlationId = crypto.randomUUID();
   const signingSecret = env["SLACK_SIGNING_SECRET"] as string | undefined;
   if (!signingSecret) {
     console.error(
@@ -78,13 +79,14 @@ export async function requireSlackSignature(
       JSON.stringify({
         level: "warn",
         event: "slack.invalid_signature",
+        correlationId,
         hasTimestamp: !!timestamp,
         hasSignature: !!signature,
         bodyLength: body.length,
         secretLength: signingSecret.length,
       }),
     );
-    return new Response(JSON.stringify({ error: "invalid_signature" }), {
+    return new Response(JSON.stringify({ error: "invalid_signature", correlationId }), {
       status: 401,
     });
   }

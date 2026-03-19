@@ -20,28 +20,28 @@ AtlasIT is a **Cloudflare-native IT automation and compliance platform** for sma
 Directory Event / Schedule / Webhook
   ↓ AutomationDO (dedup + rate-limit + conditions)
   ↓ WorkflowDO (durable steps, retry, compensation)
-  ↓ Adapter calls (provision / revoke / sync across 33 apps)
+  ↓ Adapter calls (provision / revoke / sync across 35 apps)
   ↓ Evidence emitted → compliance-worker scores
   ↓ Score change → new event → rules re-evaluate
 ```
 
 ### No-Brainer Backend Automations
 
-| Scenario                    | Trigger                              | What Happens Automatically                                                                 |
-| --------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| **New hire onboarding**     | `user.created` from Okta/M365/Google | Provision GitHub, Jira, Slack, email + all role-assigned apps; notify manager on Slack     |
-| **Employee offboarding**    | `user.deactivated`                   | Revoke access across all connected apps; emit offboarding evidence; create audit record    |
-| **Department transfer**     | `group.membership_changed`           | Update app entitlements, reassign RBAC roles, re-sync directory                            |
-| **App connected**           | `app_connected`                      | Auto-provision existing users that match group rules; start health checks                  |
-| **Compliance scan**         | Cron schedule                        | Collect evidence from connected tools, re-score controls, create incidents on failures     |
-| **Policy violation**        | `compliance_score_changed`           | Auto-create incident, notify ops via Slack, trigger remediation workflow                   |
-| **Access request approved** | Workflow gate cleared                | Provision app access within seconds, no manual ops steps                                   |
+| Scenario                    | Trigger                              | What Happens Automatically                                                              |
+| --------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------- |
+| **New hire onboarding**     | `user.created` from Okta/M365/Google | Provision GitHub, Jira, Slack, email + all role-assigned apps; notify manager on Slack  |
+| **Employee offboarding**    | `user.deactivated`                   | Revoke access across all connected apps; emit offboarding evidence; create audit record |
+| **Department transfer**     | `group.membership_changed`           | Update app entitlements, reassign RBAC roles, re-sync directory                         |
+| **App connected**           | `app_connected`                      | Auto-provision existing users that match group rules; start health checks               |
+| **Compliance scan**         | Cron schedule                        | Collect evidence from connected tools, re-score controls, create incidents on failures  |
+| **Policy violation**        | `compliance_score_changed`           | Auto-create incident, notify ops via Slack, trigger remediation workflow                |
+| **Access request approved** | Workflow gate cleared                | Provision app access within seconds, no manual ops steps                                |
 
 ### Components That Make It Real
 
 - **AutomationDO** — per-tenant rule engine; 9 trigger types, 8 action types, 5-min dedup TTL
 - **WorkflowDO** — durable joiner/mover/leaver with per-step timeouts and DLQ-backed compensation
-- **33 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, Salesforce, HubSpot, and 20 more
+- **35 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, Salesforce, HubSpot, and 22 more
 - **MCP agent bus** — HMAC-verified agent webhooks; Slack notifier live, extensible to PagerDuty, email, Jira
 - **compliance-worker** — Rego-based policy eval, R2 evidence storage, auto-scoring across 5 frameworks
 
@@ -101,45 +101,47 @@ Directory Event / Schedule / Webhook
 
 ## Phase 5 — Adapter Scaffolding ✅ (PR #158, #159, #163, #166)
 
-- [x] Registry data for all 33 apps (`shared/integrations/registry-detailed.ts`)
+- [x] Registry data for all 35 apps (`shared/integrations/registry-detailed.ts`)
 - [x] ConnectorManifest templates for all apps (`packages/connector-schema/src/templates.ts`, 2300+ lines)
 - [x] Scaffold all adapters via `adapter-gen` into `adapters/<slug>/` (PR #158)
 - [x] Implement 21 SaaS adapters with directory sync, webhooks, and auth (PR #159)
 - [x] Hand-write core-tier implementations (9 apps): Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure, + Okta, Google Workspace (production)
-- [x] Update `adapters/registry.json` with all 33 entries
+- [x] Update `adapters/registry.json` with all 35 entries
 - [x] Add adapter deploy jobs to CI/CD (`deploy-on-merge.yml` — dynamic matrix)
-- [x] Expand adapter catalog from 24 → 33 apps (added Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva)
+- [x] Expand adapter catalog from 24 → 35 apps (added Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva, Zscaler)
 - [x] Update console-app integration statuses to match registry (planned → alpha/beta) — PR #163
 - [x] Seed marketplace DB with all 33 apps — PR #163
 - [x] Add missing JML workflow YAMLs — PR #163
 - [x] Add Zscaler Zero Trust adapter (ZIA + ZPA + ZIdentity, OAuth2) — PR #166
 
-## Phase 6 — Contract Stability & Auth Hardening (In Progress)
+## Phase 6 — Contract Stability & Auth Hardening ✅
 
 - [x] Expand RBAC permission matrix — 27 mutation routes guarded (PR #164)
 - [x] Standardize DTO mapping (snake_case → camelCase) across all BFF proxy routes (PR #165)
-- [ ] Normalize error handling: no raw HTML/JSON crashes surfaced to UI; all errors must be actionable
-- [ ] Add startup-failing assertions for missing prod secrets (CRED_ENCRYPTION_KEY, D1 bindings, etc.)
-- [ ] CF Access JWT signing key rotation readiness (dynamic key fetch, not hard-pinned)
-- [ ] Slack webhook verification alignment with Slack's replay window algorithm
+- [x] Normalize error handling: `safeProxyFetch` wrapper with standard error shape (code, message, correlationId)
+- [x] Startup-failing assertions for missing prod secrets (slack-agent, dispatch-worker, onboarding)
+- [x] CF Access JWT signing key rotation readiness (dynamic JWKS fetch + rotation event logging)
+- [x] Slack webhook verification alignment (HMAC-SHA256, 5-min replay window, correlationId on failures)
 
-## Phase 7 — Compliance-as-Automation (Unique Moat — Build Next)
+## Phase 7 — Compliance-as-Automation (Unique Moat — In Progress)
 
 > **Strategic context**: No competitor combines IT lifecycle automation + compliance evidence collection.
 > Vanta/Drata collect evidence passively; AtlasIT creates evidence actively through operations.
 > Every JML workflow step should auto-emit tamper-evident compliance artifacts — making compliance
 > a byproduct of running IT operations, not a separate tool.
 
-- [ ] Expand CDT rules from 7 → 50+ (cover all major SOC 2 + ISO 27001 controls)
-- [ ] Map automation action types to compliance control keys
-  - `revoke_app_access` → SOC2_CC6.1 (logical access removal), SOC2_CC6.2
-  - `provision_app_access` → SOC2_CC6.1 (access provisioning), ISO27001_A.9.2.2
-  - `run_workflow` (leaver) → SOC2_CC6.3 (offboarding evidence)
-  - `create_incident` → SOC2_CC7.4 (incident response)
-- [ ] Auto-link workflow evidence envelopes to compliance controls in `compliance-worker`
+- [x] Expand CDT rules from 7 → 60 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
+- [x] Map 9 automation action types to 40+ compliance control keys (`packages/shared/src/automation/compliance-mapping.ts`)
+- [x] Auto-link workflow evidence envelopes to compliance controls via evidence classifier + locker
+- [x] Evidence pipeline: event → classify → R2 content-addressed storage + D1 queryable index
+- [x] Continuous compliance score from operational data (evidence-driven, recency-based)
+- [x] JML engine auto-emits tamper-evident evidence on every joiner/mover/leaver classification
+- [x] Enforce leaver grace period via WorkflowDO alarm-based delay (leaverGraceMs)
+- [x] Generate mover/leaver workflows for all 19 adapters (full JML coverage)
+- [x] GDPR Article 5 formal control definitions in CDT rules (7 rules: Art.5(1)(a)-(f) + Art.5(2))
+- [x] Manual evidence upload UI with SHA-256 hashing, pack types, and control linking
 - [ ] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
-- [ ] Continuous compliance score from operational data (not manual checkbox)
-- [ ] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/automation-evaluator.ts`
+- [ ] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 
@@ -231,43 +233,6 @@ Directory Event / Schedule / Webhook
 - [ ] Plugin API for third-party compliance packs
 - [ ] Advanced analytics and reporting
 
-## Phase 7 — Directory Reality (Future)
-
-- [ ] Replace synthetic directory sync with real provider sync (Okta, Google Workspace, Microsoft 365)
-- [ ] Directory CRUD + detail pages (users / groups / memberships)
-- [ ] Surface "Coming Soon" for unimplemented sync rather than silent 501
-- [ ] Group→app mapping based on real directory data (Engineering→GitHub/Jira etc.)
-
-## Phase 8 — Marketplace & OAuth Hardening (Future)
-
-- [ ] OAuth failure UX: actionable error messages + retry paths (no raw redirect errors)
-- [ ] Connector health checks + "status honesty" UI (planned → disabled; functional → enabled)
-- [ ] Credential encryption enforcement: remove silent plaintext fallback in prod
-- [ ] Admin endpoint isolation: cron endpoints behind internal-only access
-
-## Phase 9 — Workflow Trust & Evidence Integrity (Future)
-
-- [ ] Workflow execution reliability: idempotency, DLQ visibility in UI, confidence threshold surfacing
-- [ ] Evidence/policy integrity as first-class UX (ingest → verify → display pipeline)
-- [ ] Execution history UI with step-level status and compensation visibility
-- [ ] R2 evidence deletion protections and access scoping
-
-## Phase 10 — Continuous Validation (Future)
-
-- [ ] Scheduled synthetic crawl + a11y budgets (Playwright + axe, WCAG 2.2)
-- [ ] k6 smoke SLO gates for key endpoints (LCP ≤ 2.5s, INP ≤ 200ms at p75)
-- [ ] Security scanning: Snyk (pnpm monorepo) + ZAP baseline
-- [ ] Platform Status "truthfulness" SLO (functional checks, not just reachability)
-- [ ] Journey completion rate metrics: login → dashboard → connect → workflow → evidence
-
-## Phase 11 — Market Readiness (Future)
-
-- [ ] Multi-tenant billing and usage metering
-- [ ] LLM-backed policy refinement with redline diff
-- [ ] Real-time risk anomaly detection
-- [ ] Plugin API for third-party compliance packs
-- [ ] Advanced analytics and reporting
-
 ## Long-Term Platform Modules
 
 AtlasIT evolves into a modular platform:
@@ -286,7 +251,7 @@ AtlasIT evolves into a modular platform:
 | Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
 | Config              | Environment gating via wrangler.toml [env.*] sections                     |
 | Performance         | Precompute aggregates into KV; Queues for heavy ops                       |
-| Testing             | Vitest + Miniflare; 356 tests (49 files)                                  |
+| Testing             | Vitest + Miniflare; 719 tests (118 files)                                 |
 | Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
 | IaC                 | Terraform + OPA policies + daily drift detection                          |
 | Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |

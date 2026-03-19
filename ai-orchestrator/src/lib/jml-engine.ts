@@ -356,6 +356,7 @@ interface WorkflowStepDef {
   handler: string;
   timeoutMs: number;
   compensate?: string;
+  delayMs?: number;
 }
 
 function buildJmlSteps(
@@ -398,15 +399,23 @@ function buildJmlSteps(
   }
 
   if (classification.action === "leaver") {
-    // Revoke each app — respect grace period
+    // Apply grace period delay to the first revocation step if configured
+    let graceApplied = false;
     for (const app of classification.appsToRevoke) {
       if (!adapterUrls[app.appId]) continue;
-      main.push({
+      const step: WorkflowStepDef = {
         id: `revoke_${app.appId}`,
         name: `Revoke ${app.appId}`,
         handler: `${app.appId}.deprovision`,
         timeoutMs: 30_000,
-      });
+      };
+      // Apply grace period delay to the first revocation step
+      if (!graceApplied && policy.leaverGraceMs > 0) {
+        step.delayMs = policy.leaverGraceMs;
+        step.name = `Revoke ${app.appId} (after ${Math.round(policy.leaverGraceMs / 60_000)}min grace)`;
+        graceApplied = true;
+      }
+      main.push(step);
     }
   }
 
