@@ -132,7 +132,7 @@ Directory Event / Schedule / Webhook
 
 ### Completed
 
-- [x] Expand CDT rules from 7 → 53 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
+- [x] Expand CDT rules from 7 → 60 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
 - [x] Map 9 automation action types to 40+ compliance control keys (`packages/shared/src/automation/compliance-mapping.ts`)
 - [x] Evidence classifier maps 30+ event types to compliance controls (`packages/shared/src/evidence/classifier.ts`)
 - [x] Evidence locker writes to R2 (content-addressed) + D1 (`compliance_evidence`) (`packages/shared/src/evidence/locker.ts`)
@@ -151,7 +151,7 @@ Directory Event / Schedule / Webhook
 
 - [x] **Scoring paths unified** — Console `/api/tenant-compliance/scores` now reads evidence-grounded scores from compliance-worker CDT evaluate endpoint, falling back to cached scores
 - [x] **`storeEvidence()` already wired** — orchestrator event consumer (`ai-orchestrator/src/routes/events.ts`) classifies and stores every event via `waitUntil`
-- [x] **CDT twin now evaluates all 53 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
+- [x] **CDT twin now evaluates all 60 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
 - [x] **Scheduled evidence collection** — orchestrator cron (Duty 2) collects adapter evidence for all tenants every 5 minutes
 - [ ] **CDT twin state is isolated in KV** — no other component reads the twin's KV state or R2 evidence blobs
 - [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
@@ -175,7 +175,7 @@ Directory Event / Schedule / Webhook
 
 ### P2 — Expand CDT Twin Coverage ✅
 
-- [x] CDT twin `/twin/event` evaluates all 53 rules (exported `ALL_CONTROL_IDS` from engine, replaced hardcoded list)
+- [x] CDT twin `/twin/event` evaluates all 60 rules (exported `ALL_CONTROL_IDS` from engine, replaced hardcoded list)
 - [ ] Bridge CDT twin KV state back to `compliance_evidence` or deprecate twin in favor of compliance-worker path
 - [ ] Expand remediation catalog beyond 2 controls (currently: `SOC2-CC6.2`, `ISO-27001-A.9.2.3` only)
 
@@ -188,8 +188,8 @@ Directory Event / Schedule / Webhook
 
 - `console-app/src/routes/api/tenant-compliance/scores/+server.ts` — unified scoring via compliance-worker
 - `ai-orchestrator/src/index.ts` — added Duty 2: scheduled adapter evidence collection
-- `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (53 controls)
-- `shared/services/cdt/src/index.ts` — twin now evaluates all 53 rules
+- `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (60 controls)
+- `shared/services/cdt/src/index.ts` — twin now evaluates all 60 rules
 
 ## Phase 8 — Access Reviews (Table Stakes for IGA)
 

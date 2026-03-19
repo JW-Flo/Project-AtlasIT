@@ -84,6 +84,39 @@ const CLASSIFICATION_RULES = [
             { framework: "ISO27001", controlId: "A.9.2.3", controlName: "Privileged access management", impact: "neutral", confidence: 0.75, category: "role_change", reasoning: "Group change may affect privileged access" },
         ],
     },
+    // ── JML: Directory-scoped user lifecycle events ─────────────────────────
+    // These are the canonical event types emitted when a directory sync
+    // produces a join/move/leave action (as opposed to raw adapter user.* events).
+    {
+        eventPattern: "directory.user.joined",
+        controls: [
+            { framework: "SOC2", controlId: "CC6.1", controlName: "Logical access provisioning", impact: "positive", confidence: 0.95, category: "onboarding", reasoning: "New joiner detected via directory sync — access provisioning initiated" },
+            { framework: "SOC2", controlId: "CC6.2", controlName: "Credential management", impact: "positive", confidence: 0.85, category: "onboarding", reasoning: "User credentials issued through controlled provisioning process" },
+            { framework: "ISO27001", controlId: "A.9.2.1", controlName: "User registration", impact: "positive", confidence: 0.95, category: "onboarding", reasoning: "User formally registered via directory joiner workflow" },
+            { framework: "ISO27001", controlId: "A.9.2.2", controlName: "User access provisioning", impact: "positive", confidence: 0.90, category: "onboarding", reasoning: "Access provisioned through formal JML joiner process" },
+            { framework: "NIST_CSF", controlId: "PR.AC-1", controlName: "Identity management", impact: "positive", confidence: 0.90, category: "onboarding", reasoning: "Identity lifecycle managed via automated joiner workflow" },
+        ],
+    },
+    {
+        eventPattern: "directory.user.moved",
+        controls: [
+            { framework: "SOC2", controlId: "CC6.1", controlName: "Access rights review on role change", impact: "positive", confidence: 0.90, category: "role_change", reasoning: "Mover detected — old access revoked and new access provisioned per role change" },
+            { framework: "SOC2", controlId: "CC6.3", controlName: "Access modification on transfer", impact: "positive", confidence: 0.90, category: "role_change", reasoning: "Access entitlements updated to reflect new department or role" },
+            { framework: "ISO27001", controlId: "A.9.2.5", controlName: "Review of user access rights", impact: "positive", confidence: 0.90, category: "role_change", reasoning: "User move triggered formal access rights review and update" },
+            { framework: "ISO27001", controlId: "A.9.2.6", controlName: "Adjustment of access rights", impact: "positive", confidence: 0.85, category: "role_change", reasoning: "Stale access rights adjusted to reflect new organisational position" },
+            { framework: "NIST_CSF", controlId: "PR.AC-4", controlName: "Least privilege", impact: "positive", confidence: 0.85, category: "role_change", reasoning: "Least-privilege enforced — excess entitlements revoked on move" },
+        ],
+    },
+    {
+        eventPattern: "directory.user.left",
+        controls: [
+            { framework: "SOC2", controlId: "CC6.3", controlName: "Access removal on termination", impact: "positive", confidence: 0.95, category: "offboarding", reasoning: "Leaver detected via directory sync — access revocation initiated" },
+            { framework: "SOC2", controlId: "CC6.1", controlName: "Logical access removal", impact: "positive", confidence: 0.90, category: "offboarding", reasoning: "All logical access rights revoked through formal leaver process" },
+            { framework: "ISO27001", controlId: "A.9.2.6", controlName: "Removal of access rights", impact: "positive", confidence: 0.95, category: "offboarding", reasoning: "Access rights removed following user departure from directory" },
+            { framework: "ISO27001", controlId: "A.9.2.1", controlName: "User de-registration", impact: "positive", confidence: 0.90, category: "offboarding", reasoning: "User de-registered from directory via formal leaver workflow" },
+            { framework: "GDPR", controlId: "Art.5(1)(f)", controlName: "Integrity and confidentiality", impact: "positive", confidence: 0.85, category: "offboarding", reasoning: "Data access terminated for departed user — confidentiality maintained" },
+        ],
+    },
     // ── Directory Sync ──────────────────────────────────────────────────────
     {
         eventPattern: "directory.synced",
