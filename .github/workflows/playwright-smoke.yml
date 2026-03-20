@@ -2,7 +2,6 @@ name: playwright-smoke
 
 on:
     workflow_dispatch:
-    deployment_status:
 
 jobs:
     smoke:
