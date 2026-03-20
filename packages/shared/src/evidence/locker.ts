@@ -251,7 +251,7 @@ export async function queryEvidence(
          ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       )
       .bind(...params, limit, offset)
-      .all(),
+      .all<Record<string, unknown>>(),
     db
       .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence WHERE ${where}`)
       .bind(...params)
