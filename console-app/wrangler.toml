@@ -1,6 +1,6 @@
 name = "atlasit-console"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-main = ".svelte-kit/cloudflare/_worker.js"
+main = "src/worker-entry.ts"
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
@@ -25,11 +25,14 @@ routes = [
 	"www.atlasit.pro/api/apps*",
 	"www.atlasit.pro/api/workflows*",
 	"www.atlasit.pro/api/automation*",
+	"www.atlasit.pro/api/compliance/*",
+	"www.atlasit.pro/api/jml/*",
 	"www.atlasit.pro/api/admin/*",
 	"www.atlasit.pro/api/tenant/*",
 	"www.atlasit.pro/api/tenant-compliance/*",
 	"www.atlasit.pro/api/directory/*",
 	"www.atlasit.pro/api/analytics/*",
+	"www.atlasit.pro/health",
 	"www.atlasit.pro/api/health*",
 	"www.atlasit.pro/api/platform*",
 	"www.atlasit.pro/api/support*",
@@ -44,7 +47,7 @@ directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
 [build]
-command = "cd console-app && pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
+command = "pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
 
 [vars]
 APP_NAME = "AtlasIT Console"

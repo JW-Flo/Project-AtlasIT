@@ -6,16 +6,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-on-merge-${{ github.ref }}
   cancel-in-progress: false
 
-concurrency:
-  group: deploy-on-merge-${{ github.sha }}
-  cancel-in-progress: true
-
 jobs:
-  deploy-core-api:
-    name: Deploy core-api
+  deploy-root-worker:
+    name: Deploy root worker (atlasit-core)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,7 +30,26 @@ jobs:
         run: npx wrangler deploy --config wrangler.toml
       - name: Smoke test
         continue-on-error: true
-        run: bash scripts/smoke-test.sh core-api https://api.atlasit.pro
+        run: bash scripts/smoke-test.sh root-worker https://api.atlasit.pro
+
+  deploy-core-api:
+    name: Deploy core-api (Hono)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
+        run: npx wrangler deploy --config core-api/wrangler.toml --env production
 
   deploy-orchestrator:
     name: Deploy ai-orchestrator
@@ -102,6 +117,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: pnpm run build
+        working-directory: packages/shared
       - name: Install console deps
         run: pnpm install --no-frozen-lockfile
         working-directory: console-app

@@ -502,14 +502,11 @@ async function handleDispatch(
   if (!env.dispatcher) {
     return new Response(
       JSON.stringify({
-        error: "DISPATCHER_BINDING_MISSING",
-        message:
-          "Dispatcher namespace not configured (env.dispatcher undefined).",
-        remediation: {
-          docs: "https://developers.cloudflare.com/workers/platform/dispatch/",
-        },
+        error: "NOT_FOUND",
+        message: `No handler for ${url.pathname}`,
+        hint: "Workers for Platforms dispatcher is not configured. If this route should be handled by a sub-worker, add a dispatch_namespace binding.",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      { status: 404, headers: { "Content-Type": "application/json" } },
     );
   }
   const subWorker = await env.dispatcher.get(subWorkerName);
