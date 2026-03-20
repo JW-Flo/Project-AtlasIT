@@ -30,6 +30,7 @@ routes = [
 	"www.atlasit.pro/api/tenant-compliance/*",
 	"www.atlasit.pro/api/directory/*",
 	"www.atlasit.pro/api/analytics/*",
+	"www.atlasit.pro/health",
 	"www.atlasit.pro/api/health*",
 	"www.atlasit.pro/api/platform*",
 	"www.atlasit.pro/api/support*",
