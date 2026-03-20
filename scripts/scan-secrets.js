@@ -23,6 +23,10 @@ const ALLOWLIST_PATH_SUBSTRINGS = [
   "CHANGELOG",
   "LICENSE",
   ".md", // general markdown references
+  ".test.ts", // test fixtures may contain fake token patterns
+  ".test.js",
+  ".spec.ts",
+  ".spec.js",
 ];
 
 const IGNORE_DIRS = new Set([
