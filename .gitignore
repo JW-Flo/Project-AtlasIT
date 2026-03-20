@@ -1,6 +1,9 @@
 # Node modules
 node_modules/
 
+# TypeScript build info (must not be committed — causes stale incremental builds)
+*.tsbuildinfo
+
 # Local creds and build artifacts
 env/
 
