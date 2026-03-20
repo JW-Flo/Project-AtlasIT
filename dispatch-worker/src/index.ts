@@ -1,26 +1,29 @@
-// AtlasIT Dispatch Worker (Workers for Platforms)
-// Purpose: Route multi-tenant extension requests to per-tenant user Workers
-// Namespace binding: env.dispatcher (dispatch namespace)
+// AtlasIT Dispatch Worker
+// Routes multi-tenant extension requests to per-tenant workers via HTTP fetch.
+// No Workers for Platforms dependency — uses worker_url from D1.
 
 interface D1Stmt {
-  bind(...v: any[]): D1Stmt;
-  first<T = any>(): Promise<T | null>;
-  run(): Promise<any>;
-  all?(): Promise<any>;
+  bind(...v: unknown[]): D1Stmt;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  run(): Promise<unknown>;
+  all?(): Promise<{ results?: unknown[] }>;
 }
 interface D1 {
   prepare(q: string): D1Stmt;
 }
 interface KVNamespace {
   get(key: string): Promise<string | null>;
-  put(key: string, value: string, opts?: any): Promise<void>;
+  put(
+    key: string,
+    value: string,
+    opts?: Record<string, unknown>,
+  ): Promise<void>;
 }
 interface ExecutionContext {
-  waitUntil(p: Promise<any>): void;
+  waitUntil(p: Promise<unknown>): void;
 }
 
 interface Env {
-  dispatcher: any;
   ATLASIT_DB?: D1;
   TENANT_CACHE?: KVNamespace;
   LOG_LEVEL?: string;
@@ -51,18 +54,19 @@ async function logInvocation(env: Env, log: InvocationLog) {
         log.ok ? 1 : 0,
       )
       .run();
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.log(
       JSON.stringify({
         level: "error",
         event: "invocation.log.fail",
-        error: e?.message,
+        error: msg,
       }),
     );
   }
 }
 
-function json(data: any, status = 200) {
+function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "content-type": "application/json" },
@@ -80,6 +84,16 @@ function computeScriptId(tenantId: string, scriptName: string) {
 
 import { verifyAuth } from "./auth";
 
+interface ScriptRow {
+  script_id: string;
+  tenant_id: string;
+  script_name: string;
+  worker_url: string | null;
+  breaker_open_until_utc: string | null;
+  failure_count_window: number;
+  window_start_utc: string | null;
+}
+
 async function handleAdmin(req: Request, env: Env): Promise<Response> {
   if (!env.DISPATCH_ADMIN_TOKEN)
     return json({ ok: false, error: "admin_not_configured" }, 503);
@@ -87,30 +101,33 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
   if (provided !== env.DISPATCH_ADMIN_TOKEN)
     return json({ ok: false, error: "forbidden" }, 403);
   if (!env.ATLASIT_DB) return json({ ok: false, error: "db_unavailable" }, 500);
+
   const url = new URL(req.url);
+
   if (url.pathname === "/admin/tenant-keys" && req.method === "POST") {
     try {
-      const body: any = await req.json();
+      const body = (await req.json()) as Record<string, unknown>;
       const rawTenant = String(body.tenantId || "")
         .trim()
         .toLowerCase();
-      const matcher = /^[a-z0-9_-]+$/;
-      if (!matcher.test(rawTenant))
+      if (!/^[a-z0-9_-]+$/.test(rawTenant))
         return json({ ok: false, error: "invalid_tenant" }, 400);
       const dailyQuota = Number(body.dailyQuota || 5000);
       const rawKey = crypto.randomUUID().replace(/-/g, "");
       const mod = await import("./auth");
-      await mod.bootstrapApiKey(env as any, rawTenant, rawKey, dailyQuota);
+      await mod.bootstrapApiKey(env, rawTenant, rawKey, dailyQuota);
       return json({
         ok: true,
         tenantId: rawTenant,
         apiKey: rawKey,
         dailyQuota,
       });
-    } catch (e: any) {
-      return json({ ok: false, error: e?.message || "bad_request" }, 400);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "bad_request";
+      return json({ ok: false, error: msg }, 400);
     }
   }
+
   if (url.pathname === "/admin/tenant-keys" && req.method === "GET") {
     const stmt = await env.ATLASIT_DB.prepare(
       `SELECT tenant_id, daily_quota, remaining_today FROM tenant_api_keys`,
@@ -118,22 +135,30 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
     const rows = (await stmt.all?.())?.results || [];
     return json({ ok: true, rows });
   }
+
   if (url.pathname === "/admin/tenant-scripts" && req.method === "POST") {
     try {
-      const body: any = await req.json();
+      const body = (await req.json()) as Record<string, unknown>;
       const tenantId = String(body.tenantId || "")
         .trim()
         .toLowerCase();
       const scriptName = String(body.scriptName || "").trim();
       const version = String(body.version || "").trim();
+      const workerUrl = String(body.workerUrl || "").trim();
       if (!tenantId || !scriptName)
         return json({ ok: false, error: "missing_fields" }, 400);
+      if (!workerUrl)
+        return json({ ok: false, error: "worker_url_required" }, 400);
+
       const scriptId = computeScriptId(tenantId, scriptName);
       await env.ATLASIT_DB.prepare(
-        `INSERT OR IGNORE INTO tenant_scripts (script_id, tenant_id, script_name) VALUES (?, ?, ?)`,
+        `INSERT INTO tenant_scripts (script_id, tenant_id, script_name, worker_url)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(script_id) DO UPDATE SET worker_url = excluded.worker_url`,
       )
-        .bind(scriptId, tenantId, scriptName)
+        .bind(scriptId, tenantId, scriptName, workerUrl)
         .run();
+
       if (version) {
         await env.ATLASIT_DB.prepare(
           `INSERT OR IGNORE INTO tenant_script_versions (script_id, version) VALUES (?, ?)`,
@@ -141,32 +166,34 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
           .bind(scriptId, version)
           .run();
       }
+
       const row = await env.ATLASIT_DB.prepare(
-        `SELECT script_id, tenant_id, script_name, failure_count_window, window_start_utc, breaker_open_until_utc FROM tenant_scripts WHERE script_id = ?`,
+        `SELECT script_id, tenant_id, script_name, worker_url, failure_count_window, window_start_utc, breaker_open_until_utc FROM tenant_scripts WHERE script_id = ?`,
       )
         .bind(scriptId)
-        .first<any>();
+        .first<ScriptRow>();
       return json({ ok: true, script: row, version: version || null });
-    } catch (e: any) {
-      return json({ ok: false, error: e?.message || "bad_request" }, 400);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "bad_request";
+      return json({ ok: false, error: msg }, 400);
     }
   }
+
   if (url.pathname === "/admin/tenant-scripts" && req.method === "GET") {
-    const urlObj = new URL(req.url);
-    const tenantFilter = urlObj.searchParams.get("tenantId");
+    const tenantFilter = url.searchParams.get("tenantId");
     const q = tenantFilter
-      ? `SELECT script_id, tenant_id, script_name, breaker_open_until_utc FROM tenant_scripts WHERE tenant_id = ?`
-      : `SELECT script_id, tenant_id, script_name, breaker_open_until_utc FROM tenant_scripts`;
+      ? `SELECT script_id, tenant_id, script_name, worker_url, breaker_open_until_utc FROM tenant_scripts WHERE tenant_id = ?`
+      : `SELECT script_id, tenant_id, script_name, worker_url, breaker_open_until_utc FROM tenant_scripts`;
     const stmt = tenantFilter
       ? env.ATLASIT_DB.prepare(q).bind(tenantFilter)
       : env.ATLASIT_DB.prepare(q);
     const rows = (await stmt.all?.())?.results || [];
     return json({ ok: true, rows });
   }
+
   if (url.pathname === "/admin/usage/summary" && req.method === "GET") {
-    const urlObj = new URL(req.url);
     const hours = Math.min(
-      Math.max(parseInt(urlObj.searchParams.get("windowHours") || "24", 10), 1),
+      Math.max(parseInt(url.searchParams.get("windowHours") || "24", 10), 1),
       168,
     );
     const sinceIso = new Date(Date.now() - hours * 3600_000).toISOString();
@@ -174,7 +201,7 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
       `SELECT COUNT(*) as total, SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) as failures, COUNT(DISTINCT tenant_id) as tenants FROM tenant_invocations WHERE ts >= ?`,
     )
       .bind(sinceIso)
-      .first<any>();
+      .first<{ total: number; failures: number; tenants: number }>();
     const topStmt = await env.ATLASIT_DB.prepare(
       `SELECT script_id, COUNT(*) c, SUM(CASE WHEN ok=0 THEN 1 ELSE 0 END) failures FROM tenant_invocations WHERE ts >= ? GROUP BY script_id ORDER BY c DESC LIMIT 10`,
     ).bind(sinceIso);
@@ -190,14 +217,14 @@ async function handleAdmin(req: Request, env: Env): Promise<Response> {
       topScripts: top,
     });
   }
+
   return json({ ok: false, error: "not_found" }, 404);
 }
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext) {
-    if (!env.dispatcher)
-      throw new Error("Missing required binding: dispatcher");
     const url = new URL(req.url);
+
     if (url.pathname === "/__health" || url.pathname === "/health")
       return json({
         ok: true,
@@ -214,6 +241,7 @@ export default {
       const [, tenantId, scriptName, ...rest] = parts;
       if (!tenantId || !scriptName)
         return jsonError("Missing tenant or script", 400);
+
       const authResult = await verifyAuth(
         env,
         req.headers.get("authorization"),
@@ -227,16 +255,21 @@ export default {
       }
       if (authResult.tenantId !== tenantId)
         return json({ ok: false, error: "tenant_mismatch" }, 403);
+
       const scriptId = computeScriptId(tenantId, scriptName);
       const scriptRow = await env.ATLASIT_DB?.prepare(
-        `SELECT breaker_open_until_utc FROM tenant_scripts WHERE script_id = ?`,
+        `SELECT worker_url, breaker_open_until_utc FROM tenant_scripts WHERE script_id = ?`,
       )
         .bind(scriptId)
-        .first<any>();
+        .first<ScriptRow>();
+
       if (!scriptRow)
         return json({ ok: false, error: "unregistered_script" }, 404);
+      if (!scriptRow.worker_url)
+        return json({ ok: false, error: "no_worker_url_configured" }, 404);
+
       if (
-        scriptRow?.breaker_open_until_utc &&
+        scriptRow.breaker_open_until_utc &&
         scriptRow.breaker_open_until_utc > new Date().toISOString()
       ) {
         return new Response(
@@ -250,16 +283,16 @@ export default {
           },
         );
       }
-      const worker = env.dispatcher.get(scriptId);
-      if (!worker) return jsonError("Script not deployed", 404);
-      const newUrl = new URL("/" + rest.join("/"), req.url);
+
+      // Route to the tenant's worker via HTTP fetch
+      const targetPath = "/" + rest.join("/");
+      const targetUrl = new URL(targetPath, scriptRow.worker_url);
       const start = Date.now();
-      let ok = false;
-      let statusCode = 500;
+
       try {
-        const forwarded = new Request(newUrl.toString(), {
+        const forwarded = new Request(targetUrl.toString(), {
           method: req.method,
-          headers: req.headers,
+          headers: new Headers(req.headers),
           body:
             req.method === "GET" || req.method === "HEAD"
               ? undefined
@@ -269,9 +302,8 @@ export default {
         forwarded.headers.set("x-atlas-script", scriptId);
         forwarded.headers.set("x-atlas-dispatch-ts", new Date().toISOString());
         forwarded.headers.set("x-atlas-auth-tenant", authResult.tenantId || "");
-        const resp = await worker.fetch(forwarded);
-        ok = resp.ok;
-        statusCode = resp.status;
+
+        const resp = await fetch(forwarded);
         ctx.waitUntil(
           logInvocation(env, {
             scriptId,
@@ -282,16 +314,17 @@ export default {
             ts: new Date().toISOString(),
           }),
         );
-        ctx.waitUntil(updateCircuit(env, scriptId, ok, statusCode));
+        ctx.waitUntil(updateCircuit(env, scriptId, resp.ok, resp.status));
         return resp;
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
         console.log(
           JSON.stringify({
             level: "error",
             event: "dispatch.invoke.fail",
             scriptId,
             tenantId,
-            error: e?.message,
+            error: msg,
           }),
         );
         ctx.waitUntil(
@@ -299,17 +332,16 @@ export default {
             scriptId,
             tenantId,
             ms: Date.now() - start,
-            status: 500,
+            status: 502,
             ok: false,
             ts: new Date().toISOString(),
           }),
         );
-        ctx.waitUntil(updateCircuit(env, scriptId, false, 500));
-        return jsonError("Invocation failed", 500);
+        ctx.waitUntil(updateCircuit(env, scriptId, false, 502));
+        return jsonError("Upstream worker unreachable", 502);
       }
     }
 
-    // Routing help
     if (url.pathname === "/" || url.pathname === "/docs") {
       return json({
         ok: true,
@@ -339,19 +371,19 @@ async function updateCircuit(
       `SELECT failure_count_window, window_start_utc, breaker_open_until_utc FROM tenant_scripts WHERE script_id = ?`,
     )
       .bind(scriptId)
-      .first<any>();
+      .first<ScriptRow>();
     if (!row) return;
-    if (row.breaker_open_until_utc && row.breaker_open_until_utc > nowIso) {
-      if (success) {
-        /* could half-open logic here */
-      }
+
+    if (row.breaker_open_until_utc && row.breaker_open_until_utc > nowIso)
       return;
-    }
+
     const windowMinutes = 5;
-    const openThreshold = 5; // failures in window
+    const openThreshold = 5;
     const cooldownMinutes = 2;
+
     let count = row.failure_count_window || 0;
     let windowStart = row.window_start_utc;
+
     if (
       !windowStart ||
       Date.parse(nowIso) - Date.parse(windowStart) > windowMinutes * 60_000
@@ -359,9 +391,11 @@ async function updateCircuit(
       count = 0;
       windowStart = nowIso;
     }
+
     const isFailure = !success || statusCode >= 500;
     if (isFailure) count += 1;
     else if (count > 0) count = Math.max(0, count - 1);
+
     let breakerUntil: string | null = null;
     if (count >= openThreshold) {
       breakerUntil = new Date(
@@ -369,18 +403,20 @@ async function updateCircuit(
       ).toISOString();
       count = 0;
     }
+
     await env.ATLASIT_DB.prepare(
       `UPDATE tenant_scripts SET failure_count_window = ?, window_start_utc = ?, breaker_open_until_utc = COALESCE(?, breaker_open_until_utc) WHERE script_id = ?`,
     )
       .bind(count, windowStart, breakerUntil, scriptId)
       .run();
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
     console.log(
       JSON.stringify({
         level: "error",
         event: "circuit.update.fail",
         scriptId,
-        error: e?.message,
+        error: msg,
       }),
     );
   }

@@ -4,21 +4,15 @@ main = "src/index.ts"
 compatibility_date = "2024-10-01"
 workers_dev = true
 
-# Dispatch namespace requires CF Enterprise plan — disabled
-# [[dispatch_namespaces]]
-# binding = "dispatcher"
-# namespace = "atlasit-dispatcher-namespace"
+# Uses HTTP fetch to route to tenant workers (no dispatch namespace needed)
 
-# D1 for tenant and invocation metadata (reuse existing or create new)
 [[d1_databases]]
 binding = "ATLASIT_DB"
 database_name = "atlasit-shared"
-database_id = "4c219864-76be-4453-a494-a4e0904e9cbc" # provisioned via `wrangler d1 create atlasit-shared`
-
-## KV (optional) for small metadata cache (removed placeholder to allow deploy)
-# [[kv_namespaces]]
-# binding = "TENANT_CACHE"
-# id = "<real_kv_id>"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 [vars]
 LOG_LEVEL = "info"
+
+[observability.logs]
+enabled = true
