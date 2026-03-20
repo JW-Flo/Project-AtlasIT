@@ -158,10 +158,10 @@ bucket_name = "atlas-artifacts"
 ENVIRONMENT = "production"
 RENAMING_PHASE = "core_parallel"
 
-# Workers for Platforms dispatch namespace binding
-[[env.core.dispatch_namespaces]]
-binding = "dispatcher"
-namespace = "atlasit-dispatcher-namespace"
+# Workers for Platforms dispatch namespace removed (requires Enterprise plan)
+# [[env.core.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "atlasit-dispatcher-namespace"
 
 # [env.production.durable_objects]
 # bindings = [
