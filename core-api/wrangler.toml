@@ -38,6 +38,23 @@ ENVIRONMENT = "staging"
 name = "atlasit-core-api"
 routes = ["api.atlasit.pro/api/*", "api.atlasit.pro/health"]
 
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
+
+[[env.production.kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[env.production.kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[env.production.kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
 [env.production.vars]
 ENVIRONMENT = "production"
 

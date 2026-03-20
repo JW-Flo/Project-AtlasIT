@@ -61,8 +61,14 @@ http_get_with_retry() {
     attempt=$(( attempt + 1 ))
     info "Attempt $attempt/$MAX_RETRIES: GET $url"
 
-    body=$(curl -sS --max-time "$TIMEOUT" "$url" 2>/dev/null || true)
-    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "$url" 2>/dev/null || echo "000")
+    # Build CF Access auth headers if service token is available
+    local -a auth_headers=()
+    if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+      auth_headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+    fi
+
+    body=$(curl -sS --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || true)
+    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || echo "000")
 
     LAST_HTTP_CODE="$code"
     LAST_BODY="$body"
@@ -167,7 +173,11 @@ fi
 if [ -n "$EXTRA_PROBE_PATH" ]; then
   EXTRA_URL="${BASE_URL}${EXTRA_PROBE_PATH}"
   section "Secondary probe (informational): $EXTRA_URL"
-  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "$EXTRA_URL" 2>/dev/null || echo "000")
+  local -a auth_headers=()
+  if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+    auth_headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+  fi
+  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$EXTRA_URL" 2>/dev/null || echo "000")
   if [ "$extra_code" = "200" ]; then
     pass "Secondary probe returned HTTP 200"
   elif [ "$extra_code" = "000" ]; then
