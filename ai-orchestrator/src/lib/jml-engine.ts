@@ -19,6 +19,7 @@
 
 import { enrichUserProfile } from "./profile-enricher";
 import type { CanonicalUserProfile } from "@atlasit/shared/automation/types";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,8 @@ export interface JmlContext {
   workflow: DurableObjectNamespace;
   adapterUrls: Record<string, string>;
   selfUrl?: string;
+  /** Optional R2 bucket for tamper-evident evidence storage */
+  evidenceBucket?: R2Bucket;
 }
 
 // ── Main entry point ────────────────────────────────────────────────────────
@@ -123,7 +126,10 @@ export async function classifyAndExecute(
     )
     .run();
 
-  // 6. Emit activity stream event
+  // 6. Emit compliance evidence for the JML action
+  await emitJmlEvidence(tenantId, classification, workflowRunId, change, ctx);
+
+  // 7. Emit activity stream event
   await emitActivity(ctx.db, tenantId, classification, workflowRunId);
 
   return { action: classification.action, workflowRunId };
@@ -350,6 +356,7 @@ interface WorkflowStepDef {
   handler: string;
   timeoutMs: number;
   compensate?: string;
+  delayMs?: number;
 }
 
 function buildJmlSteps(
@@ -392,15 +399,23 @@ function buildJmlSteps(
   }
 
   if (classification.action === "leaver") {
-    // Revoke each app — respect grace period
+    // Apply grace period delay to the first revocation step if configured
+    let graceApplied = false;
     for (const app of classification.appsToRevoke) {
       if (!adapterUrls[app.appId]) continue;
-      main.push({
+      const step: WorkflowStepDef = {
         id: `revoke_${app.appId}`,
         name: `Revoke ${app.appId}`,
         handler: `${app.appId}.deprovision`,
         timeoutMs: 30_000,
-      });
+      };
+      // Apply grace period delay to the first revocation step
+      if (!graceApplied && policy.leaverGraceMs > 0) {
+        step.delayMs = policy.leaverGraceMs;
+        step.name = `Revoke ${app.appId} (after ${Math.round(policy.leaverGraceMs / 60_000)}min grace)`;
+        graceApplied = true;
+      }
+      main.push(step);
     }
   }
 
@@ -513,6 +528,77 @@ export async function upsertJmlPolicy(
       policy.requireJoinerApproval ? 1 : 0,
     )
     .run();
+}
+
+// ── JML Evidence emission ────────────────────────────────────────────────────
+
+/**
+ * Maps a JML action to the canonical directory event type used for evidence
+ * classification. These event types have dedicated classifier rules with
+ * full control tag sets (CC6.1, CC6.3, A.9.2.6, etc.).
+ */
+const JML_ACTION_EVENT_TYPE: Record<JmlAction, string> = {
+  joiner: "directory.user.joined",
+  leaver: "directory.user.left",
+  mover: "directory.user.moved",
+  rehire: "directory.user.joined", // rehire is a joiner from a compliance perspective
+};
+
+async function emitJmlEvidence(
+  tenantId: string,
+  classification: JmlClassification,
+  workflowRunId: string,
+  change: DirectoryChange,
+  ctx: JmlContext,
+): Promise<void> {
+  const eventType = JML_ACTION_EVENT_TYPE[classification.action];
+  const actor = classification.email ?? classification.userId;
+  const subject = classification.email ?? null;
+
+  const payload: Record<string, unknown> = {
+    jmlAction: classification.action,
+    reason: classification.reason,
+    workflowRunId,
+    userId: classification.userId,
+    email: classification.email,
+    source: change.source,
+    appsToProvision: classification.appsToProvision.map((a) => a.appId),
+    appsToRevoke: classification.appsToRevoke.map((a) => a.appId),
+    profile: classification.profile
+      ? {
+          department: classification.profile.department,
+          title: classification.profile.title,
+        }
+      : undefined,
+  };
+
+  const classified = classifyEvent(
+    tenantId,
+    eventType,
+    change.source,
+    actor,
+    subject,
+    payload,
+  );
+
+  if (!classified) return;
+
+  await storeEvidence(
+    { db: ctx.db, bucket: ctx.evidenceBucket },
+    classified,
+  ).catch((err) => {
+    // Non-fatal: log but never block the JML workflow
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "JML evidence locker write failed",
+        tenantId,
+        jmlAction: classification.action,
+        workflowRunId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  });
 }
 
 // ── Activity stream ─────────────────────────────────────────────────────────

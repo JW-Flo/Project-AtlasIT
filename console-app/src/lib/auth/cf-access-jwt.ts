@@ -88,6 +88,9 @@ function extractJwtHeader(
 /** In-memory JWKS cache keyed by certs URL. Persists across requests within a Worker isolate. */
 const JWKS_CACHE = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
 
+/** Track seen key IDs to detect rotation events. */
+const SEEN_KIDS = new Set<string>();
+
 /** JWKS cache TTL: 1 hour (keys rotate infrequently). */
 const JWKS_TTL_MS = 60 * 60 * 1000;
 
@@ -113,6 +116,24 @@ async function fetchCerts(certsUrl: string): Promise<JsonWebKey[] | null> {
     const body = (await resp.json()) as { keys?: JsonWebKey[] };
     if (!Array.isArray(body.keys)) return null;
     JWKS_CACHE.set(certsUrl, { keys: body.keys, fetchedAt: now });
+
+    // Track key rotation events
+    for (const key of body.keys) {
+      const kid = (key as any).kid as string | undefined;
+      if (kid && !SEEN_KIDS.has(kid)) {
+        SEEN_KIDS.add(kid);
+        if (SEEN_KIDS.size > 1) {
+          console.log(JSON.stringify({
+            level: "info",
+            event: "jwt.key_rotation_detected",
+            kid,
+            totalKeys: SEEN_KIDS.size,
+            timestamp: new Date().toISOString(),
+          }));
+        }
+      }
+    }
+
     return body.keys;
   } catch {
     return null;

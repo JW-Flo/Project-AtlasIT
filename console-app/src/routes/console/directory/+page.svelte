@@ -146,6 +146,11 @@
     const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings()];
     await Promise.all(promises);
     loading = false;
+
+    // Auto-generate mapping suggestions if there are groups but no mappings yet
+    if (groups.length > 0 && mappings.length === 0) {
+      autoSuggest();
+    }
   }
 
   // --- Actions ---

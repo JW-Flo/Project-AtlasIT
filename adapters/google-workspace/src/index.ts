@@ -9,6 +9,7 @@ import {
 import { syncUsers, type LifecycleChange } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
+import { signPayload } from "../../../packages/shared/src/crypto/hmac.js";
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -237,6 +238,7 @@ app.post("/api/sync", async (c) => {
       source: "google-workspace",
       payload: { users: userResult, groups: groupResult },
       correlationId,
+      secret: c.env.EVENT_PUBLISH_SECRET,
     });
 
     // Publish lifecycle events from diff (fire-and-forget, errors are non-fatal)
@@ -249,6 +251,7 @@ app.post("/api/sync", async (c) => {
         payload: change.payload,
         idempotencyKey: `gws-${change.type}-${change.payload.user.externalId}-${correlationId}`,
         correlationId,
+        secret: c.env.EVENT_PUBLISH_SECRET,
       }).catch((err: Error) => {
         console.error(
           JSON.stringify({
@@ -547,6 +550,224 @@ app.post("/api/deprovision", async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+// ── Compliance evidence collection ──────────────────────────────────────────
+// POST /api/compliance/check — check MFA enforcement status in Google Workspace
+// and publish compliance.evidence.collected events to the orchestrator.
+app.post("/api/compliance/check", async (c) => {
+  const body = await c.req.json<{ tenantId: string }>().catch(() => null);
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required" }, 400);
+  }
+
+  // Load OAuth token
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(body.tenantId, "google-workspace")
+    .first<{ access_token: string; refresh_token: string; expires_at: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No Google Workspace token for tenant" }, 404);
+  }
+
+  let accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  // Check if MFA (2-Step Verification) is enforced for the domain
+  // Uses the Google Admin SDK Reports API or Directory API
+  const mfaRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/customers/my_customer/organizations",
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  // Fallback: use Google Admin Directory to check security settings
+  const securityRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=1&fields=users(isEnrolledIn2Sv,isEnforcedIn2Sv)",
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  let mfaEnforced = false;
+  let mfaEnrolledCount = 0;
+  let mfaUnenrolledCount = 0;
+
+  if (securityRes.ok) {
+    const data = (await securityRes.json()) as {
+      users?: Array<{ isEnrolledIn2Sv?: boolean; isEnforcedIn2Sv?: boolean }>;
+    };
+    // If any user has isEnforcedIn2Sv = true, the policy is enforced
+    mfaEnforced = (data.users ?? []).some((u) => u.isEnforcedIn2Sv === true);
+  }
+
+  // Also check using the Reports API for a broader signal (best-effort)
+  const reportsRes = await fetch(
+    "https://www.googleapis.com/admin/reports/v1/activity/users/all/applications/login?eventName=2sv_disable&maxResults=1",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  const hasRecentMfaDisable = reportsRes.ok && reportsRes.status !== 204;
+
+  // Publish compliance evidence (HMAC-signed when EVENT_PUBLISH_SECRET is set)
+  {
+    const isoEventBody = JSON.stringify({
+      tenantId: body.tenantId,
+      type: "compliance.evidence.collected",
+      source: "adapter:google-workspace",
+      payload: {
+        framework: "ISO27001",
+        controlId: "A.9.4.2",
+        controlName: "MFA Enforcement — Google Workspace",
+        evidenceType: "automated",
+        source: "adapter:google-workspace",
+        sourceId: "google-workspace",
+        actor: "system",
+        subject: "Google Workspace domain",
+        metadata: {
+          mfaEnforced,
+          hasRecentMfaDisable,
+          checkedAt: new Date().toISOString(),
+        },
+      },
+    });
+    const isoHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      isoHeaders["X-Signature"] = await signPayload(isoEventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: isoHeaders,
+      body: isoEventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish ISO27001 A.9.4.2 evidence", error: err.message, tenantId: body.tenantId }));
+    });
+  }
+
+  // Also emit SOC2 CC6.8 evidence
+  {
+    const soc2EventBody = JSON.stringify({
+      tenantId: body.tenantId,
+      type: "compliance.evidence.collected",
+      source: "adapter:google-workspace",
+      payload: {
+        framework: "SOC2",
+        controlId: "CC6.8",
+        controlName: "MFA Enforcement — Google Workspace",
+        evidenceType: "automated",
+        source: "adapter:google-workspace",
+        sourceId: "google-workspace",
+        actor: "system",
+        subject: "Google Workspace domain",
+        metadata: { mfaEnforced, checkedAt: new Date().toISOString() },
+      },
+    });
+    const soc2Headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      soc2Headers["X-Signature"] = await signPayload(soc2EventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: soc2Headers,
+      body: soc2EventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.8 evidence", error: err.message, tenantId: body.tenantId }));
+    });
+  }
+
+  return c.json({ ok: true, mfaEnforced, tenantId: body.tenantId });
+});
+
+// ---------------------------------------------------------------------------
+// Evidence collection — POST /api/evidence
+// Returns structured AdapterEvidenceItem[] for compliance frameworks.
+// ---------------------------------------------------------------------------
+app.post("/api/evidence", async (c) => {
+  const body = await c.req.json<{ tenantId: string }>().catch(() => null);
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required" }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token, refresh_token, expires_at FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(body.tenantId, "google-workspace")
+    .first<{ access_token: string; refresh_token: string; expires_at: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  // --- mfa_enforcement ---
+  let mfaStatus: "pass" | "fail" | "unknown" = "unknown";
+  let mfaDetails: Record<string, unknown> = {};
+
+  try {
+    const mfaRes = await fetch(
+      "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=1&fields=users(isEnrolledIn2Sv,isEnforcedIn2Sv)",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (mfaRes.ok) {
+      const data = (await mfaRes.json()) as {
+        users?: Array<{ isEnrolledIn2Sv?: boolean; isEnforcedIn2Sv?: boolean }>;
+      };
+      const users = data.users ?? [];
+      const enforced = users.some((u) => u.isEnforcedIn2Sv === true);
+      mfaStatus = enforced ? "pass" : "fail";
+      mfaDetails = {
+        enforcedSample: enforced,
+        sampledUsers: users.length,
+        checkedAt: new Date().toISOString(),
+      };
+    } else {
+      mfaDetails = {
+        reason: `Google API returned ${mfaRes.status}`,
+        checkedAt: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    mfaDetails = {
+      reason: err instanceof Error ? err.message : "Unknown error",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  const items = [
+    {
+      type: "mfa_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+      status: mfaStatus,
+      details: mfaDetails,
+    },
+    {
+      type: "dlp_rules",
+      controlRefs: ["SOC2-CC6.7", "GDPR-Art.5(1)(f)"],
+      status: "unknown" as const,
+      details: {
+        reason: "Requires additional API scope (DLP API)",
+      },
+    },
+    {
+      type: "sharing_settings",
+      controlRefs: ["SOC2-CC6.6", "ISO-27001-A.9.1.2"],
+      status: "unknown" as const,
+      details: {
+        reason: "Requires additional API scope (Reports API)",
+      },
+    },
+  ];
+
+  return c.json({ items });
 });
 
 export default app;

@@ -86,4 +86,11 @@ export const ACTION_COMPLIANCE_MAP: Record<string, ComplianceControlRef[]> = {
     { framework: 'SOC2',     controlId: 'CC2.1',    controlName: 'Security policies communicated',            evidenceType: 'audit_log' },
     { framework: 'ISO27001', controlId: 'A.16.1.2', controlName: 'Reporting information security events',     evidenceType: 'audit_log' },
   ],
+
+  request_access_review: [
+    { framework: 'SOC2',     controlId: 'CC6.1',    controlName: 'Periodic access review initiated',          evidenceType: 'audit_log' },
+    { framework: 'SOC2',     controlId: 'CC6.3',    controlName: 'Access review for role/termination changes', evidenceType: 'audit_log' },
+    { framework: 'ISO27001', controlId: 'A.9.2.5',  controlName: 'Review of user access rights',              evidenceType: 'audit_log' },
+    { framework: 'HIPAA',    controlId: '164.312(a)(1)', controlName: 'Access control review',                 evidenceType: 'audit_log' },
+  ],
 };

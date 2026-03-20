@@ -501,4 +501,128 @@ app.post("/webhooks/microsoft/notifications", async (c) => {
   return c.json({ status: "received", correlationId });
 });
 
+// ---------------------------------------------------------------------------
+// Evidence collection
+// ---------------------------------------------------------------------------
+app.post("/api/evidence", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  const unknownItems = (): EvidenceItem[] => [
+    {
+      type: "mfa_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+      status: "unknown",
+      details: { reason: "Graph API error" },
+    },
+    {
+      type: "conditional_access",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.1"],
+      status: "unknown",
+      details: { reason: "Graph API error" },
+    },
+    {
+      type: "encryption_status",
+      controlRefs: ["SOC2-CC6.7", "HIPAA-164.312(a)(2)(ii)", "GDPR-Art.5(1)(f)"],
+      status: "unknown",
+      details: { reason: "Requires elevated Graph permissions" },
+    },
+  ];
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM connector_tokens WHERE tenant_id = ? AND connector_slug = ?",
+  )
+    .bind(tenantId, "microsoft-365")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  try {
+    const graphRes = await fetch(
+      "https://graph.microsoft.com/v1.0/identity/conditionalAccess/policies",
+      { headers: { Authorization: `Bearer ${tokenRow.access_token}` } },
+    );
+
+    if (!graphRes.ok) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Graph API error fetching CA policies",
+          status: graphRes.status,
+        }),
+      );
+      return c.json({ items: unknownItems() });
+    }
+
+    const data = await graphRes.json<{
+      value: Array<{
+        state: string;
+        grantControls?: { builtInControls?: string[] };
+      }>;
+    }>();
+
+    const policies = data.value ?? [];
+    const enabledPolicies = policies.filter((p) => p.state === "enabled");
+
+    const mfaEnabled = enabledPolicies.some((p) =>
+      p.grantControls?.builtInControls?.includes("mfa"),
+    );
+
+    const items: EvidenceItem[] = [
+      {
+        type: "mfa_enforcement",
+        controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+        status: mfaEnabled ? "pass" : "fail",
+        details: {
+          enabledPoliciesWithMfa: enabledPolicies.filter((p) =>
+            p.grantControls?.builtInControls?.includes("mfa"),
+          ).length,
+          totalEnabledPolicies: enabledPolicies.length,
+        },
+      },
+      {
+        type: "conditional_access",
+        controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.1"],
+        status: enabledPolicies.length > 0 ? "pass" : "fail",
+        details: {
+          enabledPolicies: enabledPolicies.length,
+          disabledPolicies: policies.length - enabledPolicies.length,
+          totalPolicies: policies.length,
+        },
+      },
+      {
+        type: "encryption_status",
+        controlRefs: ["SOC2-CC6.7", "HIPAA-164.312(a)(2)(ii)", "GDPR-Art.5(1)(f)"],
+        status: "unknown",
+        details: { reason: "Requires elevated Graph permissions" },
+      },
+    ];
+
+    return c.json({ items });
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Failed to collect Microsoft 365 evidence",
+        error: err instanceof Error ? err.message : "Unknown error",
+      }),
+    );
+    return c.json({ items: unknownItems() });
+  }
+});
+
 export default app;

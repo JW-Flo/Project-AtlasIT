@@ -1,18 +1,150 @@
 /**
- * Server-Sent Events (SSE) endpoint for real-time automation activity.
+ * Server-Sent Events (SSE) endpoints for real-time platform data.
  *
- * GET /api/v1/stream?tenantId=<id>
+ * GET /api/v1/stream                  — activity_stream polling SSE
+ * GET /api/v1/stream/evidence         — compliance_evidence polling SSE
+ * GET /api/v1/stream/recent           — latest activity (non-SSE)
+ * GET /api/v1/stream/workflow/:id     — workflow step status (non-SSE)
  *
- * Streams events from the activity_stream table as they are inserted.
- * Uses polling with a cursor (last seen ID) — Cloudflare Workers don't
- * support long-lived connections natively, so we use a ReadableStream
- * with periodic flushes.
+ * The evidence endpoint uses a single-shot polling-to-SSE bridge:
+ * the client connects, receives all events since the cursor, and the
+ * connection closes. The `retry` directive tells the browser to
+ * reconnect automatically every 5 s, passing the last event ID as
+ * a cursor via the Last-Event-ID header.
  */
 
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 
 export const streamRoutes = new Hono<AppEnv>();
+
+// ── Evidence SSE types ───────────────────────────────────────────────────────
+
+interface EvidenceRow {
+  id: string;
+  tenant_id: string;
+  framework_id: string | null;
+  framework: string | null;
+  control_id: string;
+  control_name: string | null;
+  evidence_type: string | null;
+  source: string;
+  source_id: string | null;
+  actor: string | null;
+  subject: string | null;
+  data: string | null;
+  metadata: string | null;
+  collected_at: string | null;
+  created_at: string;
+}
+
+/**
+ * GET /api/v1/stream/evidence
+ *
+ * Single-shot polling-to-SSE bridge for compliance evidence events.
+ * Queries compliance_evidence WHERE tenant_id = ? AND created_at > ?
+ * ordered ASC, emits each row as an `evidence` SSE event, then closes.
+ *
+ * Query params:
+ *   since — ISO timestamp cursor (optional; overridden by Last-Event-ID header)
+ *
+ * Headers:
+ *   Last-Event-ID — browser sends this automatically on reconnect
+ *
+ * The `retry: 5000` field instructs the browser to reconnect every 5 s.
+ * The `id:` field on the last event is used as Last-Event-ID on reconnect.
+ */
+streamRoutes.get("/evidence", async (c) => {
+  const tenantId = c.get("tenantId") ?? c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "tenantId required" }, 400);
+  }
+
+  // Cursor precedence: Last-Event-ID header > ?since param > epoch
+  const EPOCH = "1970-01-01T00:00:00.000Z";
+  const cursor =
+    c.req.header("Last-Event-ID") ??
+    c.req.query("since") ??
+    EPOCH;
+
+  const db = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM compliance_evidence
+       WHERE tenant_id = ? AND created_at > ?
+       ORDER BY created_at ASC
+       LIMIT 50`,
+    )
+    .bind(tenantId, cursor)
+    .all<EvidenceRow>();
+
+  const rows = results ?? [];
+
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+
+  // retry directive — browser reconnects every 5 s
+  chunks.push(encoder.encode("retry: 5000\n\n"));
+
+  if (rows.length === 0) {
+    chunks.push(
+      encoder.encode(
+        `event: no-events\ndata: ${JSON.stringify({ cursor, tenantId })}\n\n`,
+      ),
+    );
+  } else {
+    for (const row of rows) {
+      const payload = {
+        id: row.id,
+        tenantId: row.tenant_id,
+        framework: row.framework ?? row.framework_id ?? null,
+        controlId: row.control_id,
+        controlName: row.control_name,
+        evidenceType: row.evidence_type,
+        source: row.source,
+        sourceId: row.source_id,
+        actor: row.actor,
+        subject: row.subject,
+        metadata: safeJsonParse(row.metadata ?? row.data),
+        collectedAt: row.collected_at,
+        createdAt: row.created_at,
+      };
+      chunks.push(
+        encoder.encode(
+          `event: evidence\ndata: ${JSON.stringify(payload)}\n\n`,
+        ),
+      );
+    }
+
+    // Set Last-Event-ID to the last row's created_at so browsers replay correctly
+    const lastCreatedAt = rows[rows.length - 1].created_at;
+    chunks.push(encoder.encode(`id: ${lastCreatedAt}\n\n`));
+  }
+
+  // Concatenate all chunks into a single Uint8Array
+  const totalLength = chunks.reduce((n, c) => n + c.length, 0);
+  const body = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return new Response(body, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store",
+      "X-Accel-Buffering": "no",
+      // CORS — allow the console app and local dev
+      "Access-Control-Allow-Origin": "https://console.atlasit.pro",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-API-Key, X-Tenant-ID, Last-Event-ID",
+    },
+  });
+});
+
+// ── Activity stream types ────────────────────────────────────────────────────
 
 interface ActivityRow {
   id: number;

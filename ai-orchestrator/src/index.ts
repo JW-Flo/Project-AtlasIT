@@ -18,6 +18,7 @@ import {
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
+import { collectAllAdapterEvidence } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -32,12 +33,16 @@ function validateEnv(env: Bindings): void {
     ["ATLAS_SHARED_DB", "D1 shared database binding"],
     ["WORKFLOW", "WorkflowDO Durable Object namespace"],
     ["EVIDENCE", "R2 evidence bucket binding"],
-    ["EVENT_SOURCE_SECRETS", "event source HMAC secrets (required in prod)"],
   ];
   const missing = required.filter(([key]) => !env[key]);
   if (missing.length > 0) {
     throw new Error(
       `Missing required bindings: ${missing.map(([k, d]) => `${k} (${d})`).join(", ")}`,
+    );
+  }
+  if (!env.EVENT_SOURCE_SECRETS) {
+    console.warn(
+      "EVENT_SOURCE_SECRETS not set — event signature verification disabled",
     );
   }
 }
@@ -177,7 +182,11 @@ interface QueueBatch<T = unknown> {
 }
 
 const worker = {
-  fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
+  fetch(
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ): Response | Promise<Response> {
     validateEnv(env);
     return app.fetch(request, env, ctx);
   },
@@ -186,6 +195,8 @@ const worker = {
     env: AppEnv["Bindings"],
   ): Promise<void> {
     const sharedDb = env.ATLAS_SHARED_DB ?? env.DB;
+
+    // ── Duty 1: Evaluate scheduled automation rules ────────────────────────
     const { results } = await sharedDb
       .prepare(
         "SELECT tenant_id FROM automation_rules WHERE trigger_type = 'schedule' AND enabled = 1",
@@ -206,7 +217,7 @@ const worker = {
       sharedDb,
     };
 
-    await Promise.allSettled([
+    const automationSettled = await Promise.allSettled([
       ...(results ?? []).map((row) =>
         evaluateAutomationRules(
           sharedDb,
@@ -218,8 +229,113 @@ const worker = {
           actionContext,
         ),
       ),
-      processExpiredCampaigns({ sharedDb, adapterUrls }),
+      processExpiredCampaigns({ sharedDb, adapterUrls, evidenceBucket: env.EVIDENCE }),
     ]);
+
+    // ── Duty 2: Scheduled evidence collection from adapters ────────────────
+    //    Collect compliance evidence from connected adapters for all tenants
+    //    and write to compliance_evidence in D1.
+    let evidenceCollected = 0;
+    if (Object.keys(adapterUrls).length > 0) {
+      // Get distinct tenant IDs from tenants table
+      const { results: tenantRows } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const collectSettled = await Promise.allSettled(
+        (tenantRows ?? []).map(async (row) => {
+          const adapterResults = await collectAllAdapterEvidence(
+            adapterUrls,
+            row.id,
+          );
+          let rowsWritten = 0;
+          for (const result of adapterResults) {
+            for (const item of result.items) {
+              for (const controlRef of item.controlRefs) {
+                const dashIdx = controlRef.indexOf("-");
+                const framework =
+                  dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
+                const controlId =
+                  dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+                try {
+                  await sharedDb
+                    .prepare(
+                      `INSERT INTO compliance_evidence
+                       (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    )
+                    .bind(
+                      crypto.randomUUID(),
+                      row.id,
+                      framework,
+                      controlId,
+                      controlRef,
+                      "adapter_pull",
+                      `adapter:${result.slug}`,
+                      `${result.slug}:${item.type}`,
+                      "system",
+                      null,
+                      JSON.stringify({
+                        evidenceType: item.type,
+                        status: item.status,
+                        details: item.details,
+                        collectedAt: result.collectedAt,
+                      }),
+                      new Date().toISOString(),
+                    )
+                    .run();
+                  rowsWritten++;
+                } catch {
+                  // duplicate or schema not ready — skip
+                }
+              }
+            }
+          }
+          return rowsWritten;
+        }),
+      );
+
+      for (const r of collectSettled) {
+        if (r.status === "fulfilled") evidenceCollected += r.value;
+      }
+    }
+
+    // ── Duty 3: Self health-check (replaces scheduler-worker monitor) ──────
+    const checks: Record<string, { status: string; ms: number }> = {};
+    const d1Start = Date.now();
+    try {
+      await sharedDb.prepare("SELECT 1").first();
+      checks.d1 = { status: "pass", ms: Date.now() - d1Start };
+    } catch {
+      checks.d1 = { status: "fail", ms: Date.now() - d1Start };
+    }
+    const kvStart = Date.now();
+    try {
+      await env.TASKS.get("__health__");
+      checks.kv = { status: "pass", ms: Date.now() - kvStart };
+    } catch {
+      checks.kv = { status: "fail", ms: Date.now() - kvStart };
+    }
+
+    const automationFailures = automationSettled.filter(
+      (r) => r.status === "rejected",
+    ).length;
+
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level:
+          automationFailures > 0 || checks.d1.status === "fail"
+            ? "warn"
+            : "info",
+        event: "cron.complete",
+        cron: event.cron,
+        tenantsEvaluated: results?.length ?? 0,
+        automationFailures,
+        evidenceCollected,
+        checks,
+      }),
+    );
   },
   async queue(
     batch: QueueBatch<AnyStepMessage>,

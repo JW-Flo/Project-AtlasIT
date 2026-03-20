@@ -9,6 +9,7 @@ import {
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleGitHubWebhook } from "./webhooks.js";
+import { signPayload } from "../../../packages/shared/src/crypto/hmac.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -90,25 +91,27 @@ app.post("/webhook", async (c) => {
 
   const rawBody = await c.req.text();
 
-  // Verify HMAC signature
+  // Verify HMAC signature using constant-time comparison
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(c.env.ADAPTER_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"],
+    ["verify"],
   );
-  const sigBuffer = await crypto.subtle.sign(
+  // Convert hex signature to Uint8Array for crypto.subtle.verify
+  const sigBytes = new Uint8Array(
+    (signature.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)),
+  );
+  const isValid = await crypto.subtle.verify(
     "HMAC",
     key,
+    sigBytes,
     encoder.encode(rawBody),
   );
-  const expectedSig = Array.from(new Uint8Array(sigBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 
-  if (signature !== expectedSig) {
+  if (!isValid) {
     console.error(
       JSON.stringify({
         level: "error",
@@ -478,6 +481,317 @@ app.get("/auth/callback", async (c) => {
 
 // GitHub organization webhook receiver
 app.post("/webhooks/github/events", (c) => handleGitHubWebhook(c));
+
+// ── Compliance evidence collection ──────────────────────────────────────────
+// POST /api/compliance/check — check branch protection across all org repos
+// and publish compliance.evidence.collected events to the orchestrator.
+app.post("/api/compliance/check", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{ tenantId: string; org?: string }>().catch(() => null);
+
+  if (!body?.tenantId) {
+    return c.json({ error: "tenantId is required", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 404);
+  }
+
+  const headers = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  // Determine org — prefer explicit param, fall back to first org from /user/orgs
+  let org = body.org;
+  if (!org) {
+    const orgsRes = await fetch("https://api.github.com/user/orgs?per_page=1", { headers });
+    const orgs = orgsRes.ok ? (await orgsRes.json() as Array<{ login: string }>) : [];
+    org = orgs[0]?.login;
+  }
+  if (!org) {
+    return c.json({ error: "Could not determine GitHub org", correlationId }, 422);
+  }
+
+  // Fetch org repos (first page — up to 30)
+  const reposRes = await fetch(
+    `https://api.github.com/orgs/${org}/repos?per_page=30&sort=updated`,
+    { headers },
+  );
+  if (!reposRes.ok) {
+    return c.json({ error: "Failed to fetch repos", correlationId }, 502);
+  }
+  const repos = (await reposRes.json()) as Array<{ name: string; default_branch: string }>;
+
+  let protectedCount = 0;
+  let unprotectedCount = 0;
+
+  for (const repo of repos) {
+    const branchRes = await fetch(
+      `https://api.github.com/repos/${org}/${repo.name}/branches/${repo.default_branch}`,
+      { headers },
+    );
+    if (!branchRes.ok) continue;
+    const branch = (await branchRes.json()) as { protected: boolean };
+    if (branch.protected) protectedCount++; else unprotectedCount++;
+  }
+
+  const total = protectedCount + unprotectedCount;
+  const allProtected = total > 0 && unprotectedCount === 0;
+
+  // Publish compliance evidence event (HMAC-signed when EVENT_PUBLISH_SECRET is set)
+  {
+    const eventBody = JSON.stringify({
+      tenantId: body.tenantId,
+      type: "compliance.evidence.collected",
+      source: "adapter:github",
+      payload: {
+        framework: "SOC2",
+        controlId: "CC6.7",
+        controlName: "Branch Protection",
+        evidenceType: "automated",
+        source: "adapter:github",
+        sourceId: `github:${org}`,
+        actor: "system",
+        subject: `${org} (${total} repos)`,
+        metadata: {
+          org,
+          totalRepos: total,
+          protectedBranches: protectedCount,
+          unprotectedBranches: unprotectedCount,
+          allProtected,
+          checkedAt: new Date().toISOString(),
+        },
+      },
+    });
+    const eventHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (c.env.EVENT_PUBLISH_SECRET) {
+      eventHeaders["X-Signature"] = await signPayload(eventBody, c.env.EVENT_PUBLISH_SECRET);
+    }
+    await fetch(`${c.env.ORCHESTRATOR_URL}/api/v1/events`, {
+      method: "POST",
+      headers: eventHeaders,
+      body: eventBody,
+    }).catch((err: Error) => {
+      console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.7 evidence", error: err.message, tenantId: body.tenantId, correlationId }));
+    });
+  }
+
+  return c.json({
+    ok: true,
+    correlationId,
+    org,
+    totalRepos: total,
+    protectedBranches: protectedCount,
+    unprotectedBranches: unprotectedCount,
+    allProtected,
+  });
+});
+
+// ── Adapter evidence collection ──────────────────────────────────────────────
+// POST /api/evidence — return compliance evidence items for this tenant's GitHub org.
+app.post("/api/evidence", async (c) => {
+  const CONTROL_REFS = {
+    branch_protection: ["SOC2-CC8.1", "ISO-27001-A.12.6.1"],
+    mfa_enforcement: ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"],
+    sso_enforcement: ["SOC2-CC6.1", "ISO-27001-A.9.2.1"],
+  } as const;
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  // Resolve tenantId from header or JSON body
+  const tenantId =
+    c.req.header("X-Tenant-ID") ??
+    (await c.req.json<{ tenantId?: string }>().catch(() => ({})))?.tenantId;
+
+  if (!tenantId) {
+    return c.json({ items: [] });
+  }
+
+  // Load OAuth token
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  // Load org config
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ items: [] });
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+  const org = config.orgName;
+
+  const headers = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  // Fetch org details (MFA + SSO)
+  const orgRes = await fetch(`https://api.github.com/orgs/${org}`, { headers });
+
+  if (!orgRes.ok && orgRes.status === 403) {
+    // Insufficient scope — mark org-level checks as unknown
+    // Still try to gather repo data for branch protection
+    let branchProtectionItem: EvidenceItem = {
+      type: "branch_protection",
+      controlRefs: [...CONTROL_REFS.branch_protection],
+      status: "unknown",
+      details: { org, reason: "403 — insufficient scope to read repos" },
+    };
+
+    const reposRes = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=30&sort=updated`,
+      { headers },
+    );
+
+    if (reposRes.ok) {
+      const repos = (await reposRes.json()) as Array<{
+        name: string;
+        default_branch: string;
+      }>;
+
+      let protectedCount = 0;
+      let unprotectedCount = 0;
+      for (const repo of repos) {
+        const branchRes = await fetch(
+          `https://api.github.com/repos/${org}/${repo.name}/branches/${repo.default_branch}`,
+          { headers },
+        );
+        if (!branchRes.ok) continue;
+        const branch = (await branchRes.json()) as { protected: boolean };
+        if (branch.protected) protectedCount++;
+        else unprotectedCount++;
+      }
+
+      const total = protectedCount + unprotectedCount;
+      const allProtected = total > 0 && unprotectedCount === 0;
+
+      branchProtectionItem = {
+        type: "branch_protection",
+        controlRefs: [...CONTROL_REFS.branch_protection],
+        status: total === 0 ? "unknown" : allProtected ? "pass" : "fail",
+        details: { org, totalRepos: total, protectedCount, unprotectedCount, allProtected },
+      };
+    }
+
+    const items: EvidenceItem[] = [
+      branchProtectionItem,
+      {
+        type: "mfa_enforcement",
+        controlRefs: [...CONTROL_REFS.mfa_enforcement],
+        status: "unknown",
+        details: { org, reason: "403 — admin:org scope required" },
+      },
+      {
+        type: "sso_enforcement",
+        controlRefs: [...CONTROL_REFS.sso_enforcement],
+        status: "unknown",
+        details: { org, reason: "403 — admin:org scope required" },
+      },
+    ];
+
+    return c.json({ items });
+  }
+
+  if (!orgRes.ok) {
+    return c.json({ items: [] });
+  }
+
+  const orgData = (await orgRes.json()) as {
+    two_factor_requirement_enabled?: boolean;
+    saml_sso_enabled?: boolean;
+    saml_sso_required?: boolean;
+  };
+
+  // Fetch repos for branch protection check
+  const reposRes = await fetch(
+    `https://api.github.com/orgs/${org}/repos?per_page=30&sort=updated`,
+    { headers },
+  );
+
+  if (!reposRes.ok) {
+    return c.json({ items: [] });
+  }
+
+  const repos = (await reposRes.json()) as Array<{
+    name: string;
+    default_branch: string;
+  }>;
+
+  let protectedCount = 0;
+  let unprotectedCount = 0;
+
+  for (const repo of repos) {
+    const branchRes = await fetch(
+      `https://api.github.com/repos/${org}/${repo.name}/branches/${repo.default_branch}`,
+      { headers },
+    );
+    if (!branchRes.ok) continue;
+    const branch = (await branchRes.json()) as { protected: boolean };
+    if (branch.protected) protectedCount++;
+    else unprotectedCount++;
+  }
+
+  const total = protectedCount + unprotectedCount;
+  const allProtected = total > 0 && unprotectedCount === 0;
+
+  const twoFactorRequired = orgData.two_factor_requirement_enabled ?? false;
+  const samlSsoEnabled =
+    orgData.saml_sso_enabled === true || orgData.saml_sso_required === true;
+
+  const items: EvidenceItem[] = [
+    {
+      type: "branch_protection",
+      controlRefs: [...CONTROL_REFS.branch_protection],
+      status: total === 0 ? "unknown" : allProtected ? "pass" : "fail",
+      details: { org, totalRepos: total, protectedCount, unprotectedCount, allProtected },
+    },
+    {
+      type: "mfa_enforcement",
+      controlRefs: [...CONTROL_REFS.mfa_enforcement],
+      status: twoFactorRequired ? "pass" : "fail",
+      details: { org, twoFactorRequired },
+    },
+    {
+      type: "sso_enforcement",
+      controlRefs: [...CONTROL_REFS.sso_enforcement],
+      status: samlSsoEnabled ? "pass" : "fail",
+      details: { org, samlSsoEnabled, samlSsoRequired: orgData.saml_sso_required ?? false },
+    },
+  ];
+
+  return c.json({ items });
+});
 
 export default app;
 
