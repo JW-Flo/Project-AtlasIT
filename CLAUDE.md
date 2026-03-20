@@ -72,6 +72,34 @@ Full PR workflow:
 
 Do not poll Copilot more than 2-3 times. If nothing reported, merge and move on.
 
+## CI/CD & Deploy Validation
+
+### Pre-push verification
+
+Before committing changes to CI workflows, deploy configs, or shell scripts:
+
+1. **Verify CLI flags exist** — run `npx wrangler deploy --help`, `npx wrangler --help`, etc. to confirm flags before using them. Do not guess CLI flags; wrangler, gh, and other tools change between versions.
+2. **Test locally first** — run `npx wrangler deploy --dry-run --config <path> [--env <env>]` to confirm the bundle builds and config is valid before pushing.
+3. **Validate shell scripts** — run `bash -n scripts/<name>.sh` to catch syntax errors (e.g., `local` outside functions, unclosed quotes).
+
+### Wrangler named environments
+
+Wrangler `[env.<name>]` sections do NOT inherit top-level bindings. Each named env must explicitly declare: `main`, `compatibility_date`, `compatibility_flags`, `[[env.<name>.d1_databases]]`, `[[env.<name>.kv_namespaces]]`, etc. Always verify by running `npx wrangler deploy --dry-run --config <path> --env <env>` and confirming all bindings appear in the output.
+
+### Deploy workflow conventions
+
+- All deploy jobs are in `.github/workflows/deploy-on-merge.yml`
+- Workers behind CF Access need `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` env vars for smoke tests
+- Subdirectory `pnpm install --no-frozen-lockfile` is required for workers not in the root `workspaces` array (core-api, dispatch-worker) and for workspace members with local devDependencies (ai-orchestrator, compliance-worker)
+- Use `WRANGLER_LOG=debug` env var for deploy debugging (NOT `--log-level` which doesn't exist on `wrangler deploy`)
+- Smoke tests use `scripts/smoke-test.sh <worker-name> <base-url>` — supports CF Access auth headers when env vars are set
+
+### Workspace membership
+
+Workers in `package.json` `workspaces`: packages/_, onboarding, ai-orchestrator, compliance-worker, mcp_, documentation-worker, slack-approval-worker, console-app.
+
+NOT in workspaces (standalone installs): core-api, dispatch-worker, slack-notification-agent, marketplace, apex-redirect-worker.
+
 ## Parallel Agent Rules
 
 Write agents (those that edit files) MUST use isolated worktrees.
