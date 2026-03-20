@@ -155,6 +155,11 @@
     "fast-xml-parser": ">=5.5.6"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd",
+      "sharp"
+    ],
     "overrides": {
       "undici": ">=7.24.0",
       "devalue": "^5.0.0",
