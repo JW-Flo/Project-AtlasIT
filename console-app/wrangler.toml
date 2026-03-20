@@ -25,6 +25,8 @@ routes = [
 	"www.atlasit.pro/api/apps*",
 	"www.atlasit.pro/api/workflows*",
 	"www.atlasit.pro/api/automation*",
+	"www.atlasit.pro/api/compliance/*",
+	"www.atlasit.pro/api/jml/*",
 	"www.atlasit.pro/api/admin/*",
 	"www.atlasit.pro/api/tenant/*",
 	"www.atlasit.pro/api/tenant-compliance/*",
@@ -45,7 +47,7 @@ directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
 [build]
-command = "cd console-app && pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
+command = "pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
 
 [vars]
 APP_NAME = "AtlasIT Console"
