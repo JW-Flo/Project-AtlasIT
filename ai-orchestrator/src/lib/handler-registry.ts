@@ -7,6 +7,9 @@
  * handlers via the API.
  */
 
+import { classifyEvent } from "../../../packages/shared/src/evidence/classifier.ts";
+import { storeEvidence } from "../../../packages/shared/src/evidence/locker.ts";
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface StepHandlerContext {
@@ -36,11 +39,7 @@ const handlers: RegisteredHandler[] = [];
  * Pattern can be exact ("atlas.resolve_access_bundle") or use wildcards
  * ("okta.*" matches any okta operation, "*.provision" matches any app provision).
  */
-export function registerHandler(
-  pattern: string,
-  handler: StepHandlerFn,
-  description = "",
-): void {
+export function registerHandler(pattern: string, handler: StepHandlerFn, description = ""): void {
   // Insert at beginning so more specific patterns (registered later) match first
   handlers.unshift({ pattern, handler, description });
 }
@@ -120,25 +119,44 @@ export function registerBuiltinHandlers(): void {
     "Resolve user access bundle from directory context",
   );
 
-  // Atlas internal: emit evidence
+  // Atlas internal: emit evidence — classify and store via the evidence pipeline
   registerHandler(
     "atlas.emit_evidence",
     async (ctx) => {
-      if (!ctx.evidence) return { evidenceId: null, skipped: true };
-      const evidenceId = crypto.randomUUID().replace(/-/g, "");
-      const key = `workflow-evidence/${ctx.tenantId}/${evidenceId}.json`;
-      await ctx.evidence.put(
-        key,
-        JSON.stringify({
-          evidenceId,
-          tenantId: ctx.tenantId,
-          capturedAt: new Date().toISOString(),
-          context: ctx.context,
-        }),
+      if (!ctx.db) return { evidenceId: null, skipped: true, reason: "no_db" };
+
+      const eventType = (ctx.context.eventType as string) ?? "workflow.evidence";
+      const source = (ctx.context.source as string) ?? "orchestrator";
+      const actor = (ctx.context.actor as string) ?? "system";
+      const subject = (ctx.context.subject as string) ?? null;
+
+      // Classify the event against compliance controls
+      const classified = classifyEvent(
+        ctx.tenantId,
+        eventType,
+        source,
+        actor,
+        subject,
+        ctx.context,
       );
-      return { evidenceId, key };
+
+      if (!classified) {
+        return { evidenceId: null, skipped: true, reason: "no_controls_matched" };
+      }
+
+      // Store through the evidence pipeline (R2 + D1)
+      const result = await storeEvidence({ db: ctx.db, bucket: ctx.evidence }, classified);
+
+      return {
+        evidenceId: result.id,
+        contentHash: result.contentHash,
+        r2Key: result.r2Key,
+        controlsTagged: result.controlsTagged,
+        d1RowsWritten: result.d1RowsWritten,
+        alreadyExists: result.alreadyExists,
+      };
     },
-    "Emit workflow evidence to R2",
+    "Classify and store workflow evidence via evidence pipeline",
   );
 
   // Atlas internal: update workflow run status in D1
@@ -163,9 +181,7 @@ export function registerBuiltinHandlers(): void {
   registerHandler(
     "*.provision",
     async (ctx) => {
-      const appId = ctx.stepId
-        .replace(/^(provision_|provision_new_)/, "")
-        .replace(/_.*$/, "");
+      const appId = ctx.stepId.replace(/^(provision_|provision_new_)/, "").replace(/_.*$/, "");
       const adapterUrl = ctx.adapterUrls[appId];
       if (!adapterUrl) throw new Error(`No adapter URL for "${appId}"`);
 
@@ -181,8 +197,7 @@ export function registerBuiltinHandlers(): void {
           config: {},
         }),
       });
-      if (!res.ok)
-        throw new Error(`${appId} provision failed: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`${appId} provision failed: HTTP ${res.status}`);
       return res.json().catch(() => ({}));
     },
     "Provision user in adapter via /api/provision",
@@ -210,8 +225,7 @@ export function registerBuiltinHandlers(): void {
           config: {},
         }),
       });
-      if (!res.ok)
-        throw new Error(`${appId} deprovision failed: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`${appId} deprovision failed: HTTP ${res.status}`);
       return res.json().catch(() => ({}));
     },
     "Deprovision user in adapter via /api/deprovision",
