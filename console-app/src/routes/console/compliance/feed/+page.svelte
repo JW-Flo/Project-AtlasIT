@@ -49,6 +49,13 @@
     detrimentalCount: 0,
   };
 
+  const FRAMEWORKS = ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"];
+  const CATEGORIES = [
+    "access_grant", "access_revoke", "onboarding", "offboarding",
+    "policy_change", "config_change", "adapter_pull", "incident",
+    "review_complete", "mfa_enforcement", "sso_enforcement",
+  ];
+
   let framework = "";
   let controlId = "";
   let category = "";
@@ -100,7 +107,7 @@
     error = null;
 
     try {
-      const res = await fetch(`/api/compliance/evidence-feed?${buildQuery()}`);
+      const res = await fetch(`/api/evidence-feed?${buildQuery()}`);
       if (!res.ok) throw new Error(`Failed to load evidence feed (${res.status})`);
 
       const data = await res.json();
@@ -175,15 +182,25 @@
       <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div class="space-y-1.5">
           <Label>Framework</Label>
-          <Input bind:value={framework} placeholder="SOC2" />
+          <select bind:value={framework} class="h-10 rounded-md border border-input bg-background px-3 text-sm w-full">
+            <option value="">All Frameworks</option>
+            {#each FRAMEWORKS as fw}
+              <option value={fw}>{fw}</option>
+            {/each}
+          </select>
         </div>
         <div class="space-y-1.5">
           <Label>Control ID</Label>
-          <Input bind:value={controlId} placeholder="CC6.3" />
+          <Input bind:value={controlId} placeholder="e.g. CC6.1" />
         </div>
         <div class="space-y-1.5">
           <Label>Category</Label>
-          <Input bind:value={category} placeholder="offboarding" />
+          <select bind:value={category} class="h-10 rounded-md border border-input bg-background px-3 text-sm w-full">
+            <option value="">All Categories</option>
+            {#each CATEGORIES as cat}
+              <option value={cat}>{cat.replace(/_/g, " ")}</option>
+            {/each}
+          </select>
         </div>
         <div class="space-y-1.5">
           <Label>Impact</Label>
@@ -196,7 +213,7 @@
         </div>
         <div class="space-y-1.5">
           <Label>Since</Label>
-          <Input bind:value={since} placeholder="2026-03-01" />
+          <input type="date" bind:value={since} class="h-10 rounded-md border border-input bg-background px-3 text-sm w-full" />
         </div>
         <div class="flex items-end gap-2">
           <Button on:click={applyFilters}>Apply</Button>

@@ -52,32 +52,42 @@
 
   const navSections: NavSection[] = [
     {
-      title: "Main",
+      title: "Overview",
       items: [
         { href: "/console", label: "Dashboard", icon: LayoutDashboard },
-        { href: "/console/compliance", label: "Compliance", icon: ShieldCheck },
-        { href: "/console/compliance/feed", label: "Evidence Feed", icon: Activity },
         { href: "/console/directory", label: "Directory", icon: Users },
       ],
     },
     {
-      title: "Integrations",
+      title: "Compliance",
       items: [
-        { href: "/console/marketplace", label: "Marketplace", icon: Store },
-        { href: "/console/apps", label: "Apps", icon: AppWindow },
-        { href: "/console/workflows", label: "Workflows", icon: Workflow },
-        { href: "/console/automation", label: "Automation", icon: Zap },
+        { href: "/console/compliance", label: "Controls", icon: ShieldCheck },
+        { href: "/console/compliance/feed", label: "Evidence", icon: Activity },
+        { href: "/console/policies", label: "Policies", icon: FileText },
       ],
     },
     {
-      title: "Operations",
+      title: "Security",
       items: [
         { href: "/console/access-reviews", label: "Access Reviews", icon: ClipboardCheck },
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
-        { href: "/console/automation/runs", label: "Automation Runs", icon: Workflow },
-        { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
         { href: "/console/incidents", label: "Incidents", icon: AlertTriangle },
-        { href: "/console/policies", label: "Policy Generator", icon: FileText },
+        { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
+      ],
+    },
+    {
+      title: "Automation",
+      items: [
+        { href: "/console/workflows", label: "Workflows", icon: Workflow },
+        { href: "/console/automation", label: "Rules", icon: Zap },
+        { href: "/console/automation/runs", label: "Runs", icon: Workflow },
+      ],
+    },
+    {
+      title: "Apps",
+      items: [
+        { href: "/console/apps", label: "Connected Apps", icon: AppWindow },
+        { href: "/console/marketplace", label: "Marketplace", icon: Store },
       ],
     },
     {

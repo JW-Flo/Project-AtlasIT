@@ -86,6 +86,7 @@
   let scores: FrameworkScore[] = [];
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
+  let filterStatus = "all";
   let history: FrameworkHistory[] = [];
   let historyError: string | null = null;
   let evidenceFeedSummary: EvidenceFeedSummary = {
@@ -125,6 +126,10 @@
     filterFramework === "all"
       ? controls
       : controls.filter((c) => c.framework === filterFramework);
+  $: statusFilteredControls =
+    filterStatus === "all"
+      ? filteredControls
+      : filteredControls.filter((c) => c.status === filterStatus);
   $: overallScore =
     scores.length > 0
       ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100
@@ -225,7 +230,7 @@
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     try {
-      const res = await fetch(`/api/compliance/evidence-feed?since=${encodeURIComponent(since)}&limit=5&offset=0`);
+      const res = await fetch(`/api/evidence-feed?since=${encodeURIComponent(since)}&limit=5&offset=0`);
       if (!res.ok) {
         evidenceFeedPreview = [];
         evidenceFeedError = `Failed to load evidence feed (${res.status})`;
@@ -446,7 +451,7 @@
 
   async function loadTenantTags() {
     try {
-      const res = await fetch("/api/compliance/evidence/tags");
+      const res = await fetch("/api/evidence/tags");
       if (res.ok) {
         const data = await res.json();
         availableTags = data.tags || [];
@@ -456,7 +461,7 @@
 
   async function loadEvidenceTags(evidenceId: string) {
     try {
-      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`);
+      const res = await fetch(`/api/evidence/${evidenceId}/tags`);
       if (res.ok) {
         const data = await res.json();
         tagsByEvidence[evidenceId] = data.tags || [];
@@ -468,7 +473,7 @@
   async function addTag(evidenceId: string) {
     if (!newTagValue.trim()) return;
     try {
-      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
+      const res = await fetch(`/api/evidence/${evidenceId}/tags`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -492,7 +497,7 @@
 
   async function removeTag(evidenceId: string, tagId: string) {
     try {
-      await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
+      await fetch(`/api/evidence/${evidenceId}/tags`, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ tagId }),
@@ -870,16 +875,25 @@
     <!-- Controls tab -->
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
-        <Label htmlFor="fw-filter">Framework:</Label>
         <select
           id="fw-filter"
           bind:value={filterFramework}
-          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
         >
           <option value="all">All Frameworks</option>
           {#each frameworks as fw}
             <option value={fw}>{fw}</option>
           {/each}
+        </select>
+        <select
+          bind:value={filterStatus}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+        >
+          <option value="all">All Statuses</option>
+          <option value="not_started">Not Started</option>
+          <option value="in_progress">In Progress</option>
+          <option value="implemented">Implemented</option>
+          <option value="verified">Verified</option>
         </select>
       </div>
       <Button size="sm" on:click={saveControls} disabled={saving}>
@@ -892,16 +906,23 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-              <th class="px-4 py-3 font-medium">Control</th>
-              <th class="px-4 py-3 font-medium">Framework</th>
-              <th class="px-4 py-3 font-medium">Status</th>
+              <th class="px-4 py-3 font-medium w-[180px]">Control</th>
+              <th class="px-4 py-3 font-medium">Description</th>
+              <th class="px-4 py-3 font-medium w-[100px]">Framework</th>
+              <th class="px-4 py-3 font-medium w-[140px]">Status</th>
               <th class="px-4 py-3 font-medium">Notes</th>
             </tr>
           </thead>
           <tbody>
-            {#each filteredControls as control (control.id)}
+            {#each statusFilteredControls as control (control.id)}
               <tr class="border-t hover:bg-muted/50">
-                <td class="px-4 py-3 font-medium">{control.name}</td>
+                <td class="px-4 py-3">
+                  <div class="font-medium">{control.name}</div>
+                  {#if control.automatable}
+                    <span class="text-[10px] text-primary font-medium uppercase tracking-wider">Auto</span>
+                  {/if}
+                </td>
+                <td class="px-4 py-3 text-muted-foreground text-xs">{control.description || ""}</td>
                 <td class="px-4 py-3">
                   <Badge variant="outline">{control.framework}</Badge>
                 </td>
@@ -909,7 +930,7 @@
                   <select
                     value={control.status}
                     on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
-                    class="h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full"
                   >
                     <option value="not_started">Not Started</option>
                     <option value="in_progress">In Progress</option>

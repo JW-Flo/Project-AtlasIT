@@ -1,5 +1,5 @@
 /**
- * GET /api/compliance/evidence-feed
+ * GET /api/evidence-feed
  *
  * Returns a tenant-scoped feed of compliance evidence items with control tags,
  * impact classification, and lifecycle context. Powers the hero "Evidence Activity
@@ -52,7 +52,12 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const env = (platform?.env as Record<string, unknown>) ?? {};
   const db = (env.DB ?? env.ATLAS_SHARED_DB) as D1Database | undefined;
   if (!db) {
-    console.error(JSON.stringify({ level: "error", message: "Evidence feed: DB unavailable" }));
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "Evidence feed: DB unavailable",
+      }),
+    );
     return json({ error: "Database unavailable" }, { status: 503 });
   }
 
@@ -102,7 +107,9 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       .bind(...params, limit, offset)
       .all(),
     db
-      .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`)
+      .prepare(
+        `SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`,
+      )
       .bind(...params)
       .first<{ cnt: number }>(),
     // Summary stats for the entire tenant (unfiltered)
@@ -116,7 +123,11 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
          WHERE tenant_id = ?`,
       )
       .bind(tenantId)
-      .first<{ total_evidence: number; framework_count: number; control_count: number }>(),
+      .first<{
+        total_evidence: number;
+        framework_count: number;
+        control_count: number;
+      }>(),
   ]);
 
   // Parse metadata to extract impact, confidence, reasoning, eventType
@@ -156,8 +167,12 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     : feed;
 
   // Count positive/detrimental from the current page for summary
-  const positiveCount = filteredFeed.filter((f) => f.impact === "positive").length;
-  const detrimentalCount = filteredFeed.filter((f) => f.impact === "detrimental").length;
+  const positiveCount = filteredFeed.filter(
+    (f) => f.impact === "positive",
+  ).length;
+  const detrimentalCount = filteredFeed.filter(
+    (f) => f.impact === "detrimental",
+  ).length;
 
   return json({
     feed: filteredFeed,

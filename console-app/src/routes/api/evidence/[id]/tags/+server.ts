@@ -17,7 +17,8 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId)
+    return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
@@ -34,12 +35,18 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   return json({ tags: result.results ?? [] });
 };
 
-export const POST: RequestHandler = async ({ params, request, locals, platform }) => {
+export const POST: RequestHandler = async ({
+  params,
+  request,
+  locals,
+  platform,
+}) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId)
+    return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
@@ -67,11 +74,23 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
         `INSERT INTO evidence_tags (id, tenant_id, evidence_id, tag, tag_type, color, created_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(id, tenantId, evidenceId, tag.trim(), tagType, color ?? null, createdBy, now)
+      .bind(
+        id,
+        tenantId,
+        evidenceId,
+        tag.trim(),
+        tagType,
+        color ?? null,
+        createdBy,
+        now,
+      )
       .run();
   } catch (err: any) {
     if (err?.message?.includes("UNIQUE constraint failed")) {
-      return json({ error: "Tag already exists on this evidence item" }, { status: 409 });
+      return json(
+        { error: "Tag already exists on this evidence item" },
+        { status: 409 },
+      );
     }
     throw err;
   }
@@ -90,12 +109,18 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
   return json({ tag: created }, { status: 201 });
 };
 
-export const DELETE: RequestHandler = async ({ params, request, locals, platform }) => {
+export const DELETE: RequestHandler = async ({
+  params,
+  request,
+  locals,
+  platform,
+}) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId)
+    return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });

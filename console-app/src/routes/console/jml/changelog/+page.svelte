@@ -149,7 +149,7 @@
       params.set("category", cat);
     }
 
-    const res = await fetch(`/api/compliance/evidence-feed?${params}`);
+    const res = await fetch(`/api/evidence-feed?${params}`);
     if (!res.ok) throw new Error(`Failed to load evidence feed (${res.status})`);
 
     const data = await res.json();
