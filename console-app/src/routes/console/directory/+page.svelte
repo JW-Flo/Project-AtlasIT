@@ -175,7 +175,12 @@
     try {
       const res = await fetch("/api/directory/mappings/suggest", { method: "POST" });
       if (res.ok) {
-        pushToast({ message: "Suggestions generated", variant: "success" });
+        const data = await res.json();
+        if (data.suggestions?.length > 0) {
+          pushToast({ message: `${data.suggestions.length} mapping suggestion(s) generated`, variant: "success" });
+        } else {
+          pushToast({ message: data.message || "No suggestions could be generated. Connect apps and sync your directory first.", variant: "info" });
+        }
         await fetchMappings();
       } else {
         pushToast({ message: "Auto-suggest failed", variant: "error" });

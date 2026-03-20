@@ -8,7 +8,10 @@ import { writeAudit } from "$lib/server/audit";
  */
 const GROUP_APP_PATTERNS: [RegExp, string[]][] = [
   // Engineering & Development
-  [/engineer|dev|developer|eng\b|development|backend|frontend|fullstack|swe\b|software/i, ["github", "jira", "slack", "google-workspace"]],
+  [
+    /engineer|dev|developer|eng\b|development|backend|frontend|fullstack|swe\b|software/i,
+    ["github", "jira", "slack", "google-workspace"],
+  ],
   [/devops|platform|infra|sre|reliability|cloud/i, ["github", "jira", "aws", "datadog", "slack"]],
   [/qa|quality|testing|test\b/i, ["github", "jira", "slack"]],
 
@@ -61,8 +64,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "database unavailable" }, { status: 500 });
 
-  // Get connected apps, groups, and existing mappings in parallel
-  const [groups, connectedApps, existingMappings] = await Promise.all([
+  // Get connected apps, groups, and existing mappings in parallel (resilient to missing tables)
+  const [groupsResult, connectedAppsResult, existingMappingsResult] = await Promise.allSettled([
     db
       .prepare(`SELECT id, name FROM directory_groups WHERE tenant_id = ?`)
       .bind(tenantId)
@@ -86,8 +89,29 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       }),
   ]);
 
+  const groups: any[] = groupsResult.status === "fulfilled" ? groupsResult.value : [];
+  const connectedApps: string[] =
+    connectedAppsResult.status === "fulfilled" ? connectedAppsResult.value : [];
+  const existingMappings: Set<string> =
+    existingMappingsResult.status === "fulfilled" ? existingMappingsResult.value : new Set();
+
   if (groups.length === 0) {
-    return json({ suggestions: [], message: "no groups found" });
+    return json({
+      suggestions: [],
+      message:
+        "No directory groups found. Sync your directory first to generate mapping suggestions.",
+      connectedApps: connectedApps.length,
+      groupsScanned: 0,
+    });
+  }
+  if (connectedApps.length === 0) {
+    return json({
+      suggestions: [],
+      message:
+        "No apps connected. Connect apps in the Integrations page to generate mapping suggestions.",
+      connectedApps: 0,
+      groupsScanned: groups.length,
+    });
   }
 
   const connectedSet = new Set(connectedApps);
@@ -136,7 +160,10 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       actorEmail: user.email,
       action: "mapping.auto_suggest",
       targetType: "group_app_mapping",
-      detail: JSON.stringify({ count: suggestions.length, apps: [...new Set(suggestions.map((s: any) => s.appId))] }),
+      detail: JSON.stringify({
+        count: suggestions.length,
+        apps: [...new Set(suggestions.map((s: any) => s.appId))],
+      }),
     });
   }
 

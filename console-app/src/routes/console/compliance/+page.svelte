@@ -406,13 +406,16 @@
   }
 
   interface EvidenceItem {
-    id: number;
+    id: number | string;
     hash: string;
     tenantId: string;
     pack: string;
     subject: string | null;
     createdAt: string;
-    linkedControl?: string;
+    linkedControl?: string | null;
+    framework?: string | null;
+    controlName?: string | null;
+    source?: string;
   }
 
   let evidenceItems: EvidenceItem[] = [];
@@ -898,8 +901,11 @@
             {#each evidenceItems.slice(0, 8) as item}
               <div class="px-4 py-3 flex items-center justify-between gap-4">
                 <div>
-                  <div class="text-sm font-medium">{item.pack || "manual"}</div>
-                  <div class="text-xs text-muted-foreground">Actor: {item.subject || "system"}</div>
+                  <div class="text-sm font-medium">{item.pack || "manual"}{item.linkedControl ? ` — ${item.linkedControl}` : ""}</div>
+                  <div class="text-xs text-muted-foreground">
+                    {item.source || "manual"}{item.subject ? ` · ${item.subject}` : ""}
+                    {item.framework ? ` · ${item.framework}` : ""}
+                  </div>
                 </div>
                 <div class="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</div>
               </div>
@@ -1192,10 +1198,10 @@
               {#each evidenceItems as item (item.id)}
                 <tr class="border-t hover:bg-muted/50">
                   <td class="px-4 py-3">
-                    <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash)}</span>
+                    <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash || String(item.id))}</span>
                   </td>
                   <td class="px-4 py-3">
-                    <Badge variant="secondary">{item.pack}</Badge>
+                    <Badge variant="secondary">{item.pack || "manual"}</Badge>
                   </td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
