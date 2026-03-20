@@ -74,6 +74,45 @@ import { evalGDPR_Art5_1e } from "./rules/gdpr.art5_1e";
 import { evalGDPR_Art5_1f } from "./rules/gdpr.art5_1f";
 import { evalGDPR_Art5_2 } from "./rules/gdpr.art5_2";
 
+/** All control IDs supported by the CDT evaluation engine. */
+export const ALL_CONTROL_IDS: string[] = [
+  // SOC2 CC1 — Control Environment
+  "SOC2-CC1.1", "SOC2-CC1.2", "SOC2-CC1.3",
+  // SOC2 CC2 — Communication
+  "SOC2-CC2.1", "SOC2-CC2.2",
+  // SOC2 CC3 — Risk Assessment
+  "SOC2-CC3.1", "SOC2-CC3.2",
+  // SOC2 CC4 — Monitoring
+  "SOC2-CC4.1", "SOC2-CC4.2",
+  // SOC2 CC5 — Control Activities
+  "SOC2-CC5.1", "SOC2-CC5.2", "SOC2-CC5.3",
+  // SOC2 CC6 — Logical Access
+  "SOC2-CC6.1", "SOC2-CC6.2", "SOC2-CC6.3", "SOC2-CC6.6", "SOC2-CC6.7", "SOC2-CC6.8",
+  // SOC2 CC7 — Operations
+  "SOC2-CC7.1", "SOC2-CC7.2", "SOC2-CC7.3", "SOC2-CC7.4", "SOC2-CC7.5",
+  // SOC2 CC8 — Change Management
+  "SOC2-CC8.1",
+  // SOC2 CC9 — Risk Mitigation
+  "SOC2-CC9.1", "SOC2-CC9.2",
+  // ISO 27001 A.9 — Access Control
+  "ISO-27001-A.9.1.1", "ISO-27001-A.9.1.2",
+  "ISO-27001-A.9.2.1", "ISO-27001-A.9.2.2", "ISO-27001-A.9.2.3", "ISO-27001-A.9.2.4", "ISO-27001-A.9.2.5", "ISO-27001-A.9.2.6",
+  "ISO-27001-A.9.3.1", "ISO-27001-A.9.4.1", "ISO-27001-A.9.4.2",
+  // ISO 27001 A.12/A.13 — Operations / Network
+  "ISO-27001-A.12.6.1", "ISO-27001-A.13.1.1",
+  // ISO 27001 A.16 — Incident Management
+  "ISO-27001-A.16.1.1", "ISO-27001-A.16.1.2", "ISO-27001-A.16.1.4",
+  // HIPAA Technical Safeguards
+  "HIPAA-164.312(a)(1)", "HIPAA-164.312(a)(2)(i)", "HIPAA-164.312(a)(2)(ii)",
+  "HIPAA-164.312(b)", "HIPAA-164.312(c)(1)", "HIPAA-164.312(d)",
+  // NIST CSF
+  "NIST-CSF-PR.AC-1", "NIST-CSF-PR.AC-3", "NIST-CSF-PR.AC-4",
+  "NIST-CSF-RS.CO-2", "NIST-CSF-DE.CM-1",
+  // GDPR Article 5
+  "GDPR-Art.5(1)(a)", "GDPR-Art.5(1)(b)", "GDPR-Art.5(1)(c)",
+  "GDPR-Art.5(1)(d)", "GDPR-Art.5(1)(e)", "GDPR-Art.5(1)(f)", "GDPR-Art.5(2)",
+];
+
 export function runControlEval(control_id: string, ev: CdtEvent) {
   switch (control_id) {
   // Original 7

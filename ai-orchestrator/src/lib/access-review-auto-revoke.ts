@@ -6,6 +6,7 @@
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 interface ExpiredItem {
   id: string;
@@ -21,6 +22,7 @@ interface ExpiredItem {
 export interface AutoRevokeContext {
   sharedDb: D1Database;
   adapterUrls: Record<string, string>;
+  evidenceBucket?: R2Bucket;
 }
 
 export interface AutoRevokeResult {
@@ -134,6 +136,32 @@ export async function processExpiredCampaigns(
     }
 
     results.push(result);
+
+    // Emit compliance evidence for the expired access review
+    const classified = classifyEvent(
+      tenantId,
+      result.revoked > 0 ? "access_review.completed" : "access_review.expired",
+      "access-review-auto-revoke",
+      "system",
+      null,
+      {
+        campaignId,
+        revoked: result.revoked,
+        skipped: result.skipped,
+        failed: result.failed,
+        reason: "campaign_expired",
+      },
+    );
+    if (classified) {
+      try {
+        await storeEvidence(
+          { db: ctx.sharedDb, bucket: ctx.evidenceBucket },
+          classified,
+        );
+      } catch {
+        // Evidence write is best-effort
+      }
+    }
   }
 
   return results;

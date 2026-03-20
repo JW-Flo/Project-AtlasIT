@@ -13,7 +13,7 @@
  *                 plus compliance preview showing SOC2 CC6.1, CC6.3, ISO27001 A.9.2.6 coverage
  */
 import { generateAI } from "../ai";
-import { ACTION_COMPLIANCE_MAP } from "./compliance-mapping";
+import { ACTION_COMPLIANCE_MAP, } from "./compliance-mapping";
 // ── System Prompt ─────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are an IT automation policy translator for AtlasIT, a lifecycle management and compliance platform.
 
@@ -79,14 +79,27 @@ function buildUserPrompt(req) {
     return prompt;
 }
 const VALID_TRIGGERS = [
-    "user_joined_group", "user_left_group", "user_created", "user_deactivated",
-    "app_connected", "app_disconnected", "app_health_changed", "schedule",
+    "user_joined_group",
+    "user_left_group",
+    "user_created",
+    "user_deactivated",
+    "app_connected",
+    "app_disconnected",
+    "app_health_changed",
+    "schedule",
     "compliance_score_changed",
 ];
 const VALID_ACTIONS = [
-    "provision_app_access", "revoke_app_access", "assign_role", "remove_role",
-    "send_notification", "run_workflow", "sync_directory", "create_incident",
-    "update_compliance_status", "request_access_review",
+    "provision_app_access",
+    "revoke_app_access",
+    "assign_role",
+    "remove_role",
+    "send_notification",
+    "run_workflow",
+    "sync_directory",
+    "create_incident",
+    "update_compliance_status",
+    "request_access_review",
 ];
 function validateAndNormalize(raw) {
     if (!VALID_TRIGGERS.includes(raw.triggerType)) {

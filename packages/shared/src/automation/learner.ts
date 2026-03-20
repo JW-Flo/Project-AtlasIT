@@ -235,6 +235,70 @@ export function generateSuggestions(
     });
   }
 
+  // 6. If there are connected apps but no directory sync on connect rule, suggest one
+  const hasSyncOnConnectRule = existingRules.some(
+    (r) => r.triggerType === "app_connected",
+  );
+  if (connectedApps.length > 0 && !hasSyncOnConnectRule) {
+    const template = ruleTemplates.find(
+      (t) => t.id === "sync-directory-on-app-connect",
+    );
+    if (template) {
+      suggestions.push({
+        templateId: "sync-directory-on-app-connect",
+        reason: `Automatically sync directory users when a new app is connected to keep mappings current`,
+        priority: "medium",
+        ruleInput: {
+          name: template.name,
+          description: template.description,
+          triggerType: template.triggerType,
+          triggerConfig: template.triggerConfig,
+          conditions: template.conditions,
+          actions: template.actions,
+        },
+      });
+    }
+  }
+
+  // 7. Per-app provisioning suggestions for connected apps without any rules
+  const appsWithRules = new Set(
+    existingRules
+      .filter((r) => r.triggerConfig?.appId)
+      .map((r) => r.triggerConfig.appId),
+  );
+  for (const app of connectedApps) {
+    if (appsWithRules.has(app.appId)) continue;
+    // Suggest auto-provisioning for each connected app without any automation
+    suggestions.push({
+      templateId: `auto-provision-${app.appId}`,
+      reason: `${app.appName} is connected but has no automation rules — set up auto-provisioning for new users`,
+      priority: "medium",
+      ruleInput: {
+        name: `Auto-provision ${app.appName} for new users`,
+        description: `When a new user is created in the directory, automatically provision their ${app.appName} account`,
+        triggerType: "user_created" as TriggerType,
+        triggerConfig: { appId: app.appId },
+        conditions: [],
+        actions: [
+          {
+            type: "provision_app_access",
+            config: { appId: app.appId, role: "member" },
+            order: 1,
+          },
+          {
+            type: "send_notification",
+            config: {
+              channel: "slack",
+              template: "user_provisioned",
+              notifyUser: true,
+            },
+            order: 2,
+          },
+        ],
+      },
+    });
+  }
+
   return suggestions.sort(
     (a, b) => priorityWeight(a.priority) - priorityWeight(b.priority),
   );

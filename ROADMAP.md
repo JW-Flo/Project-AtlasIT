@@ -43,7 +43,7 @@ Directory Event / Schedule / Webhook
 - **WorkflowDO** — durable joiner/mover/leaver with per-step timeouts and DLQ-backed compensation
 - **35 adapters** — Okta, Google Workspace, M365, Slack, GitHub, Jira, Confluence, Stripe, AWS, Azure, GCP, Salesforce, HubSpot, and 22 more
 - **MCP agent bus** — HMAC-verified agent webhooks; Slack notifier live, extensible to PagerDuty, email, Jira
-- **compliance-worker** — Rego-based policy eval, R2 evidence storage, auto-scoring across 5 frameworks
+- **compliance-worker** — Evidence-grounded scoring across 5 frameworks, R2 evidence storage, adapter evidence collection
 
 > Everything in the phases below is infrastructure to make these automations reliable, observable, and trustworthy.
 
@@ -123,78 +123,166 @@ Directory Event / Schedule / Webhook
 - [x] CF Access JWT signing key rotation readiness (dynamic JWKS fetch + rotation event logging)
 - [x] Slack webhook verification alignment (HMAC-SHA256, 5-min replay window, correlationId on failures)
 
-## Phase 7 — Compliance-as-Automation (Unique Moat) ✅
+## Phase 7 — Compliance-as-Automation (Unique Moat) ⚠️ Partially Complete
 
 > **Strategic context**: No competitor combines IT lifecycle automation + compliance evidence collection.
 > Vanta/Drata collect evidence passively; AtlasIT creates evidence actively through operations.
 > Every JML workflow step should auto-emit tamper-evident compliance artifacts — making compliance
 > a byproduct of running IT operations, not a separate tool.
 
+### Completed
+
 - [x] Expand CDT rules from 7 → 60 (SOC 2, ISO 27001, HIPAA, NIST CSF, GDPR Article 5 coverage)
 - [x] Map 9 automation action types to 40+ compliance control keys (`packages/shared/src/automation/compliance-mapping.ts`)
-- [x] Auto-link workflow evidence envelopes to compliance controls via evidence classifier + locker
-- [x] Evidence pipeline: event → classify → R2 content-addressed storage + D1 queryable index
-- [x] Continuous compliance score from operational data (evidence-driven, recency-based)
+- [x] Evidence classifier maps 30+ event types to compliance controls (`packages/shared/src/evidence/classifier.ts`)
+- [x] Evidence locker writes to R2 (content-addressed) + D1 (`compliance_evidence`) (`packages/shared/src/evidence/locker.ts`)
+- [x] CDT evaluate endpoint computes evidence-grounded scores per framework (`compliance-worker GET /api/v1/cdt/evaluate`)
 - [x] JML engine auto-emits tamper-evident evidence on every joiner/mover/leaver classification
 - [x] Enforce leaver grace period via WorkflowDO alarm-based delay (leaverGraceMs)
 - [x] Generate mover/leaver workflows for all 19 adapters (full JML coverage)
 - [x] GDPR Article 5 formal control definitions in CDT rules (7 rules: Art.5(1)(a)-(f) + Art.5(2))
 - [x] Manual evidence upload UI with SHA-256 hashing, pack types, and control linking
-- [x] Pull evidence from adapters (GitHub branch protection, MFA status, encryption at rest)
+- [x] Adapter evidence endpoints for 6 adapters (GitHub, Okta, Google Workspace, M365, AWS, Slack)
+- [x] `POST /api/v1/evidence/collect` pulls evidence from connected adapters via `ADAPTER_URLS`
+- [x] CDT twin Worker with mTLS + HMAC auth, idempotency, remediation queue
 - [x] Files: `shared/services/cdt/rules/`, `compliance-worker/src/modules/policies/`, `ai-orchestrator/src/lib/jml-engine.ts`, `packages/shared/src/evidence/`, `adapters/*/src/index.ts`
 
-## Phase 8 — Access Reviews (Table Stakes for IGA)
+### Integration Gaps (resolved in Phase 7.5)
+
+- [x] **Scoring paths unified** — Console `/api/tenant-compliance/scores` now reads evidence-grounded scores from compliance-worker CDT evaluate endpoint, falling back to cached scores
+- [x] **`storeEvidence()` already wired** — orchestrator event consumer (`ai-orchestrator/src/routes/events.ts`) classifies and stores every event via `waitUntil`
+- [x] **CDT twin now evaluates all 60 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
+- [x] **Scheduled evidence collection** — orchestrator cron (Duty 2) collects adapter evidence for all tenants every 5 minutes
+- [x] **CDT twin state bridged to D1** — state transitions now write to `compliance_evidence` via `ATLAS_SHARED_DB`, making twin results visible to the scoring pipeline
+- [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
+
+## Phase 7.5 — Compliance Integration (Close the Loop) ⚠️ In Progress
+
+> **Why this matters**: All compliance building blocks exist but were disconnected. Closing these gaps
+> turns the compliance system from a demo into a differentiator.
+
+### P0 — Unify Scoring (UI shows real evidence-grounded scores) ✅
+
+- [x] Console `/api/tenant-compliance/scores` reads from `compliance_evidence` (via compliance-worker CDT evaluate) instead of `tenant_preferences.compliance_controls`
+- [x] Evidence-grounded scores write to `compliance_scores` + `compliance_history` tables (same as today)
+- [x] `tenant_preferences.compliance_controls` deprecated as score source; UI now shows evidence-grounded scores with `source: "evidence"` indicator
+
+### P1 — Wire Evidence Pipeline End-to-End ✅
+
+- [x] Orchestrator event consumer already calls `classifyEvent()` + `storeEvidence()` for every event (was wired in `events.ts`, not a gap)
+- [x] Adapter evidence collection runs on orchestrator cron schedule (Duty 2, every 5 minutes, all tenants)
+- [x] Evidence from adapters and events appears in `compliance_evidence` → feeds CDT evaluate scoring → feeds UI
+
+### P2 — Expand CDT Twin Coverage ✅
+
+- [x] CDT twin `/twin/event` evaluates all 60 rules (exported `ALL_CONTROL_IDS` from engine, replaced hardcoded list)
+- [x] Bridge CDT twin KV state to `compliance_evidence` D1 — state transitions now write a row via `ATLAS_SHARED_DB` binding
+- [x] Expand remediation catalog from 2 → 37 controls across all 5 frameworks (16 distinct action types)
+
+### P3 — Policy Evaluation (Future)
+
+- [ ] Replace stub `evaluatePolicy()` with real policy logic (Boolean allow/deny decisions)
+- [ ] Wire policy evaluation into compliance scoring (policy pass/fail → control status)
+
+### Files Changed
+
+- `console-app/src/routes/api/tenant-compliance/scores/+server.ts` — unified scoring via compliance-worker
+- `ai-orchestrator/src/index.ts` — added Duty 2: scheduled adapter evidence collection
+- `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (60 controls)
+- `shared/services/cdt/src/index.ts` — twin evaluates all 60 rules + bridges state changes to D1
+- `shared/services/cdt/src/remediation/catalog.ts` — expanded from 2 to 37 control-to-action mappings
+- `shared/services/cdt/wrangler.toml` — added `ATLAS_SHARED_DB` D1 binding
+
+## Phase 8 — Access Reviews (Table Stakes for IGA) ✅
 
 > Required for SOC 2 CC6.1/CC6.3 and ISO 27001 A.9.2.5. Lumos, Zluri, ConductorOne all have this.
-> Currently the biggest feature gap for compliance-conscious SMB buyers.
 
-- [ ] Campaign creation (scope: all apps / specific apps / departments)
-- [ ] Manager-facing review UI — approve/revoke per user/app
-- [ ] Auto-revoke on campaign expiry (configurable grace period)
-- [ ] Evidence generation per review cycle (R2 artifact + compliance control linkage)
-- [ ] New D1 tables: `access_review_campaigns`, `access_review_items`, `access_review_decisions`
-- [ ] Files: `console-app/src/routes/console/access-reviews/`, new D1 migration, new automation action type `request_access_review`
+- [x] Campaign creation (scope: all apps / specific apps / departments) — `console-app/src/lib/server/access-reviews.ts`
+- [x] Manager-facing review UI — approve/revoke per user/app — `console-app/src/routes/api/access-reviews/`
+- [x] Auto-revoke on campaign expiry (configurable grace period) — `ai-orchestrator/src/lib/access-review-auto-revoke.ts`, runs in cron Duty 1
+- [x] Evidence generation per review cycle — decisions emit `access_review.completed` events to orchestrator; auto-revoke emits via `classifyEvent` + `storeEvidence`; both flow through evidence pipeline to `compliance_evidence` → scoring
+- [x] D1 tables: `access_review_campaigns`, `access_review_items`, `access_review_decisions` — migration `0021_access_reviews.sql`
+- [x] Automation action type `request_access_review` with compliance control mappings (SOC2 CC6.1, CC6.3, ISO27001 A.9.2.5, HIPAA 164.312(a)(1))
+- [x] Files: `console-app/src/routes/api/access-reviews/`, `ai-orchestrator/src/lib/access-review-auto-revoke.ts`, `migrations/0021_access_reviews.sql`
 
-## Phase 9 — Trust Center (Compete with Vanta Trust Reports)
+## Phase 9 — Trust Center & Questionnaire Automation (Kill the Security Questionnaire)
 
-> Public-facing, tenant-branded compliance portal. Powered by real operational evidence —
-> more credible than Vanta's checkbox-driven trust reports.
+> **Strategic context**: 43% of companies report compliance gaps delayed their sales cycles (Secureframe 2026).
+> Vanta and Drata offer trust centers as paid add-ons ($5K-$15K extra). AtlasIT's advantage: our evidence
+> is operation-generated, not checkbox-driven — making trust reports provably more credible.
+>
+> **Competitive intel**: Trust centers are now table stakes for B2B sales. The differentiator is using
+> trust center content to auto-respond to security questionnaires — the #1 bottleneck in enterprise deals.
+> TrustCloud and SafeBase lead here, but neither connects to real IT operations data.
 
-- [ ] Public route `/trust/{tenantSlug}` — framework scores, last audit date, connected integrations, evidence count
-- [ ] Tenant controls visibility via settings (what's public vs. private)
-- [ ] PDF export for auditor packages
-- [ ] Files: `console-app/src/routes/trust/`, new `GET /api/trust/[slug]` server route
+- [ ] Public route `/trust/{tenantSlug}` — live compliance scores, framework coverage, evidence recency, connected integrations count
+- [ ] Evidence provenance trail — for each control, show which IT operation generated the evidence, when, and whether it's still fresh (not just "pass/fail")
+- [ ] Tenant visibility controls — granular per-framework, per-control privacy settings (public / NDA-gated / private)
+- [ ] Self-service NDA workflow — visitors request access to detailed evidence, tenant approves, generates time-limited access token
+- [ ] PDF/XLSX auditor package export — per-framework evidence bundle with content hashes for tamper detection
+- [ ] Security questionnaire AI — ingest SIG/CAIQ/custom questionnaire templates, auto-map questions to existing evidence, generate draft responses from trust center content (Workers AI)
+- [ ] Embeddable trust badge — `<script>` tag tenants can put on their marketing site showing live compliance status
+- [ ] Files: `console-app/src/routes/trust/`, `console-app/src/routes/api/trust/`, new `questionnaire-ai` module
 
-## Phase 10 — AI Policy Suggestions (Compete with Lumos)
+## Phase 10 — Non-Human Identity Governance (Hottest IGA Category)
 
-> Lumos charges premium for AI policy generation. AtlasIT's learner already does pattern-based
-> suggestions — extending it to compliance inference closes that gap.
+> **Strategic context**: NHIs outnumber human identities 10:1+. ConductorOne raised $79M (Oct 2025)
+> specifically for NHI governance. Astrix raised $45M (backed by Anthropic's fund) for NHI security.
+> OWASP Top 10 NHI Risks (2025) lists "improper offboarding" as #1 — exactly what AtlasIT's JML
+> engine already handles for humans.
+>
+> **AtlasIT's advantage**: Our 35 adapters already touch service accounts, API keys, OAuth tokens, and
+> bot credentials during provisioning. Extending directory sync to surface these is incremental, not greenfield.
+> No competitor connects NHI governance to compliance evidence generation.
 
-- [ ] Extend `packages/shared/src/automation/learner.ts` to suggest RBAC/ABAC policies from access patterns
-- [ ] Compliance suggestion types: "missing evidence for control X", "access pattern violates SoD"
-- [ ] Feed automation execution history into compliance scoring
-- [ ] NL automation builder: `/api/automation/nl` → translates natural language to rule JSON (Workers AI)
-- [ ] Files: `packages/shared/src/automation/learner.ts`, `console-app/src/routes/console/automation/`
+- [ ] Extend directory schema: `identity_type: human | service | bot | api_key | oauth_grant`
+- [ ] NHI discovery from existing adapters — pull service accounts (AWS IAM), API tokens (GitHub), OAuth apps (Google Workspace, M365), bot users (Slack)
+- [ ] NHI inventory dashboard — owner, last used, scopes/permissions, expiry date, risk score
+- [ ] Token expiry tracking + auto-rotation workflows via WorkflowDO
+- [ ] NHI access reviews — extend Phase 8 campaigns to cover service accounts and API keys
+- [ ] NHI offboarding in JML leaver workflows — revoke associated service accounts, rotate shared secrets, disable OAuth grants
+- [ ] Compliance evidence auto-generation for NHI lifecycle events (SOC2 CC6.1/CC6.3, ISO27001 A.9.2.6, HIPAA 164.312(d))
+- [ ] Files: `packages/shared/src/directory/`, adapters' `/api/nhi` endpoints, `console-app/src/routes/console/directory/`
 
-## Phase 11 — SaaS Discovery (Shadow IT Detection)
+## Phase 11 — Shadow AI & SaaS Discovery (The New Shadow IT)
 
-> BetterCloud, Torii, Zluri all lead with discovery. AtlasIT can leverage existing
-> Google Workspace + M365 adapters to detect OAuth grants = shadow IT.
+> **Strategic context**: Shadow AI has overtaken traditional shadow IT as the #1 visibility risk.
+> 75% of employees are expected to acquire technology without IT oversight by 2027 (Gartner).
+> JumpCloud added "AI & SaaS Management" in 2026. Nudge Security raised $22.5M for shadow AI detection.
+> Torii data shows mid-size orgs average 536 SaaS apps.
+>
+> **AtlasIT's advantage**: Google Workspace and M365 adapters already have OAuth grant access.
+> The MCP agent bus provides a unique angle — detect MCP connections and AI tool usage that
+> competitors without an MCP layer can't see. Discovery feeds directly into the compliance
+> scoring pipeline (unapproved app = evidence gap).
 
-- [ ] Analyze OAuth grants from Google Workspace / M365 admin APIs (adapters already exist)
-- [ ] Dashboard: discovered vs. managed apps with risk classification
-- [ ] Auto-suggest marketplace install for discovered apps already in catalog
-- [ ] Files: New module in `ai-orchestrator/src/lib/`, console dashboard additions
+- [ ] OAuth grant analysis from Google Workspace + M365 admin APIs (adapters already have the scopes)
+- [ ] Shadow AI detection — identify unapproved LLM/AI tool OAuth grants, browser extension data flows, MCP server connections
+- [ ] Dashboard: discovered vs. managed apps with risk tiers (approved / under review / blocked / unknown)
+- [ ] Data flow mapping — show where corporate data flows to unapproved services (especially LLMs)
+- [ ] Auto-suggest marketplace install for discovered apps already in the 35-app catalog
+- [ ] Auto-create compliance incidents for high-risk discoveries (data flowing to unapproved LLMs, expired OAuth grants with broad scopes)
+- [ ] Governance playbooks — configurable auto-responses: notify user, notify admin, block OAuth grant, create access review
+- [ ] Compliance mapping — unapproved apps generate detrimental evidence for GDPR Art.5(1)(f), SOC2 CC6.6, ISO27001 A.9.1.2
+- [ ] Files: `ai-orchestrator/src/lib/discovery/`, `console-app/src/routes/console/discovery/`, adapter `/api/oauth-grants` endpoints
 
-## Phase 12 — Non-Human Identity Management (2026–2027 Frontier)
+## Phase 12 — AI-Driven Compliance Intelligence (Beyond Suggestions)
 
-> Fastest-growing attack surface. Lumos identified this as the next IGA frontier.
-> Most platforms ignore service accounts, API tokens, bot credentials.
+> **Strategic context**: Vanta and Drata both have AI assistants but they're glorified chatbots.
+> ConductorOne calls itself "AI-native" but focuses on access decisions, not compliance intelligence.
+> The gap is proactive, continuous intelligence — not reactive queries.
+>
+> **AtlasIT's advantage**: We have the operational data (JML events, access reviews, adapter evidence,
+> CDT rule evaluations) that makes AI analysis actionable. Competitors' AI works on static snapshots;
+> ours works on live operational streams.
 
-- [ ] Extend directory schema: `identity_type: human | service | bot | api_key`
-- [ ] Token expiry tracking + auto-rotation workflows
-- [ ] Surface non-human identities in directory UI + access reviews
-- [ ] Non-human identity provisioning via adapters (GitHub tokens, AWS IAM roles, etc.)
+- [ ] Compliance gap analyzer — continuously identify which controls have stale/missing evidence and recommend specific adapter connections or workflow changes to close gaps
+- [ ] Risk anomaly detection — surface unusual access patterns from automation execution history (bulk privilege escalation, off-hours provisioning, SoD violations)
+- [ ] AI policy generator — auto-generate security policies (access control, incident response, data handling) from control frameworks + tenant's actual configuration, with redline diff for review
+- [ ] NL automation builder — `/api/automation/nl` translates natural language to automation rule JSON (Workers AI), already partially built in `packages/shared/src/automation/nl-builder.ts`
+- [ ] Compliance drift alerting — detect when operational changes (new app connected, adapter disconnected, policy changed) create compliance regression, emit proactive notifications
+- [ ] Security questionnaire learning — improve questionnaire AI (Phase 9) by learning from tenant's previous responses and evidence patterns
+- [ ] Files: `packages/shared/src/automation/learner.ts`, `ai-orchestrator/src/lib/compliance-intelligence/`, `console-app/src/routes/console/insights/`
 
 ## Phase 13 — Directory Reality (Previously Phase 7)
 
@@ -225,23 +313,57 @@ Directory Event / Schedule / Webhook
 - [ ] Platform Status "truthfulness" SLO (functional checks, not just reachability)
 - [ ] Journey completion rate metrics: login → dashboard → connect → workflow → evidence
 
-## Phase 17 — Market Readiness (Previously Phase 11)
+## Phase 17 — Market Readiness & PLG Entry
 
-- [ ] Multi-tenant billing and usage metering (flat-rate tiers: Free/$99/$299/Custom)
-- [ ] LLM-backed policy refinement with redline diff
-- [ ] Real-time risk anomaly detection + compliance drift alerting
-- [ ] Plugin API for third-party compliance packs
-- [ ] Advanced analytics and reporting
+> **Strategic context**: The compliance market is overwhelmingly sales-led with opaque pricing.
+> 187 G2 complaints about Vanta cite inflexible contracts and pricing. The first vendor to offer
+> self-serve onboarding with transparent pricing captures the mid-market buyers frustrated by
+> being forced through sales calls for a $15K tool.
+
+- [ ] Transparent pricing: self-serve tiers ($X/user/month for IT ops, +$Y/framework for compliance)
+- [ ] Free tier — SaaS discovery + compliance assessment (no credit card, PLG funnel)
+- [ ] Self-serve onboarding — connect first adapter, see first compliance score in <10 minutes
+- [ ] Usage metering + billing infrastructure (Stripe integration)
+- [ ] Plugin API for third-party compliance packs and custom frameworks
+- [ ] Advanced analytics and reporting (audit-ready dashboards, trend analysis, benchmark vs. peers)
 
 ## Long-Term Platform Modules
 
-AtlasIT evolves into a modular platform:
+AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
 
-- **AtlasIT – IT Ops**: IAM automation, provisioning, SSO
-- **AtlasIT – Compliance**: Evidence locker, reporting, regulatory alignment (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR)
-- **AtlasIT – IdP**: Unified IdP abstraction + fallback OIDC/SAML service for SMBs
-- **AtlasIT – AI Security**: Automated detection, remediation, and AI-driven recommendations
+- **AtlasIT – IT Ops**: JML automation, provisioning, access requests, SSO — replaces JumpCloud/Rippling IT layer
+- **AtlasIT – Compliance**: Evidence locker, continuous scoring, trust center, questionnaire AI — replaces Vanta/Drata
+- **AtlasIT – Identity**: Human + non-human identity governance, access reviews, SoD detection — replaces ConductorOne/Lumos
+- **AtlasIT – Discovery**: Shadow AI/SaaS detection, OAuth grant analysis, data flow mapping — replaces Nudge Security/Torii
 - **AtlasIT – Extensions**: Custom connectors, plugin API for third-party compliance packs
+
+### Target Market
+
+| Segment | Profile | Why AtlasIT wins |
+|---------|---------|------------------|
+| **Mid-market (100-1000)** | Outgrown JumpCloud, can't justify $50K+ for Vanta on top of IT ops spend | One platform at half the cost of two specialized tools |
+| **Compliance-first SMB (10-100)** | B2B SaaS needing SOC 2 to close enterprise deals | Fastest time-to-compliance: connect adapters → evidence generated automatically |
+| **Security-conscious scaleup** | Engineering-heavy, 200-500 employees, multi-cloud | NHI governance + shadow AI detection in the same platform that provisions access |
+
+### Competitive Positioning
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AtlasIT Platform                         │
+│                                                             │
+│  IT Ops ←──────────→ Compliance ←──────────→ Governance     │
+│  (JML, provision,    (evidence as a         (access reviews,│
+│   35 adapters,        byproduct of ops,      NHI lifecycle, │
+│   workflows)          5 frameworks,          shadow AI)      │
+│                       trust center)                          │
+│                                                             │
+│  "Your IT operations ARE your compliance evidence"          │
+└─────────────────────────────────────────────────────────────┘
+
+Competitors must stitch together:
+  Rippling/JumpCloud + Vanta/Drata + ConductorOne/Lumos + Nudge Security
+  = 4 vendors, 4 integrations, 4 bills, zero data coherence
+```
 
 ## Cross-Cutting Concerns
 

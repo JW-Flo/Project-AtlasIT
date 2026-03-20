@@ -138,6 +138,22 @@
   // Apply loading (P5 #24)
   let applyingId: string | null = null;
 
+  // NL automation builder
+  let showNlDialog = false;
+  let nlPrompt = "";
+  let nlLoading = false;
+  let nlResult: any = null;
+  let nlError: string | null = null;
+
+  // Compliance mapping for rule detail
+  let expandedRuleId: string | null = null;
+  let complianceLoading = false;
+  let complianceData: {
+    ruleName: string;
+    actions: Array<{ type: string; controls: Array<{ framework: string; controlId: string; controlName: string; evidenceType: string }> }>;
+    summary: { totalControls: number; frameworks: string[] };
+  } | null = null;
+
   // ---- Data fetching --------------------------------------------------------
   async function fetchAll() {
     loading = true;
@@ -180,10 +196,13 @@
   }
 
   async function fetchJmlPolicy() {
-    const res = await fetch("/api/jml/policy");
-    if (!res.ok) return;
-    const data: any = await res.json();
-    jmlPolicy = data.policy || null;
+    try {
+      const res = await fetch("/api/jml/policy");
+      const data: any = await res.json();
+      jmlPolicy = data.policy ?? { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
+    } catch {
+      jmlPolicy = { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
+    }
   }
 
   async function fetchJmlRuns() {
@@ -345,6 +364,75 @@
   function closeExecutionDetail() {
     selectedExecution = null;
     loadingDetail = false;
+  }
+
+  // ---- Compliance Mapping ---------------------------------------------------
+  async function toggleComplianceView(ruleId: string) {
+    if (expandedRuleId === ruleId) {
+      expandedRuleId = null;
+      complianceData = null;
+      return;
+    }
+    expandedRuleId = ruleId;
+    complianceLoading = true;
+    complianceData = null;
+    try {
+      const res = await fetch(`/api/automation/rules/${ruleId}/compliance`);
+      if (res.ok) {
+        complianceData = await res.json();
+      }
+    } catch {
+      // silently fail
+    } finally {
+      complianceLoading = false;
+    }
+  }
+
+  // ---- NL Builder -----------------------------------------------------------
+  async function buildFromNL() {
+    if (!nlPrompt.trim() || nlPrompt.length < 5) return;
+    nlLoading = true;
+    nlError = null;
+    nlResult = null;
+    try {
+      const res = await fetch("/api/automation/nl", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: nlPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        nlError = data.error || "Failed to generate automation";
+        return;
+      }
+      nlResult = data.data;
+    } catch {
+      nlError = "Request failed. Please try again.";
+    } finally {
+      nlLoading = false;
+    }
+  }
+
+  async function applyNlResult() {
+    if (!nlResult?.rule) return;
+    try {
+      const res = await fetch("/api/automation/rules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(nlResult.rule),
+      });
+      if (res.ok) {
+        pushToast({ message: `Rule "${nlResult.rule.name}" created`, variant: "success" });
+        showNlDialog = false;
+        nlPrompt = "";
+        nlResult = null;
+        await fetchRules();
+      } else {
+        pushToast({ message: "Failed to create rule", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to create rule", variant: "error" });
+    }
   }
 
   // ---- Helpers --------------------------------------------------------------
@@ -746,12 +834,17 @@
     </div>
 
   {:else if activeTab === "rules"}
-    <!-- Rules search (P3 #15) -->
-    {#if rules.length > 0}
-      <div class="mb-4">
+    <!-- Rules header with NL builder -->
+    <div class="flex items-center justify-between mb-4">
+      {#if rules.length > 0}
         <Input placeholder="Search rules by name or description..." bind:value={searchRules} class="max-w-sm" />
-      </div>
-    {/if}
+      {:else}
+        <div></div>
+      {/if}
+      <Button variant="outline" size="sm" on:click={() => { showNlDialog = true; nlResult = null; nlError = null; }}>
+        Create from Text
+      </Button>
+    </div>
 
     {#if rules.length === 0}
       <Card class="border-dashed">
@@ -815,8 +908,53 @@
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 </button>
               </div>
-              {#if rule.description}
-                <p class="text-xs text-muted-foreground mt-2 ml-14">{rule.description}</p>
+              <div class="flex items-center gap-2 mt-2 ml-14">
+                {#if rule.description}
+                  <p class="text-xs text-muted-foreground flex-1">{rule.description}</p>
+                {/if}
+                <button
+                  type="button"
+                  class="text-[11px] text-muted-foreground hover:text-primary transition-colors shrink-0"
+                  on:click={() => toggleComplianceView(rule.id)}
+                >
+                  {expandedRuleId === rule.id ? "Hide" : "Show"} Compliance Coverage
+                </button>
+              </div>
+
+              {#if expandedRuleId === rule.id}
+                <div class="mt-3 ml-14 p-3 rounded-md bg-muted/50 border border-border/50">
+                  {#if complianceLoading}
+                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Skeleton class="h-3 w-3 rounded-full" /> Loading compliance data...
+                    </div>
+                  {:else if complianceData}
+                    <div class="space-y-3">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-medium">{complianceData.summary.totalControls} control{complianceData.summary.totalControls !== 1 ? 's' : ''} covered</span>
+                        {#each complianceData.summary.frameworks as fw}
+                          <Badge variant="outline" class="text-[10px]">{fw}</Badge>
+                        {/each}
+                      </div>
+                      {#each complianceData.actions as action}
+                        {#if action.controls.length > 0}
+                          <div>
+                            <div class="text-[11px] font-medium text-muted-foreground mb-1">{triggerLabel(action.type) || action.type.replace(/_/g, ' ')}</div>
+                            <div class="flex flex-wrap gap-1">
+                              {#each action.controls as ctrl}
+                                <span class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] bg-background" title="{ctrl.controlName} ({ctrl.evidenceType})">
+                                  <span class="font-medium">{ctrl.framework}</span>
+                                  <span class="text-muted-foreground">{ctrl.controlId}</span>
+                                </span>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
+                  {:else}
+                    <p class="text-xs text-muted-foreground">No compliance data available for this rule.</p>
+                  {/if}
+                </div>
               {/if}
             </CardContent>
           </Card>
@@ -1027,5 +1165,71 @@
         {/if}
       </div>
     {/if}
+  </Dialog>
+
+  <!-- NL Automation Builder Dialog -->
+  <Dialog open={showNlDialog} onClose={() => { showNlDialog = false; nlResult = null; nlError = null; }} title="Create Automation from Text">
+    <div class="space-y-4">
+      <p class="text-sm text-muted-foreground">Describe what you want to automate in plain English. AtlasIT will generate the rule for you.</p>
+      <div>
+        <textarea
+          bind:value={nlPrompt}
+          placeholder="e.g. When a user is deactivated in the directory, revoke their access to all connected apps and notify the security team on Slack"
+          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+          disabled={nlLoading}
+        ></textarea>
+      </div>
+
+      {#if nlError}
+        <Alert variant="destructive">
+          <p class="text-sm">{nlError}</p>
+        </Alert>
+      {/if}
+
+      {#if nlResult}
+        <Card>
+          <CardHeader>
+            <CardTitle class="text-sm">Generated Rule</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-2">
+            <div>
+              <div class="text-xs text-muted-foreground">Name</div>
+              <div class="text-sm font-medium">{nlResult.rule?.name || "Unnamed rule"}</div>
+            </div>
+            {#if nlResult.rule?.description}
+              <div>
+                <div class="text-xs text-muted-foreground">Description</div>
+                <div class="text-sm">{nlResult.rule.description}</div>
+              </div>
+            {/if}
+            <div class="flex items-center gap-2">
+              <Badge variant="outline">{triggerLabel(nlResult.rule?.triggerType || "")}</Badge>
+              <span class="text-xs text-muted-foreground">{nlResult.rule?.actions?.length || 0} action(s)</span>
+            </div>
+            {#if nlResult.complianceControls && nlResult.complianceControls.length > 0}
+              <div>
+                <div class="text-xs text-muted-foreground mb-1">Compliance Controls Covered</div>
+                <div class="flex flex-wrap gap-1">
+                  {#each nlResult.complianceControls as control}
+                    <Badge variant="secondary" class="text-[10px]">{control}</Badge>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </CardContent>
+        </Card>
+      {/if}
+
+      <DialogFooter>
+        <Button variant="outline" on:click={() => { showNlDialog = false; nlResult = null; nlError = null; }}>Cancel</Button>
+        {#if nlResult}
+          <Button on:click={applyNlResult}>Create Rule</Button>
+        {:else}
+          <Button on:click={buildFromNL} disabled={nlLoading || nlPrompt.trim().length < 5}>
+            {nlLoading ? "Generating..." : "Generate Rule"}
+          </Button>
+        {/if}
+      </DialogFooter>
+    </div>
   </Dialog>
 </div>

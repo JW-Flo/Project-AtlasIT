@@ -19,7 +19,9 @@
 | 4 — Hardening & Production     | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                            |
 | 5 — Adapter Scaffolding        | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                       |
 | 6 — Contract Stability         | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                            |
-| 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence pipeline, JML auto-evidence, compliance scoring, 40+ control mappings, adapter evidence pull (6 adapters), manual evidence upload |
+| 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload |
+| 7.5 — Compliance Integration   | ⚠️ In Progress | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls). **Remaining:** policy eval stub |
+| 8 — Access Reviews             | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action |
 
 ## Deployed Workers
 
@@ -62,7 +64,7 @@
 - Event router with fan-out, agent registry, HMAC signature verification
 - MCP agent SDK (`packages/mcp-sdk`)
 - Evidence locker (R2-backed, SHA-256 content addressing)
-- Policy evaluation engine (Rego-based)
+- Policy evaluation engine (stub — hashes input, no Boolean logic yet)
 - Rate limiting + security headers middleware
 - Credential vault (AES-GCM envelope encryption)
 - Feature flag system (KV-backed, rollout %, tenant overrides)
