@@ -34,7 +34,7 @@ authRoutes.post("/token", async (c) => {
     "SELECT id, email, role, status FROM users WHERE email = ? AND tenant_id = ?",
   )
     .bind(parsed.data.email, parsed.data.tenantId)
-    .first();
+    .first<{ id: string; email: string; role: string; status: string }>();
 
   if (!user) {
     return c.json(

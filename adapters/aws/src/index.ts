@@ -27,10 +27,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -51,14 +48,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -87,11 +79,7 @@ app.get("/health", (c) => {
       id: c.env.CONNECTOR_ID ?? "aws",
       name: "AWS",
       provider: "Amazon Web Services",
-      capabilities: [
-        "user-provisioning",
-        "user-deprovisioning",
-        "group-management",
-      ],
+      capabilities: ["user-provisioning", "user-deprovisioning", "group-management"],
       syncMode: "polling",
     },
   });
@@ -118,11 +106,7 @@ app.post("/webhook", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -186,12 +170,7 @@ app.post("/api/sync", async (c) => {
     };
 
     // Update connection status
-    await updateConnectionStatus(
-      c.env.DB,
-      tenantId,
-      userResult.total,
-      groupResult.total,
-    );
+    await updateConnectionStatus(c.env.DB, tenantId, userResult.total, groupResult.total);
 
     // Publish sync-completed event to orchestrator
     await publishEvent({
@@ -345,13 +324,7 @@ async function updateConnectionStatus(
              user_count = ?, group_count = ?, updated_at = datetime('now')
          WHERE tenant_id = ?`,
       )
-      .bind(
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-        tenantId,
-      )
+      .bind(error ? "error" : "active", error ?? null, userCount, groupCount, tenantId)
       .run();
   } else {
     await db
@@ -360,14 +333,7 @@ async function updateConnectionStatus(
          (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
          VALUES (?, ?, ?, ?, datetime('now'), ?, ?)`,
       )
-      .bind(
-        tenantId,
-        "aws",
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-      )
+      .bind(tenantId, "aws", error ? "error" : "active", error ?? null, userCount, groupCount)
       .run();
   }
 }
@@ -377,7 +343,7 @@ async function updateConnectionStatus(
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ tenantId?: string }>().catch((): { tenantId?: string } => ({}));
   const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
 
   type EvidenceItem = {
@@ -392,8 +358,7 @@ app.post("/api/evidence", async (c) => {
   // mfa_enforcement — IAM GetAccountSummary via SigV4
   let mfaItem: EvidenceItem;
   try {
-    const iamUrl =
-      "https://iam.amazonaws.com/?Action=GetAccountSummary&Version=2010-05-08";
+    const iamUrl = "https://iam.amazonaws.com/?Action=GetAccountSummary&Version=2010-05-08";
     const signedHeaders = await signAwsRequest(
       "GET",
       iamUrl,
@@ -406,9 +371,7 @@ app.post("/api/evidence", async (c) => {
     const iamRes = await fetch(iamUrl, { headers: signedHeaders });
     const xml = await iamRes.text();
 
-    const match = xml.match(
-      /<key>AccountMFAEnabled<\/key>\s*<value>(\d+)<\/value>/,
-    );
+    const match = xml.match(/<key>AccountMFAEnabled<\/key>\s*<value>(\d+)<\/value>/);
     const mfaEnabled = match ? match[1] === "1" : false;
 
     mfaItem = {
@@ -451,7 +414,8 @@ app.post("/api/evidence", async (c) => {
       controlRefs: ["SOC2-CC7.1", "HIPAA-164.312(b)", "NIST-CSF-DE.CM-1"],
       status: "unknown",
       details: {
-        reason: "CloudTrail DescribeTrails requires additional SigV4 signing endpoint — implementation planned",
+        reason:
+          "CloudTrail DescribeTrails requires additional SigV4 signing endpoint — implementation planned",
         service: "cloudtrail",
       },
     },

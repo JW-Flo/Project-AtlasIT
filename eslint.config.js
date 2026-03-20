@@ -94,6 +94,8 @@ export default [
       "shared/circuit-breaker.ts",
       // Exclude test files in auth package from project-aware parsing (handled by test override)
       "packages/auth/test/**",
+      // Exclude shared evidence test files not in tsconfig project (test override handles them)
+      "packages/shared/src/**/*.test.ts",
       // Exclude tooling scripts not covered by tsconfig projects
       "tools/**",
       "./vitest.config.ts",

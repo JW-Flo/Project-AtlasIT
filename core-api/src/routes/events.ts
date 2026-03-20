@@ -40,7 +40,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       "SELECT id, status FROM events WHERE idempotency_key = ?",
     )
       .bind(idempotencyKey)
-      .first();
+      .first<{ id: string; status: string }>();
 
     if (existing) {
       return c.json({
@@ -103,8 +103,7 @@ eventRoutes.get("/", async (c) => {
     params.push(type);
   }
 
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const results = await c.env.DB.prepare(
     `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -125,9 +124,7 @@ eventRoutes.get("/", async (c) => {
 eventRoutes.get("/:id", async (c) => {
   const { id } = c.req.param();
 
-  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ?")
-    .bind(id)
-    .first();
+  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ?").bind(id).first();
 
   if (!event) {
     return c.json(

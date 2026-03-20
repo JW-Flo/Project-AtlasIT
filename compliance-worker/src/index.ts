@@ -82,10 +82,7 @@ const ACTIVITY_ALLOWED_ROLES = ["security:read", "activity:read"];
 
 const CONTROL_KEY_REGEX = /^[A-Za-z0-9_.-]{1,64}$/;
 const EVIDENCE_HASH_REGEX = /^[a-f0-9]{64}$/i;
-const ACCESS_ACTION_STATUS: Record<
-  string,
-  "approved" | "denied" | "fulfilled"
-> = {
+const ACCESS_ACTION_STATUS: Record<string, "approved" | "denied" | "fulfilled"> = {
   approve: "approved",
   deny: "denied",
   fulfill: "fulfilled",
@@ -211,9 +208,7 @@ async function consumeIncidentQuota(
 
   // Try to update existing row atomically
   const row = await db
-    .prepare(
-      `SELECT window_start, count FROM incident_rate_limit WHERE tenant_id = ?`,
-    )
+    .prepare(`SELECT window_start, count FROM incident_rate_limit WHERE tenant_id = ?`)
     .bind(tenantId)
     .first<{ window_start: number; count: number }>();
 
@@ -237,9 +232,7 @@ async function consumeIncidentQuota(
 
   // Increment count atomically
   await db
-    .prepare(
-      `UPDATE incident_rate_limit SET count = count + 1 WHERE tenant_id = ?`,
-    )
+    .prepare(`UPDATE incident_rate_limit SET count = count + 1 WHERE tenant_id = ?`)
     .bind(tenantId)
     .run();
 
@@ -252,9 +245,7 @@ async function consumeIncidentQuota(
 async function demoRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, headers, requestId } = ctx;
   if (
-    (url.pathname === "/jml-demo" ||
-      url.pathname === "/jml" ||
-      url.pathname === "/jml/demo") &&
+    (url.pathname === "/jml-demo" || url.pathname === "/jml" || url.pathname === "/jml/demo") &&
     method === "GET"
   ) {
     const target = "/api/v1/workflows/demo/jml";
@@ -300,10 +291,7 @@ async function activityRoutes(ctx: RouteContext): Promise<Response | null> {
   if (url.pathname === "/api/v1/activity" && method === "GET") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(
-        request,
-        env as unknown as Record<string, unknown>,
-      );
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
     } catch (err) {
       if (err instanceof AuthError) {
         return errorResponse(err.status, requestId, headers, err.message);
@@ -381,17 +369,8 @@ async function activityRoutes(ctx: RouteContext): Promise<Response | null> {
 async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, request, env, requestId, headers } = ctx;
 
-  if (
-    url.pathname === "/api/compliance/snapshot" &&
-    (method === "GET" || method === "HEAD")
-  ) {
-    return handleSnapshot(
-      env,
-      url,
-      requestId,
-      headers,
-      method === "HEAD" ? "HEAD" : "GET",
-    );
+  if (url.pathname === "/api/compliance/snapshot" && (method === "GET" || method === "HEAD")) {
+    return handleSnapshot(env, url, requestId, headers, method === "HEAD" ? "HEAD" : "GET");
   }
 
   if (url.pathname === "/api/evidence/ingest" && method === "POST") {
@@ -424,19 +403,13 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
       const hash = parts[3];
       return handleEvidenceVerify(env, hash, requestId, headers);
     }
-    return errorResponse(
-      400,
-      requestId,
-      headers,
-      "Invalid evidence verify path",
-    );
+    return errorResponse(400, requestId, headers, "Invalid evidence verify path");
   }
 
   // --- v1 tenant-scoped evidence routes ---
 
   if (url.pathname === "/api/v1/evidence" && method === "GET") {
-    const tenantId =
-      url.searchParams.get("tenant_id") || request.headers.get("x-tenant-id");
+    const tenantId = url.searchParams.get("tenant_id") || request.headers.get("x-tenant-id");
     if (!tenantId) {
       return errorResponse(400, requestId, headers, "tenant_id required");
     }
@@ -444,10 +417,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
     await ensureSchema(env);
 
-    const limit = Math.min(
-      Math.max(Number(url.searchParams.get("limit")) || 50, 1),
-      200,
-    );
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 200);
     const cursorParam = url.searchParams.get("cursor");
     const conditions: string[] = ["tenant_id = ?"];
     const bindings: (string | number)[] = [tenantId];
@@ -484,15 +454,9 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
         subject: row.subject_ref != null ? String(row.subject_ref) : null,
         createdAt: String(row.created_at),
       }));
-      const nextCursor = hasNext
-        ? String((sliced[sliced.length - 1] as any).id)
-        : null;
+      const nextCursor = hasNext ? String((sliced[sliced.length - 1] as any).id) : null;
 
-      return jsonResponse(
-        { items, nextCursor, count: items.length },
-        200,
-        headers,
-      );
+      return jsonResponse({ items, nextCursor, count: items.length }, 200, headers);
     } catch (e) {
       log("error", "evidence.v1.list.error", {
         requestId,
@@ -507,9 +471,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   }
 
   // POST /api/v1/evidence/:id/link
-  const evidenceLinkMatch = url.pathname.match(
-    /^\/api\/v1\/evidence\/(\d+)\/link$/,
-  );
+  const evidenceLinkMatch = url.pathname.match(/^\/api\/v1\/evidence\/(\d+)\/link$/);
   if (evidenceLinkMatch && method === "POST") {
     const evidenceId = Number(evidenceLinkMatch[1]);
 
@@ -520,14 +482,12 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
       return errorResponse(400, requestId, headers, "Invalid JSON");
     }
 
-    const controlKey =
-      typeof body?.controlKey === "string" ? body.controlKey.trim() : "";
+    const controlKey = typeof body?.controlKey === "string" ? body.controlKey.trim() : "";
     if (!controlKey) {
       return errorResponse(400, requestId, headers, "controlKey required");
     }
 
-    const resolvedTenantId =
-      body?.tenantId || request.headers.get("x-tenant-id");
+    const resolvedTenantId = body?.tenantId || request.headers.get("x-tenant-id");
     if (!resolvedTenantId) {
       return errorResponse(400, requestId, headers, "tenant_id required");
     }
@@ -537,9 +497,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     await ensureSchema(env);
 
     const evidence = await db
-      .prepare(
-        "SELECT hash, tenant_id FROM evidence_index WHERE id = ? LIMIT 1",
-      )
+      .prepare("SELECT hash, tenant_id FROM evidence_index WHERE id = ? LIMIT 1")
       .bind(evidenceId)
       .first<{ hash: string; tenant_id: string }>();
 
@@ -547,12 +505,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
       return errorResponse(404, requestId, headers, "Evidence not found");
     }
     if (evidence.tenant_id !== resolvedTenantId) {
-      return errorResponse(
-        403,
-        requestId,
-        headers,
-        "Evidence not available for tenant",
-      );
+      return errorResponse(403, requestId, headers, "Evidence not available for tenant");
     }
 
     try {
@@ -599,9 +552,12 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   if (url.pathname === "/api/v1/evidence/collect" && method === "POST") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, ["policies:read"]);
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+        "policies:read",
+      ]);
     } catch (err) {
-      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      if (err instanceof AuthError)
+        return errorResponse(err.status, requestId, headers, err.message);
       throw err;
     }
 
@@ -613,11 +569,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     }
 
     if (Object.keys(adapterUrls).length === 0) {
-      return jsonResponse(
-        { collected: 0, adapters: [], items: [], requestId },
-        200,
-        headers,
-      );
+      return jsonResponse({ collected: 0, adapters: [], items: [], requestId }, 200, headers);
     }
 
     const results = await collectAllAdapterEvidence(adapterUrls, tenant.tenantId);
@@ -643,11 +595,12 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
             const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
 
             try {
-              await sharedDb.prepare(
-                `INSERT INTO compliance_evidence
+              await sharedDb
+                .prepare(
+                  `INSERT INTO compliance_evidence
                  (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              )
+                )
                 .bind(
                   crypto.randomUUID(),
                   tenant.tenantId,
@@ -660,7 +613,12 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
                   "system",
                   `${result.slug} ${item.type}`,
                   JSON.stringify({
-                    impact: item.status === "pass" ? "positive" : item.status === "fail" ? "detrimental" : "neutral",
+                    impact:
+                      item.status === "pass"
+                        ? "positive"
+                        : item.status === "fail"
+                          ? "detrimental"
+                          : "neutral",
                     confidence: item.status === "unknown" ? 0.3 : 0.8,
                     reasoning: `Adapter pull: ${item.type} check returned ${item.status}`,
                     eventType: "adapter.evidence.collected",
@@ -705,10 +663,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
 
 async function adminRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, request, env, requestId, headers } = ctx;
-  if (
-    url.pathname === "/api/v1/admin/retention/policies/purge" &&
-    method === "POST"
-  ) {
+  if (url.pathname === "/api/v1/admin/retention/policies/purge" && method === "POST") {
     return handlePoliciesRetentionPurge(request, env, requestId, headers);
   }
   return null;
@@ -727,18 +682,10 @@ async function workflowsRoutes(ctx: RouteContext): Promise<Response | null> {
     return handleWorkflowExecute(request, env, requestId, headers);
   }
 
-  if (
-    url.pathname.startsWith("/api/v1/workflows/executions/") &&
-    method === "GET"
-  ) {
+  if (url.pathname.startsWith("/api/v1/workflows/executions/") && method === "GET") {
     const executionId = url.pathname.split("/").pop();
     if (!executionId) {
-      return errorResponse(
-        400,
-        requestId,
-        headers,
-        "Missing execution identifier",
-      );
+      return errorResponse(400, requestId, headers, "Missing execution identifier");
     }
     return handleWorkflowGet(request, env, executionId, requestId, headers);
   }
@@ -764,9 +711,12 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
   if (url.pathname === "/api/v1/cdt/evaluate" && method === "GET") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, ["policies:read"]);
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+        "policies:read",
+      ]);
     } catch (err) {
-      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      if (err instanceof AuthError)
+        return errorResponse(err.status, requestId, headers, err.message);
       throw err;
     }
 
@@ -786,10 +736,7 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
     });
   }
 
-  if (
-    url.pathname.startsWith("/api/v1/policies/coverage/") &&
-    method === "GET"
-  ) {
+  if (url.pathname.startsWith("/api/v1/policies/coverage/") && method === "GET") {
     const frameworkRaw = url.pathname.replace("/api/v1/policies/coverage/", "");
     let framework: string;
     try {
@@ -809,11 +756,9 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
   ) {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(
-        request,
-        env as unknown as Record<string, unknown>,
-        ["policies:manage"],
-      );
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+        "policies:manage",
+      ]);
     } catch (err) {
       if (err instanceof AuthError) {
         return errorResponse(err.status, requestId, headers, err.message);
@@ -896,11 +841,7 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
         createdAt: linkResult.createdAt,
       };
 
-      return jsonResponse(
-        responseBody,
-        linkResult.created ? 201 : 200,
-        headers,
-      );
+      return jsonResponse(responseBody, linkResult.created ? 201 : 200, headers);
     } catch (err) {
       if (err instanceof Error) {
         if (err.message === "control.not_found") {
@@ -910,12 +851,7 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
           return errorResponse(404, requestId, headers, "Evidence not found");
         }
         if (err.message === "evidence.tenant_mismatch") {
-          return errorResponse(
-            403,
-            requestId,
-            headers,
-            "Evidence not available for tenant",
-          );
+          return errorResponse(403, requestId, headers, "Evidence not available for tenant");
         }
       }
       log("error", "evidence.link.manual.error", {
@@ -939,19 +875,16 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
     if (url.pathname === "/api/v1/incidents" && method === "GET") {
       let tenant: TenantContext;
       try {
-        tenant = await requireTenant(
-          request,
-          env as unknown as Record<string, unknown>,
-          ["security:read"],
-        );
+        tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+          "security:read",
+        ]);
       } catch (err) {
         if (err instanceof AuthError)
           return errorResponse(err.status, requestId, headers, err.message);
         throw err;
       }
       const db = resolveD1(env);
-      if (!db)
-        return errorResponse(503, requestId, headers, "Store unavailable");
+      if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
       await ensureExtendedSchema(db);
       const status = url.searchParams.get("status") || undefined;
       const severity = url.searchParams.get("severity") || undefined;
@@ -973,30 +906,22 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           requestId,
           error: (e as Error).message,
         });
-        return errorResponse(
-          500,
-          requestId,
-          headers,
-          "Failed to list incidents",
-        );
+        return errorResponse(500, requestId, headers, "Failed to list incidents");
       }
     }
     if (url.pathname === "/api/v1/incidents" && method === "POST") {
       let tenant: TenantContext;
       try {
-        tenant = await requireTenant(
-          request,
-          env as unknown as Record<string, unknown>,
-          ["security:manage"],
-        );
+        tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+          "security:manage",
+        ]);
       } catch (err) {
         if (err instanceof AuthError)
           return errorResponse(err.status, requestId, headers, err.message);
         throw err;
       }
       const db = resolveD1(env);
-      if (!db)
-        return errorResponse(503, requestId, headers, "Store unavailable");
+      if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
       await ensureExtendedSchema(db);
       let body: any;
       try {
@@ -1005,22 +930,16 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
         return errorResponse(400, requestId, headers, "Invalid JSON payload");
       }
       const title =
-        typeof body?.title === "string" && body.title.trim()
-          ? body.title.trim()
-          : undefined;
+        typeof body?.title === "string" && body.title.trim() ? body.title.trim() : undefined;
       const severity =
-        typeof body?.severity === "string"
-          ? body.severity.trim().toLowerCase()
-          : undefined;
-      if (!title)
-        return errorResponse(400, requestId, headers, "title required");
+        typeof body?.severity === "string" ? body.severity.trim().toLowerCase() : undefined;
+      if (!title) return errorResponse(400, requestId, headers, "title required");
       if (!severity || !INCIDENT_SEVERITIES.has(severity))
         return errorResponse(400, requestId, headers, "invalid severity");
       try {
         const createStart = Date.now();
         const dbi = resolveD1(env);
-        if (!dbi)
-          return errorResponse(503, requestId, headers, "Store unavailable");
+        if (!dbi) return errorResponse(503, requestId, headers, "Store unavailable");
         const record = await createSecurityIncident(dbi, {
           tenantId: tenant.tenantId,
           title,
@@ -1043,12 +962,7 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           requestId,
           error: (e as Error).message,
         });
-        return errorResponse(
-          500,
-          requestId,
-          headers,
-          "Failed to create incident",
-        );
+        return errorResponse(500, requestId, headers, "Failed to create incident");
       }
     }
     // /api/v1/incidents/{id}/resolve
@@ -1064,27 +978,20 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
         return errorResponse(400, requestId, headers, "invalid incident id");
       let tenant: TenantContext;
       try {
-        tenant = await requireTenant(
-          request,
-          env as unknown as Record<string, unknown>,
-          ["security:manage"],
-        );
+        tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+          "security:manage",
+        ]);
       } catch (err) {
         if (err instanceof AuthError)
           return errorResponse(err.status, requestId, headers, err.message);
         throw err;
       }
       const db = resolveD1(env);
-      if (!db)
-        return errorResponse(503, requestId, headers, "Store unavailable");
+      if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
       await ensureExtendedSchema(db);
       try {
         const resolveStart = Date.now();
-        const updated = await resolveSecurityIncident(
-          db,
-          tenant.tenantId,
-          idNum,
-        );
+        const updated = await resolveSecurityIncident(db, tenant.tenantId, idNum);
         recordLatency("incidentResolve", Date.now() - resolveStart);
         if (updated) {
           await recordActivityEvent(db, {
@@ -1101,12 +1008,7 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           requestId,
           error: (e as Error).message,
         });
-        return errorResponse(
-          500,
-          requestId,
-          headers,
-          "Failed to resolve incident",
-        );
+        return errorResponse(500, requestId, headers, "Failed to resolve incident");
       }
     }
   }
@@ -1115,19 +1017,16 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
     if (url.pathname === "/api/v1/access-requests" && method === "GET") {
       let tenant: TenantContext;
       try {
-        tenant = await requireTenant(
-          request,
-          env as unknown as Record<string, unknown>,
-          ["access:read"],
-        );
+        tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+          "access:read",
+        ]);
       } catch (err) {
         if (err instanceof AuthError)
           return errorResponse(err.status, requestId, headers, err.message);
         throw err;
       }
       const db = resolveD1(env);
-      if (!db)
-        return errorResponse(503, requestId, headers, "Store unavailable");
+      if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
       await ensureExtendedSchema(db);
       const status = url.searchParams.get("status") || undefined;
       const limit = Number(url.searchParams.get("limit") || 20);
@@ -1135,11 +1034,11 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
       const cursor = cursorParam ? Number(cursorParam) : undefined;
       try {
         const listStart = Date.now();
-        const { items, nextCursor } = await listAccessRequests(
-          db,
-          tenant.tenantId,
-          { status, limit, cursor },
-        );
+        const { items, nextCursor } = await listAccessRequests(db, tenant.tenantId, {
+          status,
+          limit,
+          cursor,
+        });
         recordLatency("accessRequestList", Date.now() - listStart);
         return jsonResponse({ items, nextCursor }, 200, headers);
       } catch (e) {
@@ -1147,30 +1046,22 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           requestId,
           error: (e as Error).message,
         });
-        return errorResponse(
-          500,
-          requestId,
-          headers,
-          "Failed to list access requests",
-        );
+        return errorResponse(500, requestId, headers, "Failed to list access requests");
       }
     }
     if (url.pathname === "/api/v1/access-requests" && method === "POST") {
       let tenant: TenantContext;
       try {
-        tenant = await requireTenant(
-          request,
-          env as unknown as Record<string, unknown>,
-          ["access:manage"],
-        );
+        tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+          "access:manage",
+        ]);
       } catch (err) {
         if (err instanceof AuthError)
           return errorResponse(err.status, requestId, headers, err.message);
         throw err;
       }
       const db = resolveD1(env);
-      if (!db)
-        return errorResponse(503, requestId, headers, "Store unavailable");
+      if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
       await ensureExtendedSchema(db);
       let body: any;
       try {
@@ -1187,13 +1078,9 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           ? body.resource.trim()
           : undefined;
       const justification =
-        typeof body?.justification === "string"
-          ? body.justification.trim()
-          : null;
-      if (!subjectRef)
-        return errorResponse(400, requestId, headers, "subjectRef required");
-      if (!resource)
-        return errorResponse(400, requestId, headers, "resource required");
+        typeof body?.justification === "string" ? body.justification.trim() : null;
+      if (!subjectRef) return errorResponse(400, requestId, headers, "subjectRef required");
+      if (!resource) return errorResponse(400, requestId, headers, "resource required");
       try {
         const createStart = Date.now();
         const rec = await createAccessRequest(db, {
@@ -1218,19 +1105,11 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
           requestId,
           error: (e as Error).message,
         });
-        return errorResponse(
-          500,
-          requestId,
-          headers,
-          "Failed to create access request",
-        );
+        return errorResponse(500, requestId, headers, "Failed to create access request");
       }
     }
     // Transition: /api/v1/access-requests/{id}/{action}
-    if (
-      url.pathname.startsWith("/api/v1/access-requests/") &&
-      method === "POST"
-    ) {
+    if (url.pathname.startsWith("/api/v1/access-requests/") && method === "POST") {
       const parts = url.pathname.split("/").filter(Boolean); // [api,v1,access-requests,{id},{action}]
       if (parts.length === 5) {
         const idRaw = parts[3];
@@ -1239,23 +1118,19 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
         if (!Number.isFinite(idNum) || idNum <= 0)
           return errorResponse(400, requestId, headers, "invalid request id");
         const mapped = ACCESS_ACTION_STATUS[action];
-        if (!mapped)
-          return errorResponse(400, requestId, headers, "invalid action");
+        if (!mapped) return errorResponse(400, requestId, headers, "invalid action");
         let tenant: TenantContext;
         try {
-          tenant = await requireTenant(
-            request,
-            env as unknown as Record<string, unknown>,
-            ["access:manage"],
-          );
+          tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+            "access:manage",
+          ]);
         } catch (err) {
           if (err instanceof AuthError)
             return errorResponse(err.status, requestId, headers, err.message);
           throw err;
         }
         const db = resolveD1(env);
-        if (!db)
-          return errorResponse(503, requestId, headers, "Store unavailable");
+        if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
         await ensureExtendedSchema(db);
         try {
           const updStart = Date.now();
@@ -1266,8 +1141,7 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
             decidedBy: "user",
           });
           recordLatency("accessRequestUpdate", Date.now() - updStart);
-          if (!updated)
-            return errorResponse(404, requestId, headers, "Not found");
+          if (!updated) return errorResponse(404, requestId, headers, "Not found");
           await recordActivityEvent(db, {
             tenantId: tenant.tenantId,
             type: "access_request",
@@ -1284,12 +1158,7 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
             requestId,
             error: (e as Error).message,
           });
-          return errorResponse(
-            500,
-            requestId,
-            headers,
-            "Failed to update access request",
-          );
+          return errorResponse(500, requestId, headers, "Failed to update access request");
         }
       }
     }
@@ -1297,18 +1166,13 @@ async function securityRoutes(ctx: RouteContext): Promise<Response | null> {
   return null;
 }
 
-async function notificationsRoutes(
-  ctx: RouteContext,
-): Promise<Response | null> {
+async function notificationsRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, request, env, requestId, headers } = ctx;
 
   if (url.pathname === "/api/v1/notifications" && method === "GET") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(
-        request,
-        env as unknown as Record<string, unknown>,
-      );
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
     } catch (err) {
       if (err instanceof AuthError) {
         return errorResponse(err.status, requestId, headers, err.message);
@@ -1355,16 +1219,10 @@ async function notificationsRoutes(
         rows.results?.map((r) => {
           const readAt = r.read_at ?? null;
           const legacyRead = r.read === 1;
-          const isRead =
-            (typeof readAt === "string" && readAt.length > 0) || legacyRead;
+          const isRead = (typeof readAt === "string" && readAt.length > 0) || legacyRead;
           const createdAt = r.created_at as string;
-          const createdTs = createdAt
-            ? new Date(createdAt).getTime()
-            : Date.now();
-          const ageSeconds = Math.max(
-            0,
-            Math.floor((Date.now() - createdTs) / 1000),
-          );
+          const createdTs = createdAt ? new Date(createdAt).getTime() : Date.now();
+          const ageSeconds = Math.max(0, Math.floor((Date.now() - createdTs) / 1000));
           return {
             id: String(r.id),
             kind: r.kind,
@@ -1384,8 +1242,7 @@ async function notificationsRoutes(
         .bind(tenant.tenantId)
         .first<{ unread: number }>();
       const unreadCount = unreadRow?.unread ?? 0;
-      const nextCursor =
-        items.length === limit ? items[items.length - 1].id : null;
+      const nextCursor = items.length === limit ? items[items.length - 1].id : null;
 
       recordLatency("notificationsList", Date.now() - listStart);
       return jsonResponse({ items, unreadCount, nextCursor }, 200, headers);
@@ -1394,22 +1251,14 @@ async function notificationsRoutes(
         requestId,
         error: (e as Error).message,
       });
-      return errorResponse(
-        500,
-        requestId,
-        headers,
-        "Failed to list notifications",
-      );
+      return errorResponse(500, requestId, headers, "Failed to list notifications");
     }
   }
 
   if (url.pathname === "/api/v1/notifications/read" && method === "POST") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(
-        request,
-        env as unknown as Record<string, unknown>,
-      );
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
     } catch (err) {
       if (err instanceof AuthError) {
         return errorResponse(err.status, requestId, headers, err.message);
@@ -1436,9 +1285,7 @@ async function notificationsRoutes(
             idsInput
               .map((value) => {
                 const numeric = Number(value);
-                return Number.isFinite(numeric) && numeric > 0
-                  ? Math.trunc(numeric)
-                  : null;
+                return Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : null;
               })
               .filter((value): value is number => value !== null),
           ),
@@ -1475,11 +1322,7 @@ async function notificationsRoutes(
         .first<{ unread: number }>();
       const unreadCount = unreadRow?.unread ?? 0;
       recordLatency("notificationsMarkRead", Date.now() - markStart);
-      return jsonResponse(
-        { updated: updatedIds.map(String), unreadCount },
-        200,
-        headers,
-      );
+      return jsonResponse({ updated: updatedIds.map(String), unreadCount }, 200, headers);
     } catch (e) {
       log("error", "notifications.mark_read.error", {
         requestId,
@@ -1492,10 +1335,7 @@ async function notificationsRoutes(
   if (url.pathname === "/api/v1/notifications/read-all" && method === "POST") {
     let tenant: TenantContext;
     try {
-      tenant = await requireTenant(
-        request,
-        env as unknown as Record<string, unknown>,
-      );
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
     } catch (err) {
       if (err instanceof AuthError) {
         return errorResponse(err.status, requestId, headers, err.message);
@@ -1539,11 +1379,9 @@ async function handlePolicyTemplates(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["policies:manage"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1576,12 +1414,7 @@ async function handlePolicyTemplates(
       tenantId: tenant.tenantId,
       error: err instanceof Error ? err.message : String(err),
     });
-    return errorResponse(
-      500,
-      requestId,
-      headers,
-      "Failed to list policy templates",
-    );
+    return errorResponse(500, requestId, headers, "Failed to list policy templates");
   }
 }
 
@@ -1620,11 +1453,9 @@ async function handlePolicyGenerate(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["policies:manage"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1649,8 +1480,7 @@ async function handlePolicyGenerate(
     return errorResponse(400, requestId, headers, "Invalid JSON payload");
   }
 
-  const templateKey =
-    typeof body?.templateKey === "string" ? body.templateKey : undefined;
+  const templateKey = typeof body?.templateKey === "string" ? body.templateKey : undefined;
   if (!templateKey) {
     return errorResponse(400, requestId, headers, "templateKey is required");
   }
@@ -1727,11 +1557,9 @@ async function handlePolicyEvaluate(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["policies:manage"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1751,8 +1579,7 @@ async function handlePolicyEvaluate(
     return errorResponse(400, requestId, headers, "Invalid JSON payload");
   }
 
-  const policyKey =
-    typeof body?.policyKey === "string" ? body.policyKey : undefined;
+  const policyKey = typeof body?.policyKey === "string" ? body.policyKey : undefined;
   if (!policyKey) {
     return errorResponse(400, requestId, headers, "policyKey is required");
   }
@@ -1806,11 +1633,9 @@ async function handlePolicyCoverage(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["policies:manage"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1852,12 +1677,7 @@ async function handlePolicyCoverage(
       framework,
       error: err instanceof Error ? err.message : String(err),
     });
-    return errorResponse(
-      500,
-      requestId,
-      headers,
-      "Failed to load policy coverage",
-    );
+    return errorResponse(500, requestId, headers, "Failed to load policy coverage");
   }
 }
 
@@ -1869,11 +1689,9 @@ async function handleWorkflowExecute(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["automation:execute"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "automation:execute",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1883,12 +1701,7 @@ async function handleWorkflowExecute(
 
   const db = resolveD1(env);
   if (!db) {
-    return errorResponse(
-      503,
-      requestId,
-      headers,
-      "Automation store unavailable",
-    );
+    return errorResponse(503, requestId, headers, "Automation store unavailable");
   }
 
   let payload: any;
@@ -1913,9 +1726,7 @@ async function handleWorkflowExecute(
 
   const headerIdempotency = request.headers.get("Idempotency-Key") || undefined;
   const bodyIdempotency =
-    typeof payload.idempotencyKey === "string"
-      ? payload.idempotencyKey
-      : undefined;
+    typeof payload.idempotencyKey === "string" ? payload.idempotencyKey : undefined;
   const idempotencyKey = headerIdempotency || bodyIdempotency;
 
   try {
@@ -1972,10 +1783,7 @@ async function handleWorkflowGet(
 ) {
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -1985,12 +1793,7 @@ async function handleWorkflowGet(
 
   const db = resolveD1(env);
   if (!db) {
-    return errorResponse(
-      503,
-      requestId,
-      headers,
-      "Automation store unavailable",
-    );
+    return errorResponse(503, requestId, headers, "Automation store unavailable");
   }
 
   try {
@@ -2013,10 +1816,7 @@ async function handleWorkflowGet(
   }
 }
 
-async function buildSnapshot(
-  env: Env,
-  tenantId: string,
-): Promise<ComplianceSnapshot> {
+async function buildSnapshot(env: Env, tenantId: string): Promise<ComplianceSnapshot> {
   const now = new Date();
   const db = resolveD1(env);
 
@@ -2115,9 +1915,7 @@ async function buildSnapshot(
     for (const fw of frameworks) {
       try {
         const coverage = await coverageSummary(db, fw, tenantId, env.ATLAS_SHARED_DB);
-        const withEvidence = coverage.controls.filter(
-          (c) => c.evidenceCount > 0,
-        ).length;
+        const withEvidence = coverage.controls.filter((c) => c.evidenceCount > 0).length;
         frameworkSummary.push({
           framework: fw,
           coveragePercent: coverage.coveragePercent,
@@ -2131,9 +1929,7 @@ async function buildSnapshot(
           error: (e as Error).message,
         });
         // Use fallback for this framework
-        const fb = fallbackSnapshot.frameworkSummary.find(
-          (f) => f.framework === fw,
-        );
+        const fb = fallbackSnapshot.frameworkSummary.find((f) => f.framework === fw);
         if (fb) frameworkSummary.push(fb);
       }
     }
@@ -2144,20 +1940,14 @@ async function buildSnapshot(
       const templates = await listPolicyTemplates(db);
       // Check which templates have generated policies (i.e. approved)
       const generatedRows = await db
-        .prepare(
-          `SELECT DISTINCT template_key FROM generated_policies WHERE tenant_id = ?`,
-        )
+        .prepare(`SELECT DISTINCT template_key FROM generated_policies WHERE tenant_id = ?`)
         .bind(tenantId)
         .all<{ template_key: string }>();
-      const generatedKeys = new Set(
-        (generatedRows.results ?? []).map((r) => r.template_key),
-      );
+      const generatedKeys = new Set((generatedRows.results ?? []).map((r) => r.template_key));
       policies = templates.map((t, idx) => ({
         id: `P${idx + 1}`,
         name: t.name,
-        status: generatedKeys.has(t.key)
-          ? ("approved" as const)
-          : ("draft" as const),
+        status: generatedKeys.has(t.key) ? ("approved" as const) : ("draft" as const),
         updated: now.toISOString(),
       }));
     } catch (e) {
@@ -2220,9 +2010,7 @@ async function buildSnapshot(
 
     try {
       const pendingRow = await db
-        .prepare(
-          `SELECT COUNT(*) as pending FROM access_requests WHERE status = 'pending'`,
-        )
+        .prepare(`SELECT COUNT(*) as pending FROM access_requests WHERE status = 'pending'`)
         .first<{ pending: number }>();
       pendingAccessRequests = pendingRow?.pending ?? 0;
     } catch {
@@ -2241,9 +2029,7 @@ async function buildSnapshot(
     try {
       const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const execRow = await db
-        .prepare(
-          `SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`,
-        )
+        .prepare(`SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`)
         .bind(sinceIso)
         .first<{ count: number }>();
       workflowExecutions24h = execRow?.count ?? 0;
@@ -2264,9 +2050,7 @@ async function buildSnapshot(
       tenantId,
       generatedAt: now.toISOString(),
       frameworkSummary:
-        frameworkSummary.length > 0
-          ? frameworkSummary
-          : fallbackSnapshot.frameworkSummary,
+        frameworkSummary.length > 0 ? frameworkSummary : fallbackSnapshot.frameworkSummary,
       risks,
       policies: policies.length > 0 ? policies : fallbackSnapshot.policies,
       openIncidents,
@@ -2345,9 +2129,7 @@ async function ensureSchema(env: Env) {
     const columns = tableInfo?.results || [];
     const hasReadAt = columns.some((column) => column.name === "read_at");
     if (!hasReadAt) {
-      await db
-        .prepare("ALTER TABLE notifications ADD COLUMN read_at TEXT")
-        .run();
+      await db.prepare("ALTER TABLE notifications ADD COLUMN read_at TEXT").run();
       await db
         .prepare(
           'UPDATE notifications SET read_at = COALESCE(read_at, CASE WHEN "read" = 1 THEN created_at ELSE read_at END) WHERE "read" = 1 AND (read_at IS NULL OR read_at = \'\')',
@@ -2494,18 +2276,13 @@ async function getPersistedSnapshot(
   if (!db) return null;
   try {
     const row = await db
-      .prepare(
-        "SELECT payload, generated_at FROM snapshots WHERE tenant_id = ? LIMIT 1",
-      )
+      .prepare("SELECT payload, generated_at FROM snapshots WHERE tenant_id = ? LIMIT 1")
       .bind(tenantId)
       .first<Record<string, string>>();
     if (!row) return null;
     const parsed: ComplianceSnapshot = JSON.parse(row.payload);
     const reference = row.generated_at || parsed.generatedAt;
-    const ageSeconds = Math.max(
-      0,
-      Math.floor((Date.now() - new Date(reference).getTime()) / 1000),
-    );
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - new Date(reference).getTime()) / 1000));
     if (ageSeconds > maxAgeSeconds) return null;
     return { ...parsed, ageSeconds };
   } catch (e) {
@@ -2514,11 +2291,7 @@ async function getPersistedSnapshot(
   }
 }
 
-async function persistSnapshot(
-  env: Env,
-  tenantId: string,
-  snapshot: ComplianceSnapshot,
-) {
+async function persistSnapshot(env: Env, tenantId: string, snapshot: ComplianceSnapshot) {
   const db = resolveD1(env);
   if (!db) return;
   try {
@@ -2557,11 +2330,7 @@ type HealthPayload = {
   automation?: { executions24h: number };
 };
 
-async function handleHealth(
-  env: Env,
-  requestId: string,
-  headers: Record<string, string>,
-) {
+async function handleHealth(env: Env, requestId: string, headers: Record<string, string>) {
   const db = resolveD1(env);
   let latestAge: number | undefined;
   let evidenceCount = 0;
@@ -2574,17 +2343,12 @@ async function handleHealth(
   if (db) {
     try {
       const latestSnapshot = await db
-        .prepare(
-          "SELECT generated_at FROM snapshots ORDER BY generated_at DESC LIMIT 1",
-        )
+        .prepare("SELECT generated_at FROM snapshots ORDER BY generated_at DESC LIMIT 1")
         .first<Record<string, string>>();
       if (latestSnapshot?.generated_at) {
         latestAge = Math.max(
           0,
-          Math.floor(
-            (Date.now() - new Date(latestSnapshot.generated_at).getTime()) /
-              1000,
-          ),
+          Math.floor((Date.now() - new Date(latestSnapshot.generated_at).getTime()) / 1000),
         );
       }
     } catch (e) {
@@ -2622,9 +2386,7 @@ async function handleHealth(
       const criticalOpen = securityRow?.critical_open ?? 0;
       const highOpen = securityRow?.high_open ?? 0;
       const avgResponseMs =
-        securityRow?.avg_response_ms != null
-          ? Number(securityRow.avg_response_ms)
-          : null;
+        securityRow?.avg_response_ms != null ? Number(securityRow.avg_response_ms) : null;
       if (criticalOpen > 0) {
         securityThreat = "critical";
       } else if (highOpen >= 2) {
@@ -2647,9 +2409,7 @@ async function handleHealth(
 
     try {
       const pendingRow = await db
-        .prepare(
-          `SELECT COUNT(*) as pending FROM access_requests WHERE status = 'pending'`,
-        )
+        .prepare(`SELECT COUNT(*) as pending FROM access_requests WHERE status = 'pending'`)
         .first<{ pending: number }>();
       pendingRequests = pendingRow?.pending ?? 0;
     } catch (e) {
@@ -2673,9 +2433,7 @@ async function handleHealth(
     try {
       const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const row = await db
-        .prepare(
-          `SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`,
-        )
+        .prepare(`SELECT COUNT(*) as count FROM workflow_executions WHERE created_at >= ?`)
         .bind(sinceIso)
         .first<{ count: number }>();
       executions24h = row?.count ?? 0;
@@ -2756,11 +2514,7 @@ async function handleSnapshot(
   const start = Date.now();
   try {
     await ensureSchema(env);
-    let snapshot = await getPersistedSnapshot(
-      env,
-      tenantId,
-      SNAPSHOT_TTL_SECONDS,
-    );
+    let snapshot = await getPersistedSnapshot(env, tenantId, SNAPSHOT_TTL_SECONDS);
     if (snapshot) {
       log("info", "snapshot.cached", {
         requestId,
@@ -2797,7 +2551,12 @@ async function handleSnapshot(
       error: (err as Error).message,
     });
     return new Response(
-      JSON.stringify({ error: "Internal error", code: "INTERNAL_ERROR", message: "Internal error", requestId }),
+      JSON.stringify({
+        error: "Internal error",
+        code: "INTERNAL_ERROR",
+        message: "Internal error",
+        requestId,
+      }),
       {
         status: 500,
         headers: mergeHeaders(headers, { "content-type": "application/json" }),
@@ -2814,9 +2573,7 @@ function normalizeString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function serializePayload(
-  obj: unknown,
-): { serialized: string; tooLarge: boolean } | null {
+function serializePayload(obj: unknown): { serialized: string; tooLarge: boolean } | null {
   if (!obj || typeof obj !== "object") return null;
   const serialized = JSON.stringify(obj);
   return { serialized, tooLarge: false };
@@ -2856,7 +2613,7 @@ async function indexEvidence(
     )
     .bind(data.hash, data.tenantId, data.pack, data.subject, data.canonical)
     .run();
-  return (result.meta?.changes ?? 0) > 0;
+  return ((result as any).meta?.changes ?? 0) > 0;
 }
 
 async function handleEvidenceIngest(
@@ -2867,8 +2624,7 @@ async function handleEvidenceIngest(
 ) {
   const ingestStart = Date.now();
   const bucket = resolveR2(env);
-  if (!bucket)
-    return errorResponse(503, requestId, headers, "Evidence store unavailable");
+  if (!bucket) return errorResponse(503, requestId, headers, "Evidence store unavailable");
 
   let body: EvidenceIngestRequest | null = null;
   try {
@@ -2880,12 +2636,7 @@ async function handleEvidenceIngest(
     return errorResponse(400, requestId, headers, "Missing evidence payload");
   }
   if (typeof body.payload !== "object") {
-    return errorResponse(
-      400,
-      requestId,
-      headers,
-      "Evidence payload must be object",
-    );
+    return errorResponse(400, requestId, headers, "Evidence payload must be object");
   }
 
   const maxBytes = Number(env.MAX_EVIDENCE_BYTES || 51200);
@@ -2937,8 +2688,7 @@ async function handleEvidenceIngest(
   }
 
   const db = resolveD1(env);
-  if (!db)
-    return errorResponse(503, requestId, headers, "Evidence index unavailable");
+  if (!db) return errorResponse(503, requestId, headers, "Evidence index unavailable");
   let indexed = false;
   try {
     indexed = await indexEvidence(db, {
@@ -3095,9 +2845,7 @@ async function handleEvidenceSearch(
     bindings.push(cursor);
   }
 
-  const whereClause = conditions.length
-    ? `WHERE ${conditions.join(" AND ")}`
-    : "";
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const fetchLimit = limit + 1;
 
   const stmt = db
@@ -3112,19 +2860,14 @@ async function handleEvidenceSearch(
 
   let results: Array<Record<string, unknown>> = [];
   try {
-    const { results: rows } = await stmt.all();
+    const { results: rows } = await stmt.all<Record<string, unknown>>();
     results = rows ?? [];
   } catch (e) {
     log("error", "evidence.search.error", {
       requestId,
       error: (e as Error).message,
     });
-    return errorResponse(
-      500,
-      requestId,
-      headers,
-      "Failed to query evidence index",
-    );
+    return errorResponse(500, requestId, headers, "Failed to query evidence index");
   }
 
   const hasNext = results.length > limit;
@@ -3192,9 +2935,7 @@ async function handleEvidenceVerify(
       parsed = null;
     }
     const { hash: recomputed } =
-      parsed && typeof parsed === "object"
-        ? await hashCanonicalJson(parsed)
-        : { hash };
+      parsed && typeof parsed === "object" ? await hashCanonicalJson(parsed) : { hash };
     const row = await db
       .prepare(
         "SELECT tenant_id, pack, subject_ref, created_at FROM evidence_index WHERE hash = ? LIMIT 1",
@@ -3240,11 +2981,9 @@ async function handlePoliciesRetentionPurge(
   const purgeStart = Date.now();
   let tenant: Awaited<ReturnType<typeof requireTenant>>;
   try {
-    tenant = await requireTenant(
-      request,
-      env as unknown as Record<string, unknown>,
-      ["policies:manage"],
-    );
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
   } catch (err) {
     if (err instanceof AuthError) {
       return errorResponse(err.status, requestId, headers, err.message);
@@ -3290,10 +3029,7 @@ async function handlePoliciesRetentionPurge(
       // Allow batch size to be configured via env, default to 25, and cap at 999 (SQLite parameter limit)
       let batchSizeRaw = (env as any).POLICY_PURGE_BATCH_SIZE;
       let POLICY_PURGE_BATCH_SIZE = 25;
-      if (
-        typeof batchSizeRaw === "string" ||
-        typeof batchSizeRaw === "number"
-      ) {
+      if (typeof batchSizeRaw === "string" || typeof batchSizeRaw === "number") {
         const parsed = Number(batchSizeRaw);
         if (Number.isFinite(parsed) && parsed > 0 && parsed <= 999) {
           POLICY_PURGE_BATCH_SIZE = Math.floor(parsed);
@@ -3303,9 +3039,7 @@ async function handlePoliciesRetentionPurge(
         const slice = hashes.slice(i, i + POLICY_PURGE_BATCH_SIZE);
         const placeholders = slice.map(() => "?").join(",");
         await db
-          .prepare(
-            `DELETE FROM generated_policies WHERE hash IN (${placeholders})`,
-          )
+          .prepare(`DELETE FROM generated_policies WHERE hash IN (${placeholders})`)
           .bind(...slice)
           .run();
       }
@@ -3340,12 +3074,7 @@ async function handlePoliciesRetentionPurge(
       requestId,
       error: (e as Error).message,
     });
-    return errorResponse(
-      500,
-      requestId,
-      headers,
-      "Failed to evaluate retention purge",
-    );
+    return errorResponse(500, requestId, headers, "Failed to evaluate retention purge");
   }
 }
 

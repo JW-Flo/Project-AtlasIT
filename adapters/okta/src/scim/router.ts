@@ -14,11 +14,7 @@ import {
   type DirectoryGroupRow,
   type DirectoryMembershipRow,
 } from "./types.js";
-import {
-  parseScimFilter,
-  mapUserFilterToSql,
-  mapGroupFilterToSql,
-} from "./filter.js";
+import { parseScimFilter, mapUserFilterToSql, mapGroupFilterToSql } from "./filter.js";
 
 interface ScimBindings {
   DB: D1Database;
@@ -54,11 +50,7 @@ scimRouter.use("*", async (c, next) => {
 
 // ---------- Helper functions ----------
 
-function scimError(
-  detail: string,
-  status: string,
-  scimType?: string,
-): ScimError {
+function scimError(detail: string, status: string, scimType?: string): ScimError {
   return {
     schemas: [SCIM_SCHEMAS.ERROR],
     detail,
@@ -76,12 +68,7 @@ function baseUrl(c: ScimContext): string {
   return `${url.protocol}//${url.host}`;
 }
 
-function userMeta(
-  c: ScimContext,
-  id: string,
-  created: string,
-  updated: string,
-): ScimMeta {
+function userMeta(c: ScimContext, id: string, created: string, updated: string): ScimMeta {
   return {
     resourceType: "User",
     created,
@@ -90,12 +77,7 @@ function userMeta(
   };
 }
 
-function groupMeta(
-  c: ScimContext,
-  id: string,
-  created: string,
-  updated: string,
-): ScimMeta {
+function groupMeta(c: ScimContext, id: string, created: string, updated: string): ScimMeta {
   return {
     resourceType: "Group",
     created,
@@ -110,8 +92,7 @@ function rowToScimUser(c: ScimContext, row: DirectoryUserRow): ScimUserResource 
     : {};
 
   const givenName = rawAttrs.firstName ?? row.display_name?.split(" ")[0] ?? "";
-  const familyName =
-    rawAttrs.lastName ?? row.display_name?.split(" ").slice(1).join(" ") ?? "";
+  const familyName = rawAttrs.lastName ?? row.display_name?.split(" ").slice(1).join(" ") ?? "";
 
   return {
     schemas: [SCIM_SCHEMAS.USER],
@@ -132,10 +113,7 @@ function rowToScimUser(c: ScimContext, row: DirectoryUserRow): ScimUserResource 
   };
 }
 
-async function rowToScimGroup(
-  c: ScimContext,
-  row: DirectoryGroupRow,
-): Promise<ScimGroupResource> {
+async function rowToScimGroup(c: ScimContext, row: DirectoryGroupRow): Promise<ScimGroupResource> {
   const db = c.env.DB;
   const tid = tenantId(c);
 
@@ -175,7 +153,7 @@ scimRouter.get("/Users", async (c) => {
   const startIndex = Math.max(1, parseInt(c.req.query("startIndex") ?? "1", 10));
   const count = Math.min(100, Math.max(1, parseInt(c.req.query("count") ?? "100", 10)));
 
-  let rows: D1Result<DirectoryUserRow>;
+  let rows: { results: DirectoryUserRow[] };
 
   if (filter) {
     const parsed = parseScimFilter(filter);
@@ -254,9 +232,7 @@ scimRouter.post("/Users", async (c) => {
 
   // Check for duplicate
   const existing = await db
-    .prepare(
-      "SELECT id FROM directory_users WHERE tenant_id = ?1 AND email = ?2",
-    )
+    .prepare("SELECT id FROM directory_users WHERE tenant_id = ?1 AND email = ?2")
     .bind(tid, body.userName)
     .first<{ id: string }>();
 
@@ -268,8 +244,7 @@ scimRouter.post("/Users", async (c) => {
   const now = new Date().toISOString();
   const displayName =
     body.displayName ??
-    (`${body.name?.givenName ?? ""} ${body.name?.familyName ?? ""}`.trim() ||
-      body.userName);
+    (`${body.name?.givenName ?? ""} ${body.name?.familyName ?? ""}`.trim() || body.userName);
 
   const rawAttributes = JSON.stringify({
     firstName: body.name?.givenName ?? "",
@@ -329,10 +304,7 @@ scimRouter.patch("/Users/:id", async (c) => {
 
   const body = await c.req.json<ScimPatchRequest>();
 
-  if (
-    !body.schemas?.includes(SCIM_SCHEMAS.PATCH_OP) ||
-    !Array.isArray(body.Operations)
-  ) {
+  if (!body.schemas?.includes(SCIM_SCHEMAS.PATCH_OP) || !Array.isArray(body.Operations)) {
     return c.json(scimError("Invalid PATCH request", "400", "invalidSyntax"), 400);
   }
 
@@ -445,7 +417,7 @@ scimRouter.get("/Groups", async (c) => {
   const startIndex = Math.max(1, parseInt(c.req.query("startIndex") ?? "1", 10));
   const count = Math.min(100, Math.max(1, parseInt(c.req.query("count") ?? "100", 10)));
 
-  let rows: D1Result<DirectoryGroupRow>;
+  let rows: { results: DirectoryGroupRow[] };
 
   if (filter) {
     const parsed = parseScimFilter(filter);
@@ -523,17 +495,12 @@ scimRouter.post("/Groups", async (c) => {
   const body = await c.req.json<ScimCreateGroupRequest>();
 
   if (!body.displayName) {
-    return c.json(
-      scimError("displayName is required", "400", "invalidValue"),
-      400,
-    );
+    return c.json(scimError("displayName is required", "400", "invalidValue"), 400);
   }
 
   // Check for duplicate
   const existing = await db
-    .prepare(
-      "SELECT id FROM directory_groups WHERE tenant_id = ?1 AND name = ?2",
-    )
+    .prepare("SELECT id FROM directory_groups WHERE tenant_id = ?1 AND name = ?2")
     .bind(tid, body.displayName)
     .first<{ id: string }>();
 
@@ -594,10 +561,7 @@ scimRouter.patch("/Groups/:id", async (c) => {
 
   const body = await c.req.json<ScimPatchRequest>();
 
-  if (
-    !body.schemas?.includes(SCIM_SCHEMAS.PATCH_OP) ||
-    !Array.isArray(body.Operations)
-  ) {
+  if (!body.schemas?.includes(SCIM_SCHEMAS.PATCH_OP) || !Array.isArray(body.Operations)) {
     return c.json(scimError("Invalid PATCH request", "400", "invalidSyntax"), 400);
   }
 
@@ -617,9 +581,7 @@ scimRouter.patch("/Groups/:id", async (c) => {
     }
 
     if (op.op === "add" && op.path === "members") {
-      const members = Array.isArray(op.value)
-        ? (op.value as Array<{ value: string }>)
-        : [];
+      const members = Array.isArray(op.value) ? (op.value as Array<{ value: string }>) : [];
       for (const member of members) {
         await db
           .prepare(
@@ -633,9 +595,7 @@ scimRouter.patch("/Groups/:id", async (c) => {
 
     if (op.op === "remove" && op.path) {
       // Path format: members[value eq "userId"]
-      const memberMatch = op.path.match(
-        /^members\[value\s+eq\s+"([^"]+)"\]$/,
-      );
+      const memberMatch = op.path.match(/^members\[value\s+eq\s+"([^"]+)"\]$/);
       if (memberMatch) {
         const memberId = memberMatch[1];
         await db
@@ -714,8 +674,7 @@ scimRouter.get("/ServiceProviderConfig", (c) => {
       {
         type: "oauthbearertoken",
         name: "OAuth Bearer Token",
-        description:
-          "Authentication scheme using the OAuth Bearer Token Standard",
+        description: "Authentication scheme using the OAuth Bearer Token Standard",
         specUri: "https://www.rfc-editor.org/info/rfc6750",
         primary: true,
       },
