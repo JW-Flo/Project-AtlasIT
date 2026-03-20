@@ -46,8 +46,9 @@ routes = [
 directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
-[build]
-command = "pnpm run build && touch .svelte-kit/cloudflare/.assetsignore"
+# Build is handled by CI workflow steps (build:shared then console build).
+# Do not add a [build] command here — wrangler runs it from the repo root
+# which triggers npm-run-all build:* and creates an infinite loop.
 
 [vars]
 APP_NAME = "AtlasIT Console"
