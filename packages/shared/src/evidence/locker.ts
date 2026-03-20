@@ -45,6 +45,12 @@ export interface LockerWriteResult {
 export interface LockerDependencies {
   db: D1Database;
   bucket?: R2Bucket;
+  /**
+   * Optional callback invoked after evidence is stored (not for duplicates).
+   * Use this to trigger score recalculation in waitUntil() so it doesn't
+   * block the response. Receives the tenant ID and affected frameworks.
+   */
+  onEvidenceStored?: (tenantId: string, frameworks: string[]) => void;
 }
 
 // ── Content Hashing ───────────────────────────────────────────────────────────
@@ -143,7 +149,7 @@ export async function storeEvidence(
       batch.push(
         deps.db
           .prepare(
-            `INSERT INTO compliance_evidence
+            `INSERT OR IGNORE INTO compliance_evidence
              (id, tenant_id, framework, framework_id, control_id, control_name,
               evidence_type, source, source_id, actor, subject, metadata, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -178,6 +184,12 @@ export async function storeEvidence(
       await deps.db.batch(batch);
       d1RowsWritten = batch.length;
     }
+  }
+
+  // Trigger score refresh for affected frameworks (non-blocking)
+  if (!alreadyExists && d1RowsWritten > 0 && deps.onEvidenceStored) {
+    const frameworks = [...new Set(evidence.controls.map((c) => c.framework))];
+    deps.onEvidenceStored(evidence.tenantId, frameworks);
   }
 
   return {
@@ -239,7 +251,7 @@ export async function queryEvidence(
          ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       )
       .bind(...params, limit, offset)
-      .all(),
+      .all<Record<string, unknown>>(),
     db
       .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence WHERE ${where}`)
       .bind(...params)

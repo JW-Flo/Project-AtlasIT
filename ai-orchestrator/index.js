@@ -10,10 +10,7 @@ import {
   executeAgentMesh,
   classifyTask,
 } from "@atlasit/shared";
-import log, {
-  correlationMiddleware,
-  logRequestMiddleware,
-} from "../shared/log.js";
+import log, { correlationMiddleware, logRequestMiddleware } from "../shared/log.js";
 // Circuit breaker (shared)
 import { getBreaker } from "../shared/circuit-breaker.ts";
 import { listIntegrations } from "../shared/integrations/registry.js";
@@ -106,11 +103,7 @@ async function kvQuotaUpdate(kv, key, today, limit) {
       expirationTtl: QUOTA_TTL_SECONDS,
     });
     const confirm = await kv.get(key, { type: "json" }).catch(() => null);
-    if (
-      confirm &&
-      confirm.date === today &&
-      typeof confirm.count === "number"
-    ) {
+    if (confirm && confirm.date === today && typeof confirm.count === "number") {
       const used = confirm.count;
       aiDaily = { day: today, count: used };
       return {
@@ -284,10 +277,7 @@ app.use("*", async (c, next) => {
   const now2 = Date.now();
   const resetIn = windowSec - Math.floor((now2 - entry.windowStart) / 1000);
   c.res.headers.set("X-RateLimit-Limit", String(max));
-  c.res.headers.set(
-    "X-RateLimit-Remaining",
-    String(Math.max(0, max - entry.count)),
-  );
+  c.res.headers.set("X-RateLimit-Remaining", String(Math.max(0, max - entry.count)));
   c.res.headers.set("X-RateLimit-Reset", String(resetIn));
 });
 
@@ -443,15 +433,9 @@ async function handleAction(action) {
 async function checkWithMCP(action, context) {
   // Test bypass: allow unit tests to skip outbound network approval calls
   if ((globalThis || {}).TEST_MCP_APPROVE_ALL === true) return true;
-  if (
-    typeof context === "object" &&
-    context &&
-    context.env &&
-    context.env.MCP_APPROVE_ALL === "1"
-  )
+  if (typeof context === "object" && context && context.env && context.env.MCP_APPROVE_ALL === "1")
     return true;
-  if (typeof action === "string" && globalThis.MCP_APPROVE_ALL === "1")
-    return true;
+  if (typeof action === "string" && globalThis.MCP_APPROVE_ALL === "1") return true;
   const endpoint = getMcpEndpoint(context?.env);
   try {
     const response = await fetch(`${endpoint}/approve`, {
@@ -465,8 +449,7 @@ async function checkWithMCP(action, context) {
   } catch (error) {
     const debugMcpLogs =
       context?.env?.DEBUG_MCP_LOGS === "true" ||
-      (typeof process !== "undefined" &&
-        process?.env?.DEBUG_MCP_LOGS === "true");
+      (typeof process !== "undefined" && process?.env?.DEBUG_MCP_LOGS === "true");
     if (debugMcpLogs) {
       // Consolidated logging; sharedLogger undefined before
       log("error", "mcp.approval_failed", { error: String(error) });
@@ -539,8 +522,7 @@ async function needsAIAssistance() {
   const approved = await checkWithMCP("ai_assistance_check", {
     timestamp: new Date(),
   });
-  if (!approved)
-    return { needed: false, reason: "MCP rejected AI assistance check" };
+  if (!approved) return { needed: false, reason: "MCP rejected AI assistance check" };
 
   // Check for critical tasks
   const criticalTasks = Array.from(pendingTasks).filter(
@@ -565,9 +547,7 @@ async function needsAIAssistance() {
   }
 
   // Check for documentation updates
-  const docTasks = Array.from(pendingTasks).filter(
-    (task) => task.type === AI_TASKS.DOCUMENTATION,
-  );
+  const docTasks = Array.from(pendingTasks).filter((task) => task.type === AI_TASKS.DOCUMENTATION);
 
   if (docTasks.length > 0) {
     return {
@@ -584,8 +564,7 @@ async function needsAIAssistance() {
 async function requestAIAssistance(tasks, env) {
   // Get MCP approval for AI assistance
   const approved = await checkWithMCP("ai_assistance", { tasks });
-  if (!approved)
-    return { success: false, reason: "MCP rejected AI assistance" };
+  if (!approved) return { success: false, reason: "MCP rejected AI assistance" };
 
   const prompt = generatePrompt(tasks);
 
@@ -597,8 +576,7 @@ async function requestAIAssistance(tasks, env) {
     const processApproved = await checkWithMCP("process_ai_response", {
       response,
     });
-    if (!processApproved)
-      return { success: false, reason: "MCP rejected AI response processing" };
+    if (!processApproved) return { success: false, reason: "MCP rejected AI response processing" };
 
     await processAIResponse(response);
 
@@ -658,6 +636,7 @@ app.get("/integrations", async (c) => {
 app.get("/status", async (c) => {
   const approved = await checkWithMCP("status_check", {
     timestamp: new Date(),
+    env: c.env,
   });
   if (!approved) return c.json({ error: "MCP rejected status check" }, 403);
 
@@ -800,10 +779,8 @@ function validatePrompt(c, body) {
 
 function applyRateLimit(c) {
   const windowSeconds =
-    parseInt(c.env.AI_RATE_WINDOW_SECONDS || "", 10) ||
-    DEFAULT_AI_RATE_WINDOW_SECONDS;
-  const burst =
-    parseInt(c.env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
+    parseInt(c.env.AI_RATE_WINDOW_SECONDS || "", 10) || DEFAULT_AI_RATE_WINDOW_SECONDS;
+  const burst = parseInt(c.env.AI_RATE_BURST || "", 10) || DEFAULT_AI_RATE_BURST;
   if (!(burst > 0 && windowSeconds > 0)) return { ok: true };
   const ip = getClientIp(c);
   const bucketKey = `${ip}:infer`;
@@ -877,8 +854,7 @@ async function applyQuota(c) {
 
 function selectModel(c, body) {
   const allow = (
-    c.env.AI_ALLOWED_MODELS ||
-    "@cf/meta/llama-3.1-8b-instruct,@cf/meta/llama-3.3-70b-instruct"
+    c.env.AI_ALLOWED_MODELS || "@cf/meta/llama-3.1-8b-instruct,@cf/meta/llama-3.3-70b-instruct"
   )
     .split(",")
     .map((s) => s.trim())
@@ -988,10 +964,7 @@ app.post("/ai/agent-mesh", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) || {};
   const input = typeof body.input === "string" ? body.input.trim() : "";
   if (!input) {
-    return c.json(
-      { error: "input required", requestId: c.get("requestId") },
-      400,
-    );
+    return c.json({ error: "input required", requestId: c.get("requestId") }, 400);
   }
 
   const rl = applyRateLimit(c);
@@ -1017,11 +990,7 @@ app.post("/ai/agent-mesh", async (c) => {
       modelOverrides: body.modelOverrides || undefined,
     };
 
-    const result = await executeAgentMesh(
-      input,
-      config,
-      body.systemPrompt || undefined,
-    );
+    const result = await executeAgentMesh(input, config, body.systemPrompt || undefined);
 
     if (result.classification.blocked) {
       return c.json(
@@ -1064,10 +1033,7 @@ app.post("/ai/classify", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) || {};
   const input = typeof body.input === "string" ? body.input.trim() : "";
   if (!input) {
-    return c.json(
-      { error: "input required", requestId: c.get("requestId") },
-      400,
-    );
+    return c.json({ error: "input required", requestId: c.get("requestId") }, 400);
   }
 
   try {
@@ -1119,9 +1085,7 @@ async function collectR2Metrics(env) {
           sampleKeys: (listing.objects || []).map((o) => o.key).slice(0, 3),
           // Approximate indicator (cannot know total cheaply without full iteration)
           objectsApprox:
-            listing.objects?.length === 10
-              ? ">=10"
-              : String(listing.objects?.length || 0),
+            listing.objects?.length === 10 ? ">=10" : String(listing.objects?.length || 0),
         };
       } catch (e) {
         result[b.key] = { bound: true, error: String(e) };
@@ -1136,8 +1100,7 @@ app.get("/health", async (c) => {
   const r2 = await collectR2Metrics(c.env || {});
   const quotaLimit = parseInt(c.env.AI_MAX_REQUESTS_PER_DAY || "500", 10);
   const persisted = await readPersistedQuota(c.env || {});
-  const remaining =
-    quotaLimit > 0 ? Math.max(0, quotaLimit - persisted.count) : null;
+  const remaining = quotaLimit > 0 ? Math.max(0, quotaLimit - persisted.count) : null;
   return c.json({
     status: "healthy",
     service: "ai-orchestrator",
@@ -1152,10 +1115,7 @@ app.get("/health", async (c) => {
     },
     rateLimit: {
       windowSeconds: parseInt(c.env.AI_RATE_WINDOW_SECONDS || "60", 10),
-      burst: parseInt(
-        c.env.AI_RATE_BURST || c.env.AI_RATE_LIMIT_BURST || "10",
-        10,
-      ),
+      burst: parseInt(c.env.AI_RATE_BURST || c.env.AI_RATE_LIMIT_BURST || "10", 10),
     },
     r2,
   });

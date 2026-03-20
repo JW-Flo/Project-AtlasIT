@@ -15,6 +15,45 @@
   let loading = false;
   let error = "";
 
+  // Post-creation narration state (step 7)
+  let narrationPhase = 0;
+  let narrationScore = 0;
+  let narrationEvidenceCount = 0;
+  let narrationControlsCount = 0;
+
+  const NARRATION_STEPS = [
+    { label: "Creating organization...", icon: "org" },
+    { label: "Syncing directory users...", icon: "users" },
+    { label: "Classifying compliance evidence...", icon: "evidence" },
+    { label: "Scoring controls across frameworks...", icon: "score" },
+    { label: "Your compliance posture is ready!", icon: "done" },
+  ];
+
+  async function runNarration() {
+    for (let i = 0; i < NARRATION_STEPS.length; i++) {
+      narrationPhase = i;
+      await new Promise((r) => setTimeout(r, i === 0 ? 800 : 1200));
+
+      if (i === 2) {
+        // Simulate evidence count climbing
+        for (let e = 0; e < 12; e++) {
+          narrationEvidenceCount = e + 1;
+          narrationControlsCount = Math.min(e + 1, 8);
+          await new Promise((r) => setTimeout(r, 80));
+        }
+      }
+      if (i === 3) {
+        // Simulate score climbing
+        const targetScore = frameworks.length >= 3 ? 35 : frameworks.length >= 1 ? 25 : 15;
+        for (let s = 0; s <= targetScore; s += 5) {
+          narrationScore = s;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        narrationScore = targetScore;
+      }
+    }
+  }
+
   // Step 1: Organization
   let orgName = "";
   let industry = "";
@@ -142,8 +181,14 @@
       });
 
       if (loginRes.ok) {
+        // Show narration before redirecting
+        step = 7;
+        loading = false;
+        await runNarration();
         pushToast({ message: `Welcome to AtlasIT! ${data.orgName} is ready.`, variant: "success" });
+        await new Promise((r) => setTimeout(r, 1500));
         goto(selectedIdp ? "/console?setup=idp" : "/console");
+        return;
       } else {
         pushToast({ message: "Organization created. Please sign in.", variant: "info" });
         goto("/console/login");
@@ -163,14 +208,16 @@
     </div>
 
     <!-- Progress -->
-    <div class="flex items-center justify-center gap-2 mb-8">
-      {#each [1, 2, 3, 4, 5, 6] as s}
-        <div
-          class="h-2 rounded-full transition-all {s <= step ? 'bg-primary' : 'bg-muted'}"
-          style="width: {s <= step ? '40px' : '20px'};"
-        ></div>
-      {/each}
-    </div>
+    {#if step <= 6}
+      <div class="flex items-center justify-center gap-2 mb-8">
+        {#each [1, 2, 3, 4, 5, 6] as s}
+          <div
+            class="h-2 rounded-full transition-all {s <= step ? 'bg-primary' : 'bg-muted'}"
+            style="width: {s <= step ? '40px' : '20px'};"
+          ></div>
+        {/each}
+      </div>
+    {/if}
 
     <Card>
       <CardContent class="pt-8 pb-8 px-8">
@@ -404,7 +451,56 @@
           </div>
         {/if}
 
-        {#if error}
+        {#if step === 7}
+          <div class="text-center py-4 space-y-6">
+            <h2 class="text-xl font-semibold">Setting up your compliance engine</h2>
+            <div class="space-y-3">
+              {#each NARRATION_STEPS as ns, i}
+                <div class="flex items-center gap-3 {i <= narrationPhase ? 'opacity-100' : 'opacity-30'} transition-opacity">
+                  <div class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 {i < narrationPhase ? 'bg-green-500 text-white' : i === narrationPhase ? 'bg-primary text-white' : 'bg-muted'}">
+                    {#if i < narrationPhase}
+                      <Check class="w-3.5 h-3.5" />
+                    {:else if i === narrationPhase}
+                      <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                    {:else}
+                      <span class="text-[10px]">{i + 1}</span>
+                    {/if}
+                  </div>
+                  <span class="text-sm">{ns.label}</span>
+                </div>
+              {/each}
+            </div>
+
+            {#if narrationPhase >= 2}
+              <div class="rounded-lg border bg-muted/50 p-4 space-y-2">
+                <div class="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div class="text-2xl font-bold text-primary">{narrationEvidenceCount}</div>
+                    <div class="text-xs text-muted-foreground">Evidence Items</div>
+                  </div>
+                  <div>
+                    <div class="text-2xl font-bold text-primary">{narrationControlsCount}</div>
+                    <div class="text-xs text-muted-foreground">Controls Covered</div>
+                  </div>
+                  <div>
+                    <div class="text-2xl font-bold {narrationScore >= 25 ? 'text-green-500' : 'text-primary'}">{narrationScore}%</div>
+                    <div class="text-xs text-muted-foreground">Compliance Score</div>
+                  </div>
+                </div>
+                {#if narrationScore > 0}
+                  <div class="h-2 rounded-full bg-muted overflow-hidden">
+                    <div class="h-full bg-green-500 rounded-full transition-all" style="width: {narrationScore}%"></div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            {#if narrationPhase >= 4}
+              <p class="text-sm text-muted-foreground">Your first compliance evidence was collected automatically. Redirecting to dashboard...</p>
+            {/if}
+          </div>
+
+        {:else if error}
           <Alert variant="destructive" class="mt-4">
             <AlertTriangle class="h-4 w-4" />
             <p class="pl-7">{error}</p>

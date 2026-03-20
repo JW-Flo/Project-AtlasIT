@@ -21,7 +21,7 @@
 export interface ControlDefinition {
   controlId: string;
   controlName: string;
-  framework: "SOC2" | "ISO27001";
+  framework: "SOC2" | "ISO27001" | "NIST_CSF" | "HIPAA" | "GDPR";
   description: string;
   /** Evidence sources that can satisfy this control */
   evidenceSources: string[];
@@ -192,8 +192,7 @@ const ISO27001_A9: ControlDefinition[] = [
     controlId: "A.9.2.3",
     controlName: "Management of privileged access rights",
     framework: "ISO27001",
-    description:
-      "The allocation and use of privileged access rights is restricted and controlled.",
+    description: "The allocation and use of privileged access rights is restricted and controlled.",
     evidenceSources: ["access_grant", "access_revoke"],
   },
   {
@@ -208,8 +207,7 @@ const ISO27001_A9: ControlDefinition[] = [
     controlId: "A.9.2.5",
     controlName: "Review of user access rights",
     framework: "ISO27001",
-    description:
-      "Asset owners review user access rights at regular intervals.",
+    description: "Asset owners review user access rights at regular intervals.",
     evidenceSources: ["audit_log", "access_revoke"], // access reviews feed this
   },
   {
@@ -268,12 +266,77 @@ const ISO27001_A9: ControlDefinition[] = [
   },
 ];
 
+// ── NIST CSF — Protect / Respond ─────────────────────────────────────────────
+
+const NIST_CSF: ControlDefinition[] = [
+  {
+    controlId: "PR.AC-1",
+    controlName: "Identity management and access control",
+    framework: "NIST_CSF",
+    description:
+      "Identities and credentials are issued, managed, verified, revoked, and audited for authorized devices, users, and processes.",
+    evidenceSources: ["onboarding", "access_grant", "directory_sync"],
+  },
+  {
+    controlId: "PR.AC-4",
+    controlName: "Least privilege and separation of duties",
+    framework: "NIST_CSF",
+    description:
+      "Access permissions and authorizations are managed, incorporating the principles of least privilege and separation of duties.",
+    evidenceSources: ["access_grant", "access_revoke", "role_change"],
+  },
+  {
+    controlId: "RS.CO-2",
+    controlName: "Incidents are reported consistent with criteria",
+    framework: "NIST_CSF",
+    description: "Incidents are reported consistent with established criteria.",
+    evidenceSources: ["incident"],
+  },
+];
+
+// ── HIPAA — Access Control ──────────────────────────────────────────────────
+
+const HIPAA_CONTROLS: ControlDefinition[] = [
+  {
+    controlId: "164.312(a)(1)",
+    controlName: "Access control — ePHI",
+    framework: "HIPAA",
+    description:
+      "Implement technical policies and procedures for systems that maintain ePHI to allow access only to authorized persons or software programs.",
+    evidenceSources: ["access_grant", "access_revoke", "access_review"],
+  },
+];
+
+// ── GDPR — Integrity, Confidentiality, Erasure ─────────────────────────────
+
+const GDPR_CONTROLS: ControlDefinition[] = [
+  {
+    controlId: "Art.5(1)(f)",
+    controlName: "Integrity and confidentiality",
+    framework: "GDPR",
+    description:
+      "Personal data shall be processed in a manner that ensures appropriate security, including protection against unauthorized or unlawful processing and against accidental loss, destruction, or damage.",
+    evidenceSources: ["offboarding", "access_revoke"],
+  },
+  {
+    controlId: "Art.17",
+    controlName: "Right to erasure",
+    framework: "GDPR",
+    description:
+      "The data subject shall have the right to obtain from the controller the erasure of personal data concerning them without undue delay.",
+    evidenceSources: ["offboarding"],
+  },
+];
+
 // ── All controls ────────────────────────────────────────────────────────────
 
 export const ALL_CONTROLS: ControlDefinition[] = [
   ...SOC2_CC6,
   ...SOC2_CC7,
   ...ISO27001_A9,
+  ...NIST_CSF,
+  ...HIPAA_CONTROLS,
+  ...GDPR_CONTROLS,
 ];
 
 export function getControlsByFramework(framework: string): ControlDefinition[] {
@@ -290,6 +353,11 @@ interface EvidenceRow {
   last_at: string | null;
 }
 
+interface VerifiedRow {
+  control_id: string;
+  verified_at: string;
+}
+
 /**
  * Evaluate all controls for a tenant against collected evidence.
  *
@@ -302,9 +370,7 @@ export async function evaluateControls(
   tenantId: string,
   framework?: string,
 ): Promise<ControlEvaluation[]> {
-  const controls = framework
-    ? getControlsByFramework(framework)
-    : ALL_CONTROLS;
+  const controls = framework ? getControlsByFramework(framework) : ALL_CONTROLS;
 
   if (controls.length === 0) return [];
 
@@ -312,22 +378,43 @@ export async function evaluateControls(
   const controlIds = controls.map((c) => c.controlId);
   const placeholders = controlIds.map(() => "?").join(",");
 
-  const { results } = await db
-    .prepare(
-      `SELECT control_id,
-              COUNT(*) AS cnt,
-              MAX(created_at) AS last_at
-       FROM compliance_evidence
-       WHERE tenant_id = ? AND control_id IN (${placeholders})
-       GROUP BY control_id`,
-    )
-    .bind(tenantId, ...controlIds)
-    .all<EvidenceRow>();
+  // Fetch evidence stats and verification attestations in parallel
+  const [evidenceResult, verifiedResult] = await Promise.all([
+    db
+      .prepare(
+        `SELECT control_id,
+                COUNT(*) AS cnt,
+                MAX(created_at) AS last_at
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND control_id IN (${placeholders})
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, ...controlIds)
+      .all<EvidenceRow>(),
+    // Verification attestations — explicit manual sign-off stored as evidence
+    // with evidence_type = 'verification_attestation'
+    db
+      .prepare(
+        `SELECT control_id, MAX(created_at) AS verified_at
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND control_id IN (${placeholders})
+           AND evidence_type = 'verification_attestation'
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, ...controlIds)
+      .all<VerifiedRow>(),
+  ]);
 
   // Index evidence by control_id for O(1) lookup
   const evidenceMap = new Map<string, EvidenceRow>();
-  for (const row of results ?? []) {
+  for (const row of evidenceResult.results ?? []) {
     evidenceMap.set(row.control_id, row);
+  }
+
+  // Index verified attestations
+  const verifiedMap = new Map<string, string>();
+  for (const row of verifiedResult.results ?? []) {
+    verifiedMap.set(row.control_id, row.verified_at);
   }
 
   const now = Date.now();
@@ -343,15 +430,21 @@ export async function evaluateControls(
     if (count > 0 && lastAt) {
       const ageMs = now - new Date(lastAt).getTime();
       if (ageMs <= thresholdMs) {
-        // Recent evidence — implemented (verified requires manual attestation)
         status = "implemented";
       } else {
-        // Stale evidence — in progress (had it, but expired freshness)
         status = "in_progress";
       }
     } else if (control.evidenceSources.length === 0) {
-      // Manual-only control — stays not_started unless evidence is uploaded
       status = "not_started";
+    }
+
+    // Promote to verified if there's a recent verification attestation
+    const verifiedAt = verifiedMap.get(control.controlId);
+    if (verifiedAt && status === "implemented") {
+      const verifiedAgeMs = now - new Date(verifiedAt).getTime();
+      if (verifiedAgeMs <= thresholdMs) {
+        status = "verified";
+      }
     }
 
     return {
@@ -397,9 +490,7 @@ function computeGrade(score: number): string {
   return "F";
 }
 
-export function scoreFromEvaluations(
-  evaluations: ControlEvaluation[],
-): FrameworkScore[] {
+export function scoreFromEvaluations(evaluations: ControlEvaluation[]): FrameworkScore[] {
   const byFramework = new Map<string, ControlEvaluation[]>();
   for (const ev of evaluations) {
     if (!byFramework.has(ev.framework)) byFramework.set(ev.framework, []);

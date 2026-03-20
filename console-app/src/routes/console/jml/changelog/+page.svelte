@@ -317,14 +317,35 @@
                   <tr class="border-t bg-muted/30">
                     <td colspan="7" class="px-4 py-3">
                       {#if matched.controls.length === 0}
-                        <div class="text-xs text-muted-foreground">No linked controls found for this event.</div>
+                        <div class="text-xs text-muted-foreground">
+                          No linked controls found for this event. Evidence is generated when lifecycle actions trigger compliance-mapped events.
+                        </div>
                       {:else}
-                        <div class="flex flex-wrap gap-2">
-                          {#each matched.controls as ctrl}
-                            <Badge variant={impactVariant(ctrl.impact)}>
-                              {ctrl.framework} {ctrl.controlId}
-                            </Badge>
-                          {/each}
+                        <div class="space-y-2">
+                          <div class="text-xs font-medium text-muted-foreground">
+                            {matched.count} evidence item{matched.count !== 1 ? 's' : ''} generated across {matched.controls.length} control{matched.controls.length !== 1 ? 's' : ''}
+                          </div>
+                          <div class="flex flex-wrap gap-2">
+                            {#each matched.controls as ctrl}
+                              <a
+                                href="/console/compliance?tab=controls&framework={ctrl.framework}"
+                                class="no-underline"
+                              >
+                                <Badge variant={impactVariant(ctrl.impact)} class="cursor-pointer hover:opacity-80">
+                                  {ctrl.framework} {ctrl.controlId}
+                                  <span class="ml-1 opacity-60">{ctrl.impact === "positive" ? "+" : ctrl.impact === "detrimental" ? "-" : "~"}</span>
+                                </Badge>
+                              </a>
+                            {/each}
+                          </div>
+                          <div class="flex gap-3 text-xs mt-1">
+                            <a href="/console/compliance/feed?category={entry.jmlAction === 'join' ? 'onboarding' : entry.jmlAction === 'leave' ? 'offboarding' : 'access_grant'}" class="text-primary hover:underline">
+                              View in evidence feed →
+                            </a>
+                            <a href="/console/compliance" class="text-primary hover:underline">
+                              View compliance scores →
+                            </a>
+                          </div>
                         </div>
                       {/if}
                     </td>

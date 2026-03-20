@@ -11,10 +11,7 @@ import { deadLetterRoutes } from "./routes/dead-letter";
 import { automationRoutes } from "./routes/automation";
 import { jmlRoutes } from "./routes/jml";
 import { streamRoutes } from "./routes/stream";
-import {
-  evaluateAutomationRules,
-  type ActionContext,
-} from "./lib/automation-evaluator";
+import { evaluateAutomationRules, type ActionContext } from "./lib/automation-evaluator";
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
@@ -41,9 +38,7 @@ function validateEnv(env: Bindings): void {
     );
   }
   if (!env.EVENT_SOURCE_SECRETS) {
-    console.warn(
-      "EVENT_SOURCE_SECRETS not set — event signature verification disabled",
-    );
+    console.warn("EVENT_SOURCE_SECRETS not set — event signature verification disabled");
   }
 }
 
@@ -54,13 +49,7 @@ app.use(
   cors({
     origin: ["https://console.atlasit.pro", "http://localhost:5173"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-API-Key",
-      "X-Tenant-ID",
-      "X-Correlation-ID",
-    ],
+    allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Tenant-ID", "X-Correlation-ID"],
   }),
 );
 
@@ -81,10 +70,7 @@ const apiAuth: MiddlewareHandler = async (c, next) => {
     .map((k) => k.trim())
     .filter(Boolean);
 
-  if (
-    allowedKeys.length > 0 ||
-    c.req.header("Authorization")?.startsWith("Bearer ")
-  ) {
+  if (allowedKeys.length > 0 || c.req.header("Authorization")?.startsWith("Bearer ")) {
     return sharedAuthMiddleware({ allowApiKey: true })(c, next);
   }
   // No API keys configured and no Bearer token — pass through with default tenant
@@ -182,18 +168,11 @@ interface QueueBatch<T = unknown> {
 }
 
 const worker = {
-  fetch(
-    request: Request,
-    env: Bindings,
-    ctx: ExecutionContext,
-  ): Response | Promise<Response> {
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
     validateEnv(env);
     return app.fetch(request, env, ctx);
   },
-  async scheduled(
-    event: { cron: string },
-    env: AppEnv["Bindings"],
-  ): Promise<void> {
+  async scheduled(event: { cron: string }, env: AppEnv["Bindings"]): Promise<void> {
     const sharedDb = env.ATLAS_SHARED_DB ?? env.DB;
 
     // ── Duty 1: Evaluate scheduled automation rules ────────────────────────
@@ -244,23 +223,18 @@ const worker = {
 
       const collectSettled = await Promise.allSettled(
         (tenantRows ?? []).map(async (row) => {
-          const adapterResults = await collectAllAdapterEvidence(
-            adapterUrls,
-            row.id,
-          );
+          const adapterResults = await collectAllAdapterEvidence(adapterUrls, row.id);
           let rowsWritten = 0;
           for (const result of adapterResults) {
             for (const item of result.items) {
               for (const controlRef of item.controlRefs) {
                 const dashIdx = controlRef.indexOf("-");
-                const framework =
-                  dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
-                const controlId =
-                  dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+                const framework = dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
+                const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
                 try {
                   await sharedDb
                     .prepare(
-                      `INSERT INTO compliance_evidence
+                      `INSERT OR IGNORE INTO compliance_evidence
                        (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     )
@@ -317,17 +291,12 @@ const worker = {
       checks.kv = { status: "fail", ms: Date.now() - kvStart };
     }
 
-    const automationFailures = automationSettled.filter(
-      (r) => r.status === "rejected",
-    ).length;
+    const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
       JSON.stringify({
         ts: new Date().toISOString(),
-        level:
-          automationFailures > 0 || checks.d1.status === "fail"
-            ? "warn"
-            : "info",
+        level: automationFailures > 0 || checks.d1.status === "fail" ? "warn" : "info",
         event: "cron.complete",
         cron: event.cron,
         tenantsEvaluated: results?.length ?? 0,
@@ -337,10 +306,7 @@ const worker = {
       }),
     );
   },
-  async queue(
-    batch: QueueBatch<AnyStepMessage>,
-    env: AppEnv["Bindings"],
-  ): Promise<void> {
+  async queue(batch: QueueBatch<AnyStepMessage>, env: AppEnv["Bindings"]): Promise<void> {
     for (const message of batch.messages) {
       const msg = message.body;
 

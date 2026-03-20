@@ -70,10 +70,44 @@ export interface StoredCredential {
 interface Env {
   ATLAS_SHARED_DB?: D1Database;
   CRED_ENCRYPTION_KEY?: string;
+  NODE_ENV?: string;
 }
 
 function getEnv(platform: any): Env {
   return (platform?.env as Env) || {};
+}
+
+/**
+ * Returns true when running in a local development environment.
+ * In production (Cloudflare Workers), NODE_ENV is never set to "development",
+ * so this check cannot be accidentally satisfied in prod.
+ */
+function isDev(env: Env): boolean {
+  return (env.NODE_ENV ?? "").toLowerCase() === "development";
+}
+
+/**
+ * Resolve the encryption key or handle missing-key policy.
+ *
+ * - If the key is present: return it.
+ * - If the key is absent in dev: log a warning and return null (plaintext fallback).
+ * - If the key is absent in prod: throw — plaintext storage is not allowed.
+ */
+function resolveEncryptionKey(env: Env, operation: string): string | null {
+  if (env.CRED_ENCRYPTION_KEY) {
+    return env.CRED_ENCRYPTION_KEY;
+  }
+  if (isDev(env)) {
+    console.warn(
+      `[credentials] CRED_ENCRYPTION_KEY is not set — storing/reading ${operation} as plaintext. ` +
+        "This is only acceptable in local development.",
+    );
+    return null;
+  }
+  throw new Error(
+    `CRED_ENCRYPTION_KEY is required in production but is not set. ` +
+      `Refusing to ${operation} credentials without encryption.`,
+  );
 }
 
 /**
@@ -90,9 +124,8 @@ export async function saveCredentials(
   const db = env.ATLAS_SHARED_DB;
   if (!db) return { ok: false, error: "Database not available" };
   const json = JSON.stringify(credentials);
-  const stored = env.CRED_ENCRYPTION_KEY
-    ? await encrypt(json, env.CRED_ENCRYPTION_KEY)
-    : json;
+  const encKey = resolveEncryptionKey(env, "store");
+  const stored = encKey ? await encrypt(json, encKey) : json;
 
   await db
     .prepare(
@@ -129,8 +162,9 @@ export async function getCredentials(
 
   if (!row) return null;
 
-  const json = env.CRED_ENCRYPTION_KEY
-    ? await decrypt(row.credentials, env.CRED_ENCRYPTION_KEY)
+  const encKey = resolveEncryptionKey(env, "read");
+  const json = encKey
+    ? await decrypt(row.credentials, encKey)
     : row.credentials;
 
   return JSON.parse(json);
@@ -228,12 +262,13 @@ export async function saveOAuthTokens(
     : null;
 
   // Encrypt tokens
-  const accessToken = env.CRED_ENCRYPTION_KEY
-    ? await encrypt(tokens.access_token, env.CRED_ENCRYPTION_KEY)
+  const encKey = resolveEncryptionKey(env, "store OAuth tokens");
+  const accessToken = encKey
+    ? await encrypt(tokens.access_token, encKey)
     : tokens.access_token;
   const refreshToken =
-    tokens.refresh_token && env.CRED_ENCRYPTION_KEY
-      ? await encrypt(tokens.refresh_token, env.CRED_ENCRYPTION_KEY)
+    tokens.refresh_token && encKey
+      ? await encrypt(tokens.refresh_token, encKey)
       : tokens.refresh_token || null;
 
   await db
@@ -280,7 +315,6 @@ export async function getOAuthAccessToken(
 
   if (!row) return null;
 
-  return env.CRED_ENCRYPTION_KEY
-    ? await decrypt(row.access_token, env.CRED_ENCRYPTION_KEY)
-    : row.access_token;
+  const encKey = resolveEncryptionKey(env, "read OAuth token");
+  return encKey ? await decrypt(row.access_token, encKey) : row.access_token;
 }

@@ -77,9 +77,7 @@ function createMockDB(): MockDB {
             }
           } else if (upperSql.startsWith("DELETE")) {
             if (tables[tableName]) {
-              tables[tableName] = rows.filter(
-                (row) => !matchesWhereClause(row, sql, params),
-              );
+              tables[tableName] = rows.filter((row) => !matchesWhereClause(row, sql, params));
             }
           }
 
@@ -110,9 +108,7 @@ function extractTableName(sql: string): string {
 }
 
 function applyWhereFilters(rows: Row[], sql: string, params: unknown[]): Row[] {
-  const whereMatch = sql.match(
-    /WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|\s+GROUP|\s*$)/i,
-  );
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|\s+GROUP|\s*$)/i);
   if (!whereMatch) return [...rows];
 
   const conditions = whereMatch[1].split(/\s+AND\s+/i);
@@ -320,11 +316,12 @@ describe("Event flow integration", () => {
 
   describe("GET /api/v1/events", () => {
     it("lists events", async () => {
-      // Seed events
+      // Seed events — tenant_id must match what apiAuth sets when no
+      // X-Tenant-ID header is provided (falls back to "default").
       mockDB.tables.events.push(
         {
           id: "evt-1",
-          tenant_id: "t-1",
+          tenant_id: "default",
           type: "user.created",
           source: "api",
           status: "completed",
@@ -332,7 +329,7 @@ describe("Event flow integration", () => {
         },
         {
           id: "evt-2",
-          tenant_id: "t-1",
+          tenant_id: "default",
           type: "user.updated",
           source: "api",
           status: "pending",
@@ -352,9 +349,12 @@ describe("Event flow integration", () => {
 
   describe("GET /api/v1/events/:id", () => {
     it("returns event with delivery status", async () => {
+      // tenant_id must match what apiAuth sets when no X-Tenant-ID header is
+      // provided (falls back to "default"), since the GET /:id route filters
+      // by both id and tenant_id.
       mockDB.tables.events.push({
         id: "evt-1",
-        tenant_id: "t-1",
+        tenant_id: "default",
         type: "user.created",
         source: "api",
         status: "completed",
@@ -368,11 +368,7 @@ describe("Event flow integration", () => {
         attempts: 1,
       });
 
-      const res = await app.request(
-        "/api/v1/events/evt-1",
-        { method: "GET" },
-        env,
-      );
+      const res = await app.request("/api/v1/events/evt-1", { method: "GET" }, env);
 
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -383,11 +379,7 @@ describe("Event flow integration", () => {
     });
 
     it("returns 404 for missing event", async () => {
-      const res = await app.request(
-        "/api/v1/events/nonexistent",
-        { method: "GET" },
-        env,
-      );
+      const res = await app.request("/api/v1/events/nonexistent", { method: "GET" }, env);
 
       expect(res.status).toBe(404);
       const body = await res.json();
@@ -412,9 +404,7 @@ describe("Event flow integration", () => {
         AI_QUOTA: createMockKV(),
         IDEMPOTENCY_CACHE: createMockKV(),
         WORKFLOW: {} as DurableObjectNamespace,
-        EVENT_SOURCE_SECRETS: opts.sourceSecrets
-          ? JSON.stringify(opts.sourceSecrets)
-          : undefined,
+        EVENT_SOURCE_SECRETS: opts.sourceSecrets ? JSON.stringify(opts.sourceSecrets) : undefined,
         REQUIRE_EVENT_SIGNATURES: opts.requireSignatures ? "true" : undefined,
       };
     }

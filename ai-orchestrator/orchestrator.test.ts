@@ -5,13 +5,10 @@ import { handleRequest } from "./index.js";
 const baseEnv = () => ({
   API_ALLOWED_KEYS: "test-key",
   AI_DETERMINISTIC: "1",
+  MCP_APPROVE_ALL: "1",
 });
 
-function invoke(
-  path: string,
-  init: RequestInit = {},
-  envOverride: Record<string, any> = {},
-) {
+function invoke(path: string, init: RequestInit = {}, envOverride: Record<string, any> = {}) {
   const env = { ...baseEnv(), ...envOverride };
   const req = new Request(`http://localhost${path}`, init);
   return handleRequest(req, env, { waitUntil() {} });

@@ -17,3 +17,13 @@ export {
   traceSpan,
 } from "./cf-tracer.js";
 export type { CFTraceContext } from "./cf-tracer.js";
+
+// SLO monitoring and alerting
+export { SLOMonitor } from "./slo-monitor.js";
+export type {
+  SLOMetricCounts,
+  SLOCheckResult,
+  SLOAlert,
+} from "./slo-monitor.js";
+export { AlertDispatcher } from "./alert-dispatcher.js";
+export type { AlertConfig } from "./alert-dispatcher.js";

@@ -30,10 +30,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -53,14 +50,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -78,12 +70,7 @@ app.get("/health", (c) => {
       id: "microsoft-365",
       name: "Microsoft 365",
       provider: "Microsoft",
-      capabilities: [
-        "user-provisioning",
-        "user-deprovisioning",
-        "group-sync",
-        "sso",
-      ],
+      capabilities: ["user-provisioning", "user-deprovisioning", "group-sync", "sso"],
     },
   });
 });
@@ -109,11 +96,7 @@ app.post("/webhook", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -201,9 +184,7 @@ app.post("/api/sync", async (c) => {
     );
 
     accessToken = refreshed.access_token;
-    const newExpiresAt = new Date(
-      Date.now() + refreshed.expires_in * 1000,
-    ).toISOString();
+    const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
     await c.env.DB.prepare(
       `UPDATE connector_tokens
@@ -271,8 +252,7 @@ app.post("/api/sync", async (c) => {
       groups: groupResult,
     });
   } catch (err) {
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown sync error";
+    const errorMessage = err instanceof Error ? err.message : "Unknown sync error";
 
     await c.env.DB.prepare(
       `UPDATE directory_connections
@@ -304,10 +284,7 @@ app.get("/api/status", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const row = await c.env.DB.prepare(
@@ -349,17 +326,11 @@ app.get("/auth/authorize", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const state = btoa(JSON.stringify({ tenantId, correlationId }));
-  const url = getAuthorizationUrl(
-    c.env as unknown as Record<string, string>,
-    state,
-  );
+  const url = getAuthorizationUrl(c.env as unknown as Record<string, string>, state);
 
   return c.redirect(url);
 });
@@ -374,8 +345,7 @@ app.get("/auth/callback", async (c) => {
   const error = c.req.query("error");
 
   if (error) {
-    const errorDescription =
-      c.req.query("error_description") ?? "Unknown error";
+    const errorDescription = c.req.query("error_description") ?? "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
@@ -389,10 +359,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   if (!code || !state) {
-    return c.json(
-      { error: "Missing code or state parameter", correlationId },
-      400,
-    );
+    return c.json({ error: "Missing code or state parameter", correlationId }, 400);
   }
 
   let stateData: { tenantId: string; correlationId: string };
@@ -406,10 +373,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(
-      c.env as unknown as Record<string, string>,
-      code,
-    );
+    const tokens = await exchangeCodeForToken(c.env as unknown as Record<string, string>, code);
 
     await c.env.DB.prepare(
       "INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -473,11 +437,7 @@ app.post("/webhooks/microsoft/notifications", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -506,7 +466,7 @@ app.post("/webhooks/microsoft/notifications", async (c) => {
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ tenantId?: string }>().catch((): { tenantId?: string } => ({}));
   const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
 
   type EvidenceItem = {

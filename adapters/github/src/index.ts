@@ -1,11 +1,7 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
 import { validateConfig } from "./config.js";
-import {
-  authMiddleware,
-  getAuthorizationUrl,
-  exchangeCodeForToken,
-} from "./auth.js";
+import { authMiddleware, getAuthorizationUrl, exchangeCodeForToken } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleGitHubWebhook } from "./webhooks.js";
@@ -26,10 +22,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -49,14 +42,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -101,15 +89,8 @@ app.post("/webhook", async (c) => {
     ["verify"],
   );
   // Convert hex signature to Uint8Array for crypto.subtle.verify
-  const sigBytes = new Uint8Array(
-    (signature.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)),
-  );
-  const isValid = await crypto.subtle.verify(
-    "HMAC",
-    key,
-    sigBytes,
-    encoder.encode(rawBody),
-  );
+  const sigBytes = new Uint8Array((signature.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
+  const isValid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(rawBody));
 
   if (!isValid) {
     console.error(
@@ -142,9 +123,7 @@ app.post("/webhook", async (c) => {
 // Trigger a full directory sync (users + groups)
 app.post("/api/sync", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req
-    .json<{ tenantId: string; scope?: string }>()
-    .catch(() => null);
+  const body = await c.req.json<{ tenantId: string; scope?: string }>().catch(() => null);
 
   if (!body?.tenantId) {
     return c.json({ error: "tenantId is required", correlationId }, 400);
@@ -180,9 +159,7 @@ app.post("/api/sync", async (c) => {
     .first<{ access_token: string }>();
 
   if (!tokenRow) {
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
     return c.json(
@@ -203,9 +180,7 @@ app.post("/api/sync", async (c) => {
     .first<{ config: string }>();
 
   if (!configRow) {
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
     return c.json(
@@ -218,14 +193,9 @@ app.post("/api/sync", async (c) => {
   }
 
   const config = JSON.parse(configRow.config) as { orgName: string };
-  const validation = validateConfig(
-    config as unknown as Record<string, unknown>,
-  );
+  const validation = validateConfig(config as unknown as Record<string, unknown>);
   if (!validation.valid) {
-    return c.json(
-      { error: "Invalid config", details: validation.errors, correlationId },
-      400,
-    );
+    return c.json({ error: "Invalid config", details: validation.errors, correlationId }, 400);
   }
 
   try {
@@ -235,12 +205,7 @@ app.post("/api/sync", async (c) => {
     let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
 
     if (scope === "all" || scope === "users") {
-      userResult = await syncUsers(
-        tokenRow.access_token,
-        config.orgName,
-        c.env.DB,
-        body.tenantId,
-      );
+      userResult = await syncUsers(tokenRow.access_token, config.orgName, c.env.DB, body.tenantId);
     }
 
     if (scope === "all" || scope === "groups") {
@@ -253,12 +218,7 @@ app.post("/api/sync", async (c) => {
     }
 
     // Update connection status
-    await updateConnectionStatus(
-      c.env.DB,
-      body.tenantId,
-      userResult.total,
-      groupResult.total,
-    );
+    await updateConnectionStatus(c.env.DB, body.tenantId, userResult.total, groupResult.total);
 
     // Mark sync job complete
     await c.env.DB.prepare(
@@ -288,9 +248,7 @@ app.post("/api/sync", async (c) => {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
 
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
 
@@ -317,10 +275,7 @@ app.get("/api/status", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const connection = await c.env.DB.prepare(
@@ -375,17 +330,11 @@ app.get("/auth/authorize", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const state = btoa(JSON.stringify({ tenantId, correlationId }));
-  const url = getAuthorizationUrl(
-    c.env as unknown as Record<string, string>,
-    state,
-  );
+  const url = getAuthorizationUrl(c.env as unknown as Record<string, string>, state);
 
   return c.redirect(url);
 });
@@ -398,8 +347,7 @@ app.get("/auth/callback", async (c) => {
   const error = c.req.query("error");
 
   if (error) {
-    const errorDescription =
-      c.req.query("error_description") ?? "Unknown error";
+    const errorDescription = c.req.query("error_description") ?? "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
@@ -413,10 +361,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   if (!code || !state) {
-    return c.json(
-      { error: "Missing code or state parameter", correlationId },
-      400,
-    );
+    return c.json({ error: "Missing code or state parameter", correlationId }, 400);
   }
 
   let stateData: { tenantId: string; correlationId: string };
@@ -430,10 +375,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(
-      c.env as unknown as Record<string, string>,
-      code,
-    );
+    const tokens = await exchangeCodeForToken(c.env as unknown as Record<string, string>, code);
 
     await c.env.DB.prepare(
       `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
@@ -515,7 +457,7 @@ app.post("/api/compliance/check", async (c) => {
   let org = body.org;
   if (!org) {
     const orgsRes = await fetch("https://api.github.com/user/orgs?per_page=1", { headers });
-    const orgs = orgsRes.ok ? (await orgsRes.json() as Array<{ login: string }>) : [];
+    const orgs = orgsRes.ok ? ((await orgsRes.json()) as Array<{ login: string }>) : [];
     org = orgs[0]?.login;
   }
   if (!org) {
@@ -542,7 +484,8 @@ app.post("/api/compliance/check", async (c) => {
     );
     if (!branchRes.ok) continue;
     const branch = (await branchRes.json()) as { protected: boolean };
-    if (branch.protected) protectedCount++; else unprotectedCount++;
+    if (branch.protected) protectedCount++;
+    else unprotectedCount++;
   }
 
   const total = protectedCount + unprotectedCount;
@@ -582,7 +525,15 @@ app.post("/api/compliance/check", async (c) => {
       headers: eventHeaders,
       body: eventBody,
     }).catch((err: Error) => {
-      console.error(JSON.stringify({ level: "error", message: "Failed to publish SOC2 CC6.7 evidence", error: err.message, tenantId: body.tenantId, correlationId }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          message: "Failed to publish SOC2 CC6.7 evidence",
+          error: err.message,
+          tenantId: body.tenantId,
+          correlationId,
+        }),
+      );
     });
   }
 
@@ -616,7 +567,7 @@ app.post("/api/evidence", async (c) => {
   // Resolve tenantId from header or JSON body
   const tenantId =
     c.req.header("X-Tenant-ID") ??
-    (await c.req.json<{ tenantId?: string }>().catch(() => ({})))?.tenantId;
+    (await c.req.json<{ tenantId?: string }>().catch((): { tenantId?: string } => ({})))?.tenantId;
 
   if (!tenantId) {
     return c.json({ items: [] });
@@ -766,8 +717,7 @@ app.post("/api/evidence", async (c) => {
   const allProtected = total > 0 && unprotectedCount === 0;
 
   const twoFactorRequired = orgData.two_factor_requirement_enabled ?? false;
-  const samlSsoEnabled =
-    orgData.saml_sso_enabled === true || orgData.saml_sso_required === true;
+  const samlSsoEnabled = orgData.saml_sso_enabled === true || orgData.saml_sso_required === true;
 
   const items: EvidenceItem[] = [
     {
@@ -817,13 +767,7 @@ async function updateConnectionStatus(
              user_count = ?3, group_count = ?4, updated_at = datetime('now')
          WHERE tenant_id = ?5`,
       )
-      .bind(
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-        tenantId,
-      )
+      .bind(error ? "error" : "active", error ?? null, userCount, groupCount, tenantId)
       .run();
   } else {
     await db
@@ -831,14 +775,7 @@ async function updateConnectionStatus(
         `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
          VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
       )
-      .bind(
-        tenantId,
-        "github",
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-      )
+      .bind(tenantId, "github", error ? "error" : "active", error ?? null, userCount, groupCount)
       .run();
   }
 }

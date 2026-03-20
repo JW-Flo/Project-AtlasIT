@@ -1,27 +1,14 @@
 import { Hono } from "hono";
 import { validateConfig } from "./config.js";
-import {
-  authMiddleware,
-  getAuthorizationUrl,
-  exchangeCodeForToken,
-} from "./auth.js";
-import type {
-  Bindings,
-  Variables,
-  SlackEventBody,
-  SlackInteractionPayload,
-} from "./types.js";
+import { authMiddleware, getAuthorizationUrl, exchangeCodeForToken } from "./auth.js";
+import type { Bindings, Variables, SlackEventBody, SlackInteractionPayload } from "./types.js";
 import {
   verifySlackSignature,
   handleUrlVerification,
   handleEvent,
   handleInteraction,
 } from "./webhooks.js";
-import {
-  sendNotification,
-  sendIncidentAlert,
-  sendApprovalRequest,
-} from "./notifications.js";
+import { sendNotification, sendIncidentAlert, sendApprovalRequest } from "./notifications.js";
 import type { IncidentAlert, ApprovalRequest } from "./types.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -43,10 +30,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -68,14 +52,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -123,11 +102,7 @@ app.post("/webhook", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -208,10 +183,7 @@ app.get("/api/status", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const result = await c.env.DB.prepare(
@@ -242,10 +214,7 @@ app.post("/api/notify", async (c) => {
   }>();
 
   if (!body.tenantId || !body.channel || !body.text) {
-    return c.json(
-      { error: "tenantId, channel, and text are required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId, channel, and text are required", correlationId }, 400);
   }
 
   try {
@@ -284,18 +253,11 @@ app.post("/api/notify/incident", async (c) => {
   }>();
 
   if (!body.tenantId || !body.channel || !body.incident) {
-    return c.json(
-      { error: "tenantId, channel, and incident are required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId, channel, and incident are required", correlationId }, 400);
   }
 
   try {
-    const result = await sendIncidentAlert(
-      c.env.SLACK_BOT_TOKEN,
-      body.channel,
-      body.incident,
-    );
+    const result = await sendIncidentAlert(c.env.SLACK_BOT_TOKEN, body.channel, body.incident);
     return c.json({
       status: "sent",
       correlationId,
@@ -325,18 +287,11 @@ app.post("/api/notify/approval", async (c) => {
   }>();
 
   if (!body.tenantId || !body.userId || !body.request) {
-    return c.json(
-      { error: "tenantId, userId, and request are required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId, userId, and request are required", correlationId }, 400);
   }
 
   try {
-    const result = await sendApprovalRequest(
-      c.env.SLACK_BOT_TOKEN,
-      body.userId,
-      body.request,
-    );
+    const result = await sendApprovalRequest(c.env.SLACK_BOT_TOKEN, body.userId, body.request);
     return c.json({
       status: "sent",
       correlationId,
@@ -365,17 +320,11 @@ app.get("/auth/authorize", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const state = btoa(JSON.stringify({ tenantId, correlationId }));
-  const url = getAuthorizationUrl(
-    c.env as unknown as Record<string, string>,
-    state,
-  );
+  const url = getAuthorizationUrl(c.env as unknown as Record<string, string>, state);
 
   return c.redirect(url);
 });
@@ -390,8 +339,7 @@ app.get("/auth/callback", async (c) => {
   const error = c.req.query("error");
 
   if (error) {
-    const errorDescription =
-      c.req.query("error_description") ?? "Unknown error";
+    const errorDescription = c.req.query("error_description") ?? "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
@@ -405,10 +353,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   if (!code || !state) {
-    return c.json(
-      { error: "Missing code or state parameter", correlationId },
-      400,
-    );
+    return c.json({ error: "Missing code or state parameter", correlationId }, 400);
   }
 
   let stateData: { tenantId: string; correlationId: string };
@@ -422,10 +367,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(
-      c.env as unknown as Record<string, string>,
-      code,
-    );
+    const tokens = await exchangeCodeForToken(c.env as unknown as Record<string, string>, code);
 
     await c.env.DB.prepare(
       "INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -483,10 +425,7 @@ app.post("/webhooks/slack/events", async (c) => {
   // Verify Slack request signature if signing secret is configured
   if (c.env.SLACK_SIGNING_SECRET) {
     if (!slackSignature || !slackTimestamp) {
-      return c.json(
-        { error: "Missing Slack signature headers", correlationId },
-        401,
-      );
+      return c.json({ error: "Missing Slack signature headers", correlationId }, 401);
     }
 
     const valid = await verifySlackSignature(
@@ -557,10 +496,7 @@ app.post("/webhooks/slack/interactions", async (c) => {
   // Verify Slack request signature if signing secret is configured
   if (c.env.SLACK_SIGNING_SECRET) {
     if (!slackSignature || !slackTimestamp) {
-      return c.json(
-        { error: "Missing Slack signature headers", correlationId },
-        401,
-      );
+      return c.json({ error: "Missing Slack signature headers", correlationId }, 401);
     }
 
     const valid = await verifySlackSignature(
@@ -598,12 +534,7 @@ app.post("/webhooks/slack/interactions", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID") ?? payload.team.id;
 
   try {
-    const result = await handleInteraction(
-      payload,
-      c.env,
-      tenantId,
-      correlationId,
-    );
+    const result = await handleInteraction(payload, c.env, tenantId, correlationId);
 
     console.log(
       JSON.stringify({
@@ -636,7 +567,7 @@ app.post("/webhooks/slack/interactions", async (c) => {
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ tenantId?: string }>().catch((): { tenantId?: string } => ({}));
   const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
 
   type EvidenceItem = {

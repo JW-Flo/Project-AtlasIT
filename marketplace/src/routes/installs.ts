@@ -10,9 +10,7 @@ const InstallAppSchema = z.object({
 });
 
 const UpdateInstallSchema = z.object({
-  status: z
-    .enum(["installed", "configuring", "active", "error", "uninstalled"])
-    .optional(),
+  status: z.enum(["installed", "configuring", "active", "error", "uninstalled"]).optional(),
   config: z.record(z.unknown()).nullable().optional(),
 });
 
@@ -39,11 +37,9 @@ installRoutes.post("/", async (c) => {
 
   const { tenant_id, app_id, config, installed_by } = parsed.data;
 
-  const app = await c.env.DB.prepare(
-    "SELECT id, status FROM marketplace_apps WHERE id = ?",
-  )
+  const app = await c.env.DB.prepare("SELECT id, status FROM marketplace_apps WHERE id = ?")
     .bind(app_id)
-    .first();
+    .first<{ id: string; status: string }>();
 
   if (!app) {
     return c.json(
@@ -78,13 +74,7 @@ installRoutes.post("/", async (c) => {
       `INSERT INTO tenant_app_installs (id, tenant_id, app_id, status, config, installed_by)
        VALUES (?, ?, ?, 'installed', ?, ?)`,
     )
-      .bind(
-        id,
-        tenant_id,
-        app_id,
-        config ? JSON.stringify(config) : null,
-        installed_by ?? null,
-      )
+      .bind(id, tenant_id, app_id, config ? JSON.stringify(config) : null, installed_by ?? null)
       .run();
   } catch (e) {
     if (e instanceof Error && e.message.includes("UNIQUE")) {
@@ -102,9 +92,7 @@ installRoutes.post("/", async (c) => {
     throw e;
   }
 
-  const install = await c.env.DB.prepare(
-    "SELECT * FROM tenant_app_installs WHERE id = ?",
-  )
+  const install = await c.env.DB.prepare("SELECT * FROM tenant_app_installs WHERE id = ?")
     .bind(id)
     .first();
 
@@ -215,9 +203,7 @@ installRoutes.patch("/:id", async (c) => {
     );
   }
 
-  const existing = await c.env.DB.prepare(
-    "SELECT * FROM tenant_app_installs WHERE id = ?",
-  )
+  const existing = await c.env.DB.prepare("SELECT * FROM tenant_app_installs WHERE id = ?")
     .bind(id)
     .first();
 
@@ -259,15 +245,11 @@ installRoutes.patch("/:id", async (c) => {
   setClauses.push("updated_at = datetime('now')");
   values.push(id);
 
-  await c.env.DB.prepare(
-    `UPDATE tenant_app_installs SET ${setClauses.join(", ")} WHERE id = ?`,
-  )
+  await c.env.DB.prepare(`UPDATE tenant_app_installs SET ${setClauses.join(", ")} WHERE id = ?`)
     .bind(...values)
     .run();
 
-  const updated = await c.env.DB.prepare(
-    "SELECT * FROM tenant_app_installs WHERE id = ?",
-  )
+  const updated = await c.env.DB.prepare("SELECT * FROM tenant_app_installs WHERE id = ?")
     .bind(id)
     .first();
 
@@ -283,9 +265,7 @@ installRoutes.patch("/:id", async (c) => {
 installRoutes.delete("/:id", async (c) => {
   const { id } = c.req.param();
 
-  const existing = await c.env.DB.prepare(
-    "SELECT id, status FROM tenant_app_installs WHERE id = ?",
-  )
+  const existing = await c.env.DB.prepare("SELECT id, status FROM tenant_app_installs WHERE id = ?")
     .bind(id)
     .first();
 
@@ -320,11 +300,9 @@ installRoutes.delete("/:id", async (c) => {
 installRoutes.post("/:id/activate", async (c) => {
   const { id } = c.req.param();
 
-  const existing = await c.env.DB.prepare(
-    "SELECT id, status FROM tenant_app_installs WHERE id = ?",
-  )
+  const existing = await c.env.DB.prepare("SELECT id, status FROM tenant_app_installs WHERE id = ?")
     .bind(id)
-    .first();
+    .first<{ id: string; status: string }>();
 
   if (!existing) {
     return c.json(
@@ -358,9 +336,7 @@ installRoutes.post("/:id/activate", async (c) => {
     .bind(id)
     .run();
 
-  const updated = await c.env.DB.prepare(
-    "SELECT * FROM tenant_app_installs WHERE id = ?",
-  )
+  const updated = await c.env.DB.prepare("SELECT * FROM tenant_app_installs WHERE id = ?")
     .bind(id)
     .first();
 

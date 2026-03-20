@@ -1,7 +1,4 @@
-import {
-  DEFAULT_POLICY_TEMPLATES,
-  type PolicyTemplateRecord,
-} from "./templates";
+import { DEFAULT_POLICY_TEMPLATES, type PolicyTemplateRecord } from "./templates";
 
 export interface GeneratedPolicyRecord {
   hash: string;
@@ -44,8 +41,7 @@ const INTERNAL_CONTROLS = [
     key: "SOC2_CC1.1",
     framework: "SOC2",
     title: "Control environment",
-    description:
-      "The entity demonstrates a commitment to integrity and ethical values.",
+    description: "The entity demonstrates a commitment to integrity and ethical values.",
   },
   {
     key: "SOC2_CC2.2",
@@ -72,15 +68,13 @@ const INTERNAL_CONTROLS = [
     key: "ISO27001_A.9",
     framework: "ISO27001",
     title: "Access control",
-    description:
-      "Restrict access to information and information processing facilities.",
+    description: "Restrict access to information and information processing facilities.",
   },
   {
     key: "ISO27001_A.10",
     framework: "ISO27001",
     title: "Cryptography",
-    description:
-      "Ensure proper and effective use of cryptography to protect information.",
+    description: "Ensure proper and effective use of cryptography to protect information.",
   },
   {
     key: "ISO27001_A.16",
@@ -93,8 +87,7 @@ const INTERNAL_CONTROLS = [
     key: "NIST_ID",
     framework: "NIST CSF",
     title: "Identify",
-    description:
-      "Develop organizational understanding to manage cybersecurity risk.",
+    description: "Develop organizational understanding to manage cybersecurity risk.",
   },
   {
     key: "NIST_PR",
@@ -106,15 +99,13 @@ const INTERNAL_CONTROLS = [
     key: "NIST_DE",
     framework: "NIST CSF",
     title: "Detect",
-    description:
-      "Develop and implement activities to identify cybersecurity events.",
+    description: "Develop and implement activities to identify cybersecurity events.",
   },
   {
     key: "NIST_RS",
     framework: "NIST CSF",
     title: "Respond",
-    description:
-      "Develop and implement activities to take action on detected events.",
+    description: "Develop and implement activities to take action on detected events.",
   },
   {
     key: "NIST_RC",
@@ -274,14 +265,7 @@ export async function seedPolicyData(db: D1Database) {
            body = excluded.body,
            updated_at = excluded.updated_at`,
       )
-      .bind(
-        template.key,
-        template.name,
-        template.format,
-        template.body,
-        now,
-        now,
-      )
+      .bind(template.key, template.name, template.format, template.body, now, now)
       .run();
   }
 
@@ -310,13 +294,9 @@ export async function seedPolicyData(db: D1Database) {
   }
 }
 
-export async function listPolicyTemplates(
-  db: D1Database,
-): Promise<PolicyTemplateRecord[]> {
+export async function listPolicyTemplates(db: D1Database): Promise<PolicyTemplateRecord[]> {
   const rows = await db
-    .prepare(
-      `SELECT key, name, format, body FROM policy_templates ORDER BY key ASC`,
-    )
+    .prepare(`SELECT key, name, format, body FROM policy_templates ORDER BY key ASC`)
     .all<{ key: string; name: string; format: string; body: string }>();
   return (rows.results ?? []).map((row) => ({
     key: row.key,
@@ -331,9 +311,7 @@ export async function getPolicyTemplate(
   key: string,
 ): Promise<PolicyTemplateRecord | null> {
   const row = await db
-    .prepare(
-      `SELECT key, name, format, body FROM policy_templates WHERE key = ? LIMIT 1`,
-    )
+    .prepare(`SELECT key, name, format, body FROM policy_templates WHERE key = ? LIMIT 1`)
     .bind(key)
     .first<{ key: string; name: string; format: string; body: string }>();
   if (!row) return null;
@@ -459,7 +437,7 @@ export async function upsertControlEvidenceLink(
     .bind(controlKey, tenantId, evidenceHash, createdAt)
     .run();
 
-  const created = (result.meta?.changes ?? 0) > 0;
+  const created = ((result as any).meta?.changes ?? 0) > 0;
   if (created) {
     return { created: true, createdAt };
   }
@@ -487,9 +465,7 @@ export async function getCoverage(
   sharedDb?: D1Database,
 ): Promise<CoverageSummary> {
   // Evidence window: last 90 days for automation-sourced evidence
-  const windowCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 19);
+  const windowCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
 
   // Determine which DB holds compliance_evidence.
   // If sharedDb is bound, automation evidence is in ATLAS_SHARED_DB.
@@ -570,8 +546,7 @@ export async function getCoverage(
   const controlsRows = (controls.results ?? []).map((row) => {
     const automationCount = automationEvidenceCounts.get(row.key) ?? 0;
     const totalEvidence = (row.evidence_count ?? 0) + automationCount;
-    const automationVerified =
-      (row.automation_verified ?? 0) > 0 || automationCount > 0;
+    const automationVerified = (row.automation_verified ?? 0) > 0 || automationCount > 0;
     return {
       controlKey: row.key,
       title: row.title,
@@ -601,9 +576,7 @@ export async function findControlKeyByCandidates(
 ): Promise<string | null> {
   for (const candidate of candidates) {
     const row = await db
-      .prepare(
-        `SELECT control_key FROM internal_controls WHERE control_key = ? LIMIT 1`,
-      )
+      .prepare(`SELECT control_key FROM internal_controls WHERE control_key = ? LIMIT 1`)
       .bind(candidate)
       .first<{ control_key: string }>();
     if (row?.control_key) {

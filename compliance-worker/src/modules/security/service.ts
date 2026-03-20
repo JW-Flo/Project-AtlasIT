@@ -116,13 +116,7 @@ export async function recordActivityEvent(
     .prepare(
       `INSERT INTO activity_events (tenant_id, type, severity, ref, message) VALUES (?, ?, ?, ?, ?)`,
     )
-    .bind(
-      evt.tenantId,
-      evt.type,
-      evt.severity || null,
-      evt.ref || null,
-      evt.message,
-    )
+    .bind(evt.tenantId, evt.type, evt.severity || null, evt.ref || null, evt.message)
     .run();
 }
 
@@ -140,22 +134,15 @@ export async function createAccessRequest(
     .prepare(
       `INSERT INTO access_requests (tenant_id, subject_ref, resource, justification) VALUES (?, ?, ?, ?)`,
     )
-    .bind(
-      data.tenantId,
-      data.subjectRef,
-      data.resource,
-      data.justification ?? null,
-    )
+    .bind(data.tenantId, data.subjectRef, data.resource, data.justification ?? null)
     .run();
   const id =
-    inserted.meta && typeof inserted.meta.last_row_id === "number"
-      ? inserted.meta.last_row_id
+    (inserted as any).meta && typeof (inserted as any).meta.last_row_id === "number"
+      ? (inserted as any).meta.last_row_id
       : undefined;
   if (id == null) return null;
   return await db
-    .prepare(
-      `SELECT * FROM access_requests WHERE tenant_id = ? AND id = ? LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM access_requests WHERE tenant_id = ? AND id = ? LIMIT 1`)
     .bind(data.tenantId, id)
     .first<AccessRequestRecord>();
 }
@@ -203,9 +190,7 @@ export async function updateAccessRequestStatus(
   },
 ): Promise<AccessRequestRecord | null> {
   const current = await db
-    .prepare(
-      `SELECT * FROM access_requests WHERE id = ? AND tenant_id = ? LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM access_requests WHERE id = ? AND tenant_id = ? LIMIT 1`)
     .bind(opts.id, opts.tenantId)
     .first<AccessRequestRecord>();
   if (!current) return null;
@@ -234,9 +219,7 @@ export async function updateAccessRequestStatus(
   }
 
   return await db
-    .prepare(
-      `SELECT * FROM access_requests WHERE id = ? AND tenant_id = ? LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM access_requests WHERE id = ? AND tenant_id = ? LIMIT 1`)
     .bind(opts.id, opts.tenantId)
     .first<AccessRequestRecord>();
 }
@@ -257,47 +240,30 @@ export async function createSecurityIncident(
     .bind(data.tenantId, data.title, data.severity, data.source || null)
     .run();
   const id =
-    inserted.meta && typeof inserted.meta.last_row_id === "number"
-      ? inserted.meta.last_row_id
+    (inserted as any).meta && typeof (inserted as any).meta.last_row_id === "number"
+      ? (inserted as any).meta.last_row_id
       : undefined;
   if (id == null) return null;
   return await getIncident(db, data.tenantId, id);
 }
 
-export async function resolveSecurityIncident(
-  db: D1Database,
-  tenantId: string,
-  id: number,
-) {
+export async function resolveSecurityIncident(db: D1Database, tenantId: string, id: number) {
   const startRow = await db
-    .prepare(
-      `SELECT created_at FROM security_incidents WHERE id = ? AND tenant_id = ? LIMIT 1`,
-    )
+    .prepare(`SELECT created_at FROM security_incidents WHERE id = ? AND tenant_id = ? LIMIT 1`)
     .bind(id, tenantId)
     .first<{ created_at: string }>();
   await db
     .prepare(
       `UPDATE security_incidents SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP, response_ms = CASE WHEN response_ms IS NULL AND ? IS NOT NULL THEN (strftime('%s','now') - strftime('%s', ?)) * 1000 ELSE response_ms END WHERE id = ? AND tenant_id = ?`,
     )
-    .bind(
-      startRow?.created_at || null,
-      startRow?.created_at || null,
-      id,
-      tenantId,
-    )
+    .bind(startRow?.created_at || null, startRow?.created_at || null, id, tenantId)
     .run();
   return await getIncident(db, tenantId, id);
 }
 
-export async function getIncident(
-  db: D1Database,
-  tenantId: string,
-  id: number,
-) {
+export async function getIncident(db: D1Database, tenantId: string, id: number) {
   return await db
-    .prepare(
-      `SELECT * FROM security_incidents WHERE id = ? AND tenant_id = ? LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM security_incidents WHERE id = ? AND tenant_id = ? LIMIT 1`)
     .bind(id, tenantId)
     .first<SecurityIncident>();
 }
@@ -324,9 +290,7 @@ export async function listIncidents(
   }
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const stmt = await db
-    .prepare(
-      `SELECT * FROM security_incidents ${where} ORDER BY id DESC LIMIT ?`,
-    )
+    .prepare(`SELECT * FROM security_incidents ${where} ORDER BY id DESC LIMIT ?`)
     .bind(...binds, limit)
     .all<SecurityIncident>();
   const rows = (stmt as any)?.results || [];
@@ -397,8 +361,7 @@ export async function summarizeSecurity(db: D1Database, tenantId: string) {
 
   const openIncidents = counts?.open_count ?? 0;
   const resolvedIncidents = counts?.resolved_count ?? 0;
-  const avgResponseMsRaw =
-    avg?.avg_response_ms != null ? Number(avg.avg_response_ms) : null;
+  const avgResponseMsRaw = avg?.avg_response_ms != null ? Number(avg.avg_response_ms) : null;
   const avgResponseMs =
     avgResponseMsRaw != null && Number.isFinite(avgResponseMsRaw)
       ? Math.round(avgResponseMsRaw)
@@ -415,11 +378,7 @@ export async function summarizeSecurity(db: D1Database, tenantId: string) {
   } else if (highOpen >= 2) {
     threatLevel = "elevated";
     basis = `high_open=${highOpen}`;
-  } else if (
-    highOpen >= 1 &&
-    avgResponseMs != null &&
-    avgResponseMs > 10 * 60 * 1000
-  ) {
+  } else if (highOpen >= 1 && avgResponseMs != null && avgResponseMs > 10 * 60 * 1000) {
     threatLevel = "elevated";
     basis = `high_open=${highOpen},avg_response_ms=${avgResponseMs}`;
   } else {
