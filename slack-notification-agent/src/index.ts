@@ -40,6 +40,10 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    if (!env.SLACK_WEBHOOK_URL || !env.SLACK_WEBHOOK_URL.startsWith("http"))
+      throw new Error("Missing or invalid required env: SLACK_WEBHOOK_URL");
+    if (!env.AGENT_SECRET)
+      throw new Error("Missing required env: AGENT_SECRET");
     const app = buildApp(env);
     return app.fetch(request, undefined, ctx);
   },

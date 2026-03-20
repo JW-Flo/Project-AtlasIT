@@ -13,25 +13,31 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
     parseInt(url.searchParams.get("limit") ?? "50", 10),
     200,
   );
+  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10), 0);
   const action = url.searchParams.get("action");
 
-  let query = "SELECT * FROM directory_changelog WHERE tenant_id = ?";
+  const filters: string[] = ["tenant_id = ?"];
   const params: unknown[] = [user.tenantId];
 
   if (action) {
-    query += " AND jml_action = ?";
+    filters.push("jml_action = ?");
     params.push(action);
   }
 
-  query += " ORDER BY created_at DESC LIMIT ?";
-  params.push(limit);
+  const where = filters.join(" AND ");
 
-  const { results } = await db
-    .prepare(query)
-    .bind(...params)
-    .all();
+  const [{ results }, countRow] = await Promise.all([
+    db
+      .prepare(`SELECT * FROM directory_changelog WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .bind(...params, limit, offset)
+      .all(),
+    db
+      .prepare(`SELECT COUNT(*) AS cnt FROM directory_changelog WHERE ${where}`)
+      .bind(...params)
+      .first<{ cnt: number }>(),
+  ]);
 
-  return json({ entries: toCamel(results ?? []) });
+  return json({ entries: toCamel(results ?? []), total: countRow?.cnt ?? 0 });
 };
 
 function getSharedDb(platform: any): D1Database | null {

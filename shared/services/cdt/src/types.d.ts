@@ -12,6 +12,16 @@ interface KVNamespace {
 interface Queue<T=unknown> {
   send(message: T): Promise<void>;
 }
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<{ success: boolean }>;
+  first<T = unknown>(column?: string): Promise<T | null>;
+  all<T = unknown>(): Promise<{ results: T[] }>;
+}
+interface D1Database {
+  prepare(sql: string): D1PreparedStatement;
+  batch(stmts: D1PreparedStatement[]): Promise<unknown[]>;
+}
 interface ExportedHandler {
   fetch(request: Request, env: any, ctx: any): Promise<Response>;
 }

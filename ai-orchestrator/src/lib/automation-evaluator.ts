@@ -180,8 +180,9 @@ export async function evaluateAutomationRules(
         );
         results.push(result);
 
-        // Emit compliance evidence for successful actions that map to controls
-        if (result.status === "success" && actionContext?.sharedDb) {
+        // Emit compliance evidence for all actions that map to controls.
+        // Successful actions are positive evidence; failures are detrimental.
+        if (actionContext?.sharedDb) {
           await emitComplianceEvidence(
             action.type,
             event,
@@ -596,7 +597,13 @@ async function emitComplianceEvidence(
   const actor = profile?.email ?? "system";
   const subject =
     profile?.email ?? JSON.stringify(event.payload).slice(0, 100);
+  const impact = result.status === "success" ? "positive" : "detrimental";
   const metadata = JSON.stringify({
+    impact,
+    confidence: result.status === "success" ? 0.95 : 0.80,
+    reasoning: result.status === "success"
+      ? `${actionType} completed successfully — strengthens control`
+      : `${actionType} failed: ${result.message} — gap in control enforcement`,
     actionType,
     eventType: event.type,
     eventSource: event.source,

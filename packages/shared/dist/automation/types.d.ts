@@ -1,6 +1,6 @@
 /** Automation rules engine types for tenant environment management */
 export type TriggerType = "user_joined_group" | "user_left_group" | "user_created" | "user_deactivated" | "app_connected" | "app_disconnected" | "app_health_changed" | "schedule" | "compliance_score_changed";
-export type ActionType = "provision_app_access" | "revoke_app_access" | "assign_role" | "remove_role" | "send_notification" | "run_workflow" | "sync_directory" | "create_incident" | "update_compliance_status";
+export type ActionType = "provision_app_access" | "revoke_app_access" | "assign_role" | "remove_role" | "send_notification" | "run_workflow" | "sync_directory" | "create_incident" | "update_compliance_status" | "request_access_review";
 export type ConditionOperator = "equals" | "not_equals" | "contains" | "in" | "not_in" | "gt" | "lt";
 export interface RuleCondition {
     field: string;

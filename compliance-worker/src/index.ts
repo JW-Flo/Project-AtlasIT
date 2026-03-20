@@ -49,6 +49,11 @@ import {
 } from "./http/utils";
 import { log } from "./log";
 import { webhookRoutes } from "./routes/webhooks";
+import { evaluateControls, scoreFromEvaluations } from "./modules/policies/cdt-rules";
+import {
+  collectAllAdapterEvidence,
+  type AdapterEvidenceItem,
+} from "../../packages/shared/src/evidence/adapter-collector";
 
 // ----------------------------------------------------------------------------------
 // TODO (Codex Ownership Notes): The following pending enhancements are delegated to
@@ -590,6 +595,111 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     }
   }
 
+  // POST /api/v1/evidence/collect — pull evidence from connected adapters
+  if (url.pathname === "/api/v1/evidence/collect" && method === "POST") {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, ["policies:read"]);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      throw err;
+    }
+
+    let adapterUrls: Record<string, string>;
+    try {
+      adapterUrls = JSON.parse(env.ADAPTER_URLS ?? "{}") as Record<string, string>;
+    } catch {
+      return errorResponse(500, requestId, headers, "Invalid ADAPTER_URLS configuration");
+    }
+
+    if (Object.keys(adapterUrls).length === 0) {
+      return jsonResponse(
+        { collected: 0, adapters: [], items: [], requestId },
+        200,
+        headers,
+      );
+    }
+
+    const results = await collectAllAdapterEvidence(adapterUrls, tenant.tenantId);
+
+    // Store each collected item as evidence in the shared D1 database
+    const sharedDb = env.ATLAS_SHARED_DB;
+    const allItems: AdapterEvidenceItem[] = [];
+    const adaptersCollected: string[] = [];
+
+    for (const result of results) {
+      if (result.items.length > 0) {
+        adaptersCollected.push(result.slug);
+      }
+      for (const item of result.items) {
+        allItems.push(item);
+
+        // Write each item as a compliance_evidence row per control ref
+        if (sharedDb) {
+          for (const controlRef of item.controlRefs) {
+            // Parse "SOC2-CC6.1" → framework="SOC2", controlId="CC6.1"
+            const dashIdx = controlRef.indexOf("-");
+            const framework = dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
+            const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+
+            try {
+              await sharedDb.prepare(
+                `INSERT INTO compliance_evidence
+                 (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              )
+                .bind(
+                  crypto.randomUUID(),
+                  tenant.tenantId,
+                  framework,
+                  controlId,
+                  controlRef,
+                  "adapter_pull",
+                  `adapter:${result.slug}`,
+                  `${result.slug}:${item.type}`,
+                  "system",
+                  `${result.slug} ${item.type}`,
+                  JSON.stringify({
+                    impact: item.status === "pass" ? "positive" : item.status === "fail" ? "detrimental" : "neutral",
+                    confidence: item.status === "unknown" ? 0.3 : 0.8,
+                    reasoning: `Adapter pull: ${item.type} check returned ${item.status}`,
+                    eventType: "adapter.evidence.collected",
+                    details: item.details,
+                  }),
+                  new Date().toISOString(),
+                )
+                .run();
+            } catch (dbErr) {
+              log("warn", "evidence.collect.db.error", {
+                adapter: result.slug,
+                type: item.type,
+                controlRef,
+                error: dbErr instanceof Error ? dbErr.message : "Unknown",
+              });
+            }
+          }
+        }
+      }
+    }
+
+    log("info", "evidence.collect.completed", {
+      tenantId: tenant.tenantId,
+      adaptersCollected: adaptersCollected.length,
+      itemsCollected: allItems.length,
+    });
+
+    return jsonResponse(
+      {
+        collected: allItems.length,
+        adapters: adaptersCollected,
+        items: allItems,
+        requestId,
+      },
+      200,
+      headers,
+    );
+  }
+
   return null;
 }
 
@@ -648,6 +758,26 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
 
   if (url.pathname === "/api/v1/policy/evaluate" && method === "POST") {
     return handlePolicyEvaluate(request, env, requestId, headers);
+  }
+
+  // CDT (Compliance Decision Tree) evaluation — evidence-based control status
+  if (url.pathname === "/api/v1/cdt/evaluate" && method === "GET") {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>, ["policies:read"]);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      throw err;
+    }
+
+    const sharedDb = resolveD1(env);
+    if (!sharedDb) return errorResponse(503, requestId, headers, "Database unavailable");
+
+    const framework = url.searchParams.get("framework") ?? undefined;
+    const evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    const scores = scoreFromEvaluations(evaluations);
+
+    return jsonResponse({ controls: evaluations, scores, requestId }, 200, headers);
   }
 
   if (url.pathname === "/api/v1/policies/coverage" && method === "GET") {
@@ -2667,7 +2797,7 @@ async function handleSnapshot(
       error: (err as Error).message,
     });
     return new Response(
-      JSON.stringify({ error: "Internal error", requestId }),
+      JSON.stringify({ error: "Internal error", code: "INTERNAL_ERROR", message: "Internal error", requestId }),
       {
         status: 500,
         headers: mergeHeaders(headers, { "content-type": "application/json" }),

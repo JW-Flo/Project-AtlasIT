@@ -631,4 +631,97 @@ app.post("/webhooks/slack/interactions", async (c) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Evidence collection
+// ---------------------------------------------------------------------------
+app.post("/api/evidence", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  const unknownItems = (): EvidenceItem[] => [
+    {
+      type: "sso_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.2.1"],
+      status: "unknown",
+      details: { reason: "Slack API error" },
+    },
+    {
+      type: "retention_policy",
+      controlRefs: ["GDPR-Art.5(1)(e)", "SOC2-CC6.6"],
+      status: "unknown",
+      details: {
+        reason: "Slack API does not expose retention policy settings to bot tokens",
+      },
+    },
+  ];
+
+  try {
+    const slackRes = await fetch("https://slack.com/api/team.info", {
+      headers: { Authorization: `Bearer ${c.env.SLACK_BOT_TOKEN}` },
+    });
+
+    const data = await slackRes.json<{
+      ok: boolean;
+      team?: { id: string; name: string; enterprise_id?: string | null };
+    }>();
+
+    if (!data.ok || !data.team) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Slack team.info returned non-ok response",
+        }),
+      );
+      return c.json({ items: unknownItems() });
+    }
+
+    const hasEnterprise = Boolean(data.team.enterprise_id);
+
+    const items: EvidenceItem[] = [
+      {
+        type: "sso_enforcement",
+        controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.2.1"],
+        status: hasEnterprise ? "pass" : "unknown",
+        details: {
+          enterpriseId: data.team.enterprise_id ?? null,
+          reason: hasEnterprise
+            ? "Team is part of an Enterprise Grid organization (SSO likely enforced)"
+            : "Cannot determine SSO status without Enterprise Grid membership",
+        },
+      },
+      {
+        type: "retention_policy",
+        controlRefs: ["GDPR-Art.5(1)(e)", "SOC2-CC6.6"],
+        status: "unknown",
+        details: {
+          reason: "Slack API does not expose retention policy settings to bot tokens",
+        },
+      },
+    ];
+
+    return c.json({ items });
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Failed to collect Slack evidence",
+        error: err instanceof Error ? err.message : "Unknown error",
+      }),
+    );
+    return c.json({ items: unknownItems() });
+  }
+});
+
 export default app;

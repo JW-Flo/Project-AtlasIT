@@ -22,6 +22,7 @@ import { CloudflareEvidenceStore } from "../../../packages/shared/src/platform/c
 import { CloudflareQueueBus } from "../../../packages/shared/src/platform/cloudflare/queue-bus";
 import { moveToDeadLetter } from "../lib/dead-letter";
 import type { DeadLetterEntry } from "../lib/dead-letter";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 // ---------------------------------------------------------------------------
 // Env bindings expected by WorkflowDO
@@ -70,6 +71,8 @@ export interface WorkflowStep {
     operator: "eq" | "neq" | "exists" | "not_exists";
     value?: unknown;
   };
+  /** Delay before dispatching this step (e.g. leaver grace period). Uses DO alarm. */
+  delayMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +480,39 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
     const now = Date.now();
 
+    // Check for delayed steps ready to dispatch
+    const waitingSteps = this.state.steps.filter(
+      (s) => (s.status as string) === "waiting",
+    );
+    for (const step of waitingSteps) {
+      const delayTarget = (await this.ctx.storage.get(
+        `delay:${step.stepId}`,
+      )) as number | undefined;
+      if (delayTarget && now >= delayTarget) {
+        // Grace period elapsed — dispatch the step
+        step.status = "running";
+        step.attempts = 1;
+        const bus = this.getQueueBus();
+        if (bus) {
+          await bus.publish("step-tasks", {
+            kind: "step-task",
+            runId: this.state.id,
+            stepId: step.stepId,
+            attempt: 1,
+          });
+        }
+        this.state.history.push({
+          stepId: step.stepId,
+          action: step.action,
+          status: "running",
+          timestamp: new Date().toISOString(),
+          attemptNumber: 1,
+        });
+        await this.ctx.storage.delete(`delay:${step.stepId}`);
+        await this.ctx.storage.put("state", this.state);
+      }
+    }
+
     if (
       this.state.status === "running" ||
       this.state.status === "compensating"
@@ -608,6 +644,30 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     for (const step of batch) {
       const defStep = this.definition.steps.find((s) => s.id === step.stepId)!;
 
+      // If this step has a delay, mark it as waiting and set an alarm
+      if (defStep.delayMs && defStep.delayMs > 0) {
+        step.status = "waiting" as StepStatus;
+        step.startedAt = now;
+        step.stepDeadline = Date.now() + defStep.delayMs + defStep.timeoutMs;
+
+        this.state.history.push({
+          stepId: step.stepId,
+          action: step.action,
+          status: "waiting" as StepStatus,
+          timestamp: now,
+          attemptNumber: 0,
+        });
+
+        // Store the delay target so alarm() can dispatch when ready
+        await this.ctx.storage.put(
+          `delay:${step.stepId}`,
+          Date.now() + defStep.delayMs,
+        );
+        await this.ctx.storage.setAlarm(Date.now() + defStep.delayMs);
+        await this.ctx.storage.put("state", this.state);
+        return; // Wait for alarm to dispatch this step
+      }
+
       step.status = "running";
       step.startedAt = now;
       step.attempts = 1;
@@ -663,14 +723,59 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
 
   private async emitEvidence(step: StepState): Promise<void> {
     if (!this.state) return;
+
+    // 1. Write immutable R2 envelope (existing behavior)
     const emitter = this.getEvidenceEmitter();
-    if (!emitter) return;
+    if (emitter) {
+      try {
+        await emitter.emit(this.state, step);
+      } catch (err) {
+        console.error(
+          "R2 evidence emission failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    // 2. Bridge to D1 compliance_evidence via evidence classifier
+    // This makes workflow step evidence queryable for scoring + feed
     try {
-      await emitter.emit(this.state, step);
+      const eventType =
+        step.status === "completed"
+          ? `workflow.step.${step.action}.completed`
+          : `workflow.step.${step.action}.failed`;
+
+      const classified = classifyEvent(
+        this.state.tenantId,
+        eventType,
+        "workflow-do",
+        this.state.actor,
+        this.state.userId !== "unknown" ? this.state.userId : null,
+        {
+          runId: this.state.id,
+          stepId: step.stepId,
+          action: step.action,
+          workflowType: this.state.type,
+          status: step.status,
+          durationMs: step.durationMs,
+          error: step.error,
+          context: this.state.context,
+        },
+      );
+
+      if (classified && this.env?.DB) {
+        await storeEvidence(
+          {
+            db: this.env.DB,
+            bucket: (this.env.EVIDENCE as unknown as R2Bucket) ?? undefined,
+          },
+          classified,
+        );
+      }
     } catch (err) {
-      // Evidence emission failure should not block workflow execution
+      // D1 evidence bridge failure should not block workflow execution
       console.error(
-        "Evidence emission failed:",
+        "D1 evidence bridge failed:",
         err instanceof Error ? err.message : err,
       );
     }

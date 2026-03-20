@@ -9,6 +9,7 @@ import {
   type ActionContext,
 } from "../lib/automation-evaluator";
 import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
+import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
 const PublishEventSchema = z.object({
   tenantId: z.string().min(1),
@@ -149,9 +150,12 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
 
   const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
 
-  // Idempotency check via KV (24h TTL)
-  if (idempotencyKey) {
-    const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyKey);
+  // Idempotency check via KV (24h TTL) — namespace by tenantId to prevent cross-tenant collisions
+  const idempotencyCacheKey = idempotencyKey
+    ? `${tenantId}:${idempotencyKey}`
+    : null;
+  if (idempotencyCacheKey) {
+    const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyCacheKey);
     if (existing) {
       return c.json({
         status: "success",
@@ -180,13 +184,60 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     )
     .run();
 
-  // Cache idempotency key
-  if (idempotencyKey) {
+  // Cache idempotency key (tenant-scoped)
+  if (idempotencyCacheKey) {
     await c.env.IDEMPOTENCY_CACHE.put(
-      idempotencyKey,
+      idempotencyCacheKey,
       JSON.stringify({ id: eventId, status: "pending" }),
       { expirationTtl: 86400 },
     );
+  }
+
+  // ── Universal evidence classification: every tenant event is potential evidence ──
+  const evidencePayload = (payload ?? {}) as Record<string, unknown>;
+  const evidenceActor =
+    (evidencePayload.actor as string) ??
+    ((evidencePayload.user as Record<string, unknown>)?.email as string) ??
+    "system";
+  const evidenceSubject =
+    (evidencePayload.subject as string) ??
+    ((evidencePayload.user as Record<string, unknown>)?.email as string) ??
+    (evidencePayload.email as string) ??
+    null;
+
+  const classified = classifyEvent(
+    tenantId,
+    type,
+    source,
+    evidenceActor,
+    evidenceSubject,
+    evidencePayload,
+  );
+
+  if (classified) {
+    const evidenceDb = c.env.ATLAS_SHARED_DB ?? c.env.DB;
+    const evidenceBucket = c.env.EVIDENCE ?? null;
+    const evidencePromise = storeEvidence(
+      { db: evidenceDb, bucket: evidenceBucket },
+      classified,
+    ).catch((err) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          message: "Evidence locker write failed",
+          eventId,
+          tenantId,
+          eventType: type,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
+
+    try {
+      c.executionCtx.waitUntil(evidencePromise);
+    } catch {
+      // No execution context (tests) — fire and forget
+    }
   }
 
   // Fan out to subscribed agents (async, non-blocking)
@@ -291,8 +342,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
         (jmlPayload.userId as string) ??
         (jmlPayload.id as string) ??
         "unknown",
-      email:
-        (jmlUser.email as string) ?? (jmlPayload.email as string),
+      email: (jmlUser.email as string) ?? (jmlPayload.email as string),
       externalId: (jmlUser.externalId as string) ?? undefined,
       changeType: jmlChangeType,
       delta:
@@ -308,6 +358,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       workflow: c.env.WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
+      evidenceBucket: c.env.EVIDENCE ?? undefined,
     }).catch((err) => {
       console.error(
         JSON.stringify({
@@ -324,6 +375,62 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       c.executionCtx.waitUntil(jmlPromise);
     } catch {
       // No execution context (tests) — fire and forget
+    }
+  }
+
+  // ── Zero-config compliance evidence: write directly when adapters emit evidence ──
+  if (type === "compliance.evidence.collected") {
+    const ep = (payload ?? {}) as {
+      framework?: string;
+      controlId?: string;
+      controlName?: string;
+      evidenceType?: string;
+      source?: string;
+      sourceId?: string;
+      actor?: string;
+      subject?: string;
+      metadata?: unknown;
+    };
+    if (ep.controlId && ep.framework) {
+      const evidencePromise = sharedDb
+        .prepare(
+          `INSERT INTO compliance_evidence
+             (id, tenant_id, framework, framework_id, control_id, control_name,
+              evidence_type, source, source_id, actor, subject, metadata, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          tenantId,
+          ep.framework,
+          ep.framework,
+          ep.controlId,
+          ep.controlName ?? null,
+          ep.evidenceType ?? "automated",
+          ep.source ?? source,
+          ep.sourceId ?? null,
+          ep.actor ?? "system",
+          ep.subject ?? null,
+          ep.metadata ? JSON.stringify(ep.metadata) : null,
+          new Date().toISOString(),
+        )
+        .run()
+        .catch((err: unknown) => {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              message: "compliance_evidence insert failed",
+              error: err instanceof Error ? err.message : String(err),
+              tenantId,
+            }),
+          );
+        });
+
+      try {
+        c.executionCtx.waitUntil(evidencePromise);
+      } catch {
+        // No execution context (tests) — already running
+      }
     }
   }
 
@@ -351,13 +458,14 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
 
 // GET /api/v1/events -- list events
 eventRoutes.get("/", async (c) => {
+  const tenantId = c.get("tenantId");
   const status = c.req.query("status");
   const type = c.req.query("type");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
   const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
 
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: string[] = ["tenant_id = ?"];
+  const params: unknown[] = [tenantId];
   if (status) {
     conditions.push("status = ?");
     params.push(status);
@@ -366,8 +474,7 @@ eventRoutes.get("/", async (c) => {
     conditions.push("type = ?");
     params.push(type);
   }
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = `WHERE ${conditions.join(" AND ")}`;
 
   const results = await c.env.DB.prepare(
     `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -386,9 +493,12 @@ eventRoutes.get("/", async (c) => {
 
 // GET /api/v1/events/:id -- get event with delivery status
 eventRoutes.get("/:id", async (c) => {
+  const tenantId = c.get("tenantId");
   const { id } = c.req.param();
-  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ?")
-    .bind(id)
+  const event = await c.env.DB.prepare(
+    "SELECT * FROM events WHERE id = ? AND tenant_id = ?",
+  )
+    .bind(id, tenantId)
     .first();
 
   if (!event) {

@@ -16,7 +16,7 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 |--------|------|-------|--------|---------|
 | Core API (`core-api/`) | ✅ | ✅ | ✅ | Hono app: tenants, events, agents, flags, credentials, DLQ |
 | AI Orchestrator (`ai-orchestrator/`) | ✅ | ✅ | ✅ | WorkflowDO, event routing, queue consumer, DLQ |
-| Compliance Worker (`compliance-worker/`) | ✅ | ✅ | ✅ | Scoring, policy evaluation (Rego), evidence hashing |
+| Compliance Worker (`compliance-worker/`) | ✅ | ✅ | ✅ | Evidence-grounded scoring, evidence collection, policy eval (stub) |
 | Onboarding (`onboarding/`) | ✅ | ✅ | ✅ | Tenant provisioning |
 | Console App (`console-app/`) | ✅ | ✅ | ✅ | SvelteKit + Tailwind on CF Pages |
 | Slack Agent (`slack-notification-agent/`) | ✅ | ✅ | ✅ | MCP event → Slack webhook |
@@ -78,9 +78,42 @@ The AtlasIT platform has completed Phases 0–4 of its development roadmap. The 
 | 3 — Marketplace & Integrations | ✅ | Marketplace API, connectors, credential vault, feature flags |
 | 4 — Hardening & Production | ✅ (PR #141) | Okta SCIM, k6 load tests, IaC drift detection, OIDC worker, CF observability |
 | 5 — Adapter Scaffolding | ✅ (PR #158, #159) | 33 adapters: registry, manifests, scaffolds, 9 core-tier implementations, CI/CD |
-| 6 — Contract Stability & Auth Hardening | Next | DTO normalization, error handling, RBAC expansion, secret assertions |
-| 7 — Directory Reality | Future | Real provider sync, directory CRUD, group→app mapping |
-| 8 — Market Readiness | Future | Billing, LLM policy refinement, anomaly detection |
+| 6 — Contract Stability & Auth Hardening | ✅ (PR #164, #165) | RBAC expansion, DTO normalization, safeProxyFetch, startup assertions |
+| 7 — Compliance-as-Automation | ✅ | 60 CDT rules, evidence classifier/locker, JML auto-evidence, 40+ control mappings |
+| 7.5 — Compliance Integration | ⚠️ In Progress | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules + D1 bridge), remediation catalog (37 controls). **Remaining:** policy eval stub |
+| 8 — Access Reviews | Future | Campaign creation, manager review UI, auto-revoke, evidence generation |
+| 9 — Trust Center | Future | Public compliance portal, PDF export |
+
+## 9. Compliance System Integration Audit (March 2026)
+
+The compliance system has three disconnected evaluation paths discovered during deep code audit:
+
+| Path | What It Does | Where Scores Live | Used By UI? |
+|------|-------------|-------------------|-------------|
+| **A: UI-Driven** | ~~Manual checklist~~ → Now proxies to Path B | `compliance_scores` (via compliance-worker) | ✅ Yes — unified via Phase 7.5 |
+| **B: Evidence-Grounded** | Queries `compliance_evidence` for recency/count per control | Returned from `GET /api/v1/cdt/evaluate` | ✅ Yes — console scores endpoint reads from this |
+| **C: CDT Twin** | Evaluates CdtEvent payloads against all 53 rule functions | KV (`STATE_NS`) + R2 (`EVIDENCE_BUCKET`) | ❌ No — still isolated, nothing reads KV |
+
+### Gap Resolution Status
+
+| # | Gap | Status | Resolution |
+|---|-----|--------|------------|
+| 1 | UI scoring reads manual checklist, not real evidence | ✅ **Resolved** | Console scores endpoint now calls compliance-worker CDT evaluate |
+| 2 | `storeEvidence()` never called | ✅ **Was already wired** | Orchestrator `events.ts` classifies + stores every event via `waitUntil` |
+| 3 | CDT twin runs 7 of 60 rules | ✅ **Resolved** | Twin now uses `ALL_CONTROL_IDS` (60 rules) exported from engine |
+| 4 | CDT twin KV state invisible to platform | ✅ **Resolved** | Twin now writes state transitions to `compliance_evidence` via `ATLAS_SHARED_DB` D1 binding |
+| 5 | No scheduled evidence collection | ✅ **Resolved** | Orchestrator cron Duty 2 collects adapter evidence for all tenants |
+| 6 | `evaluatePolicy()` is a hash stub | ⬚ **Open** | Policy evaluation remains aspirational |
+
+### What Works End-to-End Now
+
+- Event → `classifyEvent()` → `storeEvidence()` → `compliance_evidence` D1 + R2 (every event)
+- Adapter evidence collection on cron schedule (Duty 2, every 5 min, all tenants)
+- `compliance_evidence` → CDT evaluate → weighted scores → `compliance_scores` → UI dashboard
+- CDT twin evaluates all 60 rules across 5 frameworks
+- WorkflowDO + queue consumer + step executor (fully functional)
+- JML auto-trigger: `user.created`/`user.deactivated` → provision/deprovision workflows
+- Manual evidence upload with SHA-256 hashing and control linking
 
 ---
 

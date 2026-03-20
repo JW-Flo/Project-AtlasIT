@@ -1,0 +1,35 @@
+workflow:
+  id: jml.leaver.stripe.v1
+  name: "Leaver - Offboarding (stripe)"
+  type: leaver
+  version: 1.0.0
+  enabled: true
+
+trigger:
+  source: hris
+  event_types:
+    - employee.terminated
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - user_id
+  optional:
+    - remove_group_ids
+
+steps:
+  - id: suspend_user
+    type: action
+    action_ref: atlas.connectors.stripe.suspend_user
+
+  - id: revoke_access
+    type: action
+    action_ref: atlas.connectors.stripe.remove_from_group
+
+  - id: delete_account
+    type: action
+    action_ref: atlas.connectors.stripe.delete_user
+
+success:
+  result: pass

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Bindings, AwsConfig, SyncResult } from "./types.js";
 import { authMiddleware } from "./auth.js";
+import { signAwsRequest } from "./sigv4.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { publishEvent } from "./event-publisher.js";
@@ -370,5 +371,93 @@ async function updateConnectionStatus(
       .run();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Evidence collection
+// ---------------------------------------------------------------------------
+app.post("/api/evidence", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{ tenantId?: string }>().catch(() => ({}));
+  const tenantId = body.tenantId ?? c.req.header("X-Tenant-ID") ?? "";
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  const config = buildAwsConfig(c.env);
+
+  // mfa_enforcement — IAM GetAccountSummary via SigV4
+  let mfaItem: EvidenceItem;
+  try {
+    const iamUrl =
+      "https://iam.amazonaws.com/?Action=GetAccountSummary&Version=2010-05-08";
+    const signedHeaders = await signAwsRequest(
+      "GET",
+      iamUrl,
+      "iam",
+      config.region,
+      config.accessKeyId,
+      config.secretAccessKey,
+    );
+
+    const iamRes = await fetch(iamUrl, { headers: signedHeaders });
+    const xml = await iamRes.text();
+
+    const match = xml.match(
+      /<key>AccountMFAEnabled<\/key>\s*<value>(\d+)<\/value>/,
+    );
+    const mfaEnabled = match ? match[1] === "1" : false;
+
+    mfaItem = {
+      type: "mfa_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2"],
+      status: mfaEnabled ? "pass" : "fail",
+      details: { accountMFAEnabled: mfaEnabled, service: "iam" },
+    };
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Failed to fetch IAM GetAccountSummary",
+        error: err instanceof Error ? err.message : "Unknown error",
+      }),
+    );
+    mfaItem = {
+      type: "mfa_enforcement",
+      controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.4.2"],
+      status: "unknown",
+      details: { reason: "IAM API call failed", service: "iam" },
+    };
+  }
+
+  const items: EvidenceItem[] = [
+    mfaItem,
+    {
+      type: "encryption_at_rest",
+      controlRefs: ["SOC2-CC6.7", "HIPAA-164.312(a)(2)(ii)", "GDPR-Art.5(1)(f)"],
+      status: "unknown",
+      details: {
+        reason: "S3 encryption check requires listing all buckets — implementation planned",
+        service: "s3",
+      },
+    },
+    {
+      type: "cloudtrail_enabled",
+      controlRefs: ["SOC2-CC7.1", "HIPAA-164.312(b)", "NIST-CSF-DE.CM-1"],
+      status: "unknown",
+      details: {
+        reason: "CloudTrail DescribeTrails requires additional SigV4 signing endpoint — implementation planned",
+        service: "cloudtrail",
+      },
+    },
+  ];
+
+  return c.json({ items });
+});
 
 export default app;

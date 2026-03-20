@@ -10,6 +10,10 @@ on:
             - "package.json"
             - ".github/workflows/integration-tests.yml"
 
+concurrency:
+    group: integration-tests-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
 jobs:
     test:
         runs-on: ubuntu-latest

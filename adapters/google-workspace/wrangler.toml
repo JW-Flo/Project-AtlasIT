@@ -17,6 +17,7 @@ database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
 # GOOGLE_CLIENT_ID — Google OAuth2 client ID
 # GOOGLE_CLIENT_SECRET — Google OAuth2 client secret
 # CRED_ENCRYPTION_KEY — AES-GCM encryption key for token storage
+# EVENT_PUBLISH_SECRET — HMAC secret for signing outbound event publish calls to the orchestrator
 
 [observability.logs]
 enabled = true

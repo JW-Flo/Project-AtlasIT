@@ -33,6 +33,19 @@
 - Write concise commit messages focused on "why" not "what"
 - Prefer small, focused commits
 
+## Checkpoint SOP
+
+Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), pause to checkpoint before continuing:
+
+1. **Review** — Diff branch against main, verify all changes are intentional and tests pass
+2. **Rebase** — `git fetch origin main && git rebase origin/main` to resolve conflicts early
+3. **PR** — Open a PR with a summary and test plan (`gh pr create`)
+4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --merge`)
+5. **Validate** — Smoke-test deployed endpoints (health checks, key routes) to confirm deployment
+6. **Continue** — Create a new branch for the next batch of work
+
+Do not accumulate unbounded work on a branch without checkpointing. This prevents painful rebases, ensures incremental review, and catches deployment issues early.
+
 ## Secrets
 
 - Secrets are managed in 1Password (vault: AWW_SHARED). Use `op` CLI with service account token.
@@ -47,6 +60,7 @@ Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
 Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
 
 Full PR workflow:
+
 1. Create feature branch: `feat/<desc>` or `phase<N>/<desc>`
 2. Commit with concise why-focused messages (no session URLs)
 3. Push and open PR: `gh pr create --title "..." --body "..."`
@@ -70,7 +84,7 @@ Never launch multiple write agents against the same branch — they will overwri
 - **haiku**: scaffolding, boilerplate, pattern-following codegen, file searches, templated work
 - **sonnet**: implementing against existing patterns, code review, judgment calls, most feature work
 - **opus**: novel architecture decisions, hard debugging, system design trade-offs
-Do not use opus for cookie-cutter or pattern-following work.
+  Do not use opus for cookie-cutter or pattern-following work.
 
 ## Project Architecture
 
@@ -79,7 +93,7 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 ### Components
 
 - `console-app/` — SvelteKit + Tailwind (Cloudflare Pages). Primary UI with onboarding, compliance, directory, marketplace, workflows, policies, incidents, access requests, admin panel
-- `compliance-worker/` — Compliance scoring, evidence hashing, policy evaluation (Rego-based)
+- `compliance-worker/` — Evidence-grounded compliance scoring, adapter evidence collection, policy evaluation (stub — hashing only, no Rego runtime)
 - `ai-orchestrator/` — Event routing, workflow execution (WorkflowDO), queue consumer, DLQ
 - `core-api/` — Central API (Hono): tenants, events, agents, flags, credentials, dead-letter
 - `onboarding/` — Tenant provisioning
@@ -90,13 +104,27 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 - `packages/adapter-gen/` — Adapter code generator (manifest JSON → full CF Worker scaffold)
 - `adapters/okta/` — Okta connector (directory sync, webhooks, SCIM 2.0 provisioning)
 - `adapters/google-workspace/` — Google Workspace connector (OAuth 2.0, user/group sync)
-- `adapters/<slug>/` — 33 adapters (9 core-tier hand-written, 24 scaffolded + Zscaler)
+- `adapters/<slug>/` — 35 adapters (9 core-tier hand-written, 2 production, 24 scaffolded)
+- `dispatch-worker/` — Queue-driven workflow step dispatch
+- `scheduler-worker/` — Cron-based scheduled task execution
+- `marketplace/` — App catalog and install/uninstall management
+- `apex-redirect-worker/` — Root domain redirect handling
+- `mcp/` — MCP server (desktop agent protocol)
+- `mcp-idp/` — MCP identity provider (OIDC/SAML bridge)
+- `mcp-mobile/` — MCP mobile client endpoint
+- `slack-approval-worker/` — Slack interactive approval workflows
+- `apps/atlasit-web/` — Marketing / landing site
+- `infra/github-proxy/` — GitHub API proxy for CI
+- `shared/services/cdt/` — Compliance Definition & Testing rule engine (60 rules)
 - `ops/oidc/` — GitHub Actions OIDC → 1Password Connect exchange worker
 
 ### Storage (Cloudflare D1/KV/R2/Queues)
 
 - D1 `ATLAS_SHARED_DB` — tenants, users, preferences, directory, compliance, audit, console_user_roles
 - KV `KV_SESSIONS` — session management
+- KV `KV_CACHE` — general cache (compliance scores, API responses)
+- KV `KV_FEATURE_FLAGS` — feature flag storage (rollout %, tenant overrides)
+- KV `MCP_STORE` — MCP agent state and configuration
 - R2 `atlasit-evidence` — policies, evidence, artifacts
 - Queues `atlasit-step-tasks` — workflow step dispatch
 
@@ -117,7 +145,7 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 
 ### Adapter Pipeline
 
-- **Registry**: `shared/integrations/registry-detailed.ts` — OAuth URLs, scopes, API endpoints for all 24 apps
+- **Registry**: `shared/integrations/registry-detailed.ts` — OAuth URLs, scopes, API endpoints for all 35 apps
 - **Manifests**: `packages/connector-schema/src/templates.ts` — ConnectorManifest JSON per app (auth, capabilities, config, events, webhooks)
 - **Scaffold**: `packages/adapter-gen/src/scaffold.ts` — `scaffoldAdapter(manifest, outputDir)` generates full CF Worker
 - **Output**: `adapters/<slug>/` — `src/index.ts`, `src/auth.ts`, `src/config.ts`, `wrangler.toml`, `package.json`, `tsconfig.json`, `migrations/`

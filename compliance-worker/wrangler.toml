@@ -8,6 +8,7 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 [vars]
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
 ENVIRONMENT = "development"
+ADAPTER_URLS = '{"github":"https://atlasit-github.workers.dev","okta":"https://atlasit-okta.workers.dev","google_workspace":"https://atlasit-google-workspace.workers.dev","microsoft_365":"https://atlasit-microsoft-365.workers.dev","aws":"https://atlasit-aws.workers.dev","slack":"https://atlasit-slack.workers.dev"}'
 # WEBHOOK_SECRET — set via `wrangler secret put WEBHOOK_SECRET`
 
 [[d1_databases]]
@@ -55,6 +56,7 @@ routes = [
 [env.production.vars]
 ENVIRONMENT = "production"
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
+ADAPTER_URLS = '{"github":"https://atlasit-github.atlasit.pro","okta":"https://atlasit-okta.atlasit.pro","google_workspace":"https://atlasit-google-workspace.atlasit.pro","microsoft_365":"https://atlasit-microsoft-365.atlasit.pro","aws":"https://atlasit-aws.atlasit.pro","slack":"https://atlasit-slack.atlasit.pro"}'
 
 [[env.production.d1_databases]]
 binding = "D1_COMPLIANCE"
