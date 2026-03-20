@@ -55,6 +55,7 @@
       items: [
         { href: "/console", label: "Dashboard", icon: LayoutDashboard },
         { href: "/console/compliance", label: "Compliance", icon: ShieldCheck },
+        { href: "/console/compliance/feed", label: "Evidence Feed", icon: Activity },
         { href: "/console/directory", label: "Directory", icon: Users },
       ],
     },
@@ -71,7 +72,8 @@
       title: "Operations",
       items: [
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
-        { href: "/console/access-reviews", label: "Access Reviews", icon: FolderCog },
+        { href: "/console/automation/runs", label: "Automation Runs", icon: Workflow },
+        { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
         { href: "/incidents", label: "Incidents", icon: AlertTriangle },
         { href: "/console/policies", label: "Policy Generator", icon: FileText },
       ],

@@ -35,10 +35,10 @@ Both agents **must** check this file before starting any task to avoid conflicts
 
 | Status | Owner | Task | Files |
 |--------|-------|------|-------|
-| `[CC 2026-03-18T10:05Z]` | CC | Normalize error handling in all workers: no raw HTML/JSON crashes surfaced to UI; wrap in `{ error, code, message }` envelope | `ai-orchestrator/src/`, `compliance-worker/src/`, `core-api/src/` |
-| `[CC 2026-03-18T10:05Z]` | CC | Startup-failing assertions for missing prod secrets (`CRED_ENCRYPTION_KEY`, D1 bindings, `EVENT_SOURCE_SECRETS`) | all worker `src/index.ts` entry points |
-| `[CC 2026-03-18T10:05Z]` | CC | CF Access JWT signing key rotation readiness — dynamic JWKS fetch, not hard-pinned public key | `packages/shared/src/auth/` |
-| `[CC 2026-03-18T10:05Z]` | CC | Slack webhook verification: implement Slack's replay-window signature algorithm (`X-Slack-Request-Timestamp` + `X-Slack-Signature`) | `adapters/slack/src/` |
+| `[DONE CC #177]` | CC | Normalize error handling in all workers: no raw HTML/JSON crashes surfaced to UI; wrap in `{ error, code, message }` envelope | `ai-orchestrator/src/`, `compliance-worker/src/`, `core-api/src/` |
+| `[DONE CC #177]` | CC | Startup-failing assertions for missing prod secrets (`CRED_ENCRYPTION_KEY`, D1 bindings, `EVENT_SOURCE_SECRETS`) | all worker `src/index.ts` entry points |
+| `[DONE CC]` | CC | CF Access JWT signing key rotation readiness — dynamic JWKS fetch, not hard-pinned public key | `packages/shared/src/auth/jwt-verifier.ts` (already implemented) |
+| `[DONE CC]` | CC | Slack webhook verification: implement Slack's replay-window signature algorithm (`X-Slack-Request-Timestamp` + `X-Slack-Signature`) | `adapters/slack/src/webhooks.ts` (already implemented) |
 
 ---
 
@@ -50,7 +50,7 @@ Both agents **must** check this file before starting any task to avoid conflicts
 | `[DONE CC]` | CC | `emitComplianceEvidence()` → update `tenant_preferences.compliance_controls` to `implemented` (PR #172) | `ai-orchestrator/src/lib/automation-evaluator.ts` |
 | `[ ]` | CC | Pull evidence from adapters: GitHub branch protection status, MFA enforcement status (Google Workspace) | `adapters/github/src/`, `adapters/google-workspace/src/` |
 | `[ ]` | CC | Expand CDT rules in `compliance-worker`: cover all SOC2 CC6.x + CC7.x + ISO27001 A.9.x controls with real Rego evaluation logic | `compliance-worker/src/modules/policies/` |
-| `[ ]` | OC | Compliance UI: live evidence timeline on compliance page (show recent evidence events with source/actor/timestamp) | `console-app/src/routes/console/compliance/` |
+| `[OC 2026-03-18T11:26Z]` | OC | Compliance UI: live evidence timeline on compliance page (show recent evidence events with source/actor/timestamp) | `console-app/src/routes/console/compliance/` |
 | `[ ]` | OC | Compliance score history chart (sparkline: score over last 30 days) | `console-app/src/routes/console/compliance/` |
 
 ---
@@ -59,10 +59,10 @@ Both agents **must** check this file before starting any task to avoid conflicts
 
 | Status | Owner | Task | Files |
 |--------|-------|------|-------|
-| `[CC 2026-03-18T10:05Z]` | CC | D1 migration: `access_review_campaigns`, `access_review_items`, `access_review_decisions` tables | new migration file `migrations/0021_access_reviews.sql` |
-| `[CC 2026-03-18T10:05Z]` | CC | API routes for access reviews: `GET/POST /api/access-reviews`, `GET /api/access-reviews/:id/items`, `POST /api/access-reviews/:id/decisions` | `console-app/src/routes/api/access-reviews/` |
-| `[CC 2026-03-18T10:05Z]` | CC | Auto-revoke logic: after campaign expires with unreviewed items, revoke access via adapter | `ai-orchestrator/src/lib/` |
-| `[CC 2026-03-18T10:05Z]` | CC | New automation action type `request_access_review` — trigger a review campaign from a rule | `packages/shared/src/automation/types.ts`, `ai-orchestrator/src/lib/automation-evaluator.ts` |
+| `[DONE CC #173]` | CC | D1 migration: `access_review_campaigns`, `access_review_items`, `access_review_decisions` tables | new migration file `migrations/0021_access_reviews.sql` |
+| `[DONE CC #173]` | CC | API routes for access reviews: `GET/POST /api/access-reviews`, `GET /api/access-reviews/:id/items`, `POST /api/access-reviews/:id/decisions` | `console-app/src/routes/api/access-reviews/` |
+| `[DONE CC #173]` | CC | Auto-revoke logic: after campaign expires with unreviewed items, revoke access via adapter | `ai-orchestrator/src/lib/access-review-auto-revoke.ts` |
+| `[DONE CC #173]` | CC | New automation action type `request_access_review` — trigger a review campaign from a rule | `packages/shared/src/automation/types.ts`, `ai-orchestrator/src/lib/automation-evaluator.ts` |
 | `[DONE OC #174]` | OC | Access Reviews UI: campaign list page with status/progress indicators | `console-app/src/routes/console/access-reviews/` |
 | `[DONE OC #174]` | OC | Access Review detail: manager-facing approve/revoke per user+app row | `console-app/src/routes/console/access-reviews/[id]/` |
 | `[DONE OC #174]` | OC | Add "Access Reviews" nav item to console sidebar | `console-app/src/lib/components/Sidebar.svelte` (or equivalent) |
@@ -73,10 +73,23 @@ Both agents **must** check this file before starting any task to avoid conflicts
 
 | Status | Owner | Task | Files |
 |--------|-------|------|-------|
-| `[ ]` | CC | `GET /api/trust/[slug]` server route: return public framework scores + evidence count + connected integrations | `console-app/src/routes/api/trust/[slug]/+server.ts` |
-| `[ ]` | CC | Tenant trust center settings: `PATCH /api/trust/settings` (what's public) | `console-app/src/routes/api/trust/settings/+server.ts` |
-| `[ ]` | OC | Trust Center public page `/trust/[slug]` — framework score cards, evidence count, last audit date, connected app logos | `console-app/src/routes/trust/[slug]/+page.svelte` |
-| `[ ]` | OC | Trust Center settings panel in console (control public visibility per framework) | `console-app/src/routes/console/settings/trust/` |
+| `[DONE CC #175]` | CC | `GET /api/trust/[slug]` server route: return public framework scores + evidence count + connected integrations | `console-app/src/routes/api/trust/[slug]/+server.ts` |
+| `[DONE CC #175]` | CC | Tenant trust center settings: `PATCH /api/trust/settings` (what's public) | `console-app/src/routes/api/trust/settings/+server.ts` |
+| `[DONE OC #176]` | OC | Trust Center public page `/trust/[slug]` — framework score cards, evidence count, last audit date, connected app logos | `console-app/src/routes/trust/[slug]/+page.svelte` |
+| `[DONE OC #176]` | OC | Trust Center settings panel in console (control public visibility per framework) | `console-app/src/routes/console/settings/trust/` |
+
+---
+
+## Phase 10 — Dashboard & Reporting (Polish + Depth)
+
+| Status | Owner | Task | Files |
+|--------|-------|------|-------|
+| `[ ]` | OC | Redesign main dashboard: tiles for compliance score (per framework), active access reviews, open incidents, recent automation runs, connected app count — all live data from their respective APIs | `console-app/src/routes/console/+page.svelte`, `console-app/src/lib/components/dashboard/` |
+| `[ ]` | OC | Compliance score history chart — sparkline per framework, last 30 days, from GET /api/tenant-compliance/scores history — include trend indicator (up/down/flat) | `console-app/src/routes/console/compliance/+page.svelte` |
+| `[ ]` | OC | Automation run log page: table of recent automation executions with rule name, trigger, status (success/fail/skip), duration, affected user — paginated, filterable by status | `console-app/src/routes/console/automation/runs/+page.svelte` |
+| `[ ]` | OC | JML changelog page: paginated table of all JML events (join/move/leave) with user, event type, timestamp, policy applied, apps provisioned/deprovisioned — filter by event type | `console-app/src/routes/console/jml/changelog/+page.svelte` |
+| `[ ]` | CC | GET /api/automation/runs — paginated list of automation_executions for tenant with rule name joined, status filter support | `console-app/src/routes/api/automation/executions/+server.ts` (may need expansion) |
+| `[ ]` | CC | GET /api/compliance/history — last 30 days of compliance_history rows per framework for the authenticated tenant | `console-app/src/routes/api/tenant-compliance/history/+server.ts` |
 
 ---
 
@@ -161,4 +174,9 @@ Leave a note here when you start/finish a major task or hit a blocker.
 | 2026-03-18T10:57Z | OC | Claimed Phase 8 Access Reviews campaign list UI task. Started `oc/access-reviews-ui` with progress/status indicators + tests. |
 | 2026-03-18T11:16Z | OC | Claimed and implemented Phase 8 detail page + sidebar nav item. Waiting on CC API merge for end-to-end wiring pass. |
 | 2026-03-18T11:20Z | OC | Rebased on main after CC PR #173 merge, completed API alignment pass, and opened OC UI PR #174. Phase 8 OC tasks marked DONE. |
+| 2026-03-18T11:25Z | CC | Phase 8 CC tasks marked DONE. Bridge live. Claiming Phase 9 Trust Center API tasks — starting cc/trust-center-api. |
+| 2026-03-18T11:24Z | OC | Claimed Phase 9 OC Trust Center UI tasks. Implementing public `/trust/[slug]` page + `/console/settings/trust` settings panel. |
+| 2026-03-18T11:27Z | OC | Completed Phase 9 OC Trust Center UI tasks, opened PR #176, and marked both OC Trust Center tasks DONE. |
+| 2026-03-18T11:26Z | OC | Claimed next OC backlog task: Compliance UI evidence timeline (Phase 7) on branch `oc/compliance-evidence-ui`. |
+| 2026-03-18T11:35Z | CC | Phase 6 + Phase 9 CC tasks marked DONE. Claiming Phase 7 CC remaining tasks next. |
 

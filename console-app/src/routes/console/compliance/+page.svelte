@@ -14,7 +14,7 @@
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import {
     AlertTriangle, ShieldCheck, FileText, ClipboardCheck, Download,
-    Play, Link2, Upload, Search, Settings,
+    Play, Link2, Upload, Search, Settings, TrendingUp, TrendingDown, Minus,
   } from "lucide-svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
@@ -44,6 +44,40 @@
     status: string;
   }
 
+  interface HistoryPoint {
+    date: string;
+    score: number;
+    grade: string;
+  }
+
+  interface FrameworkHistory {
+    framework: string;
+    points: HistoryPoint[];
+    trend: "up" | "down" | "flat";
+    latestScore: number;
+  }
+
+  interface EvidenceFeedSummary {
+    totalEvidence: number;
+    frameworksCovered: number;
+    controlsCovered: number;
+    positiveCount: number;
+    detrimentalCount: number;
+  }
+
+  interface EvidenceFeedPreviewItem {
+    id: string;
+    framework: string;
+    controlId: string;
+    impact: "positive" | "detrimental" | "neutral";
+    eventType: string;
+    source: string;
+    actor: string;
+    subject: string;
+    reasoning: string;
+    createdAt: string;
+  }
+
   let loading = true;
   let saving = false;
   let error: string | null = null;
@@ -52,6 +86,17 @@
   let scores: FrameworkScore[] = [];
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
+  let history: FrameworkHistory[] = [];
+  let historyError: string | null = null;
+  let evidenceFeedSummary: EvidenceFeedSummary = {
+    totalEvidence: 0,
+    frameworksCovered: 0,
+    controlsCovered: 0,
+    positiveCount: 0,
+    detrimentalCount: 0,
+  };
+  let evidenceFeedPreview: EvidenceFeedPreviewItem[] = [];
+  let evidenceFeedError: string | null = null;
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -110,6 +155,43 @@
     });
   }
 
+  function trendVariant(trend: "up" | "down" | "flat"): "success" | "destructive" | "secondary" {
+    if (trend === "up") return "success";
+    if (trend === "down") return "destructive";
+    return "secondary";
+  }
+
+  function trendLabel(trend: "up" | "down" | "flat"): string {
+    if (trend === "up") return "Up";
+    if (trend === "down") return "Down";
+    return "Flat";
+  }
+
+  function sparklinePoints(points: HistoryPoint[]): string {
+    if (!points || points.length === 0) return "";
+
+    const width = 160;
+    const height = 48;
+    const min = Math.min(...points.map((p) => p.score));
+    const max = Math.max(...points.map((p) => p.score));
+    const range = max - min;
+
+    return points
+      .map((p, i) => {
+        const x = points.length === 1 ? width / 2 : (i / (points.length - 1)) * width;
+        const y = range === 0
+          ? height / 2
+          : height - ((p.score - min) / range) * height;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }
+
+  function evidenceImpactVariant(impact: "positive" | "detrimental" | "neutral"): "success" | "destructive" | "secondary" {
+    if (impact === "positive") return "success";
+    if (impact === "detrimental") return "destructive";
+    return "secondary";
+  }
   async function loadScores() {
     try {
       const res = await fetch("/api/tenant-compliance/scores");
@@ -120,6 +202,51 @@
     } catch {}
   }
 
+  async function loadHistory() {
+    historyError = null;
+    try {
+      const res = await fetch("/api/tenant-compliance/history?days=30");
+      if (!res.ok) {
+        history = [];
+        historyError = `Failed to load score history (${res.status})`;
+        return;
+      }
+      const data = await res.json();
+      history = data.history || [];
+    } catch {
+      history = [];
+      historyError = "Failed to load score history";
+    }
+  }
+
+  async function loadEvidenceFeedPreview() {
+    evidenceFeedError = null;
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      const res = await fetch(`/api/compliance/evidence-feed?since=${encodeURIComponent(since)}&limit=5&offset=0`);
+      if (!res.ok) {
+        evidenceFeedPreview = [];
+        evidenceFeedError = `Failed to load evidence feed (${res.status})`;
+        return;
+      }
+
+      const data = await res.json();
+      evidenceFeedSummary = {
+        totalEvidence: Number(data?.summary?.totalEvidence ?? 0),
+        frameworksCovered: Number(data?.summary?.frameworksCovered ?? 0),
+        controlsCovered: Number(data?.summary?.controlsCovered ?? 0),
+        positiveCount: Number(data?.summary?.positiveCount ?? 0),
+        detrimentalCount: Number(data?.summary?.detrimentalCount ?? 0),
+      };
+      evidenceFeedPreview = Array.isArray(data?.feed) ? data.feed : [];
+    } catch {
+      evidenceFeedPreview = [];
+      evidenceFeedError = "Failed to load evidence feed";
+    }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
@@ -127,15 +254,13 @@
       const [controlsRes] = await Promise.all([
         fetch("/api/tenant-compliance/controls"),
         loadScores(),
+        loadHistory(),
+        loadEvidenceFeedPreview(),
       ]);
       if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
       const data = await controlsRes.json();
       frameworks = data.frameworks || [];
       controls = data.controls || [];
-
-      // Auto-evaluate configuration on page load (non-blocking, silent)
-      // This ensures controls advance from "not_started" based on actual tenant state
-      runEvaluation(true).catch(() => {});
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
     } finally {
@@ -207,92 +332,6 @@
   let newEvidencePack = "manual";
   let linkingEvidenceId: number | null = null;
   let linkControlKey = "";
-
-  // Evidence tagging
-  interface EvidenceTag {
-    id: string;
-    tag: string;
-    tagType: string;
-    color: string | null;
-    createdBy: string;
-  }
-
-  let tagsByEvidence: Record<string, EvidenceTag[]> = {};
-  let taggingEvidenceId: string | null = null;
-  let newTagValue = "";
-  let newTagType: "label" | "flag" | "priority" | "status" = "label";
-  let availableTags: Array<{ tag: string; tag_type: string; color: string | null; usage_count: number }> = [];
-
-  const TAG_COLORS: Record<string, string> = {
-    label: "#6366f1",
-    flag: "#ef4444",
-    priority: "#f59e0b",
-    status: "#22c55e",
-  };
-
-  async function loadTenantTags() {
-    try {
-      const res = await fetch("/api/compliance/evidence/tags");
-      if (res.ok) {
-        const data = await res.json();
-        availableTags = data.tags || [];
-      }
-    } catch {}
-  }
-
-  async function loadEvidenceTags(evidenceId: string) {
-    try {
-      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`);
-      if (res.ok) {
-        const data = await res.json();
-        tagsByEvidence[evidenceId] = data.tags || [];
-        tagsByEvidence = tagsByEvidence; // trigger reactivity
-      }
-    } catch {}
-  }
-
-  async function addTag(evidenceId: string) {
-    if (!newTagValue.trim()) return;
-    try {
-      const res = await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          tag: newTagValue.trim(),
-          tagType: newTagType,
-          color: TAG_COLORS[newTagType] || null,
-        }),
-      });
-      if (res.ok) {
-        newTagValue = "";
-        await loadEvidenceTags(evidenceId);
-        await loadTenantTags();
-      } else {
-        const data = await res.json();
-        pushToast({ message: data.error || "Failed to add tag", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Failed to add tag", variant: "error" });
-    }
-  }
-
-  async function removeTag(evidenceId: string, tagId: string) {
-    try {
-      await fetch(`/api/compliance/evidence/${evidenceId}/tags`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tagId }),
-      });
-      await loadEvidenceTags(evidenceId);
-    } catch {}
-  }
-
-  function startTagging(evidenceId: string) {
-    taggingEvidenceId = evidenceId;
-    if (!tagsByEvidence[evidenceId]) {
-      loadEvidenceTags(evidenceId);
-    }
-  }
 
   const INTERNAL_CONTROLS = [
     { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
@@ -383,7 +422,7 @@
     }
   }
 
-  async function runEvaluation(silent = false) {
+  async function runEvaluation() {
     evaluating = true;
     try {
       const res = await fetch("/api/tenant-compliance/evaluate", { method: "POST" });
@@ -391,20 +430,13 @@
       const data: { tenantState: Record<string, boolean>; evaluations: any[]; controlsUpdated: boolean } = await res.json();
       lastEvaluation = data;
       if (data.controlsUpdated) {
-        if (!silent) pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
-        // Reload controls and scores to reflect updated statuses
-        const controlsRes = await fetch("/api/tenant-compliance/controls");
-        if (controlsRes.ok) {
-          const cData = await controlsRes.json();
-          frameworks = cData.frameworks || [];
-          controls = cData.controls || [];
-        }
-        await loadScores();
+        pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
+        await loadData();
       } else {
-        if (!silent) pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
+        pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
       }
     } catch (e: any) {
-      if (!silent) pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
+      pushToast({ message: e?.message || "Evaluation failed", variant: "error" });
     } finally {
       evaluating = false;
     }
@@ -412,65 +444,11 @@
 
   $: if (activeTab === "evidence" && evidenceItems.length === 0 && !evidenceLoading && !evidenceError) {
     loadEvidence();
-    loadTenantTags();
-  }
-
-  // Evidence feed (real-time evidence from automations)
-  interface EvidenceFeedItem {
-    id: string;
-    framework: string;
-    controlId: string;
-    category: string;
-    source: string;
-    actor: string;
-    subject: string | null;
-    impact: string;
-    createdAt: string;
-  }
-
-  let evidenceFeed: EvidenceFeedItem[] = [];
-  let feedSummary: { totalEvidence: number; frameworksCovered: number; controlsCovered: number } | null = null;
-
-  // Score history
-  interface ScoreHistoryPoint { date: string; score: number; grade: string }
-  interface FrameworkHistory { framework: string; points: ScoreHistoryPoint[]; trend: "up" | "down" | "flat"; latestScore: number }
-  let scoreHistory: FrameworkHistory[] = [];
-
-  async function loadEvidenceFeed() {
-    try {
-      const res = await fetch("/api/compliance/evidence-feed?limit=10");
-      if (res.ok) {
-        const data = await res.json();
-        evidenceFeed = data.feed || [];
-        feedSummary = data.summary || null;
-      }
-    } catch {}
-  }
-
-  async function loadScoreHistory() {
-    try {
-      const res = await fetch("/api/tenant-compliance/history?days=30");
-      if (res.ok) {
-        const data = await res.json();
-        scoreHistory = data.history || [];
-      }
-    } catch {}
-  }
-
-  function feedTimeAgo(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
   }
 
   onMount(() => {
     loadData();
-    loadEvidenceFeed();
-    loadScoreHistory();
+    loadEvidence();
   });
 </script>
 
@@ -540,6 +518,62 @@
         </CardContent>
       </Card>
     {/if}
+
+    <!-- Evidence pipeline hero -->
+    <Card class="mb-6 border-primary/20 bg-primary/5">
+      <CardContent class="pt-5 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Lifecycle → Compliance Evidence Pipeline</h2>
+            <p class="text-sm text-muted-foreground">
+              {evidenceFeedSummary.totalEvidence} evidence events from {evidenceFeedSummary.positiveCount + evidenceFeedSummary.detrimentalCount} lifecycle operations this week.
+            </p>
+          </div>
+          <a href="/console/compliance/feed" class="text-sm text-primary hover:underline">View full feed →</a>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Total Evidence</div>
+            <div class="font-semibold">{evidenceFeedSummary.totalEvidence}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Frameworks Covered</div>
+            <div class="font-semibold">{evidenceFeedSummary.frameworksCovered}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Controls Covered</div>
+            <div class="font-semibold">{evidenceFeedSummary.controlsCovered}</div>
+          </div>
+          <div class="rounded-md border bg-background px-3 py-2">
+            <div class="text-muted-foreground text-xs">Detrimental Events</div>
+            <div class="font-semibold text-destructive">{evidenceFeedSummary.detrimentalCount}</div>
+          </div>
+        </div>
+
+        {#if evidenceFeedError}
+          <Alert variant="destructive">
+            <AlertTriangle class="h-4 w-4" />
+            <p class="pl-7">{evidenceFeedError}</p>
+          </Alert>
+        {:else if evidenceFeedPreview.length > 0}
+          <div class="rounded-md border bg-background divide-y">
+            {#each evidenceFeedPreview as item}
+              <div class="px-3 py-2 flex items-center justify-between gap-3">
+                <div>
+                  <div class="text-sm font-medium">{item.framework} · {item.controlId}</div>
+                  <div class="text-xs text-muted-foreground">{item.eventType} • {item.source} • {item.actor || "system"}</div>
+                </div>
+                <div class="text-right">
+                  <Badge variant={evidenceImpactVariant(item.impact)}>{item.impact}</Badge>
+                  <div class="text-[11px] text-muted-foreground mt-1">{new Date(item.createdAt).toLocaleString()}</div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </CardContent>
+    </Card>
 
     <!-- Overall posture -->
     <Card class="mb-6">
@@ -613,6 +647,86 @@
       {/if}
     </div>
 
+    <!-- Score history -->
+    <h2 class="text-lg font-semibold mb-3">Score History (30 days)</h2>
+    {#if historyError}
+      <Alert variant="destructive" class="mb-6">
+        <AlertTriangle class="h-4 w-4" />
+        <p class="pl-7">{historyError}</p>
+      </Alert>
+    {:else if history.length === 0}
+      <Card class="mb-6 border-dashed">
+        <CardContent class="py-6 text-sm text-muted-foreground">No compliance history available yet.</CardContent>
+      </Card>
+    {:else}
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+        {#each history as h}
+          <Card>
+            <CardContent class="pt-5">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold">{h.framework}</h3>
+                <Badge variant={trendVariant(h.trend)} class="gap-1">
+                  {#if h.trend === "up"}
+                    <TrendingUp class="h-3 w-3" />
+                  {:else if h.trend === "down"}
+                    <TrendingDown class="h-3 w-3" />
+                  {:else}
+                    <Minus class="h-3 w-3" />
+                  {/if}
+                  {trendLabel(h.trend)}
+                </Badge>
+              </div>
+
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-2xl font-bold">{Math.round(h.latestScore)}%</span>
+                <span class="text-xs text-muted-foreground">{h.points.length} points</span>
+              </div>
+
+              <svg viewBox="0 0 160 48" class="w-full h-12" role="img" aria-label={`30-day trend for ${h.framework}`}>
+                <polyline
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="text-primary"
+                  points={sparklinePoints(h.points)}
+                />
+              </svg>
+            </CardContent>
+          </Card>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Evidence timeline -->
+    <h2 class="text-lg font-semibold mb-3">Recent Evidence Timeline</h2>
+    {#if evidenceLoading}
+      <div class="space-y-2 mb-6">
+        {#each [1, 2, 3] as _}
+          <Skeleton class="h-10 rounded-lg" />
+        {/each}
+      </div>
+    {:else if evidenceItems.length === 0}
+      <Card class="mb-6 border-dashed">
+        <CardContent class="py-6 text-sm text-muted-foreground">No evidence events recorded yet.</CardContent>
+      </Card>
+    {:else}
+      <Card class="mb-6">
+        <CardContent class="p-0">
+          <div class="divide-y">
+            {#each evidenceItems.slice(0, 8) as item}
+              <div class="px-4 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <div class="text-sm font-medium">{item.pack || "manual"}</div>
+                  <div class="text-xs text-muted-foreground">Actor: {item.subject || "system"}</div>
+                </div>
+                <div class="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</div>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
+    {/if}
+
     <!-- Quick actions -->
     <h2 class="text-lg font-semibold mb-3">Quick Actions</h2>
     <div class="grid gap-4 md:grid-cols-3">
@@ -662,88 +776,6 @@
         </Card>
       </button>
     </div>
-
-    <!-- Evidence Activity Feed -->
-    <div class="mt-6">
-      <h2 class="text-lg font-semibold mb-3">Evidence Activity</h2>
-      {#if evidenceFeed.length > 0}
-        <Card>
-          <CardContent class="p-0">
-            {#each evidenceFeed as item}
-              <div class="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors">
-                <span class="w-2 h-2 rounded-full shrink-0 {item.impact === 'positive' ? 'bg-green-500' : item.impact === 'detrimental' ? 'bg-red-500' : 'bg-blue-500'}"></span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm">
-                    <span class="font-medium">{item.controlId}</span>
-                    <span class="text-muted-foreground"> — {item.category.replace(/_/g, ' ')}</span>
-                  </div>
-                  <div class="flex items-center gap-2 mt-0.5">
-                    <Badge variant="outline" class="text-[10px]">{item.framework}</Badge>
-                    <span class="text-[10px] text-muted-foreground">{item.source}</span>
-                    {#if item.actor}
-                      <span class="text-[10px] text-muted-foreground">{item.actor}</span>
-                    {/if}
-                  </div>
-                </div>
-                <span class="text-xs text-muted-foreground shrink-0">{feedTimeAgo(item.createdAt)}</span>
-              </div>
-            {/each}
-          </CardContent>
-        </Card>
-        {#if feedSummary}
-          <div class="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-            <span>{feedSummary.totalEvidence} total evidence items</span>
-            <span>{feedSummary.frameworksCovered} framework{feedSummary.frameworksCovered !== 1 ? 's' : ''} covered</span>
-            <span>{feedSummary.controlsCovered} control{feedSummary.controlsCovered !== 1 ? 's' : ''} covered</span>
-          </div>
-        {/if}
-      {:else}
-        <Card class="border-dashed">
-          <CardContent class="py-8 text-center">
-            <p class="text-sm text-muted-foreground">No evidence activity yet. Evidence is auto-generated when automations and workflows execute.</p>
-          </CardContent>
-        </Card>
-      {/if}
-    </div>
-
-    <!-- Score Trend -->
-    {#if scoreHistory.length > 0}
-      <div class="mt-6">
-        <h2 class="text-lg font-semibold mb-3">Score Trend (30 days)</h2>
-        <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {#each scoreHistory as fw}
-            <Card>
-              <CardContent class="pt-4 pb-4">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium">{fw.framework}</span>
-                  <div class="flex items-center gap-1.5">
-                    {#if fw.trend === "up"}
-                      <span class="text-green-500 text-xs font-medium">Improving</span>
-                    {:else if fw.trend === "down"}
-                      <span class="text-red-500 text-xs font-medium">Declining</span>
-                    {:else}
-                      <span class="text-muted-foreground text-xs">Stable</span>
-                    {/if}
-                    <span class="text-lg font-bold">{Math.round(fw.latestScore)}%</span>
-                  </div>
-                </div>
-                {#if fw.points.length > 1}
-                  <!-- Simple sparkline using SVG -->
-                  <svg class="w-full h-8" viewBox="0 0 {fw.points.length * 10} 40" preserveAspectRatio="none">
-                    <polyline
-                      fill="none"
-                      stroke={fw.trend === "up" ? "rgb(34, 197, 94)" : fw.trend === "down" ? "rgb(239, 68, 68)" : "rgb(148, 163, 184)"}
-                      stroke-width="2"
-                      points={fw.points.map((p, i) => `${i * 10},${40 - (p.score / 100) * 40}`).join(" ")}
-                    />
-                  </svg>
-                {/if}
-              </CardContent>
-            </Card>
-          {/each}
-        </div>
-      </div>
-    {/if}
 
   {:else if activeTab === "controls"}
     <!-- Controls tab -->
@@ -890,7 +922,6 @@
                 <th class="px-4 py-3 font-medium">Pack</th>
                 <th class="px-4 py-3 font-medium">Subject</th>
                 <th class="px-4 py-3 font-medium">Date</th>
-                <th class="px-4 py-3 font-medium">Tags</th>
                 <th class="px-4 py-3 font-medium">Link to Control</th>
               </tr>
             </thead>
@@ -905,59 +936,6 @@
                   </td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
-                  <td class="px-4 py-3">
-                    <div class="flex flex-wrap items-center gap-1">
-                      {#if tagsByEvidence[String(item.id)]}
-                        {#each tagsByEvidence[String(item.id)] as tag}
-                          <span
-                            class="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
-                            style="background-color: {tag.color || TAG_COLORS[tag.tagType] || '#6b7280'}"
-                          >
-                            {tag.tag}
-                            <button
-                              type="button"
-                              class="ml-0.5 hover:opacity-70"
-                              on:click={() => removeTag(String(item.id), tag.id)}
-                              aria-label="Remove tag {tag.tag}"
-                            >&times;</button>
-                          </span>
-                        {/each}
-                      {/if}
-                      {#if taggingEvidenceId === String(item.id)}
-                        <div class="flex items-center gap-1">
-                          <input
-                            bind:value={newTagValue}
-                            placeholder="Tag..."
-                            list="tag-suggestions"
-                            class="h-6 w-24 rounded border border-input bg-background px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-ring"
-                            on:keydown={(e) => { if (e.key === "Enter") addTag(String(item.id)); }}
-                          />
-                          <select
-                            bind:value={newTagType}
-                            class="h-6 rounded border border-input bg-background px-1 text-[11px]"
-                          >
-                            <option value="label">Label</option>
-                            <option value="flag">Flag</option>
-                            <option value="priority">Priority</option>
-                            <option value="status">Status</option>
-                          </select>
-                          <button type="button" class="text-[11px] text-primary hover:underline" on:click={() => addTag(String(item.id))}>Add</button>
-                          <button type="button" class="text-[11px] text-muted-foreground hover:underline" on:click={() => { taggingEvidenceId = null; newTagValue = ""; }}>Done</button>
-                        </div>
-                      {:else}
-                        <button
-                          type="button"
-                          class="text-[11px] text-muted-foreground hover:text-primary transition-colors"
-                          on:click={() => startTagging(String(item.id))}
-                        >+ tag</button>
-                      {/if}
-                    </div>
-                    <datalist id="tag-suggestions">
-                      {#each availableTags as at}
-                        <option value={at.tag}>{at.tag} ({at.usage_count})</option>
-                      {/each}
-                    </datalist>
-                  </td>
                   <td class="px-4 py-3">
                     {#if item.linkedControl}
                       <Badge variant="success">{item.linkedControl}</Badge>
