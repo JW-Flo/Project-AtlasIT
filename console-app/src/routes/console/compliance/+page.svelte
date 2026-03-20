@@ -197,7 +197,11 @@
     if (impact === "detrimental") return "destructive";
     return "secondary";
   }
-  async function loadScores() {
+  async function loadScores(notify = false) {
+    const previousOverall = scores.length > 0
+      ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100
+      : 0;
+
     try {
       const res = await fetch("/api/tenant-compliance/scores");
       if (res.ok) {
@@ -205,6 +209,22 @@
         scores = data.scores || [];
       }
     } catch {}
+
+    if (notify && scores.length > 0) {
+      const newOverall = Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100;
+      const delta = Math.round((newOverall - previousOverall) * 100) / 100;
+      if (delta > 0) {
+        pushToast({
+          message: `Compliance score improved: ${previousOverall}% \u2192 ${newOverall}% (+${delta}%)`,
+          variant: "success",
+        });
+      } else if (delta < 0) {
+        pushToast({
+          message: `Compliance score changed: ${previousOverall}% \u2192 ${newOverall}% (${delta}%)`,
+          variant: "warning",
+        });
+      }
+    }
   }
 
   async function loadHistory() {
@@ -283,7 +303,7 @@
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       pushToast({ message: "Control statuses saved", variant: "success" });
-      await loadScores();
+      await loadScores(true);
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save", variant: "error" });
     } finally {
@@ -317,6 +337,73 @@
 
   let evaluating = false;
   let lastEvaluation: { tenantState: Record<string, boolean>; evaluations: any[] } | null = null;
+
+  // Control → Evidence drill-down
+  let expandedControlId: string | null = null;
+  let controlEvidence: EvidenceFeedPreviewItem[] = [];
+  let controlEvidenceLoading = false;
+
+  // Verification attestation
+  let verifyingControlId: string | null = null;
+  let verifyNotes = "";
+
+  async function submitVerification(control: Control) {
+    if (verifyingControlId === control.id) {
+      // Already showing form — submit it
+      verifyingControlId = null;
+      try {
+        const res = await fetch("/api/tenant-compliance/evidence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payload: {
+              controlId: control.id,
+              framework: control.framework,
+              attestedBy: "current_user",
+              notes: verifyNotes,
+              type: "verification_attestation",
+            },
+            pack: "verification_attestation",
+            subject: control.id,
+          }),
+        });
+        if (!res.ok) throw new Error(`Failed (${res.status})`);
+        updateControlStatus(control.id, "verified");
+        pushToast({ message: `${control.id} verified. Score updated.`, variant: "success" });
+        verifyNotes = "";
+        await saveControls();
+      } catch (e: any) {
+        pushToast({ message: e?.message || "Verification failed", variant: "error" });
+      }
+      return;
+    }
+    verifyingControlId = control.id;
+    verifyNotes = "";
+  }
+
+  async function toggleControlEvidence(controlId: string, framework: string) {
+    if (expandedControlId === controlId) {
+      expandedControlId = null;
+      controlEvidence = [];
+      return;
+    }
+    expandedControlId = controlId;
+    controlEvidenceLoading = true;
+    try {
+      const params = new URLSearchParams({ controlId, framework, limit: "10" });
+      const res = await fetch(`/api/evidence-feed?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        controlEvidence = Array.isArray(data.feed) ? data.feed : [];
+      } else {
+        controlEvidence = [];
+      }
+    } catch {
+      controlEvidence = [];
+    } finally {
+      controlEvidenceLoading = false;
+    }
+  }
 
   interface EvidenceItem {
     id: number;
@@ -523,6 +610,7 @@
       if (data.controlsUpdated) {
         pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
         await loadData();
+        await loadScores(true);
       } else {
         pushToast({ message: "Evaluation complete -- no changes needed", variant: "success" });
       }
@@ -911,13 +999,17 @@
               <th class="px-4 py-3 font-medium w-[100px]">Framework</th>
               <th class="px-4 py-3 font-medium w-[140px]">Status</th>
               <th class="px-4 py-3 font-medium">Notes</th>
+              <th class="px-4 py-3 font-medium w-[80px]">Verify</th>
             </tr>
           </thead>
           <tbody>
             {#each statusFilteredControls as control (control.id)}
-              <tr class="border-t hover:bg-muted/50">
+              <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => toggleControlEvidence(control.id, control.framework)}>
                 <td class="px-4 py-3">
-                  <div class="font-medium">{control.name}</div>
+                  <div class="font-medium flex items-center gap-1.5">
+                    {control.name}
+                    <span class="text-[10px] text-muted-foreground">{expandedControlId === control.id ? '▼' : '▶'}</span>
+                  </div>
                   {#if control.automatable}
                     <span class="text-[10px] text-primary font-medium uppercase tracking-wider">Auto</span>
                   {/if}
@@ -926,7 +1018,7 @@
                 <td class="px-4 py-3">
                   <Badge variant="outline">{control.framework}</Badge>
                 </td>
-                <td class="px-4 py-3">
+                <td class="px-4 py-3" on:click|stopPropagation>
                   <select
                     value={control.status}
                     on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
@@ -938,7 +1030,7 @@
                     <option value="verified">Verified</option>
                   </select>
                 </td>
-                <td class="px-4 py-3">
+                <td class="px-4 py-3" on:click|stopPropagation>
                   <input
                     type="text"
                     value={control.notes}
@@ -947,7 +1039,67 @@
                     class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
                   />
                 </td>
+                <td class="px-4 py-3" on:click|stopPropagation>
+                  {#if control.status === "verified"}
+                    <Badge variant="success">Verified</Badge>
+                  {:else if control.status === "implemented"}
+                    <Button size="sm" variant="outline" on:click={() => submitVerification(control)}>
+                      {verifyingControlId === control.id ? "Confirm" : "Verify"}
+                    </Button>
+                  {:else}
+                    <span class="text-xs text-muted-foreground">—</span>
+                  {/if}
+                </td>
               </tr>
+              {#if verifyingControlId === control.id}
+                <tr class="bg-green-500/5">
+                  <td colspan="6" class="px-4 py-3">
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
+                      <input
+                        type="text"
+                        bind:value={verifyNotes}
+                        placeholder="e.g. Reviewed by Jane Smith on 2026-03-20"
+                        class="flex-1 h-8 rounded-md border border-input bg-background px-3 text-xs"
+                        on:keydown={(e) => { if (e.key === "Enter") submitVerification(control); }}
+                      />
+                      <Button size="sm" variant="success" on:click={() => submitVerification(control)}>Submit Verification</Button>
+                      <Button size="sm" variant="ghost" on:click={() => { verifyingControlId = null; verifyNotes = ""; }}>Cancel</Button>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
+              {#if expandedControlId === control.id}
+                <tr class="bg-muted/20">
+                  <td colspan="6" class="px-4 py-3">
+                    {#if controlEvidenceLoading}
+                      <div class="text-xs text-muted-foreground py-2">Loading evidence...</div>
+                    {:else if controlEvidence.length === 0}
+                      <div class="text-xs text-muted-foreground py-2">No evidence found for this control. Evidence is collected automatically from lifecycle events.</div>
+                    {:else}
+                      <div class="text-xs font-medium text-muted-foreground mb-2">{controlEvidence.length} evidence item{controlEvidence.length !== 1 ? 's' : ''} for {control.id}</div>
+                      <div class="space-y-1.5">
+                        {#each controlEvidence as ev}
+                          <div class="flex items-center justify-between gap-3 rounded border bg-background px-3 py-2">
+                            <div>
+                              <span class="text-xs font-medium">{ev.eventType || ev.source}</span>
+                              <span class="text-[11px] text-muted-foreground ml-2">{ev.actor || "system"}</span>
+                              {#if ev.reasoning}
+                                <div class="text-[11px] text-muted-foreground mt-0.5">{ev.reasoning}</div>
+                              {/if}
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                              <Badge variant={evidenceImpactVariant(ev.impact)}>{ev.impact}</Badge>
+                              <span class="text-[10px] text-muted-foreground">{new Date(ev.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
+                      <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline mt-2 inline-block">View all evidence for this control →</a>
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

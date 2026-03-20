@@ -1,31 +1,33 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
 
-export const GET: RequestHandler = async () => {
+/**
+ * Mock compliance snapshot — DEMO MODE ONLY.
+ *
+ * Returns hardcoded compliance data for demos and development.
+ * Gated behind DEMO_MODE env var to prevent accidental exposure
+ * during evaluations or production use.
+ */
+export const GET: RequestHandler = async ({ platform }) => {
+  const env = (platform?.env as Record<string, string>) ?? {};
+
+  if (env.DEMO_MODE !== "1" && env.DEMO_MODE !== "true") {
+    return json(
+      {
+        error: "Mock endpoints are disabled. Set DEMO_MODE=1 to enable.",
+      },
+      { status: 404 },
+    );
+  }
+
   const snapshot = {
     tenantId: "demo",
     generatedAt: new Date().toISOString(),
+    _warning: "This is mock data for demonstration purposes only",
     frameworkSummary: [
-      {
-        framework: "SOC2",
-        coveragePercent: 52,
-        passing: 120,
-        failing: 30,
-        total: 200,
-      },
-      {
-        framework: "ISO27001",
-        coveragePercent: 41,
-        passing: 80,
-        failing: 40,
-        total: 160,
-      },
-      {
-        framework: "NIST CSF",
-        coveragePercent: 55,
-        passing: 120,
-        failing: 96,
-        total: 216,
-      },
+      { framework: "SOC2", coveragePercent: 52, passing: 120, failing: 30, total: 200 },
+      { framework: "ISO27001", coveragePercent: 41, passing: 80, failing: 40, total: 160 },
+      { framework: "NIST CSF", coveragePercent: 55, passing: 120, failing: 96, total: 216 },
     ],
     risks: [
       {
@@ -35,7 +37,6 @@ export const GET: RequestHandler = async () => {
         likelihood: 4,
         impact: 4,
         score: 16,
-        owner: "ops@atlasit.local",
       },
       {
         id: "R2",
@@ -52,43 +53,9 @@ export const GET: RequestHandler = async () => {
         likelihood: 5,
         impact: 4,
         score: 20,
-        owner: "security@atlasit.local",
-      },
-    ],
-    policies: [
-      {
-        id: "P1",
-        name: "SOC 2 Access Control Policy",
-        status: "approved",
-        updated: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        id: "P2",
-        name: "ISO 27001 ISMS Policy",
-        status: "approved",
-        updated: new Date(Date.now() - 86400000 * 3).toISOString(),
-      },
-      {
-        id: "P3",
-        name: "NIST CSF Policy",
-        status: "draft",
-        updated: new Date().toISOString(),
-      },
-      {
-        id: "P4",
-        name: "HIPAA Security Rule Policy",
-        status: "draft",
-        updated: new Date().toISOString(),
-      },
-      {
-        id: "P5",
-        name: "Data Protection & Privacy Policy",
-        status: "approved",
-        updated: new Date(Date.now() - 86400000 * 7).toISOString(),
       },
     ],
   };
-  return new Response(JSON.stringify(snapshot), {
-    headers: { "Content-Type": "application/json" },
-  });
+
+  return json(snapshot);
 };

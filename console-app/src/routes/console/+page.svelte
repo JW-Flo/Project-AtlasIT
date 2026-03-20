@@ -30,6 +30,7 @@
     ShieldCheck,
     Link,
     Sparkles,
+    Activity,
   } from "lucide-svelte";
 
   interface ComplianceScore {
@@ -59,6 +60,17 @@
     completedAt: string | null;
   }
 
+  interface EvidenceWaterfallItem {
+    id: string;
+    framework: string;
+    controlId: string;
+    impact: "positive" | "detrimental" | "neutral";
+    eventType: string;
+    source: string;
+    actor: string;
+    createdAt: string;
+  }
+
   let loading = true;
   let error: string | null = null;
   let session: any = null;
@@ -69,6 +81,8 @@
   let activeAccessReviews = 0;
   let openIncidents = 0;
   let recentAutomationRuns: AutomationExecution[] = [];
+  let evidenceWaterfall: EvidenceWaterfallItem[] = [];
+  let evidenceWaterfallTotal = 0;
 
   let platformData: {
     tenants: { total: number; active: number; disabled: number };
@@ -189,13 +203,15 @@
         return;
       }
 
-      const [tenantRes, scoresRes, reviewsRes, incidentsRes, runsRes] =
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [tenantRes, scoresRes, reviewsRes, incidentsRes, runsRes, evidenceRes] =
         await Promise.all([
           fetch("/api/tenant/dashboard"),
           fetch("/api/tenant-compliance/scores"),
           fetch("/api/access-reviews"),
           fetch("/api/incidents"),
           fetch("/api/automation/executions?limit=5"),
+          fetch(`/api/evidence-feed?limit=8&since=${encodeURIComponent(since)}`),
         ]);
 
       if (!tenantRes.ok) {
@@ -248,6 +264,15 @@
           : [];
       } else {
         recentAutomationRuns = [];
+      }
+
+      if (evidenceRes.ok) {
+        const evidenceData = await evidenceRes.json();
+        evidenceWaterfall = Array.isArray(evidenceData?.feed) ? evidenceData.feed : [];
+        evidenceWaterfallTotal = evidenceData?.summary?.totalEvidence ?? 0;
+      } else {
+        evidenceWaterfall = [];
+        evidenceWaterfallTotal = 0;
       }
     } catch (e: any) {
       error = e?.message || "Failed to load dashboard";
@@ -598,6 +623,47 @@
           </div>
         {/if}
       </div>
+    {/if}
+
+    <!-- Evidence Waterfall -->
+    {#if evidenceWaterfall.length > 0}
+      <Card>
+        <CardHeader class="flex-row items-center justify-between">
+          <div class="flex items-center gap-2">
+            <Activity class="h-4 w-4 text-primary" />
+            <CardTitle>Live Evidence Stream</CardTitle>
+            <Badge variant="secondary">{evidenceWaterfallTotal} total</Badge>
+          </div>
+          <Button href="/console/compliance/feed" variant="ghost" size="sm">
+            Full feed
+            <ArrowRight class="h-3.5 w-3.5 ml-1" />
+          </Button>
+        </CardHeader>
+        <CardContent class="p-0">
+          <div class="divide-y">
+            {#each evidenceWaterfall as item}
+              <div class="px-5 py-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-2 h-2 rounded-full shrink-0 {item.impact === 'positive' ? 'bg-green-500' : item.impact === 'detrimental' ? 'bg-red-500' : 'bg-gray-400'}"></div>
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium truncate">
+                      {item.eventType || item.source}
+                      <span class="font-normal text-muted-foreground"> → {item.framework} {item.controlId}</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground">{item.actor || "system"} · {item.source}</div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <Badge variant={item.impact === "positive" ? "success" : item.impact === "detrimental" ? "destructive" : "secondary"}>
+                    {item.impact}
+                  </Badge>
+                  <span class="text-[11px] text-muted-foreground">{new Date(item.createdAt).toLocaleTimeString()}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
     {/if}
 
     <!-- Pending suggestions CTA -->
