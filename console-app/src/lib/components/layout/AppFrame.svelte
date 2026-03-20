@@ -29,6 +29,7 @@
     ChevronDown,
     Activity,
     FileText,
+    ClipboardCheck,
     Zap,
   } from "lucide-svelte";
 
@@ -71,10 +72,11 @@
     {
       title: "Operations",
       items: [
+        { href: "/console/access-reviews", label: "Access Reviews", icon: ClipboardCheck },
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
         { href: "/console/automation/runs", label: "Automation Runs", icon: Workflow },
         { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
-        { href: "/incidents", label: "Incidents", icon: AlertTriangle },
+        { href: "/console/incidents", label: "Incidents", icon: AlertTriangle },
         { href: "/console/policies", label: "Policy Generator", icon: FileText },
       ],
     },
