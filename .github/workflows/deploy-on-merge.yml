@@ -50,6 +50,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install core-api deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: core-api
       - name: Deploy
         run: npx wrangler deploy --config core-api/wrangler.toml --env production
 
