@@ -53,12 +53,32 @@ jobs:
       - name: Install core-api deps
         run: pnpm install --no-frozen-lockfile
         working-directory: core-api
-      - name: Verify esbuild binary
-        run: node -e "require('esbuild').build({stdin:{contents:'export default{}',loader:'ts'},write:false}).then(r=>console.log('esbuild ok, output bytes:',r.outputFiles[0].contents.length))"
+      - name: Pre-bundle test
+        run: |
+          node -e "
+            require('esbuild').build({
+              entryPoints: ['core-api/src/index.ts'],
+              bundle: true,
+              format: 'esm',
+              platform: 'browser',
+              target: 'esnext',
+              write: false,
+              external: ['node:*', '__STATIC_CONTENT_MANIFEST'],
+              conditions: ['workerd', 'worker', 'browser'],
+            }).then(r => {
+              console.log('pre-bundle ok, bytes:', r.outputFiles[0].contents.length);
+              console.log('warnings:', r.warnings.length);
+              console.log('errors:', r.errors.length);
+            }).catch(e => {
+              console.error('pre-bundle FAILED:', e.message);
+              if (e.errors) e.errors.forEach(err => console.error(err));
+              process.exit(1);
+            });
+          "
       - name: Deploy
         run: npx wrangler deploy --config core-api/wrangler.toml --env production
         env:
-          WRANGLER_LOG: debug
+          NODE_OPTIONS: --max-old-space-size=4096
 
   deploy-orchestrator:
     name: Deploy ai-orchestrator
@@ -82,14 +102,34 @@ jobs:
       - name: Install ai-orchestrator deps
         run: pnpm install --no-frozen-lockfile
         working-directory: ai-orchestrator
-      - name: Verify esbuild binary
-        run: node -e "require('esbuild').build({stdin:{contents:'export default{}',loader:'ts'},write:false}).then(r=>console.log('esbuild ok, output bytes:',r.outputFiles[0].contents.length))"
+      - name: Pre-bundle test
+        run: |
+          node -e "
+            require('esbuild').build({
+              entryPoints: ['ai-orchestrator/src/index.ts'],
+              bundle: true,
+              format: 'esm',
+              platform: 'browser',
+              target: 'esnext',
+              write: false,
+              external: ['node:*', 'cloudflare:*', '__STATIC_CONTENT_MANIFEST'],
+              conditions: ['workerd', 'worker', 'browser'],
+            }).then(r => {
+              console.log('pre-bundle ok, bytes:', r.outputFiles[0].contents.length);
+              console.log('warnings:', r.warnings.length);
+              console.log('errors:', r.errors.length);
+            }).catch(e => {
+              console.error('pre-bundle FAILED:', e.message);
+              if (e.errors) e.errors.forEach(err => console.error(err));
+              process.exit(1);
+            });
+          "
       - name: Ensure queue exists
         run: npx wrangler queues create atlasit-step-tasks || true
       - name: Deploy
         run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
         env:
-          WRANGLER_LOG: debug
+          NODE_OPTIONS: --max-old-space-size=4096
       - name: Smoke test
     
         run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
