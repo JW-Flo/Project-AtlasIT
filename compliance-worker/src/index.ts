@@ -413,29 +413,78 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     if (!tenantId) {
       return errorResponse(400, requestId, headers, "tenant_id required");
     }
+    // Read from shared DB (compliance_evidence) — the canonical evidence table
+    // written by automation-evaluator, ai-orchestrator cron, and manual uploads.
+    const sharedDb = env.ATLAS_SHARED_DB;
     const db = resolveD1(env);
-    if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
-    await ensureSchema(env);
+    const primaryDb = sharedDb || db;
+    if (!primaryDb) return errorResponse(503, requestId, headers, "Store unavailable");
+    if (db) await ensureSchema(env);
 
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 200);
     const cursorParam = url.searchParams.get("cursor");
-    const conditions: string[] = ["tenant_id = ?"];
-    const bindings: (string | number)[] = [tenantId];
-
-    if (cursorParam) {
-      const cursor = Number(cursorParam);
-      if (!Number.isFinite(cursor) || cursor <= 0) {
-        return errorResponse(400, requestId, headers, "Invalid cursor");
-      }
-      conditions.push("id < ?");
-      bindings.push(cursor);
-    }
-
-    const where = conditions.join(" AND ");
-    const fetchLimit = limit + 1;
 
     try {
-      const { results: rows } = await db
+      // Query compliance_evidence from shared DB when available
+      if (sharedDb) {
+        const conditions: string[] = ["tenant_id = ?"];
+        const bindings: (string | number)[] = [tenantId];
+
+        if (cursorParam) {
+          conditions.push("created_at < ?");
+          bindings.push(cursorParam);
+        }
+
+        const where = conditions.join(" AND ");
+        const fetchLimit = limit + 1;
+
+        const { results: rows } = await sharedDb
+          .prepare(
+            `SELECT id, tenant_id, framework, control_id, control_name,
+                    evidence_type, source, source_id, actor, subject, metadata, created_at
+             FROM compliance_evidence WHERE ${where}
+             ORDER BY created_at DESC LIMIT ?`,
+          )
+          .bind(...bindings, fetchLimit)
+          .all();
+
+        const results = rows ?? [];
+        const hasNext = results.length > limit;
+        const sliced = hasNext ? results.slice(0, limit) : results;
+        const items = sliced.map((row: any) => ({
+          id: String(row.id),
+          hash: row.source_id || row.id,
+          tenantId: String(row.tenant_id),
+          pack: row.evidence_type || row.source || "manual",
+          subject: row.subject ?? row.actor ?? null,
+          createdAt: String(row.created_at),
+          linkedControl: row.control_id || null,
+          framework: row.framework || null,
+          controlName: row.control_name || null,
+          source: row.source || "manual",
+        }));
+        const nextCursor = hasNext ? String((sliced[sliced.length - 1] as any).created_at) : null;
+
+        return jsonResponse({ items, nextCursor, count: items.length }, 200, headers);
+      }
+
+      // Fallback: read from legacy evidence_index in D1_COMPLIANCE
+      const conditions: string[] = ["tenant_id = ?"];
+      const bindings: (string | number)[] = [tenantId];
+
+      if (cursorParam) {
+        const cursor = Number(cursorParam);
+        if (!Number.isFinite(cursor) || cursor <= 0) {
+          return errorResponse(400, requestId, headers, "Invalid cursor");
+        }
+        conditions.push("id < ?");
+        bindings.push(cursor);
+      }
+
+      const where = conditions.join(" AND ");
+      const fetchLimit = limit + 1;
+
+      const { results: rows } = await primaryDb
         .prepare(
           `SELECT id, hash, tenant_id, pack, subject_ref, created_at
            FROM evidence_index WHERE ${where} ORDER BY id DESC LIMIT ?`,
@@ -470,10 +519,10 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     return handleEvidenceIngest(request, env, requestId, headers);
   }
 
-  // POST /api/v1/evidence/:id/link
-  const evidenceLinkMatch = url.pathname.match(/^\/api\/v1\/evidence\/(\d+)\/link$/);
+  // POST /api/v1/evidence/:id/link — supports both numeric (legacy) and UUID (shared DB) IDs
+  const evidenceLinkMatch = url.pathname.match(/^\/api\/v1\/evidence\/([^/]+)\/link$/);
   if (evidenceLinkMatch && method === "POST") {
-    const evidenceId = Number(evidenceLinkMatch[1]);
+    const evidenceIdParam = evidenceLinkMatch[1];
 
     let body: any;
     try {
@@ -492,60 +541,125 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
       return errorResponse(400, requestId, headers, "tenant_id required");
     }
 
+    // Try shared DB first (compliance_evidence), then fall back to legacy evidence_index
+    const sharedDb = env.ATLAS_SHARED_DB;
     const db = resolveD1(env);
-    if (!db) return errorResponse(503, requestId, headers, "Store unavailable");
-    await ensureSchema(env);
+    if (!sharedDb && !db) return errorResponse(503, requestId, headers, "Store unavailable");
+    if (db) await ensureSchema(env);
 
-    const evidence = await db
-      .prepare("SELECT hash, tenant_id FROM evidence_index WHERE id = ? LIMIT 1")
-      .bind(evidenceId)
-      .first<{ hash: string; tenant_id: string }>();
+    // Parse control_id from controlKey (e.g. "SOC2_CC6.1" → framework="SOC2", control_id="CC6.1")
+    const keyParts = controlKey.split("_");
+    const framework = keyParts.length > 1 ? keyParts[0] : null;
+    const controlId = keyParts.length > 1 ? keyParts.slice(1).join("_") : controlKey;
 
-    if (!evidence) {
-      return errorResponse(404, requestId, headers, "Evidence not found");
+    // Try updating in shared compliance_evidence table
+    if (sharedDb) {
+      try {
+        const evidence = await sharedDb
+          .prepare("SELECT id, tenant_id FROM compliance_evidence WHERE id = ? LIMIT 1")
+          .bind(evidenceIdParam)
+          .first<{ id: string; tenant_id: string }>();
+
+        if (evidence) {
+          if (evidence.tenant_id !== resolvedTenantId) {
+            return errorResponse(403, requestId, headers, "Evidence not available for tenant");
+          }
+
+          await sharedDb
+            .prepare(
+              `UPDATE compliance_evidence SET control_id = ?, framework = ?
+               WHERE id = ? AND tenant_id = ?`,
+            )
+            .bind(controlId, framework, evidenceIdParam, resolvedTenantId)
+            .run();
+
+          log("info", "evidence.v1.link", {
+            requestId,
+            tenantId: resolvedTenantId,
+            evidenceId: evidenceIdParam,
+            controlKey,
+          });
+
+          return jsonResponse(
+            {
+              evidenceId: evidenceIdParam,
+              controlKey,
+              linked: true,
+              createdAt: new Date().toISOString(),
+            },
+            200,
+            headers,
+          );
+        }
+      } catch (err) {
+        log("warn", "evidence.v1.link.shared_db.error", {
+          requestId,
+          error: (err as Error).message,
+        });
+        // Fall through to legacy path
+      }
     }
-    if (evidence.tenant_id !== resolvedTenantId) {
-      return errorResponse(403, requestId, headers, "Evidence not available for tenant");
-    }
 
-    try {
-      const result = await manualControlEvidenceLink(db, {
-        tenantId: resolvedTenantId,
-        controlKey,
-        evidenceHash: evidence.hash,
-      });
+    // Legacy path: lookup in evidence_index
+    if (db) {
+      const evidenceId = Number(evidenceIdParam);
+      if (!Number.isFinite(evidenceId)) {
+        return errorResponse(404, requestId, headers, "Evidence not found");
+      }
 
-      log("info", "evidence.v1.link", {
-        requestId,
-        tenantId: resolvedTenantId,
-        evidenceId,
-        controlKey,
-      });
+      const evidence = await db
+        .prepare("SELECT hash, tenant_id FROM evidence_index WHERE id = ? LIMIT 1")
+        .bind(evidenceId)
+        .first<{ hash: string; tenant_id: string }>();
 
-      return jsonResponse(
-        {
-          evidenceId,
+      if (!evidence) {
+        return errorResponse(404, requestId, headers, "Evidence not found");
+      }
+      if (evidence.tenant_id !== resolvedTenantId) {
+        return errorResponse(403, requestId, headers, "Evidence not available for tenant");
+      }
+
+      try {
+        const result = await manualControlEvidenceLink(db, {
+          tenantId: resolvedTenantId,
           controlKey,
           evidenceHash: evidence.hash,
-          linked: true,
-          createdAt: result.createdAt,
-        },
-        result.created ? 201 : 200,
-        headers,
-      );
-    } catch (err) {
-      if (err instanceof Error) {
-        if (err.message === "control.not_found")
-          return errorResponse(404, requestId, headers, "Control not found");
-        if (err.message === "evidence.not_found")
-          return errorResponse(404, requestId, headers, "Evidence not found");
+        });
+
+        log("info", "evidence.v1.link", {
+          requestId,
+          tenantId: resolvedTenantId,
+          evidenceId,
+          controlKey,
+        });
+
+        return jsonResponse(
+          {
+            evidenceId,
+            controlKey,
+            evidenceHash: evidence.hash,
+            linked: true,
+            createdAt: result.createdAt,
+          },
+          result.created ? 201 : 200,
+          headers,
+        );
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.message === "control.not_found")
+            return errorResponse(404, requestId, headers, "Control not found");
+          if (err.message === "evidence.not_found")
+            return errorResponse(404, requestId, headers, "Evidence not found");
+        }
+        log("error", "evidence.v1.link.error", {
+          requestId,
+          error: (err as Error).message,
+        });
+        return errorResponse(500, requestId, headers, "Failed to link evidence");
       }
-      log("error", "evidence.v1.link.error", {
-        requestId,
-        error: (err as Error).message,
-      });
-      return errorResponse(500, requestId, headers, "Failed to link evidence");
     }
+
+    return errorResponse(404, requestId, headers, "Evidence not found");
   }
 
   // POST /api/v1/evidence/collect — pull evidence from connected adapters
@@ -2704,6 +2818,39 @@ async function handleEvidenceIngest(
       error: (e as Error).message,
     });
     return errorResponse(500, requestId, headers, "Failed to index evidence");
+  }
+
+  // Dual-write to shared compliance_evidence table so the unified evidence
+  // feed and Evidence Locker UI can display manually-uploaded evidence.
+  if (env.ATLAS_SHARED_DB) {
+    try {
+      const evidenceId = crypto.randomUUID();
+      await env.ATLAS_SHARED_DB.prepare(
+        `INSERT OR IGNORE INTO compliance_evidence
+           (id, tenant_id, framework, control_id, evidence_type, source, source_id,
+            actor, subject, metadata, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      )
+        .bind(
+          evidenceId,
+          tenantId,
+          null, // framework — unknown for manual uploads
+          "MANUAL", // control_id placeholder
+          pack, // evidence_type
+          "manual", // source
+          hash, // source_id = content hash
+          subject, // actor
+          subject, // subject
+          JSON.stringify({ description: "Manual evidence upload", hash }),
+        )
+        .run();
+    } catch (e) {
+      log("warn", "evidence.shared_db.write.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      // Non-fatal: legacy index already written
+    }
   }
 
   try {

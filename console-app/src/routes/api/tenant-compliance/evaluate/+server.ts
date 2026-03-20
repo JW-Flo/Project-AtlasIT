@@ -1,9 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import {
-  FRAMEWORK_CONTROLS,
-  type Control,
-} from "$lib/compliance/framework-controls";
+import { FRAMEWORK_CONTROLS, type Control } from "$lib/compliance/framework-controls";
 
 /**
  * Evaluates the tenant's actual configuration against their selected
@@ -25,8 +22,25 @@ interface EvaluationResult {
   autoApplied: boolean;
 }
 
-async function evaluateTenantState(db: any, tenantId: string) {
-  const state: Record<string, boolean> = {
+interface TenantState {
+  /** Boolean evaluation keys used by framework control evaluationKey */
+  flags: Record<string, boolean>;
+  /** Count of connected apps */
+  connectedAppCount: number;
+  /** Connected app IDs */
+  connectedApps: string[];
+  /** Count of directory users synced */
+  directoryUserCount: number;
+  /** Active automation rules count */
+  automationRuleCount: number;
+  /** Evidence collected per control_id */
+  evidenceByControl: Record<string, number>;
+  /** Total evidence count */
+  totalEvidenceCount: number;
+}
+
+async function evaluateTenantState(db: any, tenantId: string): Promise<TenantState> {
+  const flags: Record<string, boolean> = {
     directory_connected: false,
     apps_connected: false,
     incidents_configured: false,
@@ -34,72 +48,118 @@ async function evaluateTenantState(db: any, tenantId: string) {
     workflows_configured: false,
   };
 
-  // Check directory connection
-  try {
-    const dir = await db
+  let connectedAppCount = 0;
+  let connectedApps: string[] = [];
+  let directoryUserCount = 0;
+  let automationRuleCount = 0;
+  const evidenceByControl: Record<string, number> = {};
+  let totalEvidenceCount = 0;
+
+  // Run all checks in parallel for speed
+  const results = await Promise.allSettled([
+    // Check directory connection
+    db
       .prepare(
         "SELECT status FROM directory_connections WHERE tenant_id = ? AND status = 'active' LIMIT 1",
       )
       .bind(tenantId)
-      .first();
-    state.directory_connected = !!dir;
-  } catch {
-    /* table may not exist */
-  }
+      .first(),
 
-  // Check connected apps
-  try {
-    const apps = await db
-      .prepare(
-        "SELECT COUNT(*) as count FROM app_credentials WHERE tenant_id = ?",
-      )
-      .bind(tenantId)
-      .first();
-    state.apps_connected = (apps?.count || 0) > 0;
-  } catch {
-    /* table may not exist */
-  }
+    // Check connected apps (with IDs)
+    db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
 
-  // Check incidents (proxy for incident response config)
-  try {
-    const incidents = await db
+    // Check incidents
+    db
       .prepare("SELECT COUNT(*) as count FROM incidents WHERE tenant_id = ?")
       .bind(tenantId)
-      .first();
-    // Even having the table means it's configured; having data means active use
-    state.incidents_configured = true;
-  } catch {
-    state.incidents_configured = false;
-  }
+      .first(),
 
-  // Check policies generated
-  try {
-    const row = await db
+    // Check policies
+    db
       .prepare(
         "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'generated_policies'",
       )
       .bind(tenantId)
-      .first();
-    if (row?.value) {
-      const policies = JSON.parse(row.value as string);
-      state.policies_generated = Array.isArray(policies) && policies.length > 0;
-    }
-  } catch {
-    /* no policies */
-  }
+      .first(),
 
-  // Check workflows
-  try {
-    const wf = await db
+    // Check workflows
+    db
       .prepare("SELECT COUNT(*) as count FROM workflows WHERE tenant_id = ?")
       .bind(tenantId)
-      .first();
-    state.workflows_configured = (wf?.count || 0) > 0;
-  } catch {
-    state.workflows_configured = false;
+      .first(),
+
+    // Check directory user count
+    db
+      .prepare("SELECT COUNT(*) as count FROM directory_users WHERE tenant_id = ?")
+      .bind(tenantId)
+      .first(),
+
+    // Check automation rules
+    db
+      .prepare("SELECT COUNT(*) as count FROM automation_rules WHERE tenant_id = ? AND enabled = 1")
+      .bind(tenantId)
+      .first(),
+
+    // Check evidence per control
+    db
+      .prepare(
+        "SELECT control_id, COUNT(*) as count FROM compliance_evidence WHERE tenant_id = ? GROUP BY control_id",
+      )
+      .bind(tenantId)
+      .all(),
+  ]);
+
+  // Process results safely
+  if (results[0].status === "fulfilled") flags.directory_connected = !!results[0].value;
+
+  if (results[1].status === "fulfilled") {
+    const rows = results[1].value?.results || [];
+    connectedApps = rows.map((r: any) => r.app_id as string);
+    connectedAppCount = connectedApps.length;
+    flags.apps_connected = connectedAppCount > 0;
   }
 
-  return state;
+  if (results[2].status === "fulfilled") flags.incidents_configured = true;
+  else flags.incidents_configured = false;
+
+  if (results[3].status === "fulfilled" && results[3].value?.value) {
+    try {
+      const policies = JSON.parse(results[3].value.value as string);
+      flags.policies_generated = Array.isArray(policies) && policies.length > 0;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (results[4].status === "fulfilled") {
+    flags.workflows_configured = (results[4].value?.count || 0) > 0;
+  }
+
+  if (results[5].status === "fulfilled") {
+    directoryUserCount = results[5].value?.count || 0;
+  }
+
+  if (results[6].status === "fulfilled") {
+    automationRuleCount = results[6].value?.count || 0;
+  }
+
+  if (results[7].status === "fulfilled") {
+    const rows = results[7].value?.results || [];
+    for (const row of rows as any[]) {
+      evidenceByControl[row.control_id] = row.count;
+      totalEvidenceCount += row.count;
+    }
+  }
+
+  return {
+    flags,
+    connectedAppCount,
+    connectedApps,
+    directoryUserCount,
+    automationRuleCount,
+    evidenceByControl,
+    totalEvidenceCount,
+  };
 }
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
@@ -117,9 +177,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   let frameworks: string[] = [];
   try {
     const row = await db
-      .prepare(
-        "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
-      )
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'")
       .bind(tenantId)
       .first();
     if (row?.value) frameworks = JSON.parse(row.value as string);
@@ -147,6 +205,9 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const results: EvaluationResult[] = [];
   let updated = false;
 
+  // Map control IDs to their compliance_evidence control_id patterns for evidence matching
+  const controlIdNormalizers: Record<string, string[]> = {};
+
   for (const control of controls) {
     // Find the framework definition to check evaluationKey
     const defs = FRAMEWORK_CONTROLS[control.framework];
@@ -156,26 +217,68 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
         `${control.framework.toLowerCase().replace(/\s+/g, "_")}_${d.name.toLowerCase().replace(/\s+/g, "_")}` ===
         control.id,
     );
-    if (!def?.evaluationKey) continue;
 
-    const met = tenantState[def.evaluationKey] ?? false;
+    // Build list of evidence control_id patterns that map to this control
+    // Evidence may use formats like "CC6.1", "A.9.2.6", or the full control.id
+    const evidenceKeys: string[] = [control.id];
+    if (def) {
+      evidenceKeys.push(def.name);
+    }
+    controlIdNormalizers[control.id] = evidenceKeys;
 
-    if (met && control.status === "not_started") {
-      // Auto-promote to in_progress if tenant has the prerequisite configured
+    // Check evidence count for this control (match any known key pattern)
+    let evidenceCount = 0;
+    for (const key of evidenceKeys) {
+      evidenceCount += tenantState.evidenceByControl[key] || 0;
+    }
+    // Also check MANUAL evidence that may not be linked to a specific control
+    evidenceCount += tenantState.evidenceByControl["MANUAL"] || 0;
+
+    // Determine promotion based on both configuration state and evidence
+    const flagMet = def?.evaluationKey ? (tenantState.flags[def.evaluationKey] ?? false) : false;
+    const hasEvidence = evidenceCount > 0;
+
+    if (
+      flagMet &&
+      hasEvidence &&
+      (control.status === "not_started" || control.status === "in_progress")
+    ) {
+      // Strong signal: both config and evidence exist → promote to implemented
+      control.status = "implemented";
+      updated = true;
+      results.push({
+        controlId: control.id,
+        suggestedStatus: "implemented",
+        reason: `Configuration verified (${def?.evaluationKey?.replace(/_/g, " ")}) with ${evidenceCount} evidence item(s)`,
+        autoApplied: true,
+      });
+    } else if (flagMet && control.status === "not_started") {
+      // Config present but no evidence yet → in_progress
       control.status = "in_progress";
       updated = true;
       results.push({
         controlId: control.id,
         suggestedStatus: "in_progress",
-        reason: `Tenant has ${def.evaluationKey.replace(/_/g, " ")}`,
+        reason: `Tenant has ${def?.evaluationKey?.replace(/_/g, " ")}`,
         autoApplied: true,
       });
-    } else if (!met && control.status !== "not_started") {
-      // Don't downgrade — just note the gap
+    } else if (hasEvidence && control.status === "not_started") {
+      // Evidence exists but config not detected → in_progress
+      control.status = "in_progress";
+      updated = true;
       results.push({
         controlId: control.id,
-        suggestedStatus: control.status,
-        reason: `${def.evaluationKey.replace(/_/g, " ")} not yet configured`,
+        suggestedStatus: "in_progress",
+        reason: `${evidenceCount} evidence item(s) collected for this control`,
+        autoApplied: true,
+      });
+    } else if (!flagMet && !hasEvidence && control.status === "not_started") {
+      results.push({
+        controlId: control.id,
+        suggestedStatus: "not_started",
+        reason: def?.evaluationKey
+          ? `${def.evaluationKey.replace(/_/g, " ")} not yet configured; no evidence collected`
+          : "No evidence collected",
         autoApplied: false,
       });
     }
@@ -194,7 +297,14 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   return json({
     success: true,
-    tenantState,
+    tenantState: {
+      ...tenantState.flags,
+      connectedAppCount: tenantState.connectedAppCount,
+      connectedApps: tenantState.connectedApps,
+      directoryUserCount: tenantState.directoryUserCount,
+      automationRuleCount: tenantState.automationRuleCount,
+      totalEvidenceCount: tenantState.totalEvidenceCount,
+    },
     evaluations: results,
     controlsUpdated: updated,
     frameworks,
