@@ -173,11 +173,11 @@ fi
 if [ -n "$EXTRA_PROBE_PATH" ]; then
   EXTRA_URL="${BASE_URL}${EXTRA_PROBE_PATH}"
   section "Secondary probe (informational): $EXTRA_URL"
-  local -a auth_headers=()
+  AUTH_HEADERS=()
   if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
-    auth_headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
+    AUTH_HEADERS=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
   fi
-  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$EXTRA_URL" 2>/dev/null || echo "000")
+  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${AUTH_HEADERS[@]}" "$EXTRA_URL" 2>/dev/null || echo "000")
   if [ "$extra_code" = "200" ]; then
     pass "Secondary probe returned HTTP 200"
   elif [ "$extra_code" = "000" ]; then

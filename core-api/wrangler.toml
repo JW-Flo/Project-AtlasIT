@@ -36,6 +36,9 @@ ENVIRONMENT = "staging"
 
 [env.production]
 name = "atlasit-core-api"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
 routes = ["api.atlasit.pro/api/*", "api.atlasit.pro/health"]
 
 [[env.production.d1_databases]]

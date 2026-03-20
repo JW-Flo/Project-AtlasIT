@@ -53,8 +53,12 @@ jobs:
       - name: Install core-api deps
         run: pnpm install --no-frozen-lockfile
         working-directory: core-api
+      - name: Verify esbuild binary
+        run: node -e "require('esbuild').build({stdin:{contents:'export default{}',loader:'ts'},write:false}).then(r=>console.log('esbuild ok, output bytes:',r.outputFiles[0].contents.length))"
       - name: Deploy
-        run: npx wrangler deploy --config core-api/wrangler.toml --env production
+        run: npx wrangler deploy --config core-api/wrangler.toml --env production --log-level debug
+        env:
+          ESBUILD_LOG: verbose
 
   deploy-orchestrator:
     name: Deploy ai-orchestrator
@@ -78,10 +82,14 @@ jobs:
       - name: Install ai-orchestrator deps
         run: pnpm install --no-frozen-lockfile
         working-directory: ai-orchestrator
+      - name: Verify esbuild binary
+        run: node -e "require('esbuild').build({stdin:{contents:'export default{}',loader:'ts'},write:false}).then(r=>console.log('esbuild ok, output bytes:',r.outputFiles[0].contents.length))"
       - name: Ensure queue exists
         run: npx wrangler queues create atlasit-step-tasks || true
       - name: Deploy
-        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
+        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml --log-level debug
+        env:
+          ESBUILD_LOG: verbose
       - name: Smoke test
     
         run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
