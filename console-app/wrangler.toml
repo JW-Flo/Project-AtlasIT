@@ -1,6 +1,6 @@
 name = "atlasit-console"
 account_id = "620865722bd88ef0a77dbbb60c91392e"
-main = ".svelte-kit/cloudflare/_worker.js"
+main = "src/worker-entry.ts"
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
