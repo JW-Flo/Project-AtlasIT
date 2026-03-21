@@ -27,3 +27,13 @@ export {
   type AdapterEvidenceItem,
   parseControlRef,
 } from "./adapter-collector";
+
+export {
+  lookupAuditEvidence,
+  AUDIT_EVIDENCE_REGISTRY,
+  PLATFORM_STATE_PROBES,
+  type AuditEvidenceMapping,
+  type PlatformStateProbe,
+} from "./platform-evidence";
+
+export { collectPlatformStateEvidence, type StateEvidenceResult } from "./platform-state-collector";
