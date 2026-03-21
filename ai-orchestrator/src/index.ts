@@ -15,7 +15,11 @@ import { evaluateAutomationRules, type ActionContext } from "./lib/automation-ev
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
-import { collectAllAdapterEvidence, parseControlRef } from "@atlasit/shared";
+import {
+  collectAllAdapterEvidence,
+  parseControlRef,
+  collectPlatformStateEvidence,
+} from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -270,6 +274,28 @@ const worker = {
       for (const r of collectSettled) {
         if (r.status === "fulfilled") evidenceCollected += r.value;
       }
+    }
+
+    // ── Duty 2b: Platform state evidence collection ────────────────────────
+    //    Scan D1 tables for structural compliance evidence (RBAC configured,
+    //    audit logging active, etc.) that demonstrates platform controls.
+    let platformEvidenceCollected = 0;
+    {
+      const { results: tenantRows } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const stateSettled = await Promise.allSettled(
+        (tenantRows ?? []).map(async (row) => {
+          const { evidenceWritten } = await collectPlatformStateEvidence(sharedDb, row.id);
+          return evidenceWritten;
+        }),
+      );
+
+      for (const r of stateSettled) {
+        if (r.status === "fulfilled") platformEvidenceCollected += r.value;
+      }
+      evidenceCollected += platformEvidenceCollected;
     }
 
     // ── Duty 3: Trigger score recalculation after evidence collection ──────
