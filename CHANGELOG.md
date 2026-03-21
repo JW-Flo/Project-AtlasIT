@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file. The format 
 
 ### Added / Hardened
 
+- `parseControlRef()` utility for robust control reference parsing — fixes bug where ISO-27001 and NIST-CSF adapter evidence was silently stored with wrong framework/controlId values due to naïve `indexOf("-")` split (`packages/shared/src/evidence/adapter-collector.ts`)
+- Adapter pass/fail status now affects compliance scoring — controls with failing adapter evidence (e.g. MFA not enforced) are capped at `in_progress` instead of being promoted to `implemented` by recency alone (`compliance-worker/src/modules/policies/cdt-rules.ts`)
+- Score recalculation trigger after scheduled evidence collection — scores refresh automatically when new adapter evidence is ingested (`ai-orchestrator/src/index.ts`)
+- Daily comprehensive compliance re-evaluation cron (`0 2 * * *`) evaluates all frameworks for all tenants (`ai-orchestrator/wrangler.toml`)
+- Evidence coverage indicators in compliance dashboard — controls tab shows per-control evidence count badges, aggregate coverage summary, and "Gap" indicators for controls lacking evidence (`console-app compliance page`)
 - Enhanced policy template value sanitization: line ending normalization, length cap (5000 chars + ellipsis), added escaping for backticks and backslashes to reduce injection / template breakout risk.
 - Access Requests frontend page `/access-requests` (now under `console-app`) with create + approve/deny/fulfill workflow, pagination, status filtering, optimistic transitions & toasts.
 - Incidents frontend page `/incidents` (console-app) with create + resolve workflow, severity & status display, pagination (cursor-based).
