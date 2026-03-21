@@ -5046,6 +5046,223 @@ var SecurityHeadersConfigSchema = external_exports.object({
 var HKDF_SALT = new TextEncoder().encode("atlasit-credential-vault-v1");
 var HKDF_INFO = new TextEncoder().encode("credential-encryption");
 
+// ../packages/shared/src/evidence/platform-evidence.ts
+var AUDIT_EVIDENCE_REGISTRY = [
+  // ── Access Management ───────────────────────────────────────────────
+  {
+    action: "access_request.created",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Access request submitted through formal workflow",
+    category: "access_grant"
+  },
+  {
+    action: "access_request.approved",
+    controlRefs: [
+      "SOC2-CC6.2",
+      "SOC2-CC6.3",
+      "ISO-27001-A.9.2.2",
+      "NIST-CSF-PR.AC-1",
+      "HIPAA-164.312(a)(1)"
+    ],
+    impact: "positive",
+    description: "Access request approved with authorization",
+    category: "access_grant"
+  },
+  {
+    action: "access_request.denied",
+    controlRefs: ["SOC2-CC6.2", "SOC2-CC6.3", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "Unauthorized access request denied",
+    category: "access_grant"
+  },
+  {
+    action: "access_request.fulfilled",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "Approved access provisioned to user",
+    category: "access_grant"
+  },
+  // ── User Lifecycle ──────────────────────────────────────────────────
+  {
+    action: "user.invited",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "New user invited through managed provisioning",
+    category: "onboarding"
+  },
+  {
+    action: "user.roles_updated",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4", "HIPAA-164.312(a)(1)"],
+    impact: "positive",
+    description: "User role assignment updated",
+    category: "access_grant"
+  },
+  {
+    action: "user.deleted",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.6", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "User account deprovisioned",
+    category: "offboarding"
+  },
+  {
+    action: "user.password_changed",
+    controlRefs: ["SOC2-CC6.1", "ISO-27001-A.9.3.1", "HIPAA-164.312(d)"],
+    impact: "positive",
+    description: "User credential rotated",
+    category: "credential_mgmt"
+  },
+  {
+    action: "user.profile_updated",
+    controlRefs: ["ISO-27001-A.9.2.4"],
+    impact: "neutral",
+    description: "User profile information maintained",
+    category: "identity_mgmt"
+  },
+  // ── Directory & Groups ──────────────────────────────────────────────
+  {
+    action: "directory_group.created",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "RBAC group created for role-based access control",
+    category: "access_grant"
+  },
+  {
+    action: "directory_group.updated",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "Access group configuration updated",
+    category: "access_grant"
+  },
+  {
+    action: "directory_group.deleted",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+    impact: "positive",
+    description: "Unused access group removed",
+    category: "access_revoke"
+  },
+  {
+    action: "group_member.added",
+    controlRefs: ["SOC2-CC6.2", "SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "User assigned to role-based access group",
+    category: "access_grant"
+  },
+  {
+    action: "group_member.removed",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.6", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "User removed from access group",
+    category: "access_revoke"
+  },
+  {
+    action: "mapping.create",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "Group-to-app role mapping configured",
+    category: "access_grant"
+  },
+  // ── Access Reviews ──────────────────────────────────────────────────
+  {
+    action: "access_review.campaign_created",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC4.2", "ISO-27001-A.9.2.5", "HIPAA-164.312(a)(1)"],
+    impact: "positive",
+    description: "Periodic access review campaign initiated",
+    category: "access_review"
+  },
+  {
+    action: "access_review.decision",
+    controlRefs: ["SOC2-CC4.1", "ISO-27001-A.9.2.5", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Access review decision recorded",
+    category: "access_review"
+  },
+  // ── Incidents ───────────────────────────────────────────────────────
+  {
+    action: "incident.created",
+    controlRefs: [
+      "SOC2-CC7.3",
+      "SOC2-CC7.4",
+      "ISO-27001-A.16.1.1",
+      "ISO-27001-A.16.1.2",
+      "NIST-CSF-RS.CO-2"
+    ],
+    impact: "positive",
+    description: "Security incident formally reported",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.updated",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2"],
+    impact: "positive",
+    description: "Incident response action documented",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.resolved",
+    controlRefs: ["SOC2-CC7.4", "SOC2-CC7.5", "ISO-27001-A.16.1.4"],
+    impact: "positive",
+    description: "Incident resolved with documented remediation",
+    category: "incident_mgmt"
+  },
+  // ── App Integrations ────────────────────────────────────────────────
+  {
+    action: "app.connected",
+    controlRefs: ["SOC2-CC6.6", "ISO-27001-A.9.4.1"],
+    impact: "positive",
+    description: "Application integration established",
+    category: "integration_mgmt"
+  },
+  {
+    action: "app.oauth_connected",
+    controlRefs: ["SOC2-CC6.6", "ISO-27001-A.9.4.1"],
+    impact: "positive",
+    description: "OAuth-based application connected",
+    category: "integration_mgmt"
+  },
+  {
+    action: "app.disconnected",
+    controlRefs: ["SOC2-CC6.6", "ISO-27001-A.9.2.6"],
+    impact: "positive",
+    description: "Application integration revoked",
+    category: "access_revoke"
+  },
+  // ── Tenant & Settings ───────────────────────────────────────────────
+  {
+    action: "tenant.settings_updated",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Organizational security settings updated",
+    category: "config_mgmt"
+  },
+  {
+    action: "trust_center_settings.updated",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Trust center transparency settings updated",
+    category: "config_mgmt"
+  },
+  // ── Admin Actions ───────────────────────────────────────────────────
+  {
+    action: "tenant.impersonate",
+    controlRefs: ["SOC2-CC6.8", "ISO-27001-A.9.4.2", "HIPAA-164.312(a)(1)"],
+    impact: "detrimental",
+    description: "Privileged admin impersonation session started",
+    category: "privileged_access"
+  },
+  {
+    action: "tenant.deleted",
+    controlRefs: ["SOC2-CC6.7", "GDPR-Art.5(1)(e)"],
+    impact: "neutral",
+    description: "Tenant data lifecycle event \u2014 deletion",
+    category: "data_lifecycle"
+  }
+];
+var AUDIT_EVIDENCE_INDEX = /* @__PURE__ */ new Map();
+for (const m of AUDIT_EVIDENCE_REGISTRY) {
+  AUDIT_EVIDENCE_INDEX.set(m.action, m);
+}
+
 // dist/onboarding/src/index.js
 var envValidated = false;
 var rateLimits = /* @__PURE__ */ new Map();
