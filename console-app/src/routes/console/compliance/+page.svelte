@@ -84,6 +84,7 @@
   let frameworks: string[] = [];
   let controls: Control[] = [];
   let scores: FrameworkScore[] = [];
+  let evidenceCounts: Record<string, number> = {};
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
   let filterStatus = "all";
@@ -121,6 +122,22 @@
     F: "destructive",
   };
 
+  $: totalEvidenceItems = Object.values(evidenceCounts).reduce((sum, n) => sum + n, 0);
+  $: controlsWithEvidence = Object.keys(evidenceCounts).length;
+  $: evidenceByFramework = (() => {
+    const byFw: Record<string, number> = {};
+    for (const [controlId, count] of Object.entries(evidenceCounts)) {
+      // Derive framework from the control ID prefix pattern
+      let fw = "Other";
+      if (controlId.startsWith("CC") || controlId.startsWith("cc")) fw = "SOC2";
+      else if (controlId.startsWith("A.")) fw = "ISO27001";
+      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.")) fw = "NIST CSF";
+      else if (controlId.startsWith("164.")) fw = "HIPAA";
+      else if (controlId.startsWith("Art.")) fw = "GDPR";
+      byFw[fw] = (byFw[fw] || 0) + count;
+    }
+    return byFw;
+  })();
   $: frameworkSummaries = buildSummaries(frameworks, controls);
   $: filteredControls =
     filterFramework === "all"
@@ -286,6 +303,7 @@
       const data = await controlsRes.json();
       frameworks = data.frameworks || [];
       controls = data.controls || [];
+      evidenceCounts = data.evidenceCounts || {};
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
     } finally {
@@ -966,6 +984,29 @@
     </div>
 
   {:else if activeTab === "controls"}
+    <!-- Evidence coverage summary -->
+    {#if totalEvidenceItems > 0}
+      <div class="mb-4 rounded-lg border bg-card p-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2">
+              <ShieldCheck class="h-4 w-4 text-green-500" />
+              <span class="text-sm font-medium">{controlsWithEvidence} controls with evidence</span>
+            </div>
+            <span class="text-sm text-muted-foreground">{totalEvidenceItems} total evidence items</span>
+            {#each Object.entries(evidenceByFramework) as [fw, count]}
+              <Badge variant="outline">{fw}: {count}</Badge>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {:else}
+      <Alert class="mb-4">
+        <AlertTriangle class="h-4 w-4" />
+        <span class="text-sm">No compliance evidence collected yet. Connect directory sync and adapters to start generating evidence automatically.</span>
+      </Alert>
+    {/if}
+
     <!-- Controls tab -->
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-3">
@@ -1003,6 +1044,7 @@
               <th class="px-4 py-3 font-medium w-[180px]">Control</th>
               <th class="px-4 py-3 font-medium">Description</th>
               <th class="px-4 py-3 font-medium w-[100px]">Framework</th>
+              <th class="px-4 py-3 font-medium w-[80px]">Evidence</th>
               <th class="px-4 py-3 font-medium w-[140px]">Status</th>
               <th class="px-4 py-3 font-medium">Notes</th>
               <th class="px-4 py-3 font-medium w-[80px]">Verify</th>
@@ -1023,6 +1065,14 @@
                 <td class="px-4 py-3 text-muted-foreground text-xs">{control.description || ""}</td>
                 <td class="px-4 py-3">
                   <Badge variant="outline">{control.framework}</Badge>
+                </td>
+                <td class="px-4 py-3">
+                  {@const count = evidenceCounts[control.id] || evidenceCounts[control.name] || 0}
+                  {#if count > 0}
+                    <Badge variant="success">{count}</Badge>
+                  {:else}
+                    <span class="text-xs text-muted-foreground">Gap</span>
+                  {/if}
                 </td>
                 <td class="px-4 py-3" on:click|stopPropagation>
                   <select
@@ -1059,7 +1109,7 @@
               </tr>
               {#if verifyingControlId === control.id}
                 <tr class="bg-green-500/5">
-                  <td colspan="6" class="px-4 py-3">
+                  <td colspan="7" class="px-4 py-3">
                     <div class="flex items-center gap-3">
                       <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
                       <input
@@ -1077,7 +1127,7 @@
               {/if}
               {#if expandedControlId === control.id}
                 <tr class="bg-muted/20">
-                  <td colspan="6" class="px-4 py-3">
+                  <td colspan="7" class="px-4 py-3">
                     {#if controlEvidenceLoading}
                       <div class="text-xs text-muted-foreground py-2">Loading evidence...</div>
                     {:else if controlEvidence.length === 0}

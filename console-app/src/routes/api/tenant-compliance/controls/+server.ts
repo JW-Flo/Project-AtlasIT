@@ -1,9 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import {
-  buildDefaultControls,
-  type Control,
-} from "$lib/compliance/framework-controls";
+import { buildDefaultControls, type Control } from "$lib/compliance/framework-controls";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
@@ -17,9 +14,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   let frameworks: string[] = [];
   try {
     const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
-      )
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
       .bind(user.tenantId)
       .first();
     if (row?.value) {
@@ -53,7 +48,26 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controls = buildDefaultControls(frameworks);
   }
 
-  return json({ frameworks, controls });
+  // Fetch evidence counts per control for coverage indicators
+  const evidenceCounts: Record<string, number> = {};
+  try {
+    const { results: rows } = await db
+      .prepare(
+        `SELECT control_id, COUNT(*) as count
+         FROM compliance_evidence
+         WHERE tenant_id = ?
+         GROUP BY control_id`,
+      )
+      .bind(user.tenantId)
+      .all<{ control_id: string; count: number }>();
+    for (const row of rows ?? []) {
+      evidenceCounts[row.control_id] = row.count;
+    }
+  } catch {
+    // compliance_evidence table may not exist yet — return empty counts
+  }
+
+  return json({ frameworks, controls, evidenceCounts });
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
@@ -72,12 +86,7 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
   }
 
   // Validate each control
-  const validStatuses = [
-    "not_started",
-    "in_progress",
-    "implemented",
-    "verified",
-  ];
+  const validStatuses = ["not_started", "in_progress", "implemented", "verified"];
   for (const c of controls) {
     if (!c.id || !c.framework || !c.name || !validStatuses.includes(c.status)) {
       return json({ error: `Invalid control: ${c.id}` }, { status: 400 });

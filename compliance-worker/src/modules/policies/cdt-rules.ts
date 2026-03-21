@@ -358,6 +358,12 @@ interface VerifiedRow {
   verified_at: string;
 }
 
+interface AdapterEvidenceRow {
+  control_id: string;
+  metadata: string;
+  created_at: string;
+}
+
 /**
  * Evaluate all controls for a tenant against collected evidence.
  *
@@ -378,8 +384,8 @@ export async function evaluateControls(
   const controlIds = controls.map((c) => c.controlId);
   const placeholders = controlIds.map(() => "?").join(",");
 
-  // Fetch evidence stats and verification attestations in parallel
-  const [evidenceResult, verifiedResult] = await Promise.all([
+  // Fetch evidence stats, verification attestations, and adapter pass/fail in parallel
+  const [evidenceResult, verifiedResult, adapterResult] = await Promise.all([
     db
       .prepare(
         `SELECT control_id,
@@ -403,6 +409,17 @@ export async function evaluateControls(
       )
       .bind(tenantId, ...controlIds)
       .all<VerifiedRow>(),
+    // Latest adapter evidence per control — carries pass/fail status from real config checks
+    db
+      .prepare(
+        `SELECT control_id, metadata, MAX(created_at) AS created_at
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND control_id IN (${placeholders})
+           AND evidence_type = 'adapter_pull'
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, ...controlIds)
+      .all<AdapterEvidenceRow>(),
   ]);
 
   // Index evidence by control_id for O(1) lookup
@@ -415,6 +432,19 @@ export async function evaluateControls(
   const verifiedMap = new Map<string, string>();
   for (const row of verifiedResult.results ?? []) {
     verifiedMap.set(row.control_id, row.verified_at);
+  }
+
+  // Index adapter evidence pass/fail status
+  const adapterStatusMap = new Map<string, "pass" | "fail" | "unknown">();
+  for (const row of adapterResult.results ?? []) {
+    try {
+      const meta = JSON.parse(row.metadata);
+      if (meta.status === "pass" || meta.status === "fail") {
+        adapterStatusMap.set(row.control_id, meta.status);
+      }
+    } catch {
+      // Malformed metadata — skip
+    }
   }
 
   const now = Date.now();
@@ -438,9 +468,19 @@ export async function evaluateControls(
       status = "not_started";
     }
 
-    // Promote to verified if there's a recent verification attestation
+    // Cap at in_progress if the latest adapter evidence says the control fails.
+    // Real adapter checks (MFA policy, encryption, branch protection) override
+    // the recency-only heuristic — a control with recent evidence that actually
+    // fails should not be marked "implemented".
+    const adapterStatus = adapterStatusMap.get(control.controlId);
+    if (adapterStatus === "fail" && status === "implemented") {
+      status = "in_progress";
+    }
+
+    // Promote to verified if there's a recent verification attestation.
+    // Verification is an explicit human sign-off and trumps adapter status.
     const verifiedAt = verifiedMap.get(control.controlId);
-    if (verifiedAt && status === "implemented") {
+    if (verifiedAt && (status === "implemented" || status === "in_progress")) {
       const verifiedAgeMs = now - new Date(verifiedAt).getTime();
       if (verifiedAgeMs <= thresholdMs) {
         status = "verified";

@@ -25,6 +25,8 @@ export type Bindings = {
   ADAPTER_URLS?: string;
   /** Base URL of this worker, used for self-referential event bus calls */
   SELF_URL?: string;
+  /** Base URL of the compliance-worker for score recalculation */
+  COMPLIANCE_WORKER_URL?: string;
 };
 
 export type Variables = {
