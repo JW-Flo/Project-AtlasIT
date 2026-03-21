@@ -116,55 +116,69 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   const connectedSet = new Set(connectedApps);
   const now = new Date().toISOString();
-  const suggestions: any[] = [];
+
+  // Collect all candidate suggestions and their prepared statements for batching
+  const candidates: { id: string; groupId: string; groupName: string; appId: string }[] = [];
+  const statements: any[] = [];
 
   for (const group of groups) {
     for (const [pattern, appIds] of GROUP_APP_PATTERNS) {
       if (!pattern.test(group.name)) continue;
 
-      // Only suggest apps that are actually connected
       const matchedApps = appIds.filter((id) => connectedSet.has(id));
 
       for (const appId of matchedApps) {
-        // Skip if mapping already exists
         if (existingMappings.has(`${group.id}:${appId}`)) continue;
 
         const id = crypto.randomUUID();
-        const result = await db
-          .prepare(
-            `INSERT INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'member', 1, ?, ?)
-             ON CONFLICT(tenant_id, group_id, app_id) DO NOTHING`,
-          )
-          .bind(id, tenantId, group.id, appId, now, now)
-          .run();
+        candidates.push({ id, groupId: group.id, groupName: group.name, appId });
+        statements.push(
+          db
+            .prepare(
+              `INSERT INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'member', 1, ?, ?)
+               ON CONFLICT(tenant_id, group_id, app_id) DO NOTHING`,
+            )
+            .bind(id, tenantId, group.id, appId, now, now),
+        );
+      }
+    }
+  }
 
-        if (result?.meta?.changes > 0) {
-          suggestions.push({
-            id,
-            groupId: group.id,
-            groupName: group.name,
-            appId,
-            role: "member",
-            suggested: 1,
-          });
-        }
+  // Batch-execute all inserts in a single D1 round-trip
+  const suggestions: any[] = [];
+  if (statements.length > 0) {
+    const results = await db.batch(statements);
+    for (let i = 0; i < candidates.length; i++) {
+      if (results[i]?.meta?.changes > 0) {
+        suggestions.push({
+          id: candidates[i].id,
+          groupId: candidates[i].groupId,
+          groupName: candidates[i].groupName,
+          appId: candidates[i].appId,
+          role: "member",
+          suggested: 1,
+        });
       }
     }
   }
 
   if (suggestions.length > 0) {
-    await writeAudit(db, {
-      tenantId,
-      actorUserId: user.userId,
-      actorEmail: user.email,
-      action: "mapping.auto_suggest",
-      targetType: "group_app_mapping",
-      detail: JSON.stringify({
-        count: suggestions.length,
-        apps: [...new Set(suggestions.map((s: any) => s.appId))],
-      }),
-    });
+    try {
+      await writeAudit(db, {
+        tenantId,
+        actorUserId: user.userId,
+        actorEmail: user.email,
+        action: "mapping.auto_suggest",
+        targetType: "group_app_mapping",
+        detail: JSON.stringify({
+          count: suggestions.length,
+          apps: [...new Set(suggestions.map((s: any) => s.appId))],
+        }),
+      });
+    } catch {
+      // Audit write failure should not break the response
+    }
   }
 
   return json({ suggestions, connectedApps: connectedApps.length, groupsScanned: groups.length });

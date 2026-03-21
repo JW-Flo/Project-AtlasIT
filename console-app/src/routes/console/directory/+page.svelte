@@ -79,6 +79,9 @@
     );
   });
 
+  // Reset pagination when search changes
+  $: userSearch, (userPage = 0);
+
   $: pagedUsers = filteredUsers.slice(userPage * pageSize, (userPage + 1) * pageSize);
   $: totalPages = Math.ceil(filteredUsers.length / pageSize);
 
@@ -149,7 +152,7 @@
 
     // Auto-generate mapping suggestions if there are groups but no mappings yet
     if (groups.length > 0 && mappings.length === 0) {
-      autoSuggest();
+      autoSuggest().catch(() => {});
     }
   }
 
