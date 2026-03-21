@@ -17,6 +17,25 @@ declare const REMEDIATION_Q: Queue;
 declare const IDEMP_NS: KVNamespace;
 declare const ATLAS_SHARED_DB: D1Database;
 
+// Maps CDT control ref prefixes to canonical framework names for D1 storage.
+// Longest prefixes first so "ISO-27001-" matches before shorter patterns.
+const CDT_FRAMEWORK_PREFIXES: Array<[string, string]> = [
+  ["ISO-27001-", "ISO27001"],
+  ["NIST-CSF-", "NIST_CSF"],
+  ["SOC2-", "SOC2"],
+  ["HIPAA-", "HIPAA"],
+  ["GDPR-", "GDPR"],
+];
+
+function parseCdtControlRef(ref: string): { framework: string; controlId: string } {
+  for (const [prefix, framework] of CDT_FRAMEWORK_PREFIXES) {
+    if (ref.startsWith(prefix)) {
+      return { framework, controlId: ref.slice(prefix.length) };
+    }
+  }
+  return { framework: ref, controlId: ref };
+}
+
 export default {
   async fetch(req: Request, env: any): Promise<Response> {
     const url = new URL(req.url);
@@ -98,9 +117,7 @@ export default {
           // Bridge to D1 compliance_evidence so the compliance-worker scoring
           // path can see CDT twin state transitions.
           if (typeof ATLAS_SHARED_DB !== "undefined" && ATLAS_SHARED_DB) {
-            const dashIdx = cid.indexOf("-");
-            const framework = dashIdx > 0 ? cid.slice(0, dashIdx) : cid;
-            const controlId = dashIdx > 0 ? cid.slice(dashIdx + 1) : cid;
+            const { framework, controlId } = parseCdtControlRef(cid);
             try {
               await ATLAS_SHARED_DB.prepare(
                 `INSERT INTO compliance_evidence
@@ -152,8 +169,7 @@ export default {
         evaluations: results.length.toString(),
       });
       const payload = { ok: true, results, trace_id: ev.trace_id };
-      if (token && "key" in token)
-        await persistIdempotency(IDEMP_NS, token, payload);
+      if (token && "key" in token) await persistIdempotency(IDEMP_NS, token, payload);
       return new Response(JSON.stringify(payload), {
         headers: { "content-type": "application/json" },
         status: 202,
@@ -194,9 +210,7 @@ export default {
       const tenant = url.searchParams.get("tenant")!;
       const stateFilter = url.searchParams.get("state");
       const out: any[] = [];
-      for await (const k of makeKVState<any>(STATE_NS).scan(
-        `${tenant}/control/`,
-      )) {
+      for await (const k of makeKVState<any>(STATE_NS).scan(`${tenant}/control/`)) {
         const cs = await state.get(k.key);
         if (!cs) continue;
         if (!stateFilter || cs.state === stateFilter) out.push(cs);

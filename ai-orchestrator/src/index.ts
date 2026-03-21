@@ -15,7 +15,7 @@ import { evaluateAutomationRules, type ActionContext } from "./lib/automation-ev
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
-import { collectAllAdapterEvidence } from "@atlasit/shared";
+import { collectAllAdapterEvidence, parseControlRef } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -228,9 +228,7 @@ const worker = {
           for (const result of adapterResults) {
             for (const item of result.items) {
               for (const controlRef of item.controlRefs) {
-                const dashIdx = controlRef.indexOf("-");
-                const framework = dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
-                const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+                const { framework, controlId } = parseControlRef(controlRef);
                 try {
                   await sharedDb
                     .prepare(
@@ -274,7 +272,44 @@ const worker = {
       }
     }
 
-    // ── Duty 3: Self health-check (replaces scheduler-worker monitor) ──────
+    // ── Duty 3: Trigger score recalculation after evidence collection ──────
+    //    When new evidence was collected, call the compliance-worker to
+    //    re-evaluate controls so scores stay fresh.
+    let scoresRefreshed = 0;
+    const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
+    const isDaily = event.cron === "0 2 * * *";
+
+    // Trigger recalculation when evidence was collected OR on the daily cron
+    if (complianceWorkerUrl && (evidenceCollected > 0 || isDaily)) {
+      const { results: allTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const scoringFrameworks = ["SOC2", "ISO27001", "NIST_CSF", "HIPAA", "GDPR"];
+      const scoreSettled = await Promise.allSettled(
+        (allTenants ?? []).map(async (row) => {
+          let refreshed = 0;
+          for (const fw of scoringFrameworks) {
+            try {
+              await fetch(
+                `${complianceWorkerUrl}/api/v1/cdt/evaluate?framework=${encodeURIComponent(fw)}`,
+                { headers: { "x-tenant-id": row.id } },
+              );
+              refreshed++;
+            } catch {
+              // best-effort — compliance-worker may be unavailable
+            }
+          }
+          return refreshed;
+        }),
+      );
+
+      for (const r of scoreSettled) {
+        if (r.status === "fulfilled") scoresRefreshed += r.value;
+      }
+    }
+
+    // ── Duty 4: Self health-check (replaces scheduler-worker monitor) ──────
     const checks: Record<string, { status: string; ms: number }> = {};
     const d1Start = Date.now();
     try {
@@ -299,9 +334,11 @@ const worker = {
         level: automationFailures > 0 || checks.d1.status === "fail" ? "warn" : "info",
         event: "cron.complete",
         cron: event.cron,
+        isDaily,
         tenantsEvaluated: results?.length ?? 0,
         automationFailures,
         evidenceCollected,
+        scoresRefreshed,
         checks,
       }),
     );

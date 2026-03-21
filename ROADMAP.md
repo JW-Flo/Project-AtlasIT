@@ -172,6 +172,11 @@ Directory Event / Schedule / Webhook
 - [x] Orchestrator event consumer already calls `classifyEvent()` + `storeEvidence()` for every event (was wired in `events.ts`, not a gap)
 - [x] Adapter evidence collection runs on orchestrator cron schedule (Duty 2, every 5 minutes, all tenants)
 - [x] Evidence from adapters and events appears in `compliance_evidence` → feeds CDT evaluate scoring → feeds UI
+- [x] **Fixed control-ref parsing bug** — `parseControlRef()` utility correctly maps multi-segment prefixes (ISO-27001, NIST-CSF) instead of naïve `indexOf("-")` split that silently dropped ISO/NIST evidence
+- [x] **Adapter pass/fail wired into scoring** — controls with failing adapter evidence (e.g. MFA not enforced) are now capped at `in_progress` rather than promoted by evidence recency alone
+- [x] **Score recalculation after evidence collection** — orchestrator cron now triggers compliance-worker CDT evaluate for all tenants after evidence is collected (Duty 3)
+- [x] **Daily comprehensive re-evaluation** — added `0 2 * * *` cron for full cross-framework scoring refresh
+- [x] **Evidence coverage indicators in UI** — controls tab now shows per-control evidence count badges, aggregate coverage summary, and "Gap" indicators
 
 ### P2 — Expand CDT Twin Coverage ✅
 
@@ -187,7 +192,12 @@ Directory Event / Schedule / Webhook
 ### Files Changed
 
 - `console-app/src/routes/api/tenant-compliance/scores/+server.ts` — unified scoring via compliance-worker
-- `ai-orchestrator/src/index.ts` — added Duty 2: scheduled adapter evidence collection
+- `console-app/src/routes/api/tenant-compliance/controls/+server.ts` — added evidence counts per control
+- `console-app/src/routes/console/compliance/+page.svelte` — evidence coverage indicators in controls tab
+- `ai-orchestrator/src/index.ts` — Duty 2: scheduled adapter evidence collection; Duty 3: score recalculation trigger; daily cron logic
+- `ai-orchestrator/wrangler.toml` — added daily cron `0 2 * * *`, `COMPLIANCE_WORKER_URL` binding
+- `compliance-worker/src/modules/policies/cdt-rules.ts` — adapter pass/fail status affects scoring
+- `packages/shared/src/evidence/adapter-collector.ts` — `parseControlRef()` utility for control ref parsing
 - `shared/services/cdt/src/evaluation/engine.ts` — exported `ALL_CONTROL_IDS` (60 controls)
 - `shared/services/cdt/src/index.ts` — twin evaluates all 60 rules + bridges state changes to D1
 - `shared/services/cdt/src/remediation/catalog.ts` — expanded from 2 to 37 control-to-action mappings
@@ -339,11 +349,11 @@ AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
 
 ### Target Market
 
-| Segment | Profile | Why AtlasIT wins |
-|---------|---------|------------------|
-| **Mid-market (100-1000)** | Outgrown JumpCloud, can't justify $50K+ for Vanta on top of IT ops spend | One platform at half the cost of two specialized tools |
-| **Compliance-first SMB (10-100)** | B2B SaaS needing SOC 2 to close enterprise deals | Fastest time-to-compliance: connect adapters → evidence generated automatically |
-| **Security-conscious scaleup** | Engineering-heavy, 200-500 employees, multi-cloud | NHI governance + shadow AI detection in the same platform that provisions access |
+| Segment                           | Profile                                                                  | Why AtlasIT wins                                                                 |
+| --------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| **Mid-market (100-1000)**         | Outgrown JumpCloud, can't justify $50K+ for Vanta on top of IT ops spend | One platform at half the cost of two specialized tools                           |
+| **Compliance-first SMB (10-100)** | B2B SaaS needing SOC 2 to close enterprise deals                         | Fastest time-to-compliance: connect adapters → evidence generated automatically  |
+| **Security-conscious scaleup**    | Engineering-heavy, 200-500 employees, multi-cloud                        | NHI governance + shadow AI detection in the same platform that provisions access |
 
 ### Competitive Positioning
 

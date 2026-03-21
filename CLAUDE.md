@@ -121,7 +121,7 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 ### Components
 
 - `console-app/` — SvelteKit + Tailwind (Cloudflare Pages). Primary UI with onboarding, compliance, directory, marketplace, workflows, policies, incidents, access requests, admin panel
-- `compliance-worker/` — Evidence-grounded compliance scoring, adapter evidence collection, policy evaluation (stub — hashing only, no Rego runtime)
+- `compliance-worker/` — Evidence-grounded compliance scoring (incorporates adapter pass/fail status), adapter evidence collection, policy evaluation (stub — hashing only, no Rego runtime)
 - `ai-orchestrator/` — Event routing, workflow execution (WorkflowDO), queue consumer, DLQ
 - `core-api/` — Central API (Hono): tenants, events, agents, flags, credentials, dead-letter
 - `onboarding/` — Tenant provisioning
@@ -168,7 +168,8 @@ AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
 
 - Auth: CF Access JWT → `UserPrincipal` via `$lib/auth/provider.ts`
 - Tenant isolation: all data queries scoped by `tenant_id` from authenticated session
-- Scoring: weighted status (not_started=0, in_progress=0.25, implemented=0.75, verified=1.0)
+- Scoring: weighted status (not_started=0, in_progress=0.25, implemented=0.75, verified=1.0); adapter pass/fail caps `implemented` to `in_progress` on failure; verification attestation promotes to `verified`
+- Evidence pipeline: events → classifier → locker (R2+D1) → CDT evaluate → weighted scores; adapter evidence collected on 5-min cron, daily full re-evaluation at 02:00 UTC; `parseControlRef()` handles multi-segment framework prefixes (ISO-27001, NIST-CSF)
 - Integrations catalog: `$lib/data/integrations.ts` (AuthModel: platform_oauth | tenant_oauth | api_key | service_account)
 
 ### Adapter Pipeline
