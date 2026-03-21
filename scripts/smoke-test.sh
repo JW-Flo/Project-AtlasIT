@@ -137,6 +137,24 @@ esac
 HEALTH_URL="${BASE_URL}${HEALTH_PATH}"
 
 # ---------------------------------------------------------------------------
+# CF Access gate: skip smoke tests when credentials are missing
+# Workers behind CF Access will always return 403 without a service token,
+# so running retries just wastes CI time.
+# ---------------------------------------------------------------------------
+NEEDS_CF_ACCESS=false
+case "$WORKER_NAME" in
+  ai-orchestrator|orchestrator|compliance-worker|compliance|console-app|console|dispatch-worker|dispatch|root-worker)
+    NEEDS_CF_ACCESS=true ;;
+esac
+
+if [ "$NEEDS_CF_ACCESS" = true ] && { [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; }; then
+  echo ""
+  warn "CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET not set — skipping smoke test for $WORKER_NAME"
+  warn "Deploy succeeded; set the secrets to enable post-deploy health checks."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Run checks
 # ---------------------------------------------------------------------------
 FAILURES=0
