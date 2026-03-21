@@ -5018,6 +5018,9 @@ function resolveCfApiToken(raw) {
 // ../packages/shared/src/agent-mesh.ts
 var logger2 = new Logger({ service: "agent-mesh" });
 
+// ../packages/shared/src/observability/alert-dispatcher.ts
+var DEFAULT_DEDUP_MS = 5 * 60 * 1e3;
+
 // ../packages/shared/src/middleware/rate-limit.ts
 var RateLimitConfigSchema = external_exports.object({
   tenantIdHeader: external_exports.string().min(1).default("X-Tenant-ID"),
@@ -5071,6 +5074,8 @@ var index_default = {
       }
       actor = provided;
     }
+    if (!env.DB)
+      throw new Error("Missing required binding: DB");
     if (!envValidated) {
       try {
         validateEnv(commonEnvSpec, env);
