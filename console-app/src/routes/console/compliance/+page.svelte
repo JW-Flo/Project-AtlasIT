@@ -336,7 +336,7 @@
   }
 
   let evaluating = false;
-  let lastEvaluation: { tenantState: Record<string, boolean>; evaluations: any[] } | null = null;
+  let lastEvaluation: { tenantState: Record<string, unknown>; evaluations: any[] } | null = null;
 
   // Control → Evidence drill-down
   let expandedControlId: string | null = null;
@@ -608,7 +608,7 @@
     try {
       const res = await fetch("/api/tenant-compliance/evaluate", { method: "POST" });
       if (!res.ok) throw new Error(`Evaluation failed (${res.status})`);
-      const data: { tenantState: Record<string, boolean>; evaluations: any[]; controlsUpdated: boolean } = await res.json();
+      const data: { tenantState: Record<string, unknown>; evaluations: any[]; controlsUpdated: boolean } = await res.json();
       lastEvaluation = data;
       if (data.controlsUpdated) {
         pushToast({ message: `Auto-assessed ${data.evaluations.filter((e: any) => e.autoApplied).length} controls based on your configuration`, variant: "success" });
@@ -655,9 +655,9 @@
   <!-- Tabs -->
   <div class="flex gap-1 mb-6 border-b">
     {#each [
-      { key: "overview", label: "Overview" },
-      { key: "controls", label: "Controls" },
-      { key: "evidence", label: "Evidence" },
+      { key: "overview" as const, label: "Overview" },
+      { key: "controls" as const, label: "Controls" },
+      { key: "evidence" as const, label: "Evidence" },
     ] as tab}
       <button
         class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px
@@ -784,7 +784,7 @@
         </CardHeader>
         <CardContent>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {#each Object.entries(lastEvaluation.tenantState) as [key, met]}
+            {#each Object.entries(lastEvaluation.tenantState).filter(([, v]) => typeof v === 'boolean') as [key, met]}
               <div class="flex items-center gap-2">
                 <div class="w-2 h-2 rounded-full {met ? 'bg-green-500' : 'bg-destructive'}"></div>
                 <span class="text-xs text-muted-foreground">{key.replace(/_/g, ' ')}</span>

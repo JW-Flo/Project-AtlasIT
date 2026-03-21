@@ -119,8 +119,9 @@ async function evaluateTenantState(db: any, tenantId: string): Promise<TenantSta
     flags.apps_connected = connectedAppCount > 0;
   }
 
-  if (results[2].status === "fulfilled") flags.incidents_configured = true;
-  else flags.incidents_configured = false;
+  if (results[2].status === "fulfilled") {
+    flags.incidents_configured = (results[2].value?.count || 0) > 0;
+  }
 
   if (results[3].status === "fulfilled" && results[3].value?.value) {
     try {
@@ -203,7 +204,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   // Evaluate actual tenant configuration
   const tenantState = await evaluateTenantState(db, tenantId);
   const results: EvaluationResult[] = [];
-  let updated = false;
+  const statusUpdates: Map<string, Control["status"]> = new Map();
 
   // Map control IDs to their compliance_evidence control_id patterns for evidence matching
   const controlIdNormalizers: Record<string, string[]> = {};
@@ -244,8 +245,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       (control.status === "not_started" || control.status === "in_progress")
     ) {
       // Strong signal: both config and evidence exist → promote to implemented
-      control.status = "implemented";
-      updated = true;
+      statusUpdates.set(control.id, "implemented");
       results.push({
         controlId: control.id,
         suggestedStatus: "implemented",
@@ -254,8 +254,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       });
     } else if (flagMet && control.status === "not_started") {
       // Config present but no evidence yet → in_progress
-      control.status = "in_progress";
-      updated = true;
+      statusUpdates.set(control.id, "in_progress");
       results.push({
         controlId: control.id,
         suggestedStatus: "in_progress",
@@ -264,8 +263,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       });
     } else if (hasEvidence && control.status === "not_started") {
       // Evidence exists but config not detected → in_progress
-      control.status = "in_progress";
-      updated = true;
+      statusUpdates.set(control.id, "in_progress");
       results.push({
         controlId: control.id,
         suggestedStatus: "in_progress",
@@ -284,14 +282,19 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     }
   }
 
-  // Save updated controls if any auto-applied
+  // Apply all status updates atomically after the loop completes
+  const updated = statusUpdates.size > 0;
   if (updated) {
+    const updatedControls = controls.map((c) => {
+      const newStatus = statusUpdates.get(c.id);
+      return newStatus ? { ...c, status: newStatus } : c;
+    });
     await db
       .prepare(
         `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
          VALUES (?, 'compliance_controls', ?)`,
       )
-      .bind(tenantId, JSON.stringify(controls))
+      .bind(tenantId, JSON.stringify(updatedControls))
       .run();
   }
 

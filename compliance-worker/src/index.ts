@@ -524,6 +524,15 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   if (evidenceLinkMatch && method === "POST") {
     const evidenceIdParam = evidenceLinkMatch[1];
 
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError)
+        return errorResponse(err.status, requestId, headers, err.message);
+      throw err;
+    }
+
     let body: any;
     try {
       body = await request.json();
@@ -536,10 +545,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
       return errorResponse(400, requestId, headers, "controlKey required");
     }
 
-    const resolvedTenantId = body?.tenantId || request.headers.get("x-tenant-id");
-    if (!resolvedTenantId) {
-      return errorResponse(400, requestId, headers, "tenant_id required");
-    }
+    const resolvedTenantId = tenant.tenantId;
 
     // Try shared DB first (compliance_evidence), then fall back to legacy evidence_index
     const sharedDb = env.ATLAS_SHARED_DB;
