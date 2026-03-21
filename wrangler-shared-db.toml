@@ -1,0 +1,13 @@
+# Minimal config used ONLY for applying root migrations/ to the atlasit-shared D1.
+# Not a deployable worker — just a migration target.
+#
+# Usage:
+#   npx wrangler d1 migrations apply atlasit-shared --config wrangler-shared-db.toml --remote
+
+name = "atlasit-shared-migrations"
+compatibility_date = "2025-09-27"
+
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
