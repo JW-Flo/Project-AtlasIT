@@ -58,7 +58,8 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
   const created = await db
     .prepare(
-      `SELECT id, external_id, name, description, created_at, updated_at FROM directory_groups WHERE id = ?`,
+      `SELECT g.*, (SELECT COUNT(*) FROM directory_memberships WHERE group_id = g.id) as member_count
+       FROM directory_groups g WHERE g.id = ?`,
     )
     .bind(newId)
     .first();

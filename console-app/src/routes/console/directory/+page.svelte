@@ -40,14 +40,14 @@
     id: string;
     name: string;
     description?: string;
-    member_count: number;
+    memberCount: number;
   }
 
   interface Mapping {
     id: string;
-    group_id: string;
-    group_name: string;
-    app_id: string;
+    groupId: string;
+    groupName: string;
+    appId: string;
     role: string;
     suggested: boolean;
   }
@@ -138,7 +138,7 @@
       const res = await fetch("/api/directory/mappings");
       if (res.ok) {
         const data = await res.json();
-        mappings = Array.isArray(data) ? data : [];
+        mappings = data.mappings || [];
       }
     } catch {}
   }
@@ -538,7 +538,7 @@
                   >
                     <td class="px-4 py-3 font-medium">{group.name}</td>
                     <td class="px-4 py-3">
-                      <Badge variant="secondary">{group.member_count}</Badge>
+                      <Badge variant="secondary">{group.memberCount}</Badge>
                     </td>
                     <td class="px-4 py-3 text-muted-foreground">{group.description || "-"}</td>
                     <td class="px-4 py-3 text-right">
@@ -593,8 +593,8 @@
               <tbody>
                 {#each mappings as mapping}
                   <tr class="border-t hover:bg-muted/50">
-                    <td class="px-4 py-3 font-medium">{mapping.group_name}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{mapping.app_id}</td>
+                    <td class="px-4 py-3 font-medium">{mapping.groupName}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{mapping.appId}</td>
                     <td class="px-4 py-3 text-muted-foreground">{mapping.role}</td>
                     <td class="px-4 py-3">
                       {#if mapping.suggested}
