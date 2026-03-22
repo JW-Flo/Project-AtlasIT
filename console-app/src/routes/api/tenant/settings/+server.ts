@@ -3,6 +3,7 @@ import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
 import { toCamel } from "$lib/utils/dto";
+import { buildDefaultControls } from "$lib/compliance/framework-controls";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
@@ -92,7 +93,7 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
         .bind(user!.tenantId, accentColor),
     );
   }
-  if (frameworks !== undefined && Array.isArray(frameworks) && frameworks.length > 0) {
+  if (frameworks !== undefined && Array.isArray(frameworks)) {
     const validFrameworks = ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"];
     const filtered = frameworks.filter((f) => validFrameworks.includes(f));
     if (filtered.length > 0) {
@@ -102,6 +103,37 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
             `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value) VALUES (?, 'frameworks', ?)`,
           )
           .bind(user!.tenantId, JSON.stringify(filtered)),
+      );
+      // Rebuild compliance controls to match the new framework selection.
+      // Preserves existing control statuses where the control ID still exists.
+      let existingControls: any[] = [];
+      try {
+        const row = await db
+          .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`)
+          .bind(user!.tenantId)
+          .first<{ value: string }>();
+        if (row?.value) existingControls = JSON.parse(row.value);
+      } catch {}
+      const existingStatusMap = new Map(
+        existingControls.map((c: any) => [c.id, { status: c.status, notes: c.notes }]),
+      );
+      const newControls = buildDefaultControls(filtered).map((c) => {
+        const existing = existingStatusMap.get(c.id);
+        return existing ? { ...c, status: existing.status, notes: existing.notes ?? "" } : c;
+      });
+      prefUpserts.push(
+        db
+          .prepare(
+            `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value) VALUES (?, 'compliance_controls', ?)`,
+          )
+          .bind(user!.tenantId, JSON.stringify(newControls)),
+      );
+    } else {
+      // Empty selection: remove the frameworks key so the fallback/warning kicks in
+      prefUpserts.push(
+        db
+          .prepare(`DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+          .bind(user!.tenantId),
       );
     }
   }

@@ -2099,7 +2099,18 @@ async function buildSnapshot(env: Env, tenantId: string): Promise<ComplianceSnap
 
   try {
     // ── Framework coverage (real data from D1) ──
-    const frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    // Read tenant-selected frameworks; fall back to defaults if not configured
+    let frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    try {
+      const fwRow = await (env.ATLAS_SHARED_DB ?? db)
+        .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+        .bind(tenantId)
+        .first<{ value: string }>();
+      if (fwRow?.value) {
+        const parsed = JSON.parse(fwRow.value);
+        if (Array.isArray(parsed) && parsed.length > 0) frameworks = parsed;
+      }
+    } catch {}
     const frameworkSummary: ComplianceSnapshot["frameworkSummary"] = [];
     for (const fw of frameworks) {
       try {
