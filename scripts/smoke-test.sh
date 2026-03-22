@@ -143,7 +143,7 @@ HEALTH_URL="${BASE_URL}${HEALTH_PATH}"
 # ---------------------------------------------------------------------------
 NEEDS_CF_ACCESS=false
 case "$WORKER_NAME" in
-  ai-orchestrator|orchestrator|compliance-worker|compliance|console-app|console|dispatch-worker|dispatch|root-worker)
+  ai-orchestrator|orchestrator|compliance-worker|compliance|dispatch-worker|dispatch|root-worker)
     NEEDS_CF_ACCESS=true ;;
 esac
 
