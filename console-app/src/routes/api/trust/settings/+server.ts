@@ -13,11 +13,19 @@ interface TrustSettings {
   visibleFrameworks: string[];
 }
 
-async function readSettings(db: any, tenantId: string): Promise<TrustSettings> {
+interface ControlVisibility {
+  [controlId: string]: "public" | "nda" | "private";
+}
+
+interface ExtendedTrustSettings extends TrustSettings {
+  controlVisibility: ControlVisibility;
+}
+
+async function readSettings(db: any, tenantId: string): Promise<ExtendedTrustSettings> {
   const rows = await db
     .prepare(
       `SELECT key, value FROM tenant_preferences
-       WHERE tenant_id = ? AND key IN ('trust_center_public', 'trust_center_visible_frameworks')`,
+       WHERE tenant_id = ? AND key IN ('trust_center_public', 'trust_center_visible_frameworks', 'trust_center_control_visibility')`,
     )
     .bind(tenantId)
     .all<{ key: string; value: string }>();
@@ -34,18 +42,23 @@ async function readSettings(db: any, tenantId: string): Promise<TrustSettings> {
     // use empty default
   }
 
+  let controlVisibility: ControlVisibility = {};
+  try {
+    if (map["trust_center_control_visibility"]) {
+      controlVisibility = JSON.parse(map["trust_center_control_visibility"]);
+    }
+  } catch {
+    // use empty default
+  }
+
   return {
     isPublic: map["trust_center_public"] === "true",
     visibleFrameworks,
+    controlVisibility,
   };
 }
 
-async function upsertPref(
-  db: any,
-  tenantId: string,
-  key: string,
-  value: string,
-): Promise<void> {
+async function upsertPref(db: any, tenantId: string, key: string, value: string): Promise<void> {
   await db
     .prepare(
       `INSERT INTO tenant_preferences (tenant_id, key, value)
@@ -102,6 +115,19 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
       JSON.stringify(body.visibleFrameworks),
     );
     updates.push("visibleFrameworks");
+  }
+
+  if (body.controlVisibility && typeof body.controlVisibility === "object") {
+    // Validate: only allow "public" | "nda" | "private" values
+    const validValues = new Set(["public", "nda", "private"]);
+    const cleaned: Record<string, string> = {};
+    for (const [key, val] of Object.entries(body.controlVisibility)) {
+      if (typeof val === "string" && validValues.has(val)) {
+        cleaned[key] = val;
+      }
+    }
+    await upsertPref(db, tenantId, "trust_center_control_visibility", JSON.stringify(cleaned));
+    updates.push("controlVisibility");
   }
 
   if (updates.length === 0) {

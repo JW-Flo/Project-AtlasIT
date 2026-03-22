@@ -14,15 +14,37 @@
       score: number;
       controlsImplemented: number;
       controlsTotal: number;
+      controls?: Array<{
+        controlId: string;
+        controlName: string;
+        status: string;
+        evidenceCount: number;
+        lastEvidenceAt: string | null;
+      }>;
     }>;
     connectedApps: Array<{ name: string; logoUrl: string }>;
     evidenceCount: number;
     isPublic: boolean;
   }
 
+  interface EvidenceItem {
+    id: string;
+    controlId: string;
+    evidenceType: string;
+    source: string;
+    actor: string;
+    status: string | null;
+    createdAt: string;
+    isFresh: boolean;
+    ageDescription: string;
+  }
+
   let loading = true;
   let notFound = false;
   let data: TrustCenterPublic | null = null;
+  let expandedControl: string | null = null;
+  let controlEvidence: Record<string, EvidenceItem[]> = {};
+  let loadingEvidence: string | null = null;
 
   $: slug = $page.params.slug;
 
@@ -60,6 +82,52 @@
     if (score >= 80) return "success";
     if (score >= 60) return "warning";
     return "destructive";
+  }
+
+  async function toggleControl(controlId: string, framework: string) {
+    if (expandedControl === controlId) {
+      expandedControl = null;
+      return;
+    }
+    expandedControl = controlId;
+    if (controlEvidence[controlId]) return;
+
+    loadingEvidence = controlId;
+    try {
+      const res = await fetch(`/api/trust/${slug}/evidence?control=${encodeURIComponent(controlId)}&framework=${encodeURIComponent(framework)}`);
+      if (res.ok) {
+        const result = await res.json();
+        controlEvidence[controlId] = result.evidence ?? [];
+        controlEvidence = controlEvidence; // trigger reactivity
+      }
+    } catch {
+      // silently fail
+    } finally {
+      loadingEvidence = null;
+    }
+  }
+
+  function statusLabel(status: string): string {
+    switch (status) {
+      case "verified": return "Verified";
+      case "implemented": return "Implemented";
+      case "in_progress": return "In Progress";
+      default: return "Not Started";
+    }
+  }
+
+  function statusColor(status: string): "success" | "warning" | "destructive" {
+    switch (status) {
+      case "verified": return "success";
+      case "implemented": return "success";
+      case "in_progress": return "warning";
+      default: return "destructive";
+    }
+  }
+
+  function evidenceSourceLabel(source: string): string {
+    if (source.startsWith("adapter:")) return source.replace("adapter:", "").replace(/_/g, " ");
+    return source.replace(/_/g, " ");
   }
 
   onMount(loadTrustCenter);
@@ -129,7 +197,7 @@
             </CardContent>
           </Card>
         {:else}
-          <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div class="space-y-4">
             {#each data.frameworks as framework}
               <Card>
                 <CardContent class="pt-6 space-y-3">
@@ -143,6 +211,54 @@
                   <div class="h-2 rounded-full bg-muted overflow-hidden">
                     <div class="h-full bg-primary" style={`width: ${Math.max(0, Math.min(100, framework.score))}%`} />
                   </div>
+
+                  {#if framework.controls && framework.controls.length > 0}
+                    <div class="mt-4 space-y-1">
+                      {#each framework.controls as control}
+                        <button
+                          class="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors"
+                          on:click={() => toggleControl(control.controlId, framework.name)}
+                        >
+                          <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium">{control.controlId}</span>
+                            <Badge variant={statusColor(control.status)} class="text-xs">{statusLabel(control.status)}</Badge>
+                          </div>
+                          <div class="text-xs text-muted-foreground mt-0.5">{control.controlName}</div>
+                        </button>
+
+                        {#if expandedControl === control.controlId}
+                          <div class="ml-4 pl-3 border-l-2 border-muted space-y-2 py-2">
+                            {#if loadingEvidence === control.controlId}
+                              <Skeleton class="h-8 w-full" />
+                            {:else if controlEvidence[control.controlId]?.length}
+                              {#each controlEvidence[control.controlId] as ev}
+                                <div class="flex items-start gap-2 text-xs">
+                                  <div class="mt-0.5">
+                                    {#if ev.isFresh}
+                                      <span class="inline-block h-2 w-2 rounded-full bg-green-500" title="Fresh"></span>
+                                    {:else}
+                                      <span class="inline-block h-2 w-2 rounded-full bg-yellow-500" title="Stale"></span>
+                                    {/if}
+                                  </div>
+                                  <div class="flex-1">
+                                    <div class="font-medium capitalize">{evidenceSourceLabel(ev.source)}</div>
+                                    <div class="text-muted-foreground">
+                                      {ev.evidenceType.replace(/_/g, " ")} &middot; {ev.ageDescription}
+                                      {#if ev.status}
+                                        &middot; <span class={ev.status === "pass" ? "text-green-600" : ev.status === "fail" ? "text-red-600" : ""}>{ev.status}</span>
+                                      {/if}
+                                    </div>
+                                  </div>
+                                </div>
+                              {/each}
+                            {:else}
+                              <div class="text-xs text-muted-foreground">No evidence recorded for this control.</div>
+                            {/if}
+                          </div>
+                        {/if}
+                      {/each}
+                    </div>
+                  {/if}
                 </CardContent>
               </Card>
             {/each}

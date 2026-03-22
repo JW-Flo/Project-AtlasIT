@@ -10,18 +10,19 @@
 
 ## Phase Completion
 
-| Phase                          | Status          | PR         | Key Deliverables                                                                                                                                                               |
-| ------------------------------ | --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0 — Foundation                 | ✅ Complete     | —          | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                                                                   |
-| 1 — Workflow Durability + Auth | ✅ Complete     | #139       | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                                                                   |
-| 2 — MCP Orchestration          | ✅ Complete     | #140       | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                                                                        |
-| 3 — Marketplace & Integrations | ✅ Pre-existing | —          | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                                                              |
-| 4 — Hardening & Production     | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                                                  |
-| 5 — Adapter Scaffolding        | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                                             |
-| 6 — Contract Stability         | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                                                 |
-| 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload                           |
-| 7.5 — Compliance Integration   | ✅ Complete     | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls), policy evaluation wired into scoring pipeline |
-| 8 — Access Reviews             | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action                                              |
+| Phase                               | Status          | PR         | Key Deliverables                                                                                                                                                               |
+| ----------------------------------- | --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0 — Foundation                      | ✅ Complete     | —          | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                                                                   |
+| 1 — Workflow Durability + Auth      | ✅ Complete     | #139       | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                                                                   |
+| 2 — MCP Orchestration               | ✅ Complete     | #140       | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                                                                        |
+| 3 — Marketplace & Integrations      | ✅ Pre-existing | —          | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                                                              |
+| 4 — Hardening & Production          | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                                                  |
+| 5 — Adapter Scaffolding             | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                                             |
+| 6 — Contract Stability              | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                                                 |
+| 7 — Compliance-as-Automation        | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload                           |
+| 7.5 — Compliance Integration        | ✅ Complete     | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls), policy evaluation wired into scoring pipeline |
+| 8 — Access Reviews                  | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action                                              |
+| 9 — Trust Center & Questionnaire AI | ✅ Complete     | —          | Evidence provenance trail, per-control visibility (public/NDA/private), NDA access workflow, CSV/JSON export with tamper hash, questionnaire AI (Groq), SVG trust badge        |
 
 ## Deployed Workers
 
