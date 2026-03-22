@@ -9,7 +9,8 @@
 ALTER TABLE tenants ADD COLUMN slug TEXT NOT NULL DEFAULT '';
 ALTER TABLE tenants ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';
 ALTER TABLE tenants ADD COLUMN config TEXT;
-ALTER TABLE tenants ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'));
+ALTER TABLE tenants ADD COLUMN updated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00';
+UPDATE tenants SET updated_at = datetime('now');
 
 -- Set slug to tenant id for uniqueness
 UPDATE tenants SET slug = id WHERE slug = '';
