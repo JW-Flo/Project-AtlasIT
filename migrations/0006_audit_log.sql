@@ -1,6 +1,8 @@
 -- Audit log for compliance and traceability
+-- Drop stale table if it exists with wrong schema (created out-of-band before migrations were tracked)
+DROP TABLE IF EXISTS audit_log;
 
-CREATE TABLE IF NOT EXISTS audit_log (
+CREATE TABLE audit_log (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
   actor_id TEXT,
