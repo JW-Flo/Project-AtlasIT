@@ -67,8 +67,8 @@ http_get_with_retry() {
       auth_headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
     fi
 
-    body=$(curl -sS --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || true)
-    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || echo "000")
+    body=$(curl -sSL --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || true)
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || echo "000")
 
     LAST_HTTP_CODE="$code"
     LAST_BODY="$body"
