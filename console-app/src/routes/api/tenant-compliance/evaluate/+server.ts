@@ -187,7 +187,9 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   }
   if (frameworks.length === 0) frameworks = ["SOC2", "ISO27001", "NIST CSF"];
 
-  // Read current controls
+  const frameworkSet = new Set(frameworks);
+
+  // Read current controls, scoped to selected frameworks
   let controls: Control[] = [];
   try {
     const row = await db
@@ -196,7 +198,10 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       )
       .bind(tenantId)
       .first();
-    if (row?.value) controls = JSON.parse(row.value as string);
+    if (row?.value) {
+      const allControls: Control[] = JSON.parse(row.value as string);
+      controls = allControls.filter((c) => frameworkSet.has(c.framework));
+    }
   } catch {
     /* no controls */
   }

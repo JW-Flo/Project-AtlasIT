@@ -225,6 +225,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
   // Read tenant frameworks
   let frameworks: string[] = [];
+  let frameworksConfigured = true;
   try {
     const row = await db
       .prepare(
@@ -240,7 +241,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   }
   if (frameworks.length === 0) {
     frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    frameworksConfigured = false;
   }
+
+  const frameworkSet = new Set(frameworks);
 
   // Try evidence-grounded scoring from compliance-worker first
   const evidenceScores = await fetchEvidenceGroundedScores(
@@ -273,10 +277,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       }
     }
 
-    return json({ scores: evidenceScores, source: "evidence" });
+    return json({ scores: evidenceScores, source: "evidence", frameworksConfigured });
   }
 
-  // Fallback: return cached scores from DB (if any previous calculation exists)
+  // Fallback: return cached scores from DB, scoped to tenant's current frameworks
   const { results: cachedRows } = await db
     .prepare(
       `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified
@@ -293,15 +297,19 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     }>();
 
   if (cachedRows && cachedRows.length > 0) {
-    const scores: FrameworkScore[] = cachedRows.map((row) => ({
-      framework: row.framework,
-      score: row.score,
-      grade: row.grade,
-      controlsTotal: row.controls_total,
-      controlsImplemented: row.controls_implemented,
-      controlsVerified: row.controls_verified,
-    }));
-    return json({ scores, source: "cached" });
+    const scores: FrameworkScore[] = cachedRows
+      .filter((row) => frameworkSet.has(row.framework))
+      .map((row) => ({
+        framework: row.framework,
+        score: row.score,
+        grade: row.grade,
+        controlsTotal: row.controls_total,
+        controlsImplemented: row.controls_implemented,
+        controlsVerified: row.controls_verified,
+      }));
+    if (scores.length > 0) {
+      return json({ scores, source: "cached", frameworksConfigured });
+    }
   }
 
   // No scores available at all — return empty
@@ -313,7 +321,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controlsImplemented: 0,
     controlsVerified: 0,
   }));
-  return json({ scores: emptyScores, source: "empty" });
+  return json({ scores: emptyScores, source: "empty", frameworksConfigured });
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {

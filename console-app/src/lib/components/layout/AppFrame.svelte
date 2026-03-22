@@ -49,6 +49,9 @@
   let userDisplayName = "";
   let isImpersonating = false;
   let impersonatedBy = "";
+  let orgName = "";
+  let logoUrl = "";
+  let accentColor = "";
 
   const navSections: NavSection[] = [
     {
@@ -135,6 +138,9 @@
         userDisplayName = sessionData.displayName || sessionData.email || "";
         isImpersonating = sessionData.impersonating || false;
         impersonatedBy = sessionData.impersonatedBy || "";
+        orgName = sessionData.orgName || "";
+        logoUrl = sessionData.branding?.logoUrl || "";
+        accentColor = sessionData.branding?.accentColor || "";
       }
     } catch {}
 
@@ -196,10 +202,14 @@
   <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
     <!-- Logo -->
     <div class="flex items-center gap-2 px-6 h-16 border-b">
-      <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-        <span class="text-primary-foreground font-bold text-sm">A</span>
-      </div>
-      <span class="font-semibold text-lg tracking-tight">AtlasIT</span>
+      {#if logoUrl}
+        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
+      {:else}
+        <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center" style={accentColor ? `background-color: ${accentColor}` : ''}>
+          <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
+        </div>
+      {/if}
+      <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
     </div>
 
     {#if isImpersonating}
