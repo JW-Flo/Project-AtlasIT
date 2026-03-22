@@ -88,6 +88,7 @@
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
   let filterStatus = "all";
+  let frameworksConfigured = true;
   let history: FrameworkHistory[] = [];
   let historyError: string | null = null;
   let evidenceFeedSummary: EvidenceFeedSummary = {
@@ -304,6 +305,7 @@
       frameworks = data.frameworks || [];
       controls = data.controls || [];
       evidenceCounts = data.evidenceCounts || {};
+      frameworksConfigured = data.frameworksConfigured !== false;
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
     } finally {
@@ -669,6 +671,16 @@
       </Button>
     </div>
   </div>
+
+  {#if !frameworksConfigured}
+    <Alert variant="warning" class="mb-4">
+      <Settings class="h-4 w-4" />
+      <p class="pl-7">
+        No compliance frameworks configured for your tenant. Showing defaults (SOC 2, ISO 27001, NIST CSF).
+        <a href="/console/settings" class="underline font-medium">Configure your frameworks in Settings</a> to match your organization's requirements.
+      </p>
+    </Alert>
+  {/if}
 
   <!-- Tabs -->
   <div class="flex gap-1 mb-6 border-b">

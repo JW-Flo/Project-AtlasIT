@@ -1,5 +1,10 @@
 import { writable } from "svelte/store";
 
+export interface TenantBranding {
+  logoUrl?: string;
+  accentColor?: string;
+}
+
 export interface SessionData {
   authenticated: boolean;
   email?: string;
@@ -10,6 +15,7 @@ export interface SessionData {
   impersonating?: boolean;
   impersonatedBy?: string;
   orgName?: string;
+  branding?: TenantBranding;
 }
 
 export const session = writable<SessionData | null>(null);

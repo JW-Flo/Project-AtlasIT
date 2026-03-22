@@ -12,6 +12,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
   // Get tenant frameworks
   let frameworks: string[] = [];
+  let frameworksConfigured = true;
   try {
     const row = await db
       .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
@@ -26,6 +27,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
   if (frameworks.length === 0) {
     frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    frameworksConfigured = false;
   }
 
   // Check for saved control statuses
@@ -67,7 +69,11 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     // compliance_evidence table may not exist yet — return empty counts
   }
 
-  return json({ frameworks, controls, evidenceCounts });
+  // Filter controls to only include those for the tenant's selected frameworks
+  const frameworkSet = new Set(frameworks);
+  const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
+
+  return json({ frameworks, controls: scopedControls, evidenceCounts, frameworksConfigured });
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
