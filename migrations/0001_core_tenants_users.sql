@@ -1,4 +1,6 @@
 -- Core tenants and users tables
+-- Note: slug index moved to 0028_reconcile_tenants_schema.sql to handle
+-- schema drift where the live table may lack the slug column.
 
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -11,8 +13,6 @@ CREATE TABLE IF NOT EXISTS tenants (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_slug ON tenants(slug);
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
