@@ -228,14 +228,15 @@ Directory Event / Schedule / Webhook
 > trust center content to auto-respond to security questionnaires — the #1 bottleneck in enterprise deals.
 > TrustCloud and SafeBase lead here, but neither connects to real IT operations data.
 
-- [ ] Public route `/trust/{tenantSlug}` — live compliance scores, framework coverage, evidence recency, connected integrations count
-- [ ] Evidence provenance trail — for each control, show which IT operation generated the evidence, when, and whether it's still fresh (not just "pass/fail")
-- [ ] Tenant visibility controls — granular per-framework, per-control privacy settings (public / NDA-gated / private)
-- [ ] Self-service NDA workflow — visitors request access to detailed evidence, tenant approves, generates time-limited access token
-- [ ] PDF/XLSX auditor package export — per-framework evidence bundle with content hashes for tamper detection
-- [ ] Security questionnaire AI — ingest SIG/CAIQ/custom questionnaire templates, auto-map questions to existing evidence, generate draft responses from trust center content (Workers AI)
-- [ ] Embeddable trust badge — `<script>` tag tenants can put on their marketing site showing live compliance status
-- [ ] Files: `console-app/src/routes/trust/`, `console-app/src/routes/api/trust/`, new `questionnaire-ai` module
+- [x] Public route `/trust/{tenantSlug}` — live compliance scores, framework coverage, evidence recency, connected integrations count (pre-existing, extended)
+- [x] Evidence provenance trail — per-control evidence items showing source, operation type, timestamp, freshness indicator, pass/fail status
+- [x] Tenant visibility controls — granular per-framework and per-control privacy settings (public / NDA-gated / private)
+- [x] Self-service NDA workflow — visitors request access, tenant approves/denies, time-limited access tokens (7-day TTL)
+- [x] CSV/JSON auditor package export — per-framework evidence bundle with SHA-256 content hash for tamper detection
+- [x] Security questionnaire AI — parse SIG/CAIQ/custom templates, keyword-based control mapping, Groq-backed response generation grounded in evidence
+- [x] Embeddable trust badge — SVG badge endpoint with grade/score, JSON format option, 5-minute cache
+- [x] D1 migration: `trust_access_requests`, `questionnaires`, `questionnaire_responses` tables
+- [x] Files: `console-app/src/routes/trust/`, `console-app/src/routes/api/trust/`, `console-app/src/lib/server/questionnaire-ai.ts`, `console-app/src/routes/api/questionnaires/`
 
 ## Phase 10 — Non-Human Identity Governance (Hottest IGA Category)
 
