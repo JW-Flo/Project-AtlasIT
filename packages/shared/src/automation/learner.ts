@@ -58,9 +58,11 @@ export function generateSuggestions(
 ): AutomationSuggestion[] {
   const suggestions: AutomationSuggestion[] = [];
   const existingTriggers = new Set(existingRules.map(ruleKey));
+  const connectedAppIds = new Set(connectedApps.map((a) => a.appId));
 
   // 1. For each group↔app mapping without a provisioning rule, suggest auto-provision
   for (const mapping of groupMappings) {
+    if (!connectedAppIds.has(mapping.appId)) continue;
     const provisionKey = key(
       "user_joined_group",
       mapping.groupId,
