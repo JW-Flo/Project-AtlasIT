@@ -1,45 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { evaluateControls } from "../cdt-rules";
 
 /**
- * Mock D1Database that returns configurable evidence rows.
- * Tests that adapter evidence pass/fail status correctly affects control scoring.
+ * Build a mock D1Database that returns specific results for the 4 parallel queries
+ * in evaluateControls(): evidence, verified, adapter, policy evaluation.
  */
-function createMockDb(options: {
-  evidenceRows?: Array<{ control_id: string; cnt: number; last_at: string | null }>;
-  verifiedRows?: Array<{ control_id: string; verified_at: string }>;
-  adapterRows?: Array<{ control_id: string; metadata: string; created_at: string }>;
-}) {
-  const { evidenceRows = [], verifiedRows = [], adapterRows = [] } = options;
-
-  return {
-    prepare: vi.fn().mockReturnValue({
-      bind: vi.fn().mockReturnValue({
-        all: vi.fn().mockImplementation(async () => {
-          // The function is called 3 times in sequence via Promise.all:
-          // 1. Evidence counts
-          // 2. Verified attestations
-          // 3. Adapter evidence (new)
-          return { results: [] };
-        }),
-      }),
-    }),
-    batch: vi.fn(),
-  };
-}
-
-// Helper to build a mock DB that returns specific results for the 4 parallel queries
 function buildMockDb(
   evidenceRows: Array<{ control_id: string; cnt: number; last_at: string | null }>,
   verifiedRows: Array<{ control_id: string; verified_at: string }>,
   adapterRows: Array<{ control_id: string; metadata: string; created_at: string }>,
+  policyRows: Array<{ control_id: string; metadata: string; created_at: string }>,
 ) {
   let callCount = 0;
   const results = [
     { results: evidenceRows },
     { results: verifiedRows },
     { results: adapterRows },
-    { results: [] },
+    { results: policyRows },
   ];
 
   const mockAll = vi.fn().mockImplementation(async () => {
@@ -57,21 +34,21 @@ function buildMockDb(
   } as unknown as D1Database;
 }
 
-describe("evaluateControls with adapter evidence", () => {
+describe("evaluateControls with policy evaluation evidence", () => {
   const recentDate = new Date(Date.now() - 5 * 86_400_000).toISOString(); // 5 days ago
-  const oldDate = new Date(Date.now() - 60 * 86_400_000).toISOString(); // 60 days ago
 
-  it("caps status at in_progress when latest adapter evidence fails", async () => {
+  it("caps status at in_progress when policy evaluation fails", async () => {
     const db = buildMockDb(
-      // Evidence rows: recent evidence exists for CC6.1
       [{ control_id: "CC6.1", cnt: 3, last_at: recentDate }],
-      // No verification attestations
       [],
-      // Adapter evidence: latest says fail
+      [], // no adapter evidence
       [
         {
           control_id: "CC6.1",
-          metadata: JSON.stringify({ status: "fail" }),
+          metadata: JSON.stringify({
+            status: "fail",
+            rationale: ["Least-privilege policy not enforced"],
+          }),
           created_at: recentDate,
         },
       ],
@@ -80,18 +57,21 @@ describe("evaluateControls with adapter evidence", () => {
     const results = await evaluateControls(db, "tenant-1", "SOC2");
     const cc61 = results.find((r) => r.controlId === "CC6.1");
     expect(cc61).toBeDefined();
-    // Should be capped at in_progress because adapter says fail
     expect(cc61!.status).toBe("in_progress");
   });
 
-  it("allows implemented status when adapter evidence passes", async () => {
+  it("allows implemented status when policy evaluation passes", async () => {
     const db = buildMockDb(
       [{ control_id: "CC6.1", cnt: 3, last_at: recentDate }],
+      [],
       [],
       [
         {
           control_id: "CC6.1",
-          metadata: JSON.stringify({ status: "pass" }),
+          metadata: JSON.stringify({
+            status: "pass",
+            rationale: ["Least-privilege access policy enforced"],
+          }),
           created_at: recentDate,
         },
       ],
@@ -103,10 +83,11 @@ describe("evaluateControls with adapter evidence", () => {
     expect(cc61!.status).toBe("implemented");
   });
 
-  it("keeps verified status even when adapter evidence fails (verification trumps)", async () => {
+  it("verification attestation trumps policy evaluation failure", async () => {
     const db = buildMockDb(
       [{ control_id: "CC6.1", cnt: 5, last_at: recentDate }],
       [{ control_id: "CC6.1", verified_at: recentDate }],
+      [],
       [
         {
           control_id: "CC6.1",
@@ -119,13 +100,53 @@ describe("evaluateControls with adapter evidence", () => {
     const results = await evaluateControls(db, "tenant-1", "SOC2");
     const cc61 = results.find((r) => r.controlId === "CC6.1");
     expect(cc61).toBeDefined();
-    // Verification attestation should still trump adapter failure
     expect(cc61!.status).toBe("verified");
   });
 
-  it("treats unknown adapter status as neutral (no cap)", async () => {
+  it("both adapter and policy fail still caps at in_progress", async () => {
+    const db = buildMockDb(
+      [{ control_id: "CC6.1", cnt: 3, last_at: recentDate }],
+      [],
+      [
+        {
+          control_id: "CC6.1",
+          metadata: JSON.stringify({ status: "fail" }),
+          created_at: recentDate,
+        },
+      ],
+      [
+        {
+          control_id: "CC6.1",
+          metadata: JSON.stringify({ status: "fail" }),
+          created_at: recentDate,
+        },
+      ],
+    );
+
+    const results = await evaluateControls(db, "tenant-1", "SOC2");
+    const cc61 = results.find((r) => r.controlId === "CC6.1");
+    expect(cc61).toBeDefined();
+    expect(cc61!.status).toBe("in_progress");
+  });
+
+  it("handles controls with no policy evaluation evidence gracefully", async () => {
     const db = buildMockDb(
       [{ control_id: "CC6.1", cnt: 2, last_at: recentDate }],
+      [],
+      [],
+      [], // no policy eval evidence
+    );
+
+    const results = await evaluateControls(db, "tenant-1", "SOC2");
+    const cc61 = results.find((r) => r.controlId === "CC6.1");
+    expect(cc61).toBeDefined();
+    expect(cc61!.status).toBe("implemented");
+  });
+
+  it("policy eval unknown status is neutral (no cap)", async () => {
+    const db = buildMockDb(
+      [{ control_id: "CC6.1", cnt: 2, last_at: recentDate }],
+      [],
       [],
       [
         {
@@ -134,19 +155,6 @@ describe("evaluateControls with adapter evidence", () => {
           created_at: recentDate,
         },
       ],
-    );
-
-    const results = await evaluateControls(db, "tenant-1", "SOC2");
-    const cc61 = results.find((r) => r.controlId === "CC6.1");
-    expect(cc61).toBeDefined();
-    expect(cc61!.status).toBe("implemented");
-  });
-
-  it("handles controls with no adapter evidence gracefully", async () => {
-    const db = buildMockDb(
-      [{ control_id: "CC6.1", cnt: 2, last_at: recentDate }],
-      [],
-      [], // No adapter evidence at all
     );
 
     const results = await evaluateControls(db, "tenant-1", "SOC2");

@@ -184,10 +184,13 @@ Directory Event / Schedule / Webhook
 - [x] Bridge CDT twin KV state to `compliance_evidence` D1 — state transitions now write a row via `ATLAS_SHARED_DB` binding
 - [x] Expand remediation catalog from 2 → 37 controls across all 5 frameworks (16 distinct action types)
 
-### P3 — Policy Evaluation (Future)
+### P3 — Policy Evaluation ✅
 
-- [ ] Replace stub `evaluatePolicy()` with real policy logic (Boolean allow/deny decisions)
-- [ ] Wire policy evaluation into compliance scoring (policy pass/fail → control status)
+- [x] Replace stub `evaluatePolicy()` with real policy logic (Boolean allow/deny decisions)
+- [x] Wire policy evaluation into compliance scoring (policy pass/fail → control status)
+- [x] Bulk policy evaluation endpoint (`POST /api/v1/policies/evaluate-all`) stores results as `policy_evaluation` evidence
+- [x] Scoring engine queries policy eval evidence alongside adapter evidence; policy fail caps control at `in_progress`
+- [x] Orchestrator cron triggers bulk policy evaluation (Duty 2.5) before score recalculation
 
 ### Files Changed
 

@@ -50,6 +50,7 @@ import {
 import { log } from "./log";
 import { webhookRoutes } from "./routes/webhooks";
 import { evaluateControls, scoreFromEvaluations } from "./modules/policies/cdt-rules";
+import { evaluateAndStoreEvidence } from "./modules/policies/evaluation";
 import {
   collectAllAdapterEvidence,
   type AdapterEvidenceItem,
@@ -825,6 +826,10 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
 
   if (url.pathname === "/api/v1/policy/evaluate" && method === "POST") {
     return handlePolicyEvaluate(request, env, requestId, headers);
+  }
+
+  if (url.pathname === "/api/v1/policies/evaluate-all" && method === "POST") {
+    return handleBulkPolicyEvaluate(request, env, requestId, headers);
   }
 
   // CDT (Compliance Decision Tree) evaluation — evidence-based control status
@@ -1741,6 +1746,70 @@ async function handlePolicyEvaluate(
       error: err instanceof Error ? err.message : String(err),
     });
     return errorResponse(500, requestId, headers, "Failed to evaluate policy");
+  }
+}
+
+async function handleBulkPolicyEvaluate(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const sharedDb = resolveD1(env);
+  if (!sharedDb) {
+    return errorResponse(503, requestId, headers, "Database unavailable");
+  }
+
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // empty body is fine — defaults to {}
+  }
+
+  const input = body?.input && typeof body.input === "object" ? body.input : {};
+
+  try {
+    const evalStart = Date.now();
+    const result = await evaluateAndStoreEvidence(sharedDb, tenant.tenantId, input);
+    recordLatency("bulkPolicyEvaluate", Date.now() - evalStart);
+
+    log("info", "policies.evaluate-all.success", {
+      requestId,
+      tenantId: tenant.tenantId,
+      passed: result.passed,
+      failed: result.failed,
+      unknown: result.unknown,
+    });
+
+    return jsonResponse(
+      {
+        ...result,
+        evaluatedAt: new Date().toISOString(),
+        requestId,
+      },
+      200,
+      headers,
+    );
+  } catch (err) {
+    log("error", "policies.evaluate-all.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to evaluate policies");
   }
 }
 

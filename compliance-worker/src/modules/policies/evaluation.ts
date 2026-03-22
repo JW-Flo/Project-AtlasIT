@@ -1,6 +1,10 @@
 import { hashCanonicalJson, sha256Hex } from "../../../../src/lib/canonical-json";
-import { runControlEval, ALL_CONTROL_IDS } from "../../../../shared/services/cdt/src/evaluation/engine";
+import {
+  runControlEval,
+  ALL_CONTROL_IDS,
+} from "../../../../shared/services/cdt/src/evaluation/engine";
 import type { CdtEvent } from "../../../../shared/services/cdt/src/models";
+import { ALL_CONTROLS } from "./cdt-rules";
 
 export type Framework = "soc2" | "iso27001" | "hipaa" | "nist_csf" | "gdpr";
 
@@ -91,7 +95,16 @@ export async function evaluatePolicy(
     evaluatedAt,
   };
 
-  return { decision, rationale, references, evaluatedAt, controlId: options.policyKey, result, hash, canonical };
+  return {
+    decision,
+    rationale,
+    references,
+    evaluatedAt,
+    controlId: options.policyKey,
+    result,
+    hash,
+    canonical,
+  };
 }
 
 export async function evaluateAllControls(
@@ -136,4 +149,95 @@ export async function evaluateFramework(
   const score = total > 0 ? passed / total : 0;
 
   return { framework, total, passed, failed, unknown, score, controls };
+}
+
+/**
+ * Derive the framework prefix and short control ID from a full CDT control ID.
+ * e.g. "SOC2-CC6.1" → { framework: "SOC2", controlId: "CC6.1" }
+ *      "ISO-27001-A.9.2.3" → { framework: "ISO27001", controlId: "A.9.2.3" }
+ */
+function parseFullControlId(fullId: string): { framework: string; controlId: string } {
+  if (fullId.startsWith("SOC2-")) return { framework: "SOC2", controlId: fullId.slice(5) };
+  if (fullId.startsWith("ISO-27001-"))
+    return { framework: "ISO27001", controlId: fullId.slice(10) };
+  if (fullId.startsWith("HIPAA-")) return { framework: "HIPAA", controlId: fullId.slice(6) };
+  if (fullId.startsWith("NIST-CSF-")) return { framework: "NIST_CSF", controlId: fullId.slice(9) };
+  if (fullId.startsWith("GDPR-")) return { framework: "GDPR", controlId: fullId.slice(5) };
+  return { framework: "UNKNOWN", controlId: fullId };
+}
+
+export interface BulkEvalResult {
+  passed: number;
+  failed: number;
+  unknown: number;
+}
+
+/**
+ * Evaluate all 60 CDT controls and store results as compliance_evidence
+ * with evidence_type = 'policy_evaluation'. Uses deterministic IDs so
+ * repeated evaluations replace previous results rather than growing unbounded.
+ */
+export async function evaluateAndStoreEvidence(
+  db: D1Database,
+  tenantId: string,
+  input: Record<string, unknown>,
+): Promise<BulkEvalResult> {
+  const traceId = crypto.randomUUID();
+  const ev = buildCdtEvent(tenantId, input, "policy.evaluation", traceId);
+  const now = new Date().toISOString();
+
+  let passed = 0;
+  let failed = 0;
+  let unknown = 0;
+
+  const stmts: D1PreparedStatement[] = [];
+
+  for (const fullControlId of ALL_CONTROL_IDS) {
+    const { decision, rationale } = runControlEval(fullControlId, ev);
+    const { framework, controlId } = parseFullControlId(fullControlId);
+
+    if (decision === "pass") passed++;
+    else if (decision === "fail") failed++;
+    else unknown++;
+
+    // Find control name from ALL_CONTROLS (short ID match)
+    const controlDef = ALL_CONTROLS.find((c) => c.controlId === controlId);
+    const controlName = controlDef?.controlName ?? fullControlId;
+
+    // Deterministic ID prevents unbounded row growth
+    const id = `policy-eval-${tenantId}-${controlId}`;
+    const metadata = JSON.stringify({ status: decision, rationale });
+    const sourceId = `policy-eval:${controlId}`;
+
+    stmts.push(
+      db
+        .prepare(
+          `INSERT INTO compliance_evidence
+           (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             metadata = excluded.metadata,
+             created_at = excluded.created_at`,
+        )
+        .bind(
+          id,
+          tenantId,
+          framework,
+          controlId,
+          controlName,
+          "policy_evaluation",
+          "policy",
+          sourceId,
+          "system",
+          "cdt-evaluation",
+          metadata,
+          now,
+        ),
+    );
+  }
+
+  // Batch execute all INSERT/UPDATE statements
+  await db.batch(stmts);
+
+  return { passed, failed, unknown };
 }

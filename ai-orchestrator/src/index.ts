@@ -298,11 +298,41 @@ const worker = {
       evidenceCollected += platformEvidenceCollected;
     }
 
+    // ── Duty 2.5: Bulk policy evaluation ──────────────────────────────────
+    //    Evaluate all 60 CDT boolean rules and store results as
+    //    policy_evaluation evidence. This feeds into the scoring pipeline
+    //    so policy pass/fail affects control status.
+    let policyEvalsTriggered = 0;
+    const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
+    if (complianceWorkerUrl && (evidenceCollected > 0 || event.cron === "0 2 * * *")) {
+      const { results: policyTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const policySettled = await Promise.allSettled(
+        (policyTenants ?? []).map(async (row) => {
+          try {
+            await fetch(`${complianceWorkerUrl}/api/v1/policies/evaluate-all`, {
+              method: "POST",
+              headers: { "x-tenant-id": row.id, "content-type": "application/json" },
+              body: JSON.stringify({ input: {} }),
+            });
+            return 1;
+          } catch {
+            return 0;
+          }
+        }),
+      );
+
+      for (const r of policySettled) {
+        if (r.status === "fulfilled") policyEvalsTriggered += r.value;
+      }
+    }
+
     // ── Duty 3: Trigger score recalculation after evidence collection ──────
     //    When new evidence was collected, call the compliance-worker to
     //    re-evaluate controls so scores stay fresh.
     let scoresRefreshed = 0;
-    const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
     const isDaily = event.cron === "0 2 * * *";
 
     // Trigger recalculation when evidence was collected OR on the daily cron
