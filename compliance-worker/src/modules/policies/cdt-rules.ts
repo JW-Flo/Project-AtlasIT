@@ -364,6 +364,12 @@ interface AdapterEvidenceRow {
   created_at: string;
 }
 
+interface PolicyEvalRow {
+  control_id: string;
+  metadata: string;
+  created_at: string;
+}
+
 /**
  * Evaluate all controls for a tenant against collected evidence.
  *
@@ -384,8 +390,8 @@ export async function evaluateControls(
   const controlIds = controls.map((c) => c.controlId);
   const placeholders = controlIds.map(() => "?").join(",");
 
-  // Fetch evidence stats, verification attestations, and adapter pass/fail in parallel
-  const [evidenceResult, verifiedResult, adapterResult] = await Promise.all([
+  // Fetch evidence stats, verification attestations, adapter pass/fail, and policy eval in parallel
+  const [evidenceResult, verifiedResult, adapterResult, policyEvalResult] = await Promise.all([
     db
       .prepare(
         `SELECT control_id,
@@ -420,6 +426,17 @@ export async function evaluateControls(
       )
       .bind(tenantId, ...controlIds)
       .all<AdapterEvidenceRow>(),
+    // Latest policy evaluation per control — CDT rule pass/fail from bulk evaluation
+    db
+      .prepare(
+        `SELECT control_id, metadata, MAX(created_at) AS created_at
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND control_id IN (${placeholders})
+           AND evidence_type = 'policy_evaluation'
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, ...controlIds)
+      .all<PolicyEvalRow>(),
   ]);
 
   // Index evidence by control_id for O(1) lookup
@@ -441,6 +458,19 @@ export async function evaluateControls(
       const meta = JSON.parse(row.metadata);
       if (meta.status === "pass" || meta.status === "fail") {
         adapterStatusMap.set(row.control_id, meta.status);
+      }
+    } catch {
+      // Malformed metadata — skip
+    }
+  }
+
+  // Index policy evaluation pass/fail status
+  const policyStatusMap = new Map<string, "pass" | "fail" | "unknown">();
+  for (const row of policyEvalResult.results ?? []) {
+    try {
+      const meta = JSON.parse(row.metadata);
+      if (meta.status === "pass" || meta.status === "fail") {
+        policyStatusMap.set(row.control_id, meta.status);
       }
     } catch {
       // Malformed metadata — skip
@@ -474,6 +504,14 @@ export async function evaluateControls(
     // fails should not be marked "implemented".
     const adapterStatus = adapterStatusMap.get(control.controlId);
     if (adapterStatus === "fail" && status === "implemented") {
+      status = "in_progress";
+    }
+
+    // Cap at in_progress if the latest policy evaluation says the control fails.
+    // CDT boolean rule checks (least-privilege, SLA thresholds, etc.) override
+    // the recency heuristic — same pattern as adapter evidence.
+    const policyStatus = policyStatusMap.get(control.controlId);
+    if (policyStatus === "fail" && status === "implemented") {
       status = "in_progress";
     }
 
