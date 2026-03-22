@@ -99,12 +99,12 @@
 </script>
 
 <div class="space-y-6">
-  <div class="flex items-center justify-between">
+  <div class="flex items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Platform Administration</h1>
       <p class="text-sm text-muted-foreground">Manage tenants across the platform</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <Shield class="h-5 w-5 text-primary" />
     </div>
   </div>
@@ -129,28 +129,31 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                <th class="px-4 py-3 font-medium">Org Name</th>
-                <th class="px-4 py-3 font-medium">Owner Email</th>
-                <th class="px-4 py-3 font-medium">Users</th>
-                <th class="px-4 py-3 font-medium">Status</th>
-                <th class="px-4 py-3 font-medium">Created</th>
-                <th class="px-4 py-3 font-medium">Actions</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Org Name</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Owner Email</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Users</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Created</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {#each tenants as tenant}
                 <tr class="border-t hover:bg-muted/50">
-                  <td class="px-4 py-3 font-medium">{tenant.name}</td>
-                  <td class="px-4 py-3 text-muted-foreground">{tenant.ownerEmail}</td>
-                  <td class="px-4 py-3 text-muted-foreground">{tenant.user_count}</td>
-                  <td class="px-4 py-3">
+                  <td class="px-3 sm:px-4 py-3">
+                    <div class="font-medium">{tenant.name}</div>
+                    <div class="text-xs text-muted-foreground sm:hidden">{tenant.ownerEmail}</div>
+                  </td>
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{tenant.ownerEmail}</td>
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{tenant.user_count}</td>
+                  <td class="px-3 sm:px-4 py-3">
                     <Badge variant={tenant.status === 'active' ? 'success' : 'destructive'}>
                       {tenant.status}
                     </Badge>
                   </td>
-                  <td class="px-4 py-3 text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</td>
-                  <td class="px-4 py-3">
-                    <div class="flex gap-2">
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{new Date(tenant.createdAt).toLocaleDateString()}</td>
+                  <td class="px-3 sm:px-4 py-3">
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2">
                       <Button
                         size="sm"
                         variant={tenant.status === 'active' ? 'outline' : 'success'}

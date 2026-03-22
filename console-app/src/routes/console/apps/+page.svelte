@@ -263,14 +263,14 @@
 </script>
 
 <div class="space-y-6">
-  <div class="flex items-center justify-between">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Apps</h1>
       <p class="text-sm text-muted-foreground">
         Manage connected applications, group assignments, and role mappings
       </p>
     </div>
-    <a href="/console/marketplace">
+    <a href="/console/marketplace" class="shrink-0">
       <Button variant="outline">
         <ShoppingBag class="h-4 w-4 mr-1.5" />
         Browse Marketplace
@@ -315,8 +315,8 @@
       <div class="space-y-2">
         {#each apps as app}
           <Card>
-            <CardContent class="py-3 flex items-center justify-between">
-              <div class="flex items-center gap-3">
+            <CardContent class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-3 min-w-0">
                 <div class="w-9 h-9 rounded flex items-center justify-center bg-primary/10">
                   <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
@@ -352,9 +352,9 @@
 
   {:else if activeTab === "groups" || activeTab === "roles"}
     <!-- Groups / Roles with app selector -->
-    <div class="flex gap-6">
+    <div class="flex flex-col md:flex-row gap-4 md:gap-6">
       <!-- App sidebar -->
-      <div class="w-56 shrink-0">
+      <div class="md:w-56 shrink-0">
         <p class="text-xs font-medium text-muted-foreground mb-2">Select App</p>
         {#if apps.length === 0}
           <p class="text-xs text-muted-foreground">No connected apps</p>
@@ -395,10 +395,10 @@
             </h2>
 
             <!-- Add form -->
-            <div class="flex gap-2">
-              <Input type="text" bind:value={newGroupId} placeholder="Group ID" class="flex-1" />
-              <Input type="text" bind:value={newGroupName} placeholder="Display Name" class="flex-1" />
-              <Button on:click={addGroup} disabled={!newGroupId || !newGroupName}>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <Input type="text" bind:value={newGroupId} placeholder="Group ID" class="sm:flex-1" />
+              <Input type="text" bind:value={newGroupName} placeholder="Display Name" class="sm:flex-1" />
+              <Button class="shrink-0" on:click={addGroup} disabled={!newGroupId || !newGroupName}>
                 <Plus class="h-4 w-4 mr-1" />
                 Add
               </Button>
@@ -449,11 +449,11 @@
             </h2>
 
             <!-- Add form -->
-            <div class="flex gap-2 items-center">
-              <Input type="text" bind:value={newSourceRole} placeholder="Source Role (e.g. Admin)" class="flex-1" />
-              <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0" />
-              <Input type="text" bind:value={newTargetRole} placeholder="Target Role (e.g. Owner)" class="flex-1" />
-              <Button on:click={addRole} disabled={!newSourceRole || !newTargetRole}>
+            <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+              <Input type="text" bind:value={newSourceRole} placeholder="Source Role (e.g. Admin)" class="sm:flex-1" />
+              <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0 hidden sm:block" />
+              <Input type="text" bind:value={newTargetRole} placeholder="Target Role (e.g. Owner)" class="sm:flex-1" />
+              <Button class="shrink-0" on:click={addRole} disabled={!newSourceRole || !newTargetRole}>
                 <Plus class="h-4 w-4 mr-1" />
                 Add
               </Button>

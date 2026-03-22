@@ -659,12 +659,12 @@
 
 <div>
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Compliance Manager</h1>
       <p class="text-sm text-muted-foreground">Track frameworks, controls, and overall compliance posture.</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <Button size="sm" on:click={runEvaluation} disabled={evaluating}>
         <Play class="h-3.5 w-3.5 mr-1.5" />
         {evaluating ? "Evaluating..." : "Evaluate Configuration"}
@@ -1020,8 +1020,8 @@
     {/if}
 
     <!-- Controls tab -->
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
         <select
           id="fw-filter"
           bind:value={filterFramework}
@@ -1043,29 +1043,30 @@
           <option value="verified">Verified</option>
         </select>
       </div>
-      <Button size="sm" on:click={saveControls} disabled={saving}>
+      <Button size="sm" class="shrink-0 self-start sm:self-auto" on:click={saveControls} disabled={saving}>
         {saving ? "Saving..." : "Save Changes"}
       </Button>
     </div>
 
     <Card>
       <CardContent class="p-0">
+        <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-              <th class="px-4 py-3 font-medium w-[180px]">Control</th>
-              <th class="px-4 py-3 font-medium">Description</th>
-              <th class="px-4 py-3 font-medium w-[100px]">Framework</th>
-              <th class="px-4 py-3 font-medium w-[80px]">Evidence</th>
-              <th class="px-4 py-3 font-medium w-[140px]">Status</th>
-              <th class="px-4 py-3 font-medium">Notes</th>
-              <th class="px-4 py-3 font-medium w-[80px]">Verify</th>
+              <th class="px-3 sm:px-4 py-3 font-medium w-[140px] sm:w-[180px]">Control</th>
+              <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Description</th>
+              <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell w-[100px]">Framework</th>
+              <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell w-[80px]">Evidence</th>
+              <th class="px-3 sm:px-4 py-3 font-medium w-[120px] sm:w-[140px]">Status</th>
+              <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Notes</th>
+              <th class="px-3 sm:px-4 py-3 font-medium w-[70px] sm:w-[80px]">Verify</th>
             </tr>
           </thead>
           <tbody>
             {#each statusFilteredControls as control (control.id)}
               <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => toggleControlEvidence(control.id, control.framework)}>
-                <td class="px-4 py-3">
+                <td class="px-3 sm:px-4 py-3">
                   <div class="font-medium flex items-center gap-1.5">
                     {control.name}
                     <span class="text-[10px] text-muted-foreground">{expandedControlId === control.id ? '▼' : '▶'}</span>
@@ -1074,19 +1075,18 @@
                     <span class="text-[10px] text-primary font-medium uppercase tracking-wider">Auto</span>
                   {/if}
                 </td>
-                <td class="px-4 py-3 text-muted-foreground text-xs">{control.description || ""}</td>
-                <td class="px-4 py-3">
+                <td class="px-3 sm:px-4 py-3 text-muted-foreground text-xs hidden md:table-cell">{control.description || ""}</td>
+                <td class="px-3 sm:px-4 py-3 hidden lg:table-cell">
                   <Badge variant="outline">{control.framework}</Badge>
                 </td>
-                <td class="px-4 py-3">
-                  {@const count = evidenceCounts[control.id] || evidenceCounts[control.name] || 0}
-                  {#if count > 0}
-                    <Badge variant="success">{count}</Badge>
+                <td class="px-3 sm:px-4 py-3 hidden lg:table-cell">
+                  {#if (evidenceCounts[control.id] || evidenceCounts[control.name] || 0) > 0}
+                    <Badge variant="success">{evidenceCounts[control.id] || evidenceCounts[control.name] || 0}</Badge>
                   {:else}
                     <span class="text-xs text-muted-foreground">Gap</span>
                   {/if}
                 </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
+                <td class="px-3 sm:px-4 py-3" on:click|stopPropagation>
                   <select
                     value={control.status}
                     on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
@@ -1098,7 +1098,7 @@
                     <option value="verified">Verified</option>
                   </select>
                 </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
+                <td class="px-3 sm:px-4 py-3 hidden xl:table-cell" on:click|stopPropagation>
                   <input
                     type="text"
                     value={control.notes}
@@ -1107,7 +1107,7 @@
                     class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
                   />
                 </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
+                <td class="px-3 sm:px-4 py-3" on:click|stopPropagation>
                   {#if control.status === "verified"}
                     <Badge variant="success">Verified</Badge>
                   {:else if control.status === "implemented"}
@@ -1171,14 +1171,15 @@
             {/each}
           </tbody>
         </table>
+        </div>
       </CardContent>
     </Card>
 
   {:else if activeTab === "evidence"}
     <!-- Evidence tab -->
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
       <h2 class="text-lg font-semibold">Evidence Locker</h2>
-      <Button size="sm" variant={showRecordForm ? "outline" : "default"} on:click={() => (showRecordForm = !showRecordForm)}>
+      <Button size="sm" class="shrink-0 self-start sm:self-auto" variant={showRecordForm ? "outline" : "default"} on:click={() => (showRecordForm = !showRecordForm)}>
         <Upload class="h-3.5 w-3.5 mr-1.5" />
         {showRecordForm ? "Cancel" : "Record Evidence"}
       </Button>

@@ -103,3 +103,37 @@ select option {
   background: hsl(var(--popover));
   color: hsl(var(--popover-foreground));
 }
+
+/* Mobile-specific improvements */
+@layer base {
+  /* Safe area insets for notched devices (iPhone X+, Android punch-holes) */
+  html {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Prevent iOS Safari zoom on input focus (inputs < 16px trigger zoom) */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Smoother touch scrolling */
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text size adjust on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* Responsive table wrapper - allow horizontal scroll with visible indicator */
+@layer utilities {
+  .mobile-table-wrapper {
+    @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
+  }
+}

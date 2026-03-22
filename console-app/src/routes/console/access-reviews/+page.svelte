@@ -50,7 +50,7 @@
 </script>
 
 <div class="space-y-6">
-  <div class="flex items-center justify-between gap-4">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Access Reviews</h1>
       <p class="text-sm text-muted-foreground">
@@ -58,7 +58,7 @@
       </p>
     </div>
 
-    <Button variant="outline" on:click={loadCampaigns}>Refresh</Button>
+    <Button variant="outline" class="shrink-0 self-start sm:self-auto" on:click={loadCampaigns}>Refresh</Button>
   </div>
 
   {#if loading}
@@ -106,7 +106,7 @@
 
                   <td class="px-4 py-3 align-top text-muted-foreground">{formatDate(campaign.dueDate)}</td>
 
-                  <td class="px-4 py-3 align-top min-w-[220px]">
+                  <td class="px-4 py-3 align-top min-w-[180px] sm:min-w-[220px]">
                     <div class="flex items-center justify-between text-xs mb-1">
                       <span class="text-muted-foreground">{progress}% complete</span>
                       <span class="text-muted-foreground">{pending} pending</span>

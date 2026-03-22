@@ -31,6 +31,8 @@
     FileText,
     ClipboardCheck,
     Zap,
+    Menu,
+    X,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -169,6 +171,16 @@
   onMount(() => () => unsub());
 
   let profileOpen = false;
+  let mobileMenuOpen = false;
+
+  function closeMobileMenu() {
+    mobileMenuOpen = false;
+  }
+
+  // Close mobile menu on navigation
+  $: if (current) {
+    mobileMenuOpen = false;
+  }
 
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -261,12 +273,110 @@
     </div>
   </aside>
 
+  <!-- Mobile drawer overlay -->
+  {#if mobileMenuOpen}
+    <div class="fixed inset-0 z-40 md:hidden">
+      <!-- Backdrop -->
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div
+        class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        on:click={closeMobileMenu}
+      ></div>
+
+      <!-- Drawer panel -->
+      <aside class="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] flex flex-col bg-card border-r shadow-xl overflow-y-auto">
+        <!-- Logo -->
+        <div class="flex items-center justify-between gap-2 px-4 h-16 border-b shrink-0">
+          <div class="flex items-center gap-2">
+            {#if logoUrl}
+              <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
+            {:else}
+              <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center" style={accentColor ? `background-color: ${accentColor}` : ''}>
+                <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
+              </div>
+            {/if}
+            <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+          </div>
+          <button
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            on:click={closeMobileMenu}
+            aria-label="Close navigation menu"
+          >
+            <X class="h-5 w-5" />
+          </button>
+        </div>
+
+        {#if isImpersonating}
+          <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
+            <span>Viewing as tenant</span>
+            <button on:click={exitImpersonation} class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Exit</button>
+          </div>
+        {/if}
+
+        <!-- Navigation -->
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+          {#each computedSections as section}
+            <div>
+              <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {section.title}
+              </div>
+              <div class="space-y-0.5">
+                {#each section.items as item}
+                  {@const active = isActive(item.href, current)}
+                  <a
+                    href={item.href}
+                    on:click={closeMobileMenu}
+                    class={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-primary/10 text-primary border-l-2 border-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                    )}
+                  >
+                    <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
+                    {item.label}
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </nav>
+
+        <!-- User section at bottom -->
+        <div class="border-t p-3 shrink-0">
+          <a href="/console/profile" on:click={closeMobileMenu} class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
+            <Avatar {initials} size="sm" />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
+              {#if userEmail && userEmail !== userDisplayName}
+                <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
+              {/if}
+            </div>
+          </a>
+        </div>
+      </aside>
+    </div>
+  {/if}
+
   <!-- Main area -->
   <div class="flex-1 min-w-0 flex flex-col">
     <!-- Topbar -->
-    <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-6 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-      <!-- Left: Breadcrumb area -->
+    <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <!-- Left: Hamburger + Breadcrumb -->
       <div class="flex items-center gap-2 text-sm text-muted-foreground">
+        <button
+          class="inline-flex md:hidden items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors -ml-1"
+          on:click={() => mobileMenuOpen = !mobileMenuOpen}
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+        >
+          {#if mobileMenuOpen}
+            <X class="h-5 w-5" />
+          {:else}
+            <Menu class="h-5 w-5" />
+          {/if}
+        </button>
         <a href="/console" class="hover:text-foreground transition-colors">Console</a>
         {#if current !== "/console" && current !== "/console/"}
           <ChevronDown class="h-3 w-3 -rotate-90" />
@@ -362,7 +472,7 @@
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto" id="main">
-      <div class="max-w-[1280px] mx-auto px-6 py-8">
+      <div class="max-w-[1280px] mx-auto px-4 py-6 md:px-6 md:py-8">
         <slot />
       </div>
       <ToastContainer />

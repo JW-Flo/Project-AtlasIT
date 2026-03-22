@@ -418,14 +418,14 @@
 
     <!-- Users tab -->
     {#if activeTab === "users"}
-      <div class="flex items-center justify-between gap-4 mb-4">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
         <Input
           type="text"
           bind:value={userSearch}
-          placeholder="Search users by name, email, or department..."
-          class="max-w-md"
+          placeholder="Search users..."
+          class="sm:max-w-md"
         />
-        <Button on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
+        <Button class="shrink-0" on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
           <Plus class="h-4 w-4 mr-1.5" />
           Add User
         </Button>
@@ -437,13 +437,13 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Name</th>
-                  <th class="px-4 py-3 font-medium">Email</th>
-                  <th class="px-4 py-3 font-medium">Department</th>
-                  <th class="px-4 py-3 font-medium">Title</th>
-                  <th class="px-4 py-3 font-medium">Status</th>
-                  <th class="px-4 py-3 font-medium">Console Access</th>
-                  <th class="px-4 py-3 font-medium text-right"></th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Email</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Department</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Title</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Console Access</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium text-right"></th>
                 </tr>
               </thead>
               <tbody>
@@ -452,21 +452,24 @@
                     class="border-t hover:bg-muted/50 cursor-pointer"
                     on:click={() => goto(`/console/directory/users/${user.id}`)}
                   >
-                    <td class="px-4 py-3">{user.name}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.email}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.department || "-"}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.title || "-"}</td>
-                    <td class="px-4 py-3">
+                    <td class="px-3 sm:px-4 py-3">
+                      <div>{user.name}</div>
+                      <div class="text-xs text-muted-foreground sm:hidden">{user.email}</div>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{user.email}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.department || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.title || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3">
                       <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
                     </td>
-                    <td class="px-4 py-3">
+                    <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
                       {#if user.console_user_id}
                         <Badge variant="secondary">Console Access</Badge>
                       {:else}
                         <span class="text-muted-foreground">-</span>
                       {/if}
                     </td>
-                    <td class="px-4 py-3 text-right">
+                    <td class="px-3 sm:px-4 py-3 text-right">
                       <!-- svelte-ignore a11y_click_events_have_key_events -->
                       <button
                         type="button"
@@ -491,14 +494,14 @@
 
       <!-- Pagination -->
       {#if totalPages > 1}
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-muted-foreground">
-            Showing {userPage * pageSize + 1}--{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+          <span class="text-muted-foreground text-center sm:text-left">
+            Showing {userPage * pageSize + 1}–{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
           </span>
           <div class="flex gap-2">
             <Button variant="outline" size="sm" on:click={() => userPage = Math.max(0, userPage - 1)} disabled={userPage === 0}>
               <ChevronLeft class="h-4 w-4 mr-1" />
-              Previous
+              Prev
             </Button>
             <Button variant="outline" size="sm" on:click={() => userPage = Math.min(totalPages - 1, userPage + 1)} disabled={userPage >= totalPages - 1}>
               Next
@@ -567,11 +570,11 @@
 
     <!-- Mappings tab -->
     {#if activeTab === "mappings"}
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p class="text-sm text-muted-foreground">
           Map IdP groups to application roles for automatic provisioning
         </p>
-        <Button variant="secondary" on:click={autoSuggest} disabled={suggesting}>
+        <Button class="shrink-0" variant="secondary" on:click={autoSuggest} disabled={suggesting}>
           <Sparkles class="h-4 w-4 mr-1.5" />
           {suggesting ? "Suggesting..." : "Auto-suggest"}
         </Button>
