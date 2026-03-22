@@ -22,9 +22,10 @@ CREATE TABLE IF NOT EXISTS _tenants_rebuild (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Copy data using columns present in the live schema
-INSERT OR IGNORE INTO _tenants_rebuild (id, name, owner_email, industry, size, status, created_at)
-  SELECT id, name, owner_email, industry, size, status, created_at FROM tenants;
+-- Copy data using columns present in the live schema.
+-- Use tenant id as slug placeholder to satisfy UNIQUE constraint.
+INSERT OR IGNORE INTO _tenants_rebuild (id, name, slug, owner_email, industry, size, status, created_at)
+  SELECT id, name, id, owner_email, industry, size, status, created_at FROM tenants;
 
 DROP TABLE IF EXISTS tenants;
 ALTER TABLE _tenants_rebuild RENAME TO tenants;
