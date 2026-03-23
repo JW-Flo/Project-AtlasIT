@@ -104,7 +104,8 @@ name = "atlasit-core"
 main = "index.js"
 usage_model = "bundled"
 workers_dev = true
-routes = ["api.atlasit.pro/*"]
+# Route removed: core-api (Hono) now handles api.atlasit.pro exclusively.
+# Keeping this worker on workers.dev for internal/legacy use.
 
 [[env.core.kv_namespaces]]
 binding = "KV_SESSIONS"

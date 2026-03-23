@@ -52,8 +52,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Deploy
         run: npx wrangler deploy --config wrangler.toml --env core
-      - name: Smoke test
-        run: bash scripts/smoke-test.sh root-worker https://api.atlasit.pro
+      # Smoke test skipped: root worker no longer routed to api.atlasit.pro
+      # (core-api handles that domain). Root worker deploys to workers.dev only.
 
   deploy-core-api:
     name: Deploy core-api (Hono)
