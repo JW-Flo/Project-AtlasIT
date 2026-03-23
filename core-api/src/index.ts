@@ -39,13 +39,7 @@ app.use(
   cors({
     origin: ["https://console.atlasit.pro", "http://localhost:5173"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-API-Key",
-      "X-Tenant-ID",
-      "X-Correlation-ID",
-    ],
+    allowHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Tenant-ID", "X-Correlation-ID"],
   }),
 );
 
@@ -66,10 +60,7 @@ const apiAuth: MiddlewareHandler = async (c, next) => {
     .map((k) => k.trim())
     .filter(Boolean);
 
-  if (
-    allowedKeys.length > 0 ||
-    c.req.header("Authorization")?.startsWith("Bearer ")
-  ) {
+  if (allowedKeys.length > 0 || c.req.header("Authorization")?.startsWith("Bearer ")) {
     return sharedAuthMiddleware({ allowApiKey: true })(c, next);
   }
   // No API keys configured and no Bearer token — pass through with default tenant
@@ -94,10 +85,7 @@ app.onError((err, c) => {
   let code = "INTERNAL_ERROR";
   let message = "Internal server error";
 
-  if (
-    err.message === "Missing or invalid authentication" ||
-    err.message === "Not authenticated"
-  ) {
+  if (err.message === "Missing or invalid authentication" || err.message === "Not authenticated") {
     status = 401;
     code = "UNAUTHORIZED";
     message = err.message;
@@ -154,7 +142,11 @@ export { app };
 
 export default {
   fetch(request: Request, env: Bindings, ctx: ExecutionContext): Response | Promise<Response> {
-    validateEnv(env);
+    // Skip binding validation for health endpoint so it's always accessible
+    const url = new URL(request.url);
+    if (url.pathname !== "/health") {
+      validateEnv(env);
+    }
     return app.fetch(request, env, ctx);
   },
 };
