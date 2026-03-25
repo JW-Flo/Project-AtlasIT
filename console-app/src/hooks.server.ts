@@ -94,6 +94,7 @@ export const handle: Handle = async ({ event, resolve }) => {
             try {
               const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
               if (db) {
+                // Try console_users first
                 const row = await db
                   .prepare(
                     "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
@@ -102,6 +103,14 @@ export const handle: Handle = async ({ event, resolve }) => {
                   .first<{ tenant_id: string }>();
                 if (row?.tenant_id) {
                   user.tenantId = row.tenant_id;
+                } else {
+                  // Single-tenant fallback: use first tenant from tenants table
+                  const fallback = await db
+                    .prepare("SELECT id FROM tenants LIMIT 1")
+                    .first<{ id: string }>();
+                  if (fallback?.id) {
+                    user.tenantId = fallback.id;
+                  }
                 }
               }
             } catch (e) {
@@ -183,6 +192,35 @@ export const handle: Handle = async ({ event, resolve }) => {
           }),
         );
       }
+    }
+
+    // Enrich stale sessions missing tenantId (e.g., created before enrichment was added)
+    if (user && !user.tenantId) {
+      try {
+        const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
+        if (db) {
+          const roleRow = await db
+            .prepare("SELECT tenant_id FROM console_user_roles WHERE email = ? LIMIT 1")
+            .bind(user.email)
+            .first<{ tenant_id: string }>();
+          if (roleRow?.tenant_id) {
+            user.tenantId = roleRow.tenant_id;
+          } else {
+            const userRow = await db
+              .prepare("SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1")
+              .bind(user.email)
+              .first<{ tenant_id: string }>();
+            if (userRow?.tenant_id) {
+              user.tenantId = userRow.tenant_id;
+            } else {
+              const fallback = await db
+                .prepare("SELECT id FROM tenants LIMIT 1")
+                .first<{ id: string }>();
+              if (fallback?.id) user.tenantId = fallback.id;
+            }
+          }
+        }
+      } catch { /* non-blocking */ }
     }
 
     // Throttle lastSeenAt refresh — only write to KV every 5 minutes

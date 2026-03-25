@@ -69,15 +69,46 @@ async function upsertPref(db: any, tenantId: string, key: string, value: string)
     .run();
 }
 
+async function resolveTenantId(db: any, user: any): Promise<string | null> {
+  if (user.tenantId) return user.tenantId;
+  // Fallback: look up tenant from console_users or console_user_roles
+  try {
+    const row = await db
+      .prepare(
+        "SELECT tenant_id FROM console_user_roles WHERE email = ? LIMIT 1",
+      )
+      .bind(user.email)
+      .first<{ tenant_id: string }>();
+    if (row?.tenant_id) return row.tenant_id;
+  } catch { /* ignore */ }
+  try {
+    const row = await db
+      .prepare(
+        "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
+      )
+      .bind(user.email)
+      .first<{ tenant_id: string }>();
+    if (row?.tenant_id) return row.tenant_id;
+  } catch { /* ignore */ }
+  // Last resort: single-tenant fallback
+  try {
+    const row = await db
+      .prepare("SELECT id FROM tenants LIMIT 1")
+      .first<{ id: string }>();
+    if (row?.id) return row.id;
+  } catch { /* ignore */ }
+  return null;
+}
+
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+
+  const tenantId = await resolveTenantId(db, user);
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const settings = await readSettings(db, tenantId);
   return json({ settings });
@@ -87,11 +118,11 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+
+  const tenantId = await resolveTenantId(db, user);
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   let body: any;
   try {

@@ -76,6 +76,7 @@ AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
 SELF_URL = "https://orchestrator.atlasit.pro"
 ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
+COMPLIANCE_WORKER_URL = "https://compliance.atlasit.pro"
 
 [triggers]
 crons = ["*/5 * * * *", "0 2 * * *"]
