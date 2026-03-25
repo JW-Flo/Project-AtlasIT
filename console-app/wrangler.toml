@@ -38,6 +38,12 @@ routes = [
 	"www.atlasit.pro/api/platform*",
 	"www.atlasit.pro/api/support*",
 	"www.atlasit.pro/support*",
+	"www.atlasit.pro/trust/*",
+	"www.atlasit.pro/marketplace*",
+	"www.atlasit.pro/api/trust/*",
+	"www.atlasit.pro/api/marketplace*",
+	"www.atlasit.pro/api/questionnaires*",
+	"www.atlasit.pro/api/user/*",
 	"www.atlasit.pro/_app/*",
 	"www.atlasit.pro/favicon.png",
 	"www.atlasit.pro/" # root catch for redirect
