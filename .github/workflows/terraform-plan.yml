@@ -1,9 +1,7 @@
 name: Terraform Plan
 
 on:
-  pull_request:
-    paths:
-      - "terraform/aws/**"
+  workflow_dispatch:
 
 concurrency:
   group: terraform-plan-${{ github.event.pull_request.number }}

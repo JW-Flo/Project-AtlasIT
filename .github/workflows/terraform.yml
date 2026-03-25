@@ -1,10 +1,7 @@
 name: Terraform Drift Detection
 
 on:
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
 
 concurrency:
   group: terraform-drift-${{ github.ref }}

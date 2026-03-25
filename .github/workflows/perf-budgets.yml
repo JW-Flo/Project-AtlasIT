@@ -1,14 +1,7 @@
 name: Perf Budgets
 
 on:
-  pull_request:
-    paths:
-      - console-app/**
-      - scripts/bundle-report.mjs
-      - .github/workflows/perf-budgets.yml
-      - ops/perf/bundle-baseline.json
-      - package.json
-      - package-lock.json
+  workflow_dispatch:
 
 concurrency:
   group: perf-budgets-${{ github.event.pull_request.number }}

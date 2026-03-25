@@ -1,11 +1,7 @@
 name: Terraform Apply
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "terraform/aws/**"
+  workflow_dispatch:
 
 concurrency:
   group: terraform-apply

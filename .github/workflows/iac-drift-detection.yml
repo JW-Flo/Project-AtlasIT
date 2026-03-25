@@ -1,13 +1,6 @@
 name: IaC Drift Detection & Policy Validation
 
 on:
-  pull_request:
-    paths:
-      - "terraform/**"
-      - ".github/workflows/iac-drift-detection.yml"
-  schedule:
-    # Daily at 06:00 UTC
-    - cron: "0 6 * * *"
   workflow_dispatch: {}
 
 permissions:
