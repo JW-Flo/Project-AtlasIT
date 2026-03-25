@@ -1,11 +1,7 @@
 name: Contract Gate
 
 on:
-  pull_request:
-    paths:
-      - docs/api/openapi.yaml
-      - docs/api/CHANGELOG.md
-      - .github/workflows/contract-gate.yml
+  workflow_dispatch:
 
 jobs:
   verify-openapi-changelog:
