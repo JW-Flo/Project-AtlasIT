@@ -3,6 +3,11 @@ name: Deploy on Merge
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'ROADMAP.md'
+      - 'STATUS.md'
+      - '*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 concurrency:
