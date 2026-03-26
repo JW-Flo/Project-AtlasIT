@@ -94,3 +94,7 @@ id = "4f08086308004796bfd7cab01c34b006"
 [[services]]
 binding = "COMPLIANCE_WORKER"
 service = "atlasit-compliance-worker"
+
+[[services]]
+binding = "MARKETPLACE_WORKER"
+service = "atlasit-marketplace"
