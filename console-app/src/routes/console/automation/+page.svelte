@@ -170,6 +170,12 @@
   // Suggestions error tracking
   let suggestionsError = false;
 
+  // Execution stats
+  let execStats: {
+    totals: { executions: number; success: number; failed: number; partial: number; avgDurationMs: number };
+    topRules: Array<{ ruleId: string; ruleName: string; executions: number; successRate: number }>;
+  } | null = null;
+
   // Compliance mapping for rule detail
   let expandedRuleId: string | null = null;
   let complianceLoading = false;
@@ -185,7 +191,7 @@
     loading = true;
     error = null;
     try {
-      await Promise.all([fetchRules(), fetchExecutions(), fetchHealth(), fetchSuggestions(), fetchJmlPolicy(), fetchJmlRuns(), fetchActivities()]);
+      await Promise.all([fetchRules(), fetchExecutions(), fetchHealth(), fetchSuggestions(), fetchJmlPolicy(), fetchJmlRuns(), fetchActivities(), fetchExecStats()]);
     } catch (e: any) {
       error = e?.message || "Failed to load automation data";
     } finally {
@@ -251,6 +257,17 @@
     if (!res.ok) return;
     const data: any = await res.json();
     activities = data.activities || [];
+  }
+
+  async function fetchExecStats() {
+    try {
+      const res = await fetch("/api/automation/stats?days=30");
+      if (res.ok) {
+        execStats = await res.json();
+      }
+    } catch {
+      // non-critical
+    }
   }
 
   async function saveJmlPolicy() {
@@ -374,6 +391,20 @@
       }
     } catch {
       pushToast({ message: "Failed to delete rule", variant: "error" });
+    }
+  }
+
+  async function duplicateRule(rule: AutomationRule) {
+    try {
+      const res = await fetch(`/api/automation/rules/${rule.id}/duplicate`, { method: "POST" });
+      if (res.ok) {
+        await fetchRules();
+        pushToast({ message: `"${rule.name}" duplicated`, variant: "success" });
+      } else {
+        pushToast({ message: "Failed to duplicate rule", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to duplicate rule", variant: "error" });
     }
   }
 
@@ -704,6 +735,52 @@
         </CardContent>
       </Card>
     </div>
+
+    <!-- Execution Stats (30-day) -->
+    {#if execStats && execStats.totals.executions > 0}
+      <Card class="mb-6">
+        <CardHeader class="flex-row items-center justify-between">
+          <CardTitle class="text-sm">30-Day Execution Summary</CardTitle>
+          <div class="text-xs text-muted-foreground">
+            Avg duration: {execStats.totals.avgDurationMs}ms
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div class="grid grid-cols-3 gap-4 mb-4">
+            <div class="text-center">
+              <div class="text-lg font-semibold text-green-500">{execStats.totals.success}</div>
+              <div class="text-xs text-muted-foreground">Succeeded</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-semibold text-red-500">{execStats.totals.failed}</div>
+              <div class="text-xs text-muted-foreground">Failed</div>
+            </div>
+            <div class="text-center">
+              <div class="text-lg font-semibold text-yellow-500">{execStats.totals.partial}</div>
+              <div class="text-xs text-muted-foreground">Partial</div>
+            </div>
+          </div>
+          {#if execStats.topRules.length > 0}
+            <div class="border-t pt-3">
+              <div class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Most Active Rules</div>
+              <div class="space-y-1.5">
+                {#each execStats.topRules as tr}
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="truncate">{tr.ruleName}</span>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span class="text-xs text-muted-foreground">{tr.executions} runs</span>
+                      <Badge variant={tr.successRate >= 0.9 ? "success" : tr.successRate >= 0.5 ? "warning" : "destructive"}>
+                        {Math.round(tr.successRate * 100)}%
+                      </Badge>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </CardContent>
+      </Card>
+    {/if}
 
     <!-- Suggestions (P3 #17, P5 #22, #24) -->
     {#if suggestionsError}
@@ -1055,6 +1132,15 @@
                 >
                   <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                   Dry Run
+                </button>
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center h-10 w-10 rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 text-muted-foreground"
+                  on:click={() => duplicateRule(rule)}
+                  title="Duplicate rule"
+                  aria-label="Duplicate {rule.name}"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                 </button>
                 <button
                   type="button"
