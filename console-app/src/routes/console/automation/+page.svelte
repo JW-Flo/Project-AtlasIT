@@ -58,11 +58,18 @@
     checkedAt: string;
   }
 
+  interface ComplianceImpact {
+    frameworks: string[];
+    controls: { id: string; name: string }[];
+    reasoning: string;
+  }
+
   interface Suggestion {
     templateId: string;
     reason: string;
     priority: string;
     ruleInput: any;
+    complianceImpact?: ComplianceImpact;
   }
 
   interface JmlPolicy {
@@ -615,33 +622,57 @@
         <div class="space-y-2">
           {#each suggestions.slice(0, 5) as suggestion}
             <Card>
-              <CardContent class="flex items-center gap-4 py-3 px-4">
-                <Badge variant={priorityVariant(suggestion.priority)} class="shrink-0 capitalize">{suggestion.priority}</Badge>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium truncate">{suggestion.ruleInput.name}</div>
-                  <div class="text-xs text-muted-foreground mt-0.5 truncate">{suggestion.reason}</div>
-                  {#if suggestion.ruleInput.description || suggestion.ruleInput.triggerType}
-                    <div class="flex items-center gap-2 mt-1">
-                      {#if suggestion.ruleInput.triggerType}
-                        <Badge variant="outline" class="text-[10px]">{triggerLabel(suggestion.ruleInput.triggerType)}</Badge>
-                      {/if}
-                      {#if suggestion.ruleInput.actions?.length}
-                        <span class="text-[10px] text-muted-foreground">{suggestion.ruleInput.actions.length} action{suggestion.ruleInput.actions.length !== 1 ? "s" : ""}</span>
+              <CardContent class="py-3 px-4">
+                <div class="flex items-center gap-4">
+                  <Badge variant={priorityVariant(suggestion.priority)} class="shrink-0 capitalize">{suggestion.priority}</Badge>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium truncate">{suggestion.ruleInput.name}</div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate">{suggestion.reason}</div>
+                    {#if suggestion.ruleInput.description || suggestion.ruleInput.triggerType}
+                      <div class="flex items-center gap-2 mt-1">
+                        {#if suggestion.ruleInput.triggerType}
+                          <Badge variant="outline" class="text-[10px]">{triggerLabel(suggestion.ruleInput.triggerType)}</Badge>
+                        {/if}
+                        {#if suggestion.ruleInput.actions?.length}
+                          <span class="text-[10px] text-muted-foreground">{suggestion.ruleInput.actions.length} action{suggestion.ruleInput.actions.length !== 1 ? "s" : ""}</span>
+                        {/if}
+                      </div>
+                    {/if}
+                  </div>
+                  <div class="flex gap-2 shrink-0">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      on:click={() => applySuggestion(suggestion)}
+                      disabled={applyingId === suggestion.templateId}
+                    >
+                      {applyingId === suggestion.templateId ? "Enabling..." : "Enable"}
+                    </Button>
+                    <Button variant="ghost" size="sm" on:click={() => dismissSuggestion(suggestion)}>Dismiss</Button>
+                  </div>
+                </div>
+                {#if suggestion.complianceImpact}
+                  <div class="mt-2.5 pt-2.5 border-t border-border/50">
+                    <div class="flex items-center gap-1.5 mb-1">
+                      <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      <span class="text-[11px] font-medium text-primary">Compliance Impact</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mb-1.5">
+                      {#each suggestion.complianceImpact.frameworks as fw}
+                        <Badge variant="outline" class="text-[10px]">{fw}</Badge>
+                      {/each}
+                      {#each suggestion.complianceImpact.controls.slice(0, 3) as ctrl}
+                        <Badge variant="secondary" class="text-[10px]">{ctrl.id}</Badge>
+                      {/each}
+                      {#if suggestion.complianceImpact.controls.length > 3}
+                        <span class="text-[10px] text-muted-foreground">+{suggestion.complianceImpact.controls.length - 3} more</span>
                       {/if}
                     </div>
-                  {/if}
-                </div>
-                <div class="flex gap-2 shrink-0">
-                  <Button
-                    variant="success"
-                    size="sm"
-                    on:click={() => applySuggestion(suggestion)}
-                    disabled={applyingId === suggestion.templateId}
-                  >
-                    {applyingId === suggestion.templateId ? "Enabling..." : "Enable"}
-                  </Button>
-                  <Button variant="ghost" size="sm" on:click={() => dismissSuggestion(suggestion)}>Dismiss</Button>
-                </div>
+                    <p class="text-[11px] text-muted-foreground leading-relaxed">{suggestion.complianceImpact.reasoning}</p>
+                  </div>
+                {/if}
               </CardContent>
             </Card>
           {/each}

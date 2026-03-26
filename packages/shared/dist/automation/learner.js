@@ -8,8 +8,11 @@ import { ruleTemplates } from "./templates";
 export function generateSuggestions(existingRules, connectedApps, groupMappings) {
     const suggestions = [];
     const existingTriggers = new Set(existingRules.map(ruleKey));
+    const connectedAppIds = new Set(connectedApps.map((a) => a.appId));
     // 1. For each group↔app mapping without a provisioning rule, suggest auto-provision
     for (const mapping of groupMappings) {
+        if (!connectedAppIds.has(mapping.appId))
+            continue;
         const provisionKey = key("user_joined_group", mapping.groupId, mapping.appId);
         if (!existingTriggers.has(provisionKey)) {
             suggestions.push({
@@ -158,6 +161,68 @@ export function generateSuggestions(existingRules, connectedApps, groupMappings)
             },
         });
     }
+    // 6. If there are connected apps but no directory sync on connect rule, suggest one
+    const hasSyncOnConnectRule = existingRules.some((r) => r.triggerType === "app_connected");
+    if (connectedApps.length > 0 && !hasSyncOnConnectRule) {
+        const template = ruleTemplates.find((t) => t.id === "sync-directory-on-app-connect");
+        if (template) {
+            suggestions.push({
+                templateId: "sync-directory-on-app-connect",
+                reason: `Automatically sync directory users when a new app is connected to keep mappings current`,
+                priority: "medium",
+                ruleInput: {
+                    name: template.name,
+                    description: template.description,
+                    triggerType: template.triggerType,
+                    triggerConfig: template.triggerConfig,
+                    conditions: template.conditions,
+                    actions: template.actions,
+                },
+            });
+        }
+    }
+    // 7. Per-app provisioning suggestions for connected apps without any rules
+    const appsWithRules = new Set(existingRules
+        .filter((r) => r.triggerConfig?.appId)
+        .map((r) => r.triggerConfig.appId));
+    for (const app of connectedApps) {
+        if (appsWithRules.has(app.appId))
+            continue;
+        // Suggest auto-provisioning for each connected app without any automation
+        suggestions.push({
+            templateId: `auto-provision-${app.appId}`,
+            reason: `${app.appName} is connected but has no automation rules — set up auto-provisioning for new users`,
+            priority: "medium",
+            ruleInput: {
+                name: `Auto-provision ${app.appName} for new users`,
+                description: `When a new user is created in the directory, automatically provision their ${app.appName} account`,
+                triggerType: "user_created",
+                triggerConfig: { appId: app.appId },
+                conditions: [],
+                actions: [
+                    {
+                        type: "provision_app_access",
+                        config: { appId: app.appId, role: "member" },
+                        order: 1,
+                    },
+                    {
+                        type: "send_notification",
+                        config: {
+                            channel: "slack",
+                            template: "user_provisioned",
+                            notifyUser: true,
+                        },
+                        order: 2,
+                    },
+                ],
+            },
+        });
+    }
+    // Attach compliance impact to all suggestions
+    for (const s of suggestions) {
+        const appName = s.ruleInput.actions?.[0]?.config?.appId;
+        s.complianceImpact = getComplianceImpact(s.templateId, appName);
+    }
     return suggestions.sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority));
 }
 /**
@@ -217,7 +282,96 @@ export function generatePatternSuggestions(existingRules, eventHistory) {
             });
         }
     }
+    for (const s of suggestions) {
+        s.complianceImpact = getComplianceImpact(s.templateId);
+    }
     return suggestions.sort((a, b) => priorityWeight(a.priority) - priorityWeight(b.priority));
+}
+// --- Compliance impact mappings ---
+const COMPLIANCE_IMPACTS = {
+    "auto-provision-on-group-join": {
+        frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+        controls: [
+            { id: "CC6.1", name: "Logical access security" },
+            { id: "A.9.2.2", name: "User access provisioning" },
+            { id: "PR.AC-1", name: "Identity & credential management" },
+        ],
+        reasoning: "Automated provisioning ensures access is granted through defined controls, strengthening identity lifecycle management and reducing manual provisioning errors.",
+    },
+    "auto-revoke-on-group-leave": {
+        frameworks: ["SOC2", "ISO27001", "NIST CSF", "HIPAA"],
+        controls: [
+            { id: "CC6.3", name: "Access removal" },
+            { id: "A.9.2.6", name: "Removal of access rights" },
+            { id: "PR.AC-4", name: "Least privilege enforcement" },
+            { id: "164.312(a)(1)", name: "Access control" },
+        ],
+        reasoning: "Automatic access revocation on group departure enforces least-privilege and ensures timely deprovisioning — a key audit requirement across all major frameworks.",
+    },
+    "health-degradation-alert": {
+        frameworks: ["SOC2", "NIST CSF"],
+        controls: [
+            { id: "CC7.2", name: "System monitoring" },
+            { id: "DE.CM-1", name: "Network monitoring" },
+        ],
+        reasoning: "Health monitoring automation helps detect and respond to service disruptions, supporting continuous monitoring controls.",
+    },
+    "offboard-user-on-deactivation": {
+        frameworks: ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"],
+        controls: [
+            { id: "CC6.3", name: "Access removal" },
+            { id: "A.9.2.6", name: "Removal of access rights" },
+            { id: "PR.AC-4", name: "Least privilege enforcement" },
+            { id: "164.312(a)(1)", name: "Access control" },
+            { id: "Art.17", name: "Right to erasure" },
+        ],
+        reasoning: "Automated offboarding is the highest-impact compliance automation — it ensures no orphaned accounts persist after user deactivation, a top finding in SOC 2 and ISO audits.",
+    },
+    "onboard-new-user": {
+        frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+        controls: [
+            { id: "CC6.2", name: "User registration & authorization" },
+            { id: "A.9.2.1", name: "User registration & deregistration" },
+            { id: "PR.AC-1", name: "Identity & credential management" },
+        ],
+        reasoning: "Automated onboarding ensures consistent access provisioning aligned with group-based policies, reducing risk of ad-hoc permission grants.",
+    },
+    "compliance-score-drop": {
+        frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+        controls: [
+            { id: "CC4.1", name: "Monitoring activities" },
+            { id: "A.9.2.5", name: "Review of user access rights" },
+            { id: "DE.CM-1", name: "Network monitoring" },
+        ],
+        reasoning: "Score-drop alerts enable proactive remediation before compliance gaps widen, supporting continuous improvement controls.",
+    },
+    "sync-directory-on-app-connect": {
+        frameworks: ["SOC2", "ISO27001"],
+        controls: [
+            { id: "CC6.1", name: "Logical access security" },
+            { id: "A.9.2.1", name: "User registration & deregistration" },
+        ],
+        reasoning: "Automatic directory sync on app connection ensures user inventories stay current, reducing drift between identity provider and downstream apps.",
+    },
+};
+function getComplianceImpact(templateId, appName) {
+    // Check exact match first, then strip app-specific prefix
+    const impact = COMPLIANCE_IMPACTS[templateId];
+    if (impact)
+        return impact;
+    // Per-app provisioning suggestions
+    if (templateId.startsWith("auto-provision-")) {
+        return {
+            frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+            controls: [
+                { id: "CC6.2", name: "User registration & authorization" },
+                { id: "A.9.2.2", name: "User access provisioning" },
+                { id: "PR.AC-1", name: "Identity & credential management" },
+            ],
+            reasoning: `Automating ${appName || "app"} provisioning ensures consistent access grants tied to directory events, strengthening access control evidence.`,
+        };
+    }
+    return undefined;
 }
 // --- Helpers ---
 function ruleKey(rule) {
