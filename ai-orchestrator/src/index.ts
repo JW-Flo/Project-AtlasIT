@@ -439,10 +439,10 @@ const worker = {
 
             const framework = (control.framework ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
             const frameworkEvidenceCount = (() => {
-              // Match loosely: "SOC2", "SOC 2", "SOC_2" → normalise key
+              // Exact match after normalisation (strip non-alphanumeric, uppercase)
               for (const [fw, cnt] of frameworkTotals) {
                 const normFw = fw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                if (normFw === framework || normFw.startsWith(framework) || framework.startsWith(normFw)) {
+                if (normFw === framework) {
                   return cnt;
                 }
               }
@@ -478,8 +478,20 @@ const worker = {
         }),
       );
 
-      for (const r of promotionSettled) {
-        if (r.status === "fulfilled") controlsPromoted += r.value;
+      for (let i = 0; i < promotionSettled.length; i++) {
+        const r = promotionSettled[i];
+        if (r.status === "fulfilled") {
+          controlsPromoted += r.value;
+        } else {
+          const tenantId = (promotionTenants ?? [])[i]?.id ?? "unknown";
+          console.error(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "error",
+            event: "duty4b.promotion_failed",
+            tenantId,
+            error: r.reason?.message ?? String(r.reason),
+          }));
+        }
       }
     }
 
