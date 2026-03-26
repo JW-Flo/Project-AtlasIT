@@ -113,6 +113,42 @@ Never launch multiple write agents against the same branch — they will overwri
 - **opus**: novel architecture decisions, hard debugging, system design trade-offs
   Do not use opus for cookie-cutter or pattern-following work.
 
+## Key Files Quick Reference
+
+Read these files directly at session start — do NOT explore or search for them.
+
+| Area | File |
+|------|------|
+| **Automation engine** | `packages/shared/src/automation/engine.ts` |
+| **Automation types** | `packages/shared/src/automation/types.ts` |
+| **Compliance mapping** | `packages/shared/src/automation/compliance-mapping.ts` |
+| **Suggestion generation** | `packages/shared/src/automation/learner.ts` |
+| **NL rule builder** | `packages/shared/src/automation/nl-builder.ts` |
+| **Shared barrel** | `packages/shared/src/index.ts` → `automation/index.ts` |
+| **Orchestrator cron** | `ai-orchestrator/src/index.ts` |
+| **Console layout/nav** | `console-app/src/lib/components/layout/AppFrame.svelte` |
+| **Session store** | `console-app/src/lib/stores/session.ts` |
+| **Compliance store** | `console-app/src/lib/stores/compliance.ts` |
+| **Theme store** | `console-app/src/lib/stores/theme.ts` |
+| **Toast system** | `console-app/src/lib/components/feedback/toastStore.ts` |
+| **Integrations catalog** | `console-app/src/lib/data/integrations.ts` |
+| **Dashboard page** | `console-app/src/routes/console/+page.svelte` |
+| **Compliance page** | `console-app/src/routes/console/compliance/+page.svelte` |
+| **Automation page** | `console-app/src/routes/console/automation/+page.svelte` |
+| **Workflows page** | `console-app/src/routes/console/workflows/+page.svelte` |
+| **Directory page** | `console-app/src/routes/console/directory/+page.svelte` |
+| **Automation rules API** | `console-app/src/routes/api/automation/rules/+server.ts` |
+| **Simulate API** | `console-app/src/routes/api/automation/simulate/+server.ts` |
+| **Evaluate API** | `console-app/src/routes/api/automation/evaluate/+server.ts` |
+| **Evidence feed API** | `console-app/src/routes/api/evidence-feed/+server.ts` |
+| **Compliance scores API** | `console-app/src/routes/api/tenant-compliance/scores/+server.ts` |
+| **Automation server helpers** | `console-app/src/lib/server/automation.ts` |
+| **Action handlers** | `console-app/src/lib/server/automation-actions.ts` |
+| **Auth provider** | `console-app/src/lib/auth/provider.ts` |
+| **DB migrations** | `migrations/` (numbered SQL files) |
+| **CDT rules** | `shared/services/cdt/` (60 compliance rules) |
+| **CI/CD** | `.github/workflows/deploy-on-merge.yml` |
+
 ## Project Architecture
 
 AtlasIT is a multi-tenant IT automation and compliance platform on Cloudflare.
