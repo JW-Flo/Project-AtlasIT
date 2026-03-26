@@ -1,5 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { requireSlackSignature } from "$lib/server/slack-verify";
+import { resolveSlackTenant } from "$lib/server/slack/resolve-tenant";
+import { handleBlockActions, handleViewSubmission } from "$lib/server/slack/interaction-handlers";
 
 export const POST: RequestHandler = async ({ request, platform }) => {
   const env = platform?.env as Record<string, unknown> | undefined;
@@ -20,7 +22,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   }
 
   const payload = JSON.parse(raw);
-  const type = payload.type; // block_actions, view_submission, shortcut, etc.
+  const type = payload.type;
 
   console.log(
     JSON.stringify({
@@ -32,23 +34,16 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     }),
   );
 
-  // --- Block actions (button clicks, select menus) ---
+  const db = (env.ATLAS_SHARED_DB as D1Database) ?? null;
+  const teamId = payload.team?.id;
+  const tenantId = db && teamId ? await resolveSlackTenant(db, teamId) : null;
+
   if (type === "block_actions") {
-    const action = payload.actions?.[0];
-    // TODO: route by action_id (e.g. approve_request, deny_request)
-    console.log(
-      JSON.stringify({
-        level: "info",
-        event: "slack.block_action",
-        action_id: action?.action_id,
-        value: action?.value,
-      }),
-    );
+    await handleBlockActions(payload, db, tenantId);
   }
 
-  // --- View submissions (modal forms) ---
   if (type === "view_submission") {
-    // TODO: handle modal form submissions
+    await handleViewSubmission(payload);
   }
 
   // Slack expects 200 within 3 seconds
