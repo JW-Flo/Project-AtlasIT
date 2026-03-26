@@ -1529,7 +1529,7 @@
             <div class="mt-2 space-y-2">
               <textarea
                 bind:value={simCustomPayload}
-                placeholder='{"type": "user_created", "payload": {"email": "test@example.com", "displayName": "Test User"}}'
+                placeholder={'{"type": "user_created", "payload": {"email": "test@example.com", "displayName": "Test User"}}'}
                 class="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-xs font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
               ></textarea>
               <Button size="sm" variant="outline" on:click={rerunSimulation} disabled={simLoading}>
