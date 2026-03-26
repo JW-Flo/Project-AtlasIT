@@ -1,15 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import {
-  listRules,
-  listDismissedSuggestions,
-  dismissSuggestion,
-} from "$lib/server/automation";
+import { listRules, listDismissedSuggestions, dismissSuggestion } from "$lib/server/automation";
 import { listConnectedApps } from "$lib/server/credentials";
-import {
-  generateSuggestions,
-  generatePatternSuggestions,
-} from "@atlasit/shared";
+import { generateSuggestions, generatePatternSuggestions } from "@atlasit/shared";
 import { integrations } from "$lib/data/integrations";
 
 /**
@@ -21,8 +14,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ suggestions: [] });
@@ -35,6 +27,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     mappingsSettled,
     eventHistorySettled,
     dismissedResult,
+    selectedAppsResult,
   ] = await Promise.allSettled([
     listRules(db, tenantId),
     listConnectedApps(platform, tenantId),
@@ -59,6 +52,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .bind(tenantId)
       .all(),
     listDismissedSuggestions(db, tenantId),
+    db
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'selected_apps'`)
+      .bind(tenantId)
+      .first<{ value: string }>(),
   ]);
 
   const warnings: string[] = [];
@@ -109,9 +106,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
           JSON.stringify({
             source: "suggestions/event-history",
             tenantId,
-            error: String(
-              (eventHistorySettled as PromiseRejectedResult).reason,
-            ),
+            error: String((eventHistorySettled as PromiseRejectedResult).reason),
           }),
         ),
         warnings.push("event-history"),
@@ -130,18 +125,41 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
         warnings.push("dismissed"),
         []);
 
-  const connectedApps = connectedRaw.map((c) => ({
+  // Build tenant's app allowlist: apps they selected during onboarding + actually connected
+  let selectedApps: string[] = [];
+  if (selectedAppsResult.status === "fulfilled" && selectedAppsResult.value?.value) {
+    try {
+      selectedApps = JSON.parse(selectedAppsResult.value.value);
+    } catch {
+      // malformed preference — ignore
+    }
+  }
+
+  // Build the tenant's known app ecosystem: selected during onboarding
+  const tenantEcosystem = new Set(selectedApps);
+
+  // Filter connected apps to only those in the tenant's ecosystem.
+  // If no ecosystem preference exists (pre-existing tenant), allow all connected apps.
+  const allConnected = connectedRaw.map((c) => ({
     appId: c.app_id,
     appName: integrations.find((i) => i.id === c.app_id)?.name ?? c.app_id,
     healthy: c.healthy,
   }));
+  const connectedApps =
+    tenantEcosystem.size > 0
+      ? allConnected.filter((a) => tenantEcosystem.has(a.appId))
+      : allConnected;
 
-  const groupMappings = (mappingsResult.results || []).map((r: any) => ({
-    groupId: r.groupId,
-    groupName: r.groupName || r.groupId,
-    appId: r.appId,
-    role: r.role || "member",
-  }));
+  // Only surface group-mapping suggestions for apps in the tenant's ecosystem
+  const relevantAppIds = new Set(connectedApps.map((a) => a.appId));
+  const groupMappings = (mappingsResult.results || [])
+    .filter((r: any) => relevantAppIds.has(r.appId))
+    .map((r: any) => ({
+      groupId: r.groupId,
+      groupName: r.groupName || r.groupId,
+      appId: r.appId,
+      role: r.role || "member",
+    }));
 
   const eventHistory = (eventHistoryResult.results || []).map((r: any) => ({
     type: r.type as string,
@@ -150,11 +168,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     latestAt: r.latestAt as string,
   }));
 
-  const stateSuggestions = generateSuggestions(
-    rules,
-    connectedApps,
-    groupMappings,
-  );
+  const stateSuggestions = generateSuggestions(rules, connectedApps, groupMappings);
   const patternSuggestions = generatePatternSuggestions(rules, eventHistory);
 
   // Merge, deduplicate by templateId, and filter out dismissed
@@ -182,8 +196,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
