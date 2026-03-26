@@ -136,7 +136,20 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     const tenantDomain = user.email?.split("@")[1] || "example.com";
     const { users, groups, memberships } = generateSyntheticData(tenantDomain);
 
+    // Snapshot existing active users before upsert to detect new vs updated
+    const existingRows = await db
+      .prepare(`SELECT email, status FROM directory_users WHERE tenant_id = ?`)
+      .bind(tenantId)
+      .all()
+      .then((r: any) => r.results || []);
+    const existingEmails = new Set<string>(existingRows.map((r: any) => r.email as string));
+    const existingActiveEmails = new Set<string>(
+      existingRows.filter((r: any) => r.status === "active").map((r: any) => r.email as string),
+    );
+    const incomingEmails = new Set<string>(users.map((u) => u.email));
+
     // Upsert users
+    const newUsers: SyntheticUser[] = [];
     for (const u of users) {
       const id = crypto.randomUUID();
       const externalId = u.email.split("@")[0];
@@ -162,6 +175,10 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
           now,
         )
         .run();
+
+      if (!existingEmails.has(u.email)) {
+        newUsers.push(u);
+      }
     }
 
     // Upsert groups
@@ -226,6 +243,48 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
     // Auto-suggest mappings after first sync
     await autoSuggestMappings(db, tenantId);
+
+    // Emit lifecycle events to the orchestrator JML engine
+    const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL;
+    if (orchestratorUrl) {
+      // Deactivated: previously active users absent from this sync
+      const deactivatedEmails = [...existingActiveEmails].filter((e) => !incomingEmails.has(e));
+
+      const eventPayloads = [
+        ...newUsers.map((u) => ({
+          tenantId,
+          type: "user.created",
+          source: "console-directory-sync",
+          payload: {
+            userId: u.email.split("@")[0],
+            email: u.email,
+            displayName: u.displayName,
+            department: u.department,
+            status: "active",
+          },
+        })),
+        ...deactivatedEmails.map((email) => ({
+          tenantId,
+          type: "user.deactivated",
+          source: "console-directory-sync",
+          payload: {
+            userId: email.split("@")[0],
+            email,
+            status: "inactive",
+          },
+        })),
+      ];
+
+      await Promise.allSettled(
+        eventPayloads.map((evt) =>
+          fetch(`${orchestratorUrl}/api/v1/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(evt),
+          }),
+        ),
+      );
+    }
 
     await writeAudit(db, {
       tenantId,

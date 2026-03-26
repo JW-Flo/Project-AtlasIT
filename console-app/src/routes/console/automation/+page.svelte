@@ -729,6 +729,23 @@
                 </div>
               {/each}
             </div>
+            <!-- Leaver Grace Period -->
+            <div class="flex items-center justify-between p-3 rounded-lg border">
+              <div>
+                <div class="text-sm font-medium">Leaver Grace Period</div>
+                <div class="text-xs text-muted-foreground">Delay before leaver workflow executes after user deactivation</div>
+              </div>
+              <select
+                bind:value={jmlPolicy.leaverGraceMs}
+                class="flex h-9 rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value={0}>Immediate</option>
+                <option value={3600000}>1 hour</option>
+                <option value={86400000}>24 hours</option>
+                <option value={604800000}>7 days</option>
+              </select>
+            </div>
+
             <div class="flex justify-end pt-2">
               <Button size="sm" on:click={saveJmlPolicy} disabled={jmlSaving}>
                 {jmlSaving ? "Saving..." : "Save Policy"}
