@@ -76,7 +76,7 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
     ],
   },
   {
-    slug: "google_workspace",
+    slug: "google-workspace",
     evidenceTypes: [
       {
         type: "mfa_enforcement",
@@ -96,7 +96,7 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
     ],
   },
   {
-    slug: "microsoft_365",
+    slug: "microsoft-365",
     evidenceTypes: [
       {
         type: "mfa_enforcement",
