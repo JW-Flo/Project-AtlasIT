@@ -181,3 +181,31 @@ export interface RuleTemplate {
   conditions: RuleCondition[];
   actions: RuleAction[];
 }
+
+/** Dry-run simulation result for previewing automation rule behavior */
+export interface ConditionResult {
+  field: string;
+  operator: ConditionOperator;
+  expected: string | string[] | number;
+  actual: unknown;
+  passed: boolean;
+}
+
+export interface ActionPreview {
+  type: ActionType;
+  order: number;
+  config: Record<string, unknown>;
+  interpolated: Record<string, string>;
+  description: string;
+}
+
+export interface SimulationResult {
+  ruleId: string;
+  ruleName: string;
+  enabled: boolean;
+  triggered: boolean;
+  triggerMatch: boolean;
+  conditionResults: ConditionResult[];
+  actionsPreview: ActionPreview[];
+  complianceImpact: { framework: string; controls: { id: string; name: string }[] }[];
+}

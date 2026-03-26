@@ -152,9 +152,28 @@
   let nlResult: any = null;
   let nlError: string | null = null;
 
+  // Dry-run simulation
+  let showSimDialog = false;
+  let simLoading = false;
+  let simResult: {
+    ruleId: string;
+    ruleName: string;
+    triggered: boolean;
+    triggerMatch: boolean;
+    conditionResults: Array<{ field: string; operator: string; expected: unknown; actual: unknown; passed: boolean }>;
+    actionsPreview: Array<{ type: string; order: number; config: Record<string, any>; interpolated: Record<string, string>; description: string }>;
+    complianceImpact: Array<{ framework: string; controls: Array<{ id: string; name: string }> }>;
+  } | null = null;
+  let simCustomPayload = "";
+  let simShowCustom = false;
+
+  // Suggestions error tracking
+  let suggestionsError = false;
+
   // Compliance mapping for rule detail
   let expandedRuleId: string | null = null;
   let complianceLoading = false;
+  let complianceError = false;
   let complianceData: {
     ruleName: string;
     actions: Array<{ type: string; controls: Array<{ framework: string; controlId: string; controlName: string; evidenceType: string }> }>;
@@ -196,10 +215,18 @@
   }
 
   async function fetchSuggestions() {
-    const res = await fetch("/api/automation/suggestions");
-    if (!res.ok) throw new Error("Failed to load suggestions");
-    const data: any = await res.json();
-    suggestions = data.suggestions || [];
+    suggestionsError = false;
+    try {
+      const res = await fetch("/api/automation/suggestions");
+      if (!res.ok) {
+        suggestionsError = true;
+        return;
+      }
+      const data: any = await res.json();
+      suggestions = data.suggestions || [];
+    } catch {
+      suggestionsError = true;
+    }
   }
 
   async function fetchJmlPolicy() {
@@ -383,15 +410,78 @@
     expandedRuleId = ruleId;
     complianceLoading = true;
     complianceData = null;
+    complianceError = false;
     try {
       const res = await fetch(`/api/automation/rules/${ruleId}/compliance`);
       if (res.ok) {
         complianceData = await res.json();
+      } else {
+        complianceError = true;
       }
     } catch {
-      // silently fail
+      complianceError = true;
     } finally {
       complianceLoading = false;
+    }
+  }
+
+  // ---- Dry Run Simulation ---------------------------------------------------
+  async function simulateDryRun(ruleId: string) {
+    simLoading = true;
+    simResult = null;
+    simCustomPayload = "";
+    simShowCustom = false;
+    showSimDialog = true;
+    try {
+      const res = await fetch("/api/automation/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ruleId }),
+      });
+      if (res.ok) {
+        simResult = await res.json();
+      } else {
+        pushToast({ message: "Simulation failed", variant: "error" });
+        showSimDialog = false;
+      }
+    } catch {
+      pushToast({ message: "Simulation request failed", variant: "error" });
+      showSimDialog = false;
+    } finally {
+      simLoading = false;
+    }
+  }
+
+  async function rerunSimulation() {
+    if (!simResult) return;
+
+    let testEvent: { type: string; payload: Record<string, unknown> } | undefined;
+    if (simCustomPayload.trim()) {
+      try {
+        const parsed = JSON.parse(simCustomPayload);
+        testEvent = { type: parsed.type || rules.find(r => r.id === simResult!.ruleId)?.triggerType, payload: parsed.payload || parsed };
+      } catch {
+        pushToast({ message: "Invalid JSON payload", variant: "error" });
+        return;
+      }
+    }
+
+    simLoading = true;
+    try {
+      const res = await fetch("/api/automation/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ruleId: simResult.ruleId, ...(testEvent ? { testEvent } : {}) }),
+      });
+      if (res.ok) {
+        simResult = await res.json();
+      } else {
+        pushToast({ message: "Simulation failed", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Simulation request failed", variant: "error" });
+    } finally {
+      simLoading = false;
     }
   }
 
@@ -616,7 +706,17 @@
     </div>
 
     <!-- Suggestions (P3 #17, P5 #22, #24) -->
-    {#if suggestions.length > 0}
+    {#if suggestionsError}
+      <div class="mb-6">
+        <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recommended Automations</h2>
+        <Card class="border-dashed border-destructive/30">
+          <CardContent class="py-6 text-center">
+            <p class="text-sm text-destructive">Failed to load suggestions.</p>
+            <button class="text-xs text-muted-foreground hover:text-primary mt-1 underline" on:click={fetchSuggestions}>Retry</button>
+          </CardContent>
+        </Card>
+      </div>
+    {:else if suggestions.length > 0}
       <div class="mb-6">
         <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recommended Automations</h2>
         <div class="space-y-2">
@@ -949,6 +1049,15 @@
 
                 <button
                   type="button"
+                  class="inline-flex items-center justify-center h-10 px-2.5 rounded-md text-xs font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 text-muted-foreground"
+                  on:click={() => simulateDryRun(rule.id)}
+                  title="Preview what this rule would do"
+                >
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Dry Run
+                </button>
+                <button
+                  type="button"
                   class="inline-flex items-center justify-center h-10 w-10 rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   on:click={() => requestDeleteRule(rule)}
                   aria-label="Delete {rule.name}"
@@ -999,6 +1108,8 @@
                         {/if}
                       {/each}
                     </div>
+                  {:else if complianceError}
+                    <p class="text-xs text-destructive">Failed to load compliance data. <button class="underline hover:text-destructive/80" on:click={() => toggleComplianceView(expandedRuleId || '')}>Retry</button></p>
                   {:else}
                     <p class="text-xs text-muted-foreground">No compliance data available for this rule.</p>
                   {/if}
@@ -1212,6 +1323,140 @@
           <p class="text-xs text-muted-foreground">No action results recorded.</p>
         {/if}
       </div>
+    {/if}
+  </Dialog>
+
+  <!-- Dry Run Simulation Dialog -->
+  <Dialog open={showSimDialog} onClose={() => { showSimDialog = false; simResult = null; }} title="Dry Run Simulation">
+    {#if simLoading}
+      <div class="space-y-3">
+        <Skeleton class="h-5 w-48" />
+        <Skeleton class="h-4 w-32" />
+        <Skeleton class="h-24" />
+      </div>
+    {:else if simResult}
+      <div class="space-y-4 max-h-[70vh] overflow-y-auto">
+        <!-- Overall Result -->
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 rounded-full flex items-center justify-center {simResult.triggered ? 'bg-green-500/15' : 'bg-yellow-500/15'}">
+            {#if simResult.triggered}
+              <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            {:else}
+              <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+            {/if}
+          </div>
+          <div>
+            <div class="text-sm font-semibold">{simResult.ruleName}</div>
+            <div class="text-xs {simResult.triggered ? 'text-green-500' : 'text-yellow-500'}">
+              {simResult.triggered ? "Rule would fire" : "Rule would NOT fire"}
+            </div>
+            {#if simResult.enabled === false}
+              <div class="text-[10px] text-muted-foreground mt-0.5">Note: This rule is currently disabled</div>
+            {/if}
+          </div>
+        </div>
+
+        <!-- Trigger Match -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Trigger</div>
+          <div class="flex items-center gap-2 text-sm">
+            {#if simResult.triggerMatch}
+              <span class="text-green-500">&#10003;</span> Trigger type matched
+            {:else}
+              <span class="text-red-500">&#10007;</span> Trigger type did not match
+            {/if}
+          </div>
+        </div>
+
+        <!-- Conditions -->
+        {#if simResult.conditionResults.length > 0}
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Conditions</div>
+            <div class="space-y-1.5">
+              {#each simResult.conditionResults as cond}
+                <div class="flex items-start gap-2 text-sm rounded-md border px-3 py-2 {cond.passed ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}">
+                  <span class="mt-0.5 shrink-0 {cond.passed ? 'text-green-500' : 'text-red-500'}">{cond.passed ? '&#10003;' : '&#10007;'}</span>
+                  <div class="min-w-0">
+                    <div class="font-medium text-xs">{cond.field} <span class="text-muted-foreground">{cond.operator}</span> {JSON.stringify(cond.expected)}</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">Actual: <code class="bg-muted px-1 rounded">{JSON.stringify(cond.actual) ?? 'undefined'}</code></div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {:else}
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Conditions</div>
+            <p class="text-xs text-muted-foreground">No conditions configured — rule fires on trigger match alone.</p>
+          </div>
+        {/if}
+
+        <!-- Actions Preview -->
+        {#if simResult.actionsPreview.length > 0}
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Actions {simResult.triggered ? '(would execute)' : '(would not execute)'}</div>
+            <div class="space-y-1.5">
+              {#each simResult.actionsPreview as action, i}
+                <div class="flex items-center gap-3 rounded-md border px-3 py-2">
+                  <span class="text-xs font-mono text-muted-foreground w-5 text-center shrink-0">{i + 1}</span>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-sm font-medium">{action.description}</div>
+                    <Badge variant="outline" class="text-[10px] mt-1">{action.type.replace(/_/g, ' ')}</Badge>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <!-- Compliance Impact -->
+        {#if simResult.complianceImpact.length > 0}
+          <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Compliance Evidence Generated</div>
+            <div class="space-y-2">
+              {#each simResult.complianceImpact as fw}
+                <div>
+                  <Badge variant="outline" class="text-[10px] mb-1">{fw.framework}</Badge>
+                  <div class="flex flex-wrap gap-1 ml-1">
+                    {#each fw.controls as ctrl}
+                      <span class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] bg-background" title={ctrl.name}>
+                        {ctrl.id}
+                      </span>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <!-- Custom Event Payload -->
+        <div>
+          <button
+            type="button"
+            class="text-xs text-muted-foreground hover:text-primary transition-colors"
+            on:click={() => simShowCustom = !simShowCustom}
+          >
+            {simShowCustom ? 'Hide' : 'Show'} custom test event
+          </button>
+          {#if simShowCustom}
+            <div class="mt-2 space-y-2">
+              <textarea
+                bind:value={simCustomPayload}
+                placeholder='{"type": "user_created", "payload": {"email": "test@example.com", "displayName": "Test User"}}'
+                class="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-xs font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+              ></textarea>
+              <Button size="sm" variant="outline" on:click={rerunSimulation} disabled={simLoading}>
+                {simLoading ? 'Simulating...' : 'Re-run with custom event'}
+              </Button>
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" on:click={() => { showSimDialog = false; simResult = null; }}>Close</Button>
+      </DialogFooter>
     {/if}
   </Dialog>
 

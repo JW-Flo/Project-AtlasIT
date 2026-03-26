@@ -61,8 +61,10 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     return json({ error: "Database unavailable" }, { status: 503 });
   }
 
-  const limit = Math.min(Number(url.searchParams.get("limit") ?? "50"), 200);
-  const offset = Math.max(Number(url.searchParams.get("offset") ?? "0"), 0);
+  const rawLimit = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Math.min(Number.isNaN(rawLimit) ? 50 : rawLimit, 200);
+  const rawOffset = Number(url.searchParams.get("offset") ?? "0");
+  const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
   const framework = url.searchParams.get("framework");
   const controlId = url.searchParams.get("controlId");
   const category = url.searchParams.get("category");
