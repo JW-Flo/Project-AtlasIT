@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 
 export interface FrameworkScore {
   framework: string;
@@ -26,11 +26,14 @@ function computeGrade(score: number): string {
   return "F";
 }
 
+export function clearComplianceCache() {
+  fetched = false;
+  complianceScore.set(null);
+}
+
 export async function fetchComplianceScore(): Promise<ComplianceStoreData | null> {
   if (fetched) {
-    let current: ComplianceStoreData | null = null;
-    complianceScore.subscribe((v) => (current = v))();
-    return current;
+    return get(complianceScore);
   }
   complianceLoading.set(true);
   try {

@@ -202,6 +202,7 @@ export interface ActionPreview {
 export interface SimulationResult {
   ruleId: string;
   ruleName: string;
+  enabled: boolean;
   triggered: boolean;
   triggerMatch: boolean;
   conditionResults: ConditionResult[];

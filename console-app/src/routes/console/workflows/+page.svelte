@@ -410,8 +410,16 @@
       });
 
       const data = await res.json().catch(() => null);
-      if (res.ok && data?.steps) {
+      if (!res.ok) {
+        executionResult = {
+          success: false,
+          steps: [],
+          message: data?.error || `Workflow failed (HTTP ${res.status})`,
+        };
+        pushToast({ message: `${modalType} workflow failed for ${modalEmail}`, variant: "error" });
+      } else if (data?.steps) {
         executionResult = data;
+        pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
       } else {
         const steps = modalApp[modalType] || [];
         executionResult = {
@@ -419,8 +427,8 @@
           steps: steps.map((s: WorkflowStep) => ({ name: s.name, status: "success" as const })),
           message: `${modalType} workflow executed for ${modalEmail}`,
         };
+        pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
       }
-      pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
     } catch {
       executionResult = {
         success: false,

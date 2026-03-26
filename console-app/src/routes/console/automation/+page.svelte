@@ -454,17 +454,24 @@
 
   async function rerunSimulation() {
     if (!simResult) return;
-    simLoading = true;
-    try {
-      let testEvent: any = undefined;
-      if (simCustomPayload.trim()) {
+
+    let testEvent: { type: string; payload: Record<string, unknown> } | undefined;
+    if (simCustomPayload.trim()) {
+      try {
         const parsed = JSON.parse(simCustomPayload);
         testEvent = { type: parsed.type || rules.find(r => r.id === simResult!.ruleId)?.triggerType, payload: parsed.payload || parsed };
+      } catch {
+        pushToast({ message: "Invalid JSON payload", variant: "error" });
+        return;
       }
+    }
+
+    simLoading = true;
+    try {
       const res = await fetch("/api/automation/simulate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ruleId: simResult.ruleId, testEvent }),
+        body: JSON.stringify({ ruleId: simResult.ruleId, ...(testEvent ? { testEvent } : {}) }),
       });
       if (res.ok) {
         simResult = await res.json();
@@ -472,7 +479,7 @@
         pushToast({ message: "Simulation failed", variant: "error" });
       }
     } catch {
-      pushToast({ message: "Invalid JSON payload", variant: "error" });
+      pushToast({ message: "Simulation request failed", variant: "error" });
     } finally {
       simLoading = false;
     }
@@ -1343,6 +1350,9 @@
             <div class="text-xs {simResult.triggered ? 'text-green-500' : 'text-yellow-500'}">
               {simResult.triggered ? "Rule would fire" : "Rule would NOT fire"}
             </div>
+            {#if simResult.enabled === false}
+              <div class="text-[10px] text-muted-foreground mt-0.5">Note: This rule is currently disabled</div>
+            {/if}
           </div>
         </div>
 

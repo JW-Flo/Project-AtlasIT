@@ -9,8 +9,7 @@
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
   import { fetchSession } from "../../stores/session";
-  import { complianceScore, fetchComplianceScore, refreshComplianceScore } from "../../stores/compliance";
-  import type { ComplianceStoreData } from "../../stores/compliance";
+  import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
   import {
     LayoutDashboard,
     Shield,
@@ -117,6 +116,7 @@
     : navSections;
 
   async function exitImpersonation() {
+    clearComplianceCache();
     await fetch("/api/admin/impersonate/exit", { method: "POST" });
     location.href = "/console/admin";
   }
@@ -208,6 +208,7 @@
     : "?";
 
   async function signOut() {
+    clearComplianceCache();
     await fetch("/api/auth/logout", { method: "POST" });
     location.href = "/console/login";
   }

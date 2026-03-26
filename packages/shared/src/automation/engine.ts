@@ -252,6 +252,7 @@ export function simulateRule(
   return {
     ruleId: rule.id,
     ruleName: rule.name,
+    enabled: rule.enabled,
     triggered,
     triggerMatch,
     conditionResults,

@@ -2,7 +2,13 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { getRule } from "$lib/server/automation";
 import { simulateRule } from "@atlasit/shared";
-import type { AutomationEvent } from "@atlasit/shared";
+import type { AutomationEvent, TriggerType } from "@atlasit/shared";
+
+const VALID_TRIGGER_TYPES: Set<string> = new Set([
+  "user_joined_group", "user_left_group", "user_created", "user_deactivated",
+  "app_connected", "app_disconnected", "app_health_changed",
+  "schedule", "compliance_score_changed",
+]);
 
 /**
  * POST /api/automation/simulate
@@ -40,8 +46,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   let event: AutomationEvent;
 
   if (body.testEvent) {
+    if (!body.testEvent.type || typeof body.testEvent.type !== "string" || !VALID_TRIGGER_TYPES.has(body.testEvent.type)) {
+      return json({ error: `Invalid trigger type. Must be one of: ${[...VALID_TRIGGER_TYPES].join(", ")}` }, { status: 400 });
+    }
+    if (!body.testEvent.payload || typeof body.testEvent.payload !== "object") {
+      return json({ error: "testEvent.payload must be an object" }, { status: 400 });
+    }
     event = {
-      type: body.testEvent.type as AutomationEvent["type"],
+      type: body.testEvent.type as TriggerType,
       tenantId,
       payload: body.testEvent.payload,
       timestamp,
