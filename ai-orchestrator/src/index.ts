@@ -304,7 +304,10 @@ const worker = {
     //    so policy pass/fail affects control status.
     let policyEvalsTriggered = 0;
     const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
-    if (complianceWorkerUrl && (evidenceCollected > 0 || event.cron === "0 2 * * *")) {
+    // Always evaluate on every cron — audit dual-writes and platform state
+    // create evidence outside this counter, so gating on evidenceCollected
+    // would skip evaluation when only user-driven evidence arrived.
+    if (complianceWorkerUrl) {
       const { results: policyTenants } = await sharedDb
         .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
         .all<{ id: string }>();
@@ -335,8 +338,9 @@ const worker = {
     let scoresRefreshed = 0;
     const isDaily = event.cron === "0 2 * * *";
 
-    // Trigger recalculation when evidence was collected OR on the daily cron
-    if (complianceWorkerUrl && (evidenceCollected > 0 || isDaily)) {
+    // Always recalculate — evidence arrives from audit dual-writes, platform
+    // state probes, and adapter polls; the cron counter misses the first two.
+    if (complianceWorkerUrl) {
       const { results: allTenants } = await sharedDb
         .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
         .all<{ id: string }>();
