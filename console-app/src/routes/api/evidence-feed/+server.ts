@@ -69,13 +69,44 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const impact = url.searchParams.get("impact");
   const since = url.searchParams.get("since");
 
+  // Normalize framework names: tenant preferences use "NIST CSF" (space),
+  // but evidence table uses "NIST_CSF" (underscore)
+  const FRAMEWORK_DISPLAY_TO_DB: Record<string, string> = {
+    "NIST CSF": "NIST_CSF",
+  };
+  function toDbFramework(fw: string): string {
+    return FRAMEWORK_DISPLAY_TO_DB[fw] ?? fw;
+  }
+
+  // Load tenant's selected frameworks to scope results
+  let tenantFrameworks: string[] | null = null;
+  try {
+    const fwPref = await db
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+      .bind(tenantId)
+      .first<{ value: string }>();
+    if (fwPref?.value) {
+      const parsed = JSON.parse(fwPref.value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        tenantFrameworks = parsed.map(toDbFramework);
+      }
+    }
+  } catch {
+    // fall through — no framework scoping
+  }
+
   // Build query
   const conditions = ["ce.tenant_id = ?"];
   const params: unknown[] = [tenantId];
 
   if (framework) {
     conditions.push("ce.framework = ?");
-    params.push(framework);
+    params.push(toDbFramework(framework));
+  } else if (tenantFrameworks) {
+    // Scope to tenant's selected frameworks
+    const placeholders = tenantFrameworks.map(() => "?").join(", ");
+    conditions.push(`ce.framework IN (${placeholders})`);
+    params.push(...tenantFrameworks);
   }
   if (controlId) {
     conditions.push("ce.control_id = ?");
@@ -112,22 +143,42 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       )
       .bind(...params)
       .first<{ cnt: number }>(),
-    // Summary stats for the entire tenant (unfiltered)
-    db
-      .prepare(
-        `SELECT
-           COUNT(*) AS total_evidence,
-           COUNT(DISTINCT framework) AS framework_count,
-           COUNT(DISTINCT control_id) AS control_count
-         FROM compliance_evidence
-         WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{
-        total_evidence: number;
-        framework_count: number;
-        control_count: number;
-      }>(),
+    // Summary stats scoped to tenant's selected frameworks
+    (() => {
+      if (tenantFrameworks) {
+        const ph = tenantFrameworks.map(() => "?").join(", ");
+        return db
+          .prepare(
+            `SELECT
+               COUNT(*) AS total_evidence,
+               COUNT(DISTINCT framework) AS framework_count,
+               COUNT(DISTINCT control_id) AS control_count
+             FROM compliance_evidence
+             WHERE tenant_id = ? AND framework IN (${ph})`,
+          )
+          .bind(tenantId, ...tenantFrameworks)
+          .first<{
+            total_evidence: number;
+            framework_count: number;
+            control_count: number;
+          }>();
+      }
+      return db
+        .prepare(
+          `SELECT
+             COUNT(*) AS total_evidence,
+             COUNT(DISTINCT framework) AS framework_count,
+             COUNT(DISTINCT control_id) AS control_count
+           FROM compliance_evidence
+           WHERE tenant_id = ?`,
+        )
+        .bind(tenantId)
+        .first<{
+          total_evidence: number;
+          framework_count: number;
+          control_count: number;
+        }>();
+    })(),
   ]);
 
   // Parse metadata to extract impact, confidence, reasoning, eventType
