@@ -233,6 +233,29 @@ export const AUDIT_EVIDENCE_REGISTRY: AuditEvidenceMapping[] = [
     category: "config_mgmt",
   },
 
+  // ── Automation Rules ───────────────────────────────────────────────
+  {
+    action: "automation_rule.create",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule created for lifecycle management",
+    category: "config_mgmt",
+  },
+  {
+    action: "automation_rule.update",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule updated or enabled",
+    category: "config_mgmt",
+  },
+  {
+    action: "automation_rule.delete",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule removed",
+    category: "config_mgmt",
+  },
+
   // ── Admin Actions ───────────────────────────────────────────────────
   {
     action: "tenant.impersonate",
