@@ -26,6 +26,15 @@ interface ConnectedApp {
 }
 
 /**
+ * Compliance impact metadata for a suggestion.
+ */
+export interface ComplianceImpact {
+  frameworks: string[];
+  controls: { id: string; name: string }[];
+  reasoning: string;
+}
+
+/**
  * Suggestion returned by the learner with a reason and a ready-to-create rule input.
  */
 export interface AutomationSuggestion {
@@ -33,6 +42,7 @@ export interface AutomationSuggestion {
   reason: string;
   priority: "high" | "medium" | "low";
   ruleInput: CreateRuleInput;
+  complianceImpact?: ComplianceImpact;
 }
 
 /**
@@ -301,6 +311,12 @@ export function generateSuggestions(
     });
   }
 
+  // Attach compliance impact to all suggestions
+  for (const s of suggestions) {
+    const appName = s.ruleInput.actions?.[0]?.config?.appId as string | undefined;
+    s.complianceImpact = getComplianceImpact(s.templateId, appName);
+  }
+
   return suggestions.sort(
     (a, b) => priorityWeight(a.priority) - priorityWeight(b.priority),
   );
@@ -369,9 +385,103 @@ export function generatePatternSuggestions(
     }
   }
 
+  for (const s of suggestions) {
+    s.complianceImpact = getComplianceImpact(s.templateId);
+  }
+
   return suggestions.sort(
     (a, b) => priorityWeight(a.priority) - priorityWeight(b.priority),
   );
+}
+
+// --- Compliance impact mappings ---
+
+const COMPLIANCE_IMPACTS: Record<string, ComplianceImpact> = {
+  "auto-provision-on-group-join": {
+    frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+    controls: [
+      { id: "CC6.1", name: "Logical access security" },
+      { id: "A.9.2.2", name: "User access provisioning" },
+      { id: "PR.AC-1", name: "Identity & credential management" },
+    ],
+    reasoning: "Automated provisioning ensures access is granted through defined controls, strengthening identity lifecycle management and reducing manual provisioning errors.",
+  },
+  "auto-revoke-on-group-leave": {
+    frameworks: ["SOC2", "ISO27001", "NIST CSF", "HIPAA"],
+    controls: [
+      { id: "CC6.3", name: "Access removal" },
+      { id: "A.9.2.6", name: "Removal of access rights" },
+      { id: "PR.AC-4", name: "Least privilege enforcement" },
+      { id: "164.312(a)(1)", name: "Access control" },
+    ],
+    reasoning: "Automatic access revocation on group departure enforces least-privilege and ensures timely deprovisioning — a key audit requirement across all major frameworks.",
+  },
+  "health-degradation-alert": {
+    frameworks: ["SOC2", "NIST CSF"],
+    controls: [
+      { id: "CC7.2", name: "System monitoring" },
+      { id: "DE.CM-1", name: "Network monitoring" },
+    ],
+    reasoning: "Health monitoring automation helps detect and respond to service disruptions, supporting continuous monitoring controls.",
+  },
+  "offboard-user-on-deactivation": {
+    frameworks: ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"],
+    controls: [
+      { id: "CC6.3", name: "Access removal" },
+      { id: "A.9.2.6", name: "Removal of access rights" },
+      { id: "PR.AC-4", name: "Least privilege enforcement" },
+      { id: "164.312(a)(1)", name: "Access control" },
+      { id: "Art.17", name: "Right to erasure" },
+    ],
+    reasoning: "Automated offboarding is the highest-impact compliance automation — it ensures no orphaned accounts persist after user deactivation, a top finding in SOC 2 and ISO audits.",
+  },
+  "onboard-new-user": {
+    frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+    controls: [
+      { id: "CC6.2", name: "User registration & authorization" },
+      { id: "A.9.2.1", name: "User registration & deregistration" },
+      { id: "PR.AC-1", name: "Identity & credential management" },
+    ],
+    reasoning: "Automated onboarding ensures consistent access provisioning aligned with group-based policies, reducing risk of ad-hoc permission grants.",
+  },
+  "compliance-score-drop": {
+    frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+    controls: [
+      { id: "CC4.1", name: "Monitoring activities" },
+      { id: "A.9.2.5", name: "Review of user access rights" },
+      { id: "DE.CM-1", name: "Network monitoring" },
+    ],
+    reasoning: "Score-drop alerts enable proactive remediation before compliance gaps widen, supporting continuous improvement controls.",
+  },
+  "sync-directory-on-app-connect": {
+    frameworks: ["SOC2", "ISO27001"],
+    controls: [
+      { id: "CC6.1", name: "Logical access security" },
+      { id: "A.9.2.1", name: "User registration & deregistration" },
+    ],
+    reasoning: "Automatic directory sync on app connection ensures user inventories stay current, reducing drift between identity provider and downstream apps.",
+  },
+};
+
+function getComplianceImpact(templateId: string, appName?: string): ComplianceImpact | undefined {
+  // Check exact match first, then strip app-specific prefix
+  const impact = COMPLIANCE_IMPACTS[templateId];
+  if (impact) return impact;
+
+  // Per-app provisioning suggestions
+  if (templateId.startsWith("auto-provision-")) {
+    return {
+      frameworks: ["SOC2", "ISO27001", "NIST CSF"],
+      controls: [
+        { id: "CC6.2", name: "User registration & authorization" },
+        { id: "A.9.2.2", name: "User access provisioning" },
+        { id: "PR.AC-1", name: "Identity & credential management" },
+      ],
+      reasoning: `Automating ${appName || "app"} provisioning ensures consistent access grants tied to directory events, strengthening access control evidence.`,
+    };
+  }
+
+  return undefined;
 }
 
 // --- Helpers ---

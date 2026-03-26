@@ -49,7 +49,7 @@
     detrimentalCount: 0,
   };
 
-  const FRAMEWORKS = ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"];
+  let FRAMEWORKS: string[] = [];
   const CATEGORIES = [
     "access_grant", "access_revoke", "onboarding", "offboarding",
     "policy_change", "config_change", "adapter_pull", "incident",
@@ -158,7 +158,21 @@
     loadFeed();
   }
 
-  onMount(loadFeed);
+  async function loadFrameworks() {
+    try {
+      const res = await fetch("/api/tenant-compliance/controls");
+      if (res.ok) {
+        const data = await res.json();
+        FRAMEWORKS = data.frameworks || [];
+      }
+    } catch {
+      // fall back to empty — filter dropdown will just be "All Frameworks"
+    }
+  }
+
+  onMount(async () => {
+    await Promise.all([loadFrameworks(), loadFeed()]);
+  });
 </script>
 
 <div class="space-y-6">
