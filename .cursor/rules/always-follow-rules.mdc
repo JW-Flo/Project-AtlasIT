@@ -1,0 +1,247 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1. Authentication & Secrets
+
+Context: All access must be securely managed to eliminate the risk of leaked credentials.
+
+    OIDC-Only Authentication: Authenticate to GCP and AWS via workload-identity/OIDC; never embed JSON keys or long-lived credentials in code.
+
+    Environment-Scoped Secrets: Reference all tokens, API keys, and passwords via environment variables or GitHub Secrets.
+
+    No Hard-Coded Secrets: Any attempt to commit a secret must trigger a pre-commit hook rejection.
+
+2. Principle of Least Privilege
+
+Context: Minimize blast radius by granting only exactly the permissions needed.
+
+    Scoped IAM Roles:
+
+        GCP: Service accounts limited to necessary Cloud Function and BigQuery scopes.
+
+        AWS: Cross-account “ignite-deploy” role granting only WorkSpacesAdmin, EC2Read, FSxMount, with MFA enforced.
+
+    Okta API Scopes: Constrain to only the workflows/endpoints required (e.g., group management, access certification).
+
+    Refuse Out-of-Scope Calls: Any request to a non-whitelisted API must be logged and denied.
+
+3. Infrastructure as Code & Static Scans
+
+Context: All changes must be versioned, reviewed, and safe by design.
+
+    Terraform Modules: Pin module and provider versions; require terraform plan output approval before apply.
+
+    Serverless Stack (SST): Use with pinned versions for Cloud Functions where applicable.
+
+    Static Analysis: Integrate Checkov, tfsec, ESLint, and tflint (all pinned) in CI to catch misconfigurations.
+
+4. Automated Documentation
+
+Context: Keep human-readable docs in lockstep with code changes.
+
+    Confluence Page Stubs: After any infra or workflow change, invoke autoDoc.js to update/create a Confluence page with:
+
+        “What changed?” summary
+
+        Troubleshooting steps
+
+    Health Endpoints: Deploy /healthz Cloud Function to validate live status and report to Slack if degraded.
+
+5. Error Handling & Retry Logic
+
+Context: The agent must self-heal most failures without human intervention.
+
+    Observe–Plan–Act Loop:
+
+        Observe: Capture CLI/API output (e.g., Terraform errors).
+
+        Plan: Use GPT-4 to diagnose and propose a fix (e.g., missing IAM permission).
+
+        Act: Apply the fix, re-run the failed step.
+
+    Retry Policy: Up to 3 attempts per failure; on final failure, post a detailed Slack alert. 
+
+6. Cost Management & Budget Alerts
+Context: Stay within a $400/month budget, with proactive warnings.
+
+    Token Tracking: Accumulate OpenAI usage (usage.total_tokens) each run.
+
+    Cloud Spend: Use monitorBudget.js to query AWS/GCP spend every 15 min.
+
+    Threshold Alerts:
+
+        AI Spend: Alert at $100/month via Slack webhook.
+
+        Cloud Spend: Alert at 75% of budget cap. 
+
+7. Security & Compliance
+
+Context: Ensure data protection and regulatory alignment.
+
+    Encryption:
+
+        At Rest: EBS, FSx, GCS buckets, Firestore.
+
+        In Transit: TLS for all API and network traffic.
+
+    MFA Enforcement: All Okta-federated and AWS IAM actions require MFA.
+
+    Continuous Scanning: Integrate GuardDuty, Inspector, and Cloud Security Command Center for runtime checks. 
+
+8. Audit & Logging
+
+Context: Maintain a full, queryable record of every decision and action.
+
+    Structured Transcripts: Log each agent thought/action in JSON to S3 or Google Drive.
+
+    CloudTrail & Stackdriver:
+
+        AWS: CloudTrail + Config rules for IAM changes.
+
+        GCP: Stackdriver logs for Cloud Function invocations.
+
+    Human-Readable Summaries: Use GPT-3.5 to generate end-of-run summaries and store alongside raw logs. 
+
+9. No Human-Blocking & Safe Defaults
+
+Context: The pipeline must run unattended, yet safely.
+
+    Zero Prompts: The agent never pauses for confirmation.
+
+    Safe Defaults: If uncertain, default to the least-destructive action (e.g., skip destroy commands).
+
+    Escalation on Uncertainty: Log ambiguity and notify #ignite-alerts without halting progress. 
+
+10. Scope & Self-Governance
+
+Context: Keep the agent focused and controlled.
+
+    Fixed Domain: The agent may touch only Project Ignite’s repos, Terraform modules, Cloud Functions, and approved APIs.
+
+    No Self-Modifying CI/CD: CI workflow YAML is off-limits unless explicitly updated in a major version release.
+
+    Continuous Improvement: Collect performance metrics, refine prompts, and periodically review logs to evolve the agent’s capabilities in a controlled manner. 
+
+These rules strike a balance between robustness and flexibility—providing clear guardrails while allowing the agent to recover, adapt, and document itself autonomously within the bounds of Project Ignite’s security, cost, and operational requirements.
+1. Authentication & Secrets
+
+Context: All access must be securely managed to eliminate the risk of leaked credentials.
+
+    OIDC-Only Authentication: Authenticate to GCP and AWS via workload-identity/OIDC; never embed JSON keys or long-lived credentials in code.
+
+    Environment-Scoped Secrets: Reference all tokens, API keys, and passwords via environment variables or GitHub Secrets.
+
+    No Hard-Coded Secrets: Any attempt to commit a secret must trigger a pre-commit hook rejection.
+
+2. Principle of Least Privilege
+
+Context: Minimize blast radius by granting only exactly the permissions needed.
+
+    Scoped IAM Roles:
+
+        GCP: Service accounts limited to necessary Cloud Function and BigQuery scopes.
+
+        AWS: Cross-account “ignite-deploy” role granting only WorkSpacesAdmin, EC2Read, FSxMount, with MFA enforced.
+
+    Okta API Scopes: Constrain to only the workflows/endpoints required (e.g., group management, access certification).
+
+    Refuse Out-of-Scope Calls: Any request to a non-whitelisted API must be logged and denied.
+
+3. Infrastructure as Code & Static Scans
+
+Context: All changes must be versioned, reviewed, and safe by design.
+
+    Terraform Modules: Pin module and provider versions; require terraform plan output approval before apply.
+
+    Serverless Stack (SST): Use with pinned versions for Cloud Functions where applicable.
+
+    Static Analysis: Integrate Checkov, tfsec, ESLint, and tflint (all pinned) in CI to catch misconfigurations.
+
+4. Automated Documentation
+
+Context: Keep human-readable docs in lockstep with code changes.
+
+    Confluence Page Stubs: After any infra or workflow change, invoke autoDoc.js to update/create a Confluence page with:
+
+        “What changed?” summary
+
+        Troubleshooting steps
+
+    Health Endpoints: Deploy /healthz Cloud Function to validate live status and report to Slack if degraded.
+
+5. Error Handling & Retry Logic
+
+Context: The agent must self-heal most failures without human intervention.
+
+    Observe–Plan–Act Loop:
+
+        Observe: Capture CLI/API output (e.g., Terraform errors).
+
+        Plan: Use GPT-4 to diagnose and propose a fix (e.g., missing IAM permission).
+
+        Act: Apply the fix, re-run the failed step.
+
+    Retry Policy: Up to 3 attempts per failure; on final failure, post a detailed Slack alert. 
+
+6. Cost Management & Budget Alerts
+Context: Stay within a $400/month budget, with proactive warnings.
+
+    Token Tracking: Accumulate OpenAI usage (usage.total_tokens) each run.
+
+    Cloud Spend: Use monitorBudget.js to query AWS/GCP spend every 15 min.
+
+    Threshold Alerts:s
+
+        AI Spend: Alert at $100/month via Slack webhook.
+
+        Cloud Spend: Alert at 75% of budget cap. 
+
+7. Security & Compliance
+
+Context: Ensure data protection and regulatory alignment.
+
+    Encryption:
+
+        At Rest: EBS, FSx, GCS buckets, Firestore.
+
+        In Transit: TLS for all API and network traffic.
+
+    MFA Enforcement: All Okta-federated and AWS IAM actions require MFA.
+
+    Continuous Scanning: Integrate GuardDuty, Inspector, and Cloud Security Command Center for runtime checks. 
+
+8. Audit & Logging
+
+Context: Maintain a full, queryable record of every decision and action.
+
+    Structured Transcripts: Log each agent thought/action in JSON to S3 or Google Drive.
+
+    CloudTrail & Stackdriver:
+
+        AWS: CloudTrail + Config rules for IAM changes.
+
+        GCP: Stackdriver logs for Cloud Function invocations.
+
+    Human-Readable Summaries: Use GPT-3.5 to generate end-of-run summaries and store alongside raw logs. 
+
+9. No Human-Blocking & Safe Defaults
+
+Context: The pipeline must run unattended, yet safely.
+
+    Zero Prompts: The agent never pauses for confirmation.
+
+    Safe Defaults: If uncertain, default to the least-destructive action (e.g., skip destroy commands).
+
+    Escalation on Uncertainty: Log ambiguity and notify #ignite-alerts without halting progress. 
+
+10. Scope & Self-Governance
+
+Context: Keep the agent focused and controlled.
+
+    No Self-Modifying CI/CD: CI workflow YAML is off-limits unless explicitly updated in a major version release.
+
+    Continuous Improvement: Collect performance metrics, refine prompts, and periodically review logs to evolve the agent’s capabilities in a controlled manner. 
+
+These rules strike a balance between robustness and flexibility—providing clear guardrails while allowing the agent to recover, adapt, and document itself autonomously within the bounds of Project Ignite’s security, cost, and operational requirements.

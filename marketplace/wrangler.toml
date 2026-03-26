@@ -1,0 +1,20 @@
+name = "atlasit-marketplace"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[vars]
+ENVIRONMENT = "development"
+
+[observability.logs]
+enabled = true

@@ -1,0 +1,96 @@
+name = "atlasit-console"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "src/worker-entry.ts"
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
+# Removed deprecated/unsupported top-level zone_id to silence Wrangler warning.
+# Route-based deployment uses routes array below; see https://developers.cloudflare.com/workers/configuration/runtime-apis/routes/
+routes = [
+	"www.atlasit.pro/console*",
+	"www.atlasit.pro/access-requests*",
+	"www.atlasit.pro/incidents*",
+	"www.atlasit.pro/notifications*",
+	"www.atlasit.pro/api/config*",
+	"www.atlasit.pro/api/mock/*",
+	"www.atlasit.pro/api/auth/*",
+	"www.atlasit.pro/api/tenants/*",
+	"www.atlasit.pro/api/policies*",
+	"www.atlasit.pro/api/incidents*",
+	"www.atlasit.pro/api/access-requests*",
+	"www.atlasit.pro/api/notifications*",
+	"www.atlasit.pro/api/slack/*",
+	"www.atlasit.pro/api/apps*",
+	"www.atlasit.pro/api/workflows*",
+	"www.atlasit.pro/api/automation*",
+	"www.atlasit.pro/api/jml/*",
+	"www.atlasit.pro/api/admin/*",
+	"www.atlasit.pro/api/tenant/*",
+	"www.atlasit.pro/api/tenant-compliance/*",
+	"www.atlasit.pro/api/evidence*",
+	"www.atlasit.pro/api/evidence-feed*",
+	"www.atlasit.pro/api/directory/*",
+	"www.atlasit.pro/api/analytics/*",
+	"www.atlasit.pro/health",
+	"www.atlasit.pro/api/health*",
+	"www.atlasit.pro/api/platform*",
+	"www.atlasit.pro/api/support*",
+	"www.atlasit.pro/support*",
+	"www.atlasit.pro/trust/*",
+	"www.atlasit.pro/marketplace*",
+	"www.atlasit.pro/api/trust/*",
+	"www.atlasit.pro/api/marketplace*",
+	"www.atlasit.pro/api/questionnaires*",
+	"www.atlasit.pro/api/user/*",
+	"www.atlasit.pro/_app/*",
+	"www.atlasit.pro/favicon.png",
+	"www.atlasit.pro/" # root catch for redirect
+]
+
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
+
+# Build is handled by CI workflow steps (build:shared then console build).
+# Do not add a [build] command here — wrangler runs it from the repo root
+# which triggers npm-run-all build:* and creates an infinite loop.
+
+[vars]
+APP_NAME = "AtlasIT Console"
+COMPLIANCE_BASE = "https://compliance.atlasit.pro/api/compliance"
+CORE_API_BASE = "https://api.atlasit.pro"
+DISPATCH_BASE = "https://dispatch.atlasit.pro"
+ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+# Auth: Cloudflare Access JWT validation (required in production)
+# CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
+# CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)
+CF_ACCESS_TEAM_DOMAIN = "https://atlasit.cloudflareaccess.com"
+CF_ACCESS_AUD = "" # ACTION REQUIRED: Create an Access Application in Zero Trust > Access > Applications for the console, then paste its AUD tag here
+SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
+ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
+TENANT_ID = "atlasit-prod"
+# DEV_AUTH_BYPASS must NEVER be set here — only in local dev env vars alongside NODE_ENV=development
+
+[observability]
+enabled = true
+
+# --- Resource bindings ---
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
+
+[[kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[services]]
+binding = "COMPLIANCE_WORKER"
+service = "atlasit-compliance-worker"

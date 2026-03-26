@@ -1,0 +1,25 @@
+name = "atlasit-adapter-stripe"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+ADAPTER_NAME = "stripe"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+# Secrets (set via wrangler secret put):
+# ADAPTER_SECRET - HMAC secret for inter-service webhook verification
+# STRIPE_SECRET_KEY - API key for Stripe (sk_live_... or sk_test_...)
+# STRIPE_WEBHOOK_SECRET - Stripe webhook endpoint signing secret (whsec_...)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "atlas-shared-db"
+database_id = "" # Set per environment
+
+[observability.logs]
+enabled = true
+
+# Rate limit: 25 req/s
+# Burst size: 50

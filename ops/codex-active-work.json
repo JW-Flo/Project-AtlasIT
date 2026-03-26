@@ -1,0 +1,280 @@
+{
+  "version": 1,
+  "updatedAt": "2025-09-26T00:00:00.000Z",
+  "briefIndex": "ops/codex-briefs/README.md",
+  "active": [
+    {
+      "task": "policy_compliance_phase2.5",
+      "status": "committed",
+      "entries": [
+        "src/policy/engine.ts",
+        "src/policy/packs/mfa.ts",
+        "src/policy/packs/password.ts",
+        "src/policy/packs/posture.ts",
+        "src/policy/packs/session.ts",
+        "src/lib/evidence.ts",
+        "routes/api/policy/evaluate/+server.ts",
+        "scripts/render-compliance-snapshot.mjs",
+        "tests/policy-engine.test.ts",
+        "tests/evidence.test.ts",
+        "docs/POLICY_AND_EVIDENCE.md",
+        "docs/COMPLIANCE_SNAPSHOT.md"
+      ],
+      "artifacts": [
+        "artifacts/policy/evidence.jsonl",
+        "artifacts/policy/snapshot.md",
+        "artifacts/policy/RUN.json"
+      ],
+      "notes": "Policy packs (MFA, password, posture, session) evaluated via engine; evidence stored as JSONL with optional mirror; compliance snapshot script summarizes per control; API route available for dev testing."
+    },
+    {
+      "branch": "feat/do-cron",
+      "pr": "PR10 TBD",
+      "title": "DO sweepers and cron",
+      "status": "staged",
+      "files": [
+        "workers/orchestrator/src/OrchestratorDO.ts",
+        "workers/orchestrator/src/cron.ts",
+        "tests/cron.test.ts",
+        "tests/do-admin.test.ts",
+        "docs/CRON_JOBS.md",
+        "schema/d1.sql",
+        "artifacts/cron/RUN.json",
+        "artifacts/cron/smoke.log",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Durable Object sweep/replay/rollup helpers with cron toggles, admin endpoints, and Miniflare-style tests. Artifacts under artifacts/cron.",
+      "artifacts": ["artifacts/cron/RUN.json", "artifacts/cron/smoke.log"]
+    },
+    {
+      "branch": "feat/ci-workflows",
+      "pr": "PR15 TBD",
+      "title": "CI workflows + artifacts",
+      "status": "staged",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/security.yml",
+        "scripts/ci-run.mjs",
+        "scripts/generate-sbom.mjs",
+        "artifacts/ci/**",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "CI workflow runs npm install + npm run ci:run to produce build/test logs and SBOM; security workflow handles lint and secret scan."
+    },
+    {
+      "branch": "feat/artifact-discipline",
+      "pr": "PR14 TBD",
+      "title": "Artifact helper and discipline",
+      "status": "staged",
+      "files": [
+        "src/lib/artifacts.js",
+        "scripts/render-compliance-snapshot.mjs",
+        "scripts/trace-smoke.mjs",
+        "scripts/smoke-adapter.sh",
+        "tests/artifacts.test.ts",
+        "artifacts/policy/RUN.json",
+        "artifacts/obs/trace-smoke.log",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Centralized writeArtifact helper wired through compliance, adapter smoke, and trace scripts with tests and refreshed artifacts."
+    },
+    {
+      "branch": "feat/observability-hooks",
+      "pr": "PR11 TBD",
+      "title": "Observability trace hooks",
+      "status": "staged",
+      "files": [
+        "src/lib/trace.js",
+        "index.js",
+        "scripts/trace-smoke.mjs",
+        "tests/trace.test.ts",
+        "docs/OBSERVABILITY.md",
+        "artifacts/obs/trace-smoke.log",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Tracing helper emits JSON logs with request IDs and wraps worker fetch; unit tests assert header propagation and log shape; smoke script writes artifacts/obs/trace-smoke.log; docs/OBSERVABILITY.md added.",
+      "brief": "ops/codex-briefs/PR11_observability_trace_hooks.md"
+    },
+    {
+      "branch": "feat/evidence-locker",
+      "pr": "PR16 TBD",
+      "title": "Evidence locker",
+      "status": "staged",
+      "files": [
+        "src/lib/evidence.ts",
+        "tests/evidence-locker.test.ts",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Evidence locker persists blobs to R2 with sha256 keys and optionally mirrors to S3; contract covered by unit tests."
+    },
+    {
+      "branch": "feat/idp-interface-phase3",
+      "pr": "PR9 TBD",
+      "title": "IdP interface & fallback mocks",
+      "status": "staged",
+      "files": [
+        "packages/idp/**",
+        "tests/idp-adapters.test.ts",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Defined IdP adapter contract, provided mock adapters (Okta, Entra, Google, AWS, Paycom, CrowdStrike) and dev fallback OIDC provider with contract tests."
+    },
+    {
+      "branch": "feat/jml-engine-demo",
+      "pr": "PR3 TBD",
+      "title": "JML Engine Demo flows",
+      "files": [
+        "index.js",
+        "fixtures/jml/*.json",
+        "tests/jml-engine.test.ts",
+        "artifacts/pr3_jml/RUN.json",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Joiner/Mover/Leaver flows restored; tests and artifacts staged",
+      "status": "staged"
+    },
+    {
+      "branch": "feat/pr4-adapter-gen",
+      "pr": "PR4",
+      "title": "AI adapter generator",
+      "status": "committed",
+      "files": [
+        "packages/adapter-gen/**",
+        "packages/adapter-sim/**",
+        "templates/worker/**",
+        "adapters/registry.json",
+        "adapters/example-hr-suite/**",
+        "contracts/examples/**",
+        "scripts/smoke-adapter.sh",
+        "docs/CONNECTORS.md",
+        "tests/adapter-gen.test.ts",
+        "artifacts/pr4_adapter/**",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Generator v1 + simulator verified. Registry updated. Tests green. Artifacts captured. Feature-flag gated connectors API working."
+    },
+    {
+      "branch": "feat/pr5-research-engine",
+      "pr": "PR5",
+      "title": "Research engine deterministic JSON",
+      "files": [
+        "packages/research-engine/**",
+        "research/raw/**",
+        "artifacts/research/**",
+        "packages/adapter-gen/src/research.ts",
+        "packages/adapter-gen/src/generator.ts",
+        "tests/research-normalizer.test.ts",
+        "tests/adapter-gen-research.test.ts",
+        "docs/CONNECTORS.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Artifacts generated under artifacts/research for Example HR Suite, Slack Provisioning, Google Workspace. Research normalizer and generator integration verified.",
+      "status": "committed"
+    },
+    {
+      "branch": "chore/docs-pr6-alignment",
+      "pr": "PR6 TBD",
+      "title": "Docs alignment",
+      "files": [
+        "docs/ATLASIT_ROADMAP.md",
+        "ROADMAP.md",
+        "CONTEXT.md",
+        "OPERATIONS.md",
+        "ops/hand-off.md",
+        "docs/ATLASIT_ROADMAP_LINKS.md",
+        "README.md",
+        "ops/pr-bodies/PR6_docs-alignment.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Ready to push (docs updated; changes staged)",
+      "scope": "Align documentation across Project-AtlasIT and AWhittleWandering repos (structure, links, and PR body).",
+      "brief": "ops/pr-bodies/PR6_docs-alignment.md",
+      "artifacts": [
+        "artifacts/docs/changelog.md  # generated docs changelog",
+        "artifacts/docs/links-audit.json  # cross-repo links audit",
+        "artifacts/docs/RUN.json  # run metadata for docs sync"
+      ]
+    },
+    {
+      "branch": "chore/hybrid-aws-docs",
+      "pr": "PR7 TBD",
+      "title": "Hybrid AWS Support Docs",
+      "files": [
+        "docs/HYBRID_AWS.md",
+        "docs/ARCHITECTURE.md",
+        "docs/roadmap.md",
+        "ops/pr-bodies/PR7_hybrid-aws-docs.md",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Hybrid AWS backplane guide is actionable (OIDC trust, scoped IAM, Terraform skeleton, zsh runbook, rollback). No runtime code changes.",
+      "status": "staged"
+    },
+    {
+      "branch": "infra/aws-backplane-skeleton",
+      "pr": "PR13 #37",
+      "title": "AWS backplane Terraform skeleton",
+      "status": "staged",
+      "files": [
+        "infra/aws/.gitignore",
+        "infra/aws/README.md",
+        "infra/aws/providers.tf",
+        "infra/aws/variables.tf",
+        "infra/aws/oidc.tf",
+        "infra/aws/eventing.tf",
+        "infra/aws/storage.tf",
+        "infra/aws/observability.tf",
+        "infra/aws/outputs.tf",
+        "ops/codex-active-work.json"
+      ],
+      "notes": "Terraform skeleton for dev backplane (EventBridge bus, S3 evidence mirror with lifecycle, DynamoDB TTL table, IAM role trust for OIDC, basic log group). No backend configured; use remote backend in env-specific wrapper.",
+      "prUrl": "https://github.com/JW-Flo/Project-AtlasIT/pull/37",
+      "brief": "ops/codex-briefs/PR13_aws_backplane_skeleton.md"
+    },
+    {
+      "branch": "feat/pr12-idp-core-okta",
+      "pr": "PR12 TBD",
+      "title": "IdP Core + Mock Okta + Minimal Routes",
+      "status": "committed",
+      "files": [
+        "packages/idp/**",
+        "packages/idp-adapters/okta/**",
+        "packages/idp-sim/**",
+        "routes/api/idp/**",
+        "fixtures/idp/**",
+        "tests/idp-*.test.ts",
+        "docs/IDP_LAYER.md",
+        "artifacts/idp_core/**",
+        "artifacts/idp_okta/**",
+        "artifacts/idp/**",
+        "ops/codex-active-work.json"
+      ],
+      "artifacts": [
+        "artifacts/idp_core/RUN.json",
+        "artifacts/idp_okta/RUN.json",
+        "artifacts/idp/junit.xml",
+        "artifacts/idp/sim.log",
+        "artifacts/idp/RUN.json"
+      ],
+      "notes": "IdP registry/types, deterministic mock Okta adapter with fixtures, flag-gated routes /api/idp/list and /api/idp/provision (FEATURE_IDP_OKTA), tiny simulator emitting junit.xml; dev-only, flags default OFF."
+    },
+    {
+      "branch": "deploy/dev-pages-worker",
+      "pr": "PR-DEPLOY-DEV TBD",
+      "title": "Deploy AtlasIT to Cloudflare (dev)",
+      "status": "committed",
+      "files": [
+        "wrangler.toml",
+        "index.js",
+        "ops/checks/dev-smoke.sh",
+        "ops/pr-bodies/PR-DEPLOY-DEV.md"
+      ],
+      "artifacts": [
+        "artifacts/deploy_dev/deploy.log",
+        "artifacts/deploy_dev/smoke.log",
+        "artifacts/deploy_dev/bindings.json"
+      ],
+      "notes": "Dev deploy to Worker with KV/D1/R2/DO bindings; cron disabled in dev; AWS backplane toggled off by default.",
+      "url": "https://atlas-it.kd8jc7v8cd.workers.dev"
+    }
+  ]
+}

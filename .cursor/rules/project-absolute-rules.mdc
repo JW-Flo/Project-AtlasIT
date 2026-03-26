@@ -1,0 +1,62 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Rules (Version “All-Knowing AI”)
+
+1. **Context First**  
+   - Always ingest `COPILOT_CONTEXT2.md` and `COPILOT_CONTEXT.md` before any suggestion—never start without them.  
+
+2. **Strict Scoping**  
+   - Only touch `wrangler.toml`, `index.js`, `scripts/*.sh`, `.github/workflows/cloudflare-workers.yml`.  
+   - Any attempt to modify `infra/**`, `ai/**`, `cloud-functions/**`, `src/**`, or `.env.*` is outright invalid.  
+
+3. **Script Safety**  
+   - Bash scripts must wrap `set -euo pipefail` inside a shebang or subshell (`bash -c '…'`).  
+   - Always validate env vars with `: "${VAR?Need to set VAR}"`.  
+   - Echo every major step and fatal error. Exit non-zero on failure.  
+
+4. **Code Style Religiously**  
+   - ES modules only, 2-space indent, single quotes, no semicolons except where mandatory.  
+   - Always include a trailing newline and no extra blank lines.  
+   - Wrap each filename/symbol in backticks.  
+
+5. **Design Rationale Up-Front**  
+   - Preface every code change with 1–2 sentences of first-principles reasoning or trade-off analysis.  
+
+6. **Local Sanity & Smoke Check**  
+   - Mandate `wrangler dev` and `./scripts/smoke-test-worker.sh` (exit 0) before claiming completeness.  
+   - CI drift is fatal—never skip the smoke-test.  
+
+7. **Env-Var Fidelity**  
+   - Use only variables declared in `.env.example` (`CF_ACCOUNT_ID`, `WRANGLER_API_TOKEN`, etc.).  
+   - Adding or renaming a secret without explicit spec is a bug.  
+
+8. **CI/CD Purity**  
+   - Worker build/deploy must flow exclusively through:  
+     - Local dev: `wrangler dev`  
+     - Smoke test: `./scripts/smoke-test-worker.sh`  
+     - CI: `.github/workflows/cloudflare-workers.yml`  
+   - Introducing Docker, alternative pipelines, or manual steps is forbidden.  
+
+9. **Error Handling Is Non-Negotiable**  
+   - Every `fetch` must catch exceptions and return a 502 with a clear, minimal message.  
+   - Always include detailed logging (via `console.error` or `echo "[ERROR]"`).  
+
+10. **Learned-Mistake Checkpoints**  
+    - We once forgot to honor `COPILOT_CONTEXT2.md` ⇒ Rule 1.  
+    - We once leaked `-u` flags into the user’s shell ⇒ Rule 3.  
+    - We once omitted the smoke test ⇒ Rule 6.  
+    - We once invented new secret names ⇒ Rule 7.  
+    - We once recommended broad file edits ⇒ Rule 2.  
+    - We once shipped code without error handling ⇒ Rule 9.  
+    - We once skipped design rationale ⇒ Rule 5.  
+
+11. **Automated Lint & Errors**  
+    - After every change, run `npm run lint` (if available) or `eslint` on `index.js` and CI workflow YAML.  
+    - Use `wrangler fmt` or `prettier --check`.  
+
+12. **Final Verification**  
+    - Before merge, verify no changed files outside the Workers scope (`git diff --name-only | grep -vE '^wrangler\.toml|^index\.js|^scripts/|^\.github/workflows/cloudflare-workers\.yml$'`).  
+    - If any out-of-scope file is touched, reject automatically.  

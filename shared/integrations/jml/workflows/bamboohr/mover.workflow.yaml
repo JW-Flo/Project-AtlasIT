@@ -1,0 +1,48 @@
+workflow:
+  id: jml.mover.bamboohr.v1
+  name: "Mover - Role and access change (bamboohr)"
+  type: mover
+  version: 1.0.0
+  enabled: true
+
+trigger:
+  source: hris
+  event_types:
+    - employee.updated
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - user_id
+  optional:
+    - department
+    - title
+    - from_role
+    - to_role
+    - from_department
+    - to_department
+    - from_groups
+    - to_groups
+    - from_systems
+    - to_systems
+
+steps:
+  - id: update_profile
+    type: action
+    action_ref: atlas.connectors.bamboohr.update_user
+    retry:
+      max_attempts: 3
+      backoff: exponential
+
+  # BambooHR does not support group management — role changes are
+  # reflected via profile updates (department, title, manager)
+
+  - id: emit_mover_evidence
+    type: evidence
+    producer: atlas.workflow.mover
+    control_refs:
+      - ACCESS_ROLE_UPDATED
+
+success:
+  result: pass

@@ -1,0 +1,16 @@
+name = "atlasit-slack-notifier"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+AGENT_NAME = "slack-notifier"
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+# Secrets (set via wrangler secret put):
+# SLACK_WEBHOOK_URL - Slack incoming webhook URL
+# AGENT_SECRET - HMAC secret from agent registration
+
+[observability.logs]
+enabled = true

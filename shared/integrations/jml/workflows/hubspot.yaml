@@ -1,0 +1,28 @@
+id: hubspot
+name: HubSpot JML Workflow
+description: Joiner/Mover/Leaver workflow for HubSpot via Settings API
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        email: "{{ user.email }}"
+        roleId: "{{ config.defaultRoleId }}"
+    - action: api.addToTeam
+      params:
+        teamId: "{{ config.defaultTeamId }}"
+        userId: "{{ steps[0].result.id }}"
+      condition: "{{ config.defaultTeamId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        roleId: "{{ user.roleId }}"
+
+leaver:
+  steps:
+    - action: api.removeUser
+      params:
+        userId: "{{ user.externalId }}"

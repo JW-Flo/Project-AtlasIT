@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 76% 36%;
+    --success-foreground: 210 40% 98%;
+    --warning: 45 93% 47%;
+    --warning-foreground: 222 47% 11%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+
+    /* Legacy token compatibility */
+    --color-bg: hsl(var(--background));
+    --color-surface: hsl(var(--card));
+    --color-surface-alt: hsl(var(--secondary));
+    --color-border: hsl(var(--border));
+    --color-text: hsl(var(--foreground));
+    --color-text-dim: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--primary));
+    --color-accent-hover: hsl(221 83% 60%);
+    --color-critical: hsl(var(--destructive));
+    --color-warning: hsl(var(--warning));
+    --color-success: hsl(var(--success));
+    --color-focus: hsl(221 83% 53% / 0.5);
+  }
+
+  :root[data-theme="dark"],
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 11%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --success: 142 71% 45%;
+    --success-foreground: 222 47% 7%;
+    --warning: 45 93% 47%;
+    --warning-foreground: 222 47% 7%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
+
+    /* Legacy token compatibility */
+    --color-bg: hsl(var(--background));
+    --color-surface: hsl(var(--card));
+    --color-surface-alt: hsl(var(--secondary));
+    --color-border: hsl(var(--border));
+    --color-text: hsl(var(--foreground));
+    --color-text-dim: hsl(var(--muted-foreground));
+    --color-accent: hsl(var(--primary));
+    --color-accent-hover: hsl(217 91% 68%);
+    --color-critical: hsl(var(--destructive));
+    --color-warning: hsl(var(--warning));
+    --color-success: hsl(var(--success));
+    --color-focus: hsl(217 91% 60% / 0.5);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Select option styling for dark mode */
+select option {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+
+/* Mobile-specific improvements */
+@layer base {
+  /* Safe area insets for notched devices (iPhone X+, Android punch-holes) */
+  html {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Prevent iOS Safari zoom on input focus (inputs < 16px trigger zoom) */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Smoother touch scrolling */
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text size adjust on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* Responsive table wrapper - allow horizontal scroll with visible indicator */
+@layer utilities {
+  .mobile-table-wrapper {
+    @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
+  }
+}

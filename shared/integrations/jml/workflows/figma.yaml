@@ -1,0 +1,26 @@
+id: figma
+name: Figma JML Workflow
+description: Joiner/Mover/Leaver workflow for Figma organization
+
+joiner:
+  steps:
+    - action: api.inviteMember
+      params:
+        orgId: "{{ config.teamId }}"
+        email: "{{ user.email }}"
+        role: "{{ config.defaultRole | default: 'viewer' }}"
+
+mover:
+  steps:
+    - action: api.updateMemberRole
+      params:
+        orgId: "{{ config.teamId }}"
+        userId: "{{ user.externalId }}"
+        role: "{{ user.role }}"
+
+leaver:
+  steps:
+    - action: api.removeMember
+      params:
+        orgId: "{{ config.teamId }}"
+        userId: "{{ user.externalId }}"

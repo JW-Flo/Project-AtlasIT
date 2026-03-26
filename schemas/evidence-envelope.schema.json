@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlasit.io/schemas/evidence-envelope.schema.json",
+  "title": "EvidenceEnvelope",
+  "description": "Immutable evidence envelope emitted per workflow step. Content-addressed via sha256(canonical_json(envelope_without_hash)).",
+  "type": "object",
+  "required": [
+    "tenantId",
+    "workflowRunId",
+    "stepId",
+    "actor",
+    "eventType",
+    "createdAt",
+    "hash"
+  ],
+  "properties": {
+    "tenantId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant identifier scoping this evidence."
+    },
+    "workflowRunId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique run identifier for the workflow execution."
+    },
+    "stepId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Step within the workflow run that produced this evidence."
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Principal (user or system) that triggered or executed the step."
+    },
+    "eventType": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Semantic event type, e.g. 'step.completed', 'step.failed'."
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when this envelope was created."
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "sha256 of the canonical JSON of this envelope with the hash field removed."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "uri", "sha256"],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Artifact type, e.g. 'log', 'screenshot', 'policy-decision'."
+          },
+          "uri": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Location of the artifact (R2 key, URL, etc.)."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Content hash of the artifact for integrity verification."
+          }
+        },
+        "additionalProperties": false
+      },
+      "description": "Referenced artifacts produced or consumed by this step."
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "bundleRevision": {
+          "type": "string",
+          "description": "Revision of the policy bundle evaluated."
+        },
+        "decisionId": {
+          "type": "string",
+          "description": "Unique identifier for the policy decision."
+        },
+        "query": {
+          "type": "string",
+          "description": "Policy query that was evaluated."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Policy evaluation context when the step involved a policy decision."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "failure", "skipped"],
+      "description": "Result of the step execution."
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message when the step failed."
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock duration of the step in milliseconds."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Arbitrary key-value metadata attached to the evidence."
+    }
+  },
+  "additionalProperties": false
+}

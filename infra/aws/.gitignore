@@ -1,0 +1,6 @@
+# Terraform local state (local backend only)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.*
+crash.log

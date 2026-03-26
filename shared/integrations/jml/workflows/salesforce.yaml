@@ -1,0 +1,37 @@
+id: salesforce
+name: Salesforce JML Workflow
+description: Joiner/Mover/Leaver workflow for Salesforce via REST API and SCIM
+
+joiner:
+  steps:
+    - action: api.createUser
+      params:
+        instanceUrl: "{{ config.instanceUrl }}"
+        firstName: "{{ user.firstName }}"
+        lastName: "{{ user.lastName }}"
+        email: "{{ user.email }}"
+        profileId: "{{ config.defaultProfileId }}"
+        roleId: "{{ config.defaultRoleId }}"
+    - action: api.addToGroup
+      params:
+        groupId: "{{ config.defaultGroupId }}"
+        userId: "{{ steps[0].result.id }}"
+      condition: "{{ config.defaultGroupId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        department: "{{ user.department }}"
+        title: "{{ user.title }}"
+        profileId: "{{ user.profileId }}"
+
+leaver:
+  steps:
+    - action: api.deactivateUser
+      params:
+        userId: "{{ user.externalId }}"
+    - action: api.removeFromAllGroups
+      params:
+        userId: "{{ user.externalId }}"

@@ -1,0 +1,34 @@
+{
+  "type": "mover",
+  "tenantId": "tenant-acme",
+  "user": {
+    "id": "user-move-002",
+    "email": "alex.roe@acme.example",
+    "displayName": "Alex Roe",
+    "department": "Customer Success",
+    "title": "Account Manager"
+  },
+  "newRole": {
+    "department": "Revenue Operations",
+    "title": "Revenue Ops Manager",
+    "effectiveDate": "2025-09-01"
+  },
+  "movement": {
+    "fromRole": "Account Manager",
+    "toRole": "Revenue Ops Manager",
+    "fromDepartment": "Customer Success",
+    "toDepartment": "Revenue Operations",
+    "fromGroups": ["cs-team", "account-managers"],
+    "toGroups": ["revops-team", "analytics-users"],
+    "fromSystems": ["salesforce", "gong", "intercom"],
+    "toSystems": ["salesforce", "clari", "mode", "looker"]
+  },
+  "entitlements": {
+    "previous": ["okta", "salesforce", "gong"],
+    "target": ["okta", "salesforce", "clari", "mode"]
+  },
+  "notifications": {
+    "channels": ["email"],
+    "recipients": ["revops-leads@acme.example"]
+  }
+}

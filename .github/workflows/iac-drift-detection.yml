@@ -1,0 +1,328 @@
+name: IaC Drift Detection & Policy Validation
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: iac-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: "1.6.6"
+  CONFTEST_VERSION: "0.46.0"
+  OPA_VERSION: "0.61.0"
+
+jobs:
+  # ── Policy validation (OPA / Conftest) ────────────────
+  policy-check:
+    name: Policy Validation
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging, prod]
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            terraform/environments/${{ matrix.environment }}/.terraform
+            ~/.terraform.d/plugin-cache
+          key: tf-${{ matrix.environment }}-${{ hashFiles('terraform/**/*.tf') }}
+          restore-keys: |
+            tf-${{ matrix.environment }}-
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Generate plan JSON
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_core_api_worker_content: "// populated by build pipeline"
+        run: |
+          terraform plan -input=false -no-color -out=tfplan
+          terraform show -json tfplan > tfplan.json
+
+      - name: Install conftest
+        run: |
+          curl -fsSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin conftest
+
+      - name: Run policy checks
+        id: conftest
+        run: |
+          set +e
+          output=$(conftest test \
+            --policy ../../policies/ \
+            --namespace main \
+            --no-color \
+            tfplan.json 2>&1)
+          exit_code=$?
+          set -e
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          {
+            echo "output<<CONFTEST_EOF"
+            echo "$output"
+            echo "CONFTEST_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # Print for logs
+          echo "$output"
+          exit $exit_code
+        continue-on-error: true
+
+      - name: Comment on PR (policy results)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ matrix.environment }}';
+            const exitCode = '${{ steps.conftest.outputs.exit_code }}';
+            const output = `${{ steps.conftest.outputs.output }}`.trim();
+            const status = exitCode === '0' ? ':white_check_mark: Passed' : ':x: Failed';
+            const truncated = output.length > 50000
+              ? output.substring(0, 50000) + '\n... (truncated)'
+              : output;
+
+            const body = [
+              `### Policy Check: \`${env}\` ${status}`,
+              '',
+              '<details>',
+              '<summary>conftest output</summary>',
+              '',
+              '```',
+              truncated || '(no output)',
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail if policies violated
+        if: steps.conftest.outputs.exit_code != '0'
+        run: exit 1
+
+  # ── OPA policy tests ─────────────────────────────────
+  policy-tests:
+    name: OPA Policy Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -fsSL "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static" \
+            -o /usr/local/bin/opa
+          chmod +x /usr/local/bin/opa
+
+      - name: Run OPA tests
+        run: |
+          opa test terraform/policies/ -v
+
+  # ── Drift detection ──────────────────────────────────
+  drift-detection:
+    name: Drift Detection
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, staging, prod]
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: |
+            terraform/environments/${{ matrix.environment }}/.terraform
+            ~/.terraform.d/plugin-cache
+          key: tf-${{ matrix.environment }}-${{ hashFiles('terraform/**/*.tf') }}
+          restore-keys: |
+            tf-${{ matrix.environment }}-
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Drift detection (plan)
+        id: drift
+        env:
+          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_core_api_worker_content: "// populated by build pipeline"
+        run: |
+          set +e
+          output=$(terraform plan -detailed-exitcode -input=false -no-color 2>&1)
+          exit_code=$?
+          set -e
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          {
+            echo "output<<DRIFT_EOF"
+            echo "$output"
+            echo "DRIFT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "$output"
+
+          # Exit code 0=no changes, 1=error, 2=changes detected
+          if [ "$exit_code" -eq 1 ]; then
+            echo "drift_status=error" >> "$GITHUB_OUTPUT"
+          elif [ "$exit_code" -eq 2 ]; then
+            echo "drift_status=drift" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift_status=clean" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR (drift results)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ matrix.environment }}';
+            const driftStatus = '${{ steps.drift.outputs.drift_status }}';
+            const output = `${{ steps.drift.outputs.output }}`.trim();
+
+            let icon, label;
+            if (driftStatus === 'clean') {
+              icon = ':white_check_mark:';
+              label = 'No drift';
+            } else if (driftStatus === 'drift') {
+              icon = ':warning:';
+              label = 'Drift detected';
+            } else {
+              icon = ':x:';
+              label = 'Error';
+            }
+
+            const truncated = output.length > 50000
+              ? output.substring(0, 50000) + '\n... (truncated)'
+              : output;
+
+            const body = [
+              `### Drift Detection: \`${env}\` ${icon} ${label}`,
+              '',
+              '<details>',
+              '<summary>terraform plan output</summary>',
+              '',
+              '```',
+              truncated || '(no output)',
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Create issue on drift (scheduled runs)
+        if: github.event_name == 'schedule' && steps.drift.outputs.drift_status == 'drift'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const env = '${{ matrix.environment }}';
+            const output = `${{ steps.drift.outputs.output }}`.trim();
+            const truncated = output.length > 50000
+              ? output.substring(0, 50000) + '\n... (truncated)'
+              : output;
+
+            // Check for existing open drift issue to avoid duplicates
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'infrastructure-drift',
+            });
+
+            const title = `Infrastructure drift detected: ${env}`;
+            const alreadyOpen = existingIssues.data.find(i => i.title === title);
+            if (alreadyOpen) {
+              // Update existing issue with latest plan
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: alreadyOpen.number,
+                body: [
+                  `**Updated drift report** (${new Date().toISOString()})`,
+                  '',
+                  '```',
+                  truncated,
+                  '```',
+                ].join('\n'),
+              });
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              labels: ['infrastructure-drift', 'ops'],
+              body: [
+                `## Infrastructure Drift Detected`,
+                '',
+                `**Environment:** \`${env}\``,
+                `**Detected at:** ${new Date().toISOString()}`,
+                '',
+                '### Terraform Plan Output',
+                '',
+                '```',
+                truncated,
+                '```',
+                '',
+                '### Action Required',
+                '',
+                '1. Review the drift above',
+                '2. Determine if the change was intentional (manual override)',
+                '3. Either:',
+                '   - Run `terraform apply` to reconcile state, or',
+                '   - Update Terraform config to match the desired state',
+                '4. Close this issue when resolved',
+              ].join('\n'),
+            });
+
+      - name: Fail on error
+        if: steps.drift.outputs.drift_status == 'error'
+        run: exit 1

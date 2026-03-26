@@ -1,0 +1,35 @@
+name: Integration Tests
+
+on:
+    workflow_dispatch:
+
+concurrency:
+    group: integration-tests-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+            - name: Build shared package
+              run: pnpm run build:shared
+            - name: Run integration tests
+              run: pnpm run test:integration
+            - name: Upload test artifacts (on failure)
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: integration-logs
+                  path: |
+                      vitest-report.*
+                      **/vitest.output.log

@@ -1,0 +1,13 @@
+{
+  "name": "@atlasit/jw-site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'placeholder build (site not yet imported)'",
+    "dev": "echo 'placeholder dev'"
+  },
+  "dependencies": {
+    "@atlasit/auth": "workspace:*"
+  }
+}

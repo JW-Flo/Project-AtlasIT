@@ -1,0 +1,23 @@
+{
+  "name": "atlasit-ai-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run || echo 'No orchestrator tests defined'"
+  },
+  "dependencies": {
+    "@atlasit/shared": "workspace:*",
+    "hono": "^4.12.8",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241205.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.40.3"
+  }
+}

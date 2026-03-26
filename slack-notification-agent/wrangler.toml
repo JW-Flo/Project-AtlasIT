@@ -1,0 +1,27 @@
+name = "atlasit-slack-notification-agent"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Secret bindings (set via `wrangler secret put`)
+# SLACK_WEBHOOK_URL — Slack incoming webhook URL
+# AGENT_SECRET — shared HMAC secret (returned by orchestrator on registration)
+
+[observability.logs]
+enabled = true
+
+[env.dev]
+name = "atlasit-slack-notification-agent-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+
+[env.production]
+name = "atlasit-slack-notification-agent"
+usage_model = "bundled"
+
+[env.production.vars]
+ENVIRONMENT = "production"

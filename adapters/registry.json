@@ -1,0 +1,253 @@
+[
+  {
+    "name": "Okta",
+    "slug": "okta",
+    "status": "stable",
+    "featureFlag": "FEATURE_CONNECTOR_OKTA",
+    "createdAt": "2025-09-18T05:35:56.408Z"
+  },
+  {
+    "name": "Google Workspace",
+    "slug": "google-workspace",
+    "status": "stable",
+    "featureFlag": "FEATURE_CONNECTOR_GOOGLE_WORKSPACE",
+    "createdAt": "2025-09-18T05:35:56.408Z"
+  },
+  {
+    "name": "Slack",
+    "slug": "slack",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_SLACK",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Microsoft 365",
+    "slug": "microsoft-365",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_MICROSOFT_365",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Jira",
+    "slug": "jira",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_JIRA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Confluence",
+    "slug": "confluence",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_CONFLUENCE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "QuickBooks",
+    "slug": "quickbooks",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_QUICKBOOKS",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Xero",
+    "slug": "xero",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_XERO",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Zoom",
+    "slug": "zoom",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_ZOOM",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Microsoft Teams",
+    "slug": "teams",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_TEAMS",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Discord",
+    "slug": "discord",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_DISCORD",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "BambooHR",
+    "slug": "bamboohr",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_BAMBOOHR",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Workday",
+    "slug": "workday",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_WORKDAY",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "ADP",
+    "slug": "adp",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_ADP",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Stripe",
+    "slug": "stripe",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_STRIPE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Auth0",
+    "slug": "auth0",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_AUTH0",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "CrowdStrike",
+    "slug": "crowdstrike",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_CROWDSTRIKE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "1Password",
+    "slug": "1password",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_1PASSWORD",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "PagerDuty",
+    "slug": "pagerduty",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_PAGERDUTY",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Datadog",
+    "slug": "datadog",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_DATADOG",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "AWS",
+    "slug": "aws",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_AWS",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "GCP",
+    "slug": "gcp",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_GCP",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Azure",
+    "slug": "azure",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_AZURE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "GitHub",
+    "slug": "github",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_GITHUB",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Salesforce",
+    "slug": "salesforce",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_SALESFORCE",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "HubSpot",
+    "slug": "hubspot",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_HUBSPOT",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Dropbox Business",
+    "slug": "dropbox",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_DROPBOX",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Notion",
+    "slug": "notion",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_NOTION",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Zendesk",
+    "slug": "zendesk",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_ZENDESK",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Asana",
+    "slug": "asana",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_ASANA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Monday.com",
+    "slug": "monday",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_MONDAY",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "DocuSign",
+    "slug": "docusign",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_DOCUSIGN",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Figma",
+    "slug": "figma",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_FIGMA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "name": "Canva",
+    "slug": "canva",
+    "status": "alpha",
+    "featureFlag": "FEATURE_CONNECTOR_CANVA",
+    "createdAt": "2026-03-17T00:00:00.000Z"
+  },
+  {
+    "id": "zscaler",
+    "name": "Zscaler",
+    "slug": "zscaler",
+    "category": "security",
+    "description": "Zero Trust network security platform. Provision users and manage access policies across ZIA and ZPA via ZIdentity.",
+    "authModel": "oauth2",
+    "status": "beta",
+    "featureFlag": "FEATURE_CONNECTOR_ZSCALER",
+    "workerName": "atlasit-adapter-zscaler",
+    "logoUrl": "https://logo.clearbit.com/zscaler.com",
+    "createdAt": "2026-03-18T00:00:00.000Z"
+  }
+]

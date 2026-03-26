@@ -1,0 +1,1 @@
+{"version":3,"file":"broadcaster.d.ts","sourceRoot":"","sources":["../../src/realtime/broadcaster.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,gBAAgB;IAC/B,IAAI,EAAE,MAAM,CAAC;IACb,OAAO,EAAE,OAAO,CAAC;CAClB;AAED,MAAM,WAAW,WAAW;IAC1B,SAAS,CAAC,QAAQ,EAAE,MAAM,EAAE,OAAO,EAAE,gBAAgB,GAAG,OAAO,CAAC,IAAI,CAAC,CAAC;CACvE"}

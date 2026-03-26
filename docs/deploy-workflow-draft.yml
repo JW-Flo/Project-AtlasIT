@@ -1,0 +1,158 @@
+# DRAFT: Production Deployment Workflow
+# DO NOT ENABLE - FOR REFERENCE ONLY
+#
+# This file shows how to add production deployment to GitHub Actions
+# Enable by renaming to .github/workflows/deploy-production.yml and configuring secrets
+
+name: Deploy to Production
+
+# Manual trigger only - never auto-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: 'Workers to deploy (comma-separated: onboarding,orchestrator,docs)'
+        required: true
+        default: 'onboarding,orchestrator,docs'
+        type: string
+      confirm:
+        description: 'Type DEPLOY to confirm production deployment'
+        required: true
+        type: string
+
+jobs:
+  validate-deployment:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'DEPLOY'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Pre-deployment validation
+        env:
+          # These secrets must be configured in GitHub repo settings
+          ONBOARDING_API_KEY: ${{ secrets.ONBOARDING_API_KEY }}
+          ORCHESTRATOR_API_KEY: ${{ secrets.ORCHESTRATOR_API_KEY }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Add other required secrets...
+        run: |
+          npm run validate:env
+          npm run predeploy
+
+  deploy-onboarding:
+    needs: validate-deployment
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.workers, 'onboarding')
+    environment: production  # Requires manual approval
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Deploy onboarding worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          cd onboarding
+          npx wrangler deploy --env production
+
+  deploy-orchestrator:
+    needs: validate-deployment
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.workers, 'orchestrator')
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Deploy orchestrator worker  
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          cd ai-orchestrator
+          npx wrangler deploy --env production
+
+  deploy-docs:
+    needs: validate-deployment
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.workers, 'docs')
+    environment: production
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Deploy documentation worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}  
+        run: |
+          cd documentation-worker
+          npx wrangler deploy --env production
+
+  smoke-tests:
+    needs: [deploy-onboarding, deploy-orchestrator, deploy-docs]
+    runs-on: ubuntu-latest
+    if: always() && needs.validate-deployment.result == 'success'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          
+      - name: Run post-deployment smoke tests
+        env:
+          ONBOARDING_BASE_URL: https://atlasit-onboarding-prod.workers.dev
+          ORCHESTRATOR_BASE_URL: https://atlasit-orchestrator-prod.workers.dev  
+          DOCS_BASE_URL: https://atlasit-docs-prod.workers.dev
+          API_KEY: ${{ secrets.ORCHESTRATOR_API_KEY }}
+          CI_RESULTS_FILE: smoke-test-results.json
+        run: |
+          node scripts/deploy-smoke.mjs
+          
+      - name: Upload smoke test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: smoke-test-results.json
+
+# Setup Instructions:
+#
+# 1. Configure GitHub Environment Protection:
+#    - Go to Repo Settings > Environments  
+#    - Create "production" environment
+#    - Add required reviewers
+#    - Set deployment protection rules
+#
+# 2. Add Repository Secrets:
+#    - CLOUDFLARE_API_TOKEN (for wrangler)
+#    - CF_ACCOUNT_ID 
+#    - ONBOARDING_API_KEY (generated via openssl rand -hex 24)
+#    - ORCHESTRATOR_API_KEY (generated via openssl rand -hex 24)
+#    - [Add others from DEPLOYMENT_SECRETS_CHECKLIST.md]
+#
+# 3. Test wrangler.toml configurations:
+#    - Ensure account_id set in each worker's wrangler.toml
+#    - Update worker names from "ignite-*" to "atlasit-*"  
+#    - Configure production routes/domains
+#
+# 4. Enable workflow:
+#    - Rename this file to .github/workflows/deploy-production.yml
+#    - Test with single worker first
+#    - Monitor deployments in GitHub Actions tab

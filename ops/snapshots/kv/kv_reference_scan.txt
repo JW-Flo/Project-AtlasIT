@@ -1,0 +1,11 @@
+./context/UpdatedProjetGuidelines.rtf:473:\f0\b0  feature \'96 it defines a dispatch namespace \'93ignite-dispatcher-namespace\'94 bound as 
+./_qwen_full.md:2494:const DOCS = 'ignite_docs';
+./_qwen_full.md:4573:namespace = "ignite-dispatcher-namespace"
+./_qwen_full.md:4587:namespace = "ignite-dispatcher-namespace"
+./LEGACY.md:31:| KV Namespace (old)       | `ignite-dispatcher-namespace`, `ignite_docs` | Staging dual-read period       | Decommission Phase 3 end                  |
+./ops/audit-infra.sh:18:  "ignite-docs:88514b613c2e4721a358352752580d65"
+./ops/ALIGNMENT_PLAN.md:62:| KV Namespace Names         | `ignite-dispatcher-namespace`, `ignite_docs`           | Create new atlasit namespaces + dual period      | 3            |
+./ops/ALIGNMENT_PLAN.md:201:- KV keys (IGNITE_KV, MCP_STORE, UNIFIED_DATA_CACHE, ignite-docs, ATLAS_FLAGS) currently empty (`[]`) indicating minimal migration complexity.
+./ops/ALIGNMENT_PLAN.md:266:	- Action: Grep for old namespace identifiers (e.g., ignite-dispatcher-namespace, ignite_docs) across repo.
+./wrangler.toml:123:namespace = "ignite-dispatcher-namespace"
+./wrangler.toml:137:namespace = "ignite-dispatcher-namespace"

@@ -1,0 +1,37 @@
+{
+  "trace_id": "TRIAGE-WORKFLOW-2025-11-17-002",
+  "control_id": "ATLAS-TRIAGE-INCIDENT-002",
+  "timestamp": "2025-11-17T00:00:00Z",
+  "category": "resolved_incidents",
+  "action": "CLOSE_HISTORICAL_INCIDENTS",
+  "issues_closed": [24, 25, 26, 27, 28],
+  "total_count": 5,
+  "rationale": "Automated incident tickets for workflow trigger failures in May 2025. Workflows now functioning correctly as evidenced by 45+ active workflow files and recent successful runs.",
+  "evidence": {
+    "creation_dates": "2025-05-18",
+    "incident_type": "Workflow not triggered on main",
+    "incident_date": "2025-05-18T03:05:18Z through 2025-05-18T07:18:51Z",
+    "current_status": "RESOLVED",
+    "verification": [
+      "45 active workflow files in .github/workflows/",
+      "Recent successful workflow runs (codex-cycle.yml)",
+      "No recent workflow trigger incidents",
+      "GitHub Actions confirmed enabled and functioning"
+    ],
+    "months_since_incident": 6
+  },
+  "compliance_mappings": {
+    "NIST_800_53": {
+      "IR-4": "Incident Handling - Historical incidents documented and resolved",
+      "IR-6": "Incident Reporting - Automated incident reporting validated"
+    },
+    "SOC2": {
+      "CC7.3": "System Operations - Incident response and resolution tracking"
+    },
+    "ISO27001": {
+      "A.16.1.5": "Response to Information Security Incidents - Incident lifecycle complete"
+    }
+  },
+  "closure_reason": "Historical incidents from May 2025. Root cause resolved, workflows now operational. Incidents properly logged for audit trail.",
+  "risk_assessment": "NONE - Incidents resolved 6 months ago, no recurrence"
+}

@@ -1,0 +1,89 @@
+{
+  "id": "bamboohr",
+  "name": "BambooHR",
+  "category": "hr",
+  "auth": {
+    "type": "api_key",
+    "grantTypes": [],
+    "authorizeUrl": null,
+    "tokenUrl": null,
+    "revokeUrl": null,
+    "apiKeyAuth": {
+      "method": "HTTP Basic Authentication",
+      "usernameField": "API Key (160-bit hex)",
+      "passwordField": "Any random string (e.g. 'x')",
+      "headerExample": "Authorization: Basic base64({apiKey}:x)"
+    },
+    "scopes": {
+      "joiner": [],
+      "mover": [],
+      "leaver": []
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false,
+    "notes": "API keys are generated per-user in BambooHR account settings. Permissions are inherited from the user who created the key. OAuth 2.0 is also available for apps registered in the BambooHR Developer Portal."
+  },
+  "api": {
+    "baseUrl": "https://api.bamboohr.com/api/gateway.php/{companyDomain}/v1",
+    "version": "v1",
+    "endpoints": {
+      "createUser": "POST /employees/",
+      "getUser": "GET /employees/{id}/?fields={fieldList}",
+      "updateUser": "POST /employees/{id}/",
+      "suspendUser": null,
+      "deleteUser": null,
+      "listUsers": "GET /employees/directory",
+      "listChangedUsers": "GET /employees/changed/?since={date}",
+      "listGroups": null,
+      "addToGroup": null,
+      "removeFromGroup": null
+    },
+    "rateLimits": "Not publicly documented. Requests may be throttled with 503 Service Unavailable. Retry-After header may be provided.",
+    "scim": {
+      "supported": false,
+      "endpoint": null
+    }
+  },
+  "sdk": {
+    "npm": null,
+    "docsUrl": "https://documentation.bamboohr.com/docs",
+    "exampleImport": null,
+    "notes": "No official npm package. Community packages exist but are not maintained by BambooHR. Use direct HTTP requests with Basic Auth."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "push",
+    "registrationEndpoints": {
+      "list": "GET /webhooks/",
+      "get": "GET /webhooks/{id}/",
+      "create": "POST /webhooks/",
+      "update": "PUT /webhooks/{id}/",
+      "delete": "DELETE /webhooks/{id}/",
+      "getLogs": "GET /webhooks/{id}/log",
+      "getMonitorFields": "GET /webhooks/monitor_fields"
+    },
+    "eventTypes": ["employee.created", "employee.updated", "employee.deleted"],
+    "webhookTypes": [
+      "Global Webhooks (admin-configured, subset of fields)",
+      "Permissioned Webhooks (API-created, access-controlled)"
+    ],
+    "security": {
+      "requiresHttps": true,
+      "signatureHeader": "X-BambooHR-Signature",
+      "timestampHeader": "X-BambooHR-Timestamp",
+      "algorithm": "SHA-256 HMAC"
+    },
+    "retryPolicy": "Up to 5 attempts: immediate, 5min, 10min, 20min, 40min"
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "Create a free test BambooHR account to develop against. Must be provisioned manually."
+  },
+  "needs_verification": [
+    "Exact rate limit thresholds (not publicly documented)",
+    "Whether DELETE /employees/{id} endpoint exists (not found in docs)",
+    "Whether suspend/deactivate endpoint exists",
+    "OAuth 2.0 authorize and token URLs for Developer Portal apps",
+    "Community npm package names and maintenance status"
+  ]
+}

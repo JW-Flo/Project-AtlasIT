@@ -1,0 +1,92 @@
+{
+  "id": "zoom",
+  "name": "Zoom",
+  "category": "video_conferencing",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials"],
+    "authorizeUrl": "https://zoom.us/oauth/authorize",
+    "tokenUrl": "https://zoom.us/oauth/token",
+    "revokeUrl": "https://zoom.us/oauth/revoke",
+    "scopes": {
+      "joiner": [
+        "user:write:admin",
+        "user:read:admin",
+        "group:write:admin",
+        "group:read:admin"
+      ],
+      "mover": ["user:write:admin", "user:read:admin", "group:write:admin"],
+      "leaver": ["user:write:admin", "user:read:admin"]
+    },
+    "adminConsentRequired": true,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://api.zoom.us",
+    "version": "v2",
+    "endpoints": {
+      "createUser": "POST /v2/users",
+      "getUser": "GET /v2/users/{userId}",
+      "updateUser": "PATCH /v2/users/{userId}",
+      "listUsers": "GET /v2/users",
+      "suspendUser": "PUT /v2/users/{userId}/status (action: deactivate)",
+      "activateUser": "PUT /v2/users/{userId}/status (action: activate)",
+      "deleteUser": "DELETE /v2/users/{userId}",
+      "listGroups": "GET /v2/groups",
+      "createGroup": "POST /v2/groups",
+      "getGroup": "GET /v2/groups/{groupId}",
+      "deleteGroup": "DELETE /v2/groups/{groupId}",
+      "addToGroup": "POST /v2/groups/{groupId}/members",
+      "removeFromGroup": "DELETE /v2/groups/{groupId}/members/{memberId}",
+      "listGroupMembers": "GET /v2/groups/{groupId}/members"
+    },
+    "rateLimits": {
+      "light": "80 requests per second",
+      "medium": "60 requests per second",
+      "heavy": "40 requests per second + 60,000 per day",
+      "resourceIntensive": "20 requests per second + 60,000 per day",
+      "notes": "Rate limits vary by endpoint classification and account tier."
+    },
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.zoom.us/scim2/",
+      "version": "2.0",
+      "notes": "Zoom SCIM 2.0 API supports user and group provisioning. Available for Business and above plans."
+    }
+  },
+  "sdk": {
+    "npm": "@zoom/rivet",
+    "meetingSdk": "@zoom/meetingsdk",
+    "docsUrl": "https://developers.zoom.us/docs/api/",
+    "exampleImport": "import Zoom from '@zoom/rivet'",
+    "notes": "No official Zoom REST API npm client SDK. @zoom/rivet is the Node.js SDK. Most developers use direct HTTP calls or community wrappers for REST API operations."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "webhooks",
+    "registrationEndpoint": "Configured via Zoom Marketplace App settings (Feature > Event Subscriptions)",
+    "eventTypes": [
+      "user.created",
+      "user.updated",
+      "user.deleted",
+      "user.activated",
+      "user.deactivated",
+      "user.disassociated",
+      "user.invitation_accepted",
+      "user.settings_updated",
+      "user.signed_in",
+      "user.signed_out",
+      "user.presence_status_updated"
+    ],
+    "notes": "Webhooks require URL validation via a challenge-response check. Events are signed with a secret token for verification."
+  },
+  "sandbox": {
+    "available": false,
+    "notes": "No free developer sandbox. Business and above accounts can request a sub-account as a sandbox from Zoom sales. Free/Pro accounts must test against their own account."
+  },
+  "needs_verification": [
+    "Exact @zoom/rivet npm package capabilities for user management (may be limited to meeting SDK)",
+    "Whether SCIM 2.0 endpoint base URL is exactly https://api.zoom.us/scim2/ or varies",
+    "Server-to-Server OAuth client_credentials grant type scope requirements for user management"
+  ]
+}

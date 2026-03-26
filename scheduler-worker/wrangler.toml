@@ -1,0 +1,16 @@
+name = "atlasit-scheduler"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+# Optional override of orchestrator base URL; fallback uses workers.dev default if unset
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+
+[observability.logs]
+enabled = true
+
+# Cron triggers removed — duties consolidated into orchestrator's */5 cron.
+# Manual trigger still available via POST /internal/run?jobs=daily_etl,quarter_hour_monitor

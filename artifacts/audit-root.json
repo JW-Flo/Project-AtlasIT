@@ -1,0 +1,350 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@miniflare/cache": {
+      "name": "@miniflare/cache",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["@miniflare/core", "undici"],
+      "effects": [],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/cache"],
+      "fixAvailable": true
+    },
+    "@miniflare/core": {
+      "name": "@miniflare/core",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["undici"],
+      "effects": ["@miniflare/d1", "@miniflare/shared-test-environment"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/core"],
+      "fixAvailable": true
+    },
+    "@miniflare/d1": {
+      "name": "@miniflare/d1",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["@miniflare/core"],
+      "effects": ["@miniflare/shared-test-environment"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/d1"],
+      "fixAvailable": true
+    },
+    "@miniflare/durable-objects": {
+      "name": "@miniflare/durable-objects",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["@miniflare/core", "undici"],
+      "effects": [],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/durable-objects"],
+      "fixAvailable": true
+    },
+    "@miniflare/html-rewriter": {
+      "name": "@miniflare/html-rewriter",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["@miniflare/core", "undici"],
+      "effects": [],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/html-rewriter"],
+      "fixAvailable": true
+    },
+    "@miniflare/r2": {
+      "name": "@miniflare/r2",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["undici"],
+      "effects": ["@miniflare/shared-test-environment"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/r2"],
+      "fixAvailable": true
+    },
+    "@miniflare/shared-test-environment": {
+      "name": "@miniflare/shared-test-environment",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        "@miniflare/cache",
+        "@miniflare/core",
+        "@miniflare/d1",
+        "@miniflare/durable-objects",
+        "@miniflare/html-rewriter",
+        "@miniflare/r2",
+        "@miniflare/web-sockets"
+      ],
+      "effects": ["vitest-environment-miniflare"],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/shared-test-environment"],
+      "fixAvailable": true
+    },
+    "@miniflare/web-sockets": {
+      "name": "@miniflare/web-sockets",
+      "severity": "low",
+      "isDirect": false,
+      "via": ["@miniflare/core", "undici"],
+      "effects": [],
+      "range": "<=2.14.2",
+      "nodes": ["onboarding/node_modules/@miniflare/web-sockets"],
+      "fixAvailable": true
+    },
+    "@sveltejs/adapter-cloudflare": {
+      "name": "@sveltejs/adapter-cloudflare",
+      "severity": "low",
+      "isDirect": true,
+      "via": ["@sveltejs/kit"],
+      "effects": [],
+      "range": ">=1.0.0-next.2",
+      "nodes": ["node_modules/@sveltejs/adapter-cloudflare"],
+      "fixAvailable": {
+        "name": "@sveltejs/adapter-cloudflare",
+        "version": "0.0.1",
+        "isSemVerMajor": true
+      }
+    },
+    "@sveltejs/kit": {
+      "name": "@sveltejs/kit",
+      "severity": "low",
+      "isDirect": true,
+      "via": ["cookie"],
+      "effects": ["@sveltejs/adapter-cloudflare"],
+      "range": ">=1.0.0-next.0",
+      "nodes": ["node_modules/@sveltejs/kit"],
+      "fixAvailable": {
+        "name": "@sveltejs/kit",
+        "version": "0.0.30",
+        "isSemVerMajor": true
+      }
+    },
+    "cookie": {
+      "name": "cookie",
+      "severity": "low",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1103907,
+          "name": "cookie",
+          "dependency": "cookie",
+          "title": "cookie accepts cookie name, path, and domain with out of bounds characters",
+          "url": "https://github.com/advisories/GHSA-pxg6-pf52-xh8x",
+          "severity": "low",
+          "cwe": ["CWE-74"],
+          "cvss": {
+            "score": 0,
+            "vectorString": null
+          },
+          "range": "<0.7.0"
+        }
+      ],
+      "effects": ["@sveltejs/kit"],
+      "range": "<0.7.0",
+      "nodes": ["node_modules/@sveltejs/kit/node_modules/cookie"],
+      "fixAvailable": {
+        "name": "@sveltejs/kit",
+        "version": "0.0.30",
+        "isSemVerMajor": true
+      }
+    },
+    "esbuild": {
+      "name": "esbuild",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1102341,
+          "name": "esbuild",
+          "dependency": "esbuild",
+          "title": "esbuild enables any website to send any requests to the development server and read the response",
+          "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99",
+          "severity": "moderate",
+          "cwe": ["CWE-346"],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:N/A:N"
+          },
+          "range": "<=0.24.2"
+        }
+      ],
+      "effects": ["wrangler"],
+      "range": "<=0.24.2",
+      "nodes": [
+        "onboarding/node_modules/esbuild",
+        "onboarding/node_modules/wrangler/node_modules/esbuild"
+      ],
+      "fixAvailable": {
+        "name": "esbuild",
+        "version": "0.25.10",
+        "isSemVerMajor": true
+      }
+    },
+    "undici": {
+      "name": "undici",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1091088,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Regular Expression Denial of Service in Headers",
+          "url": "https://github.com/advisories/GHSA-r6ch-mqf9-qc9w",
+          "severity": "high",
+          "cwe": ["CWE-1333"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<5.19.1"
+        },
+        {
+          "source": 1091151,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "CRLF Injection in Nodejs ‘undici’ via host",
+          "url": "https://github.com/advisories/GHSA-5r9g-qh6m-jxff",
+          "severity": "moderate",
+          "cwe": ["CWE-74", "CWE-93"],
+          "cvss": {
+            "score": 4.6,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:L/I:L/A:N"
+          },
+          "range": ">=2.0.0 <5.19.1"
+        },
+        {
+          "source": 1096502,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's cookie header not cleared on cross-origin redirect in fetch",
+          "url": "https://github.com/advisories/GHSA-wqq4-5wpv-mx2g",
+          "severity": "low",
+          "cwe": ["CWE-200"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<5.26.2"
+        },
+        {
+          "source": 1097200,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's fetch with integrity option is too lax when algorithm is specified but hash value is in incorrect",
+          "url": "https://github.com/advisories/GHSA-9qxr-qj54-h672",
+          "severity": "low",
+          "cwe": ["CWE-284"],
+          "cvss": {
+            "score": 2.6,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:R/S:U/C:N/I:L/A:N"
+          },
+          "range": "<5.28.4"
+        },
+        {
+          "source": 1097221,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici proxy-authorization header not cleared on cross-origin redirect in fetch",
+          "url": "https://github.com/advisories/GHSA-3787-6prv-h9w3",
+          "severity": "low",
+          "cwe": ["CWE-200"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<=5.28.2"
+        },
+        {
+          "source": 1101610,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Use of Insufficiently Random Values in undici",
+          "url": "https://github.com/advisories/GHSA-c76h-2ccp-4975",
+          "severity": "moderate",
+          "cwe": ["CWE-330"],
+          "cvss": {
+            "score": 6.8,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:N"
+          },
+          "range": ">=4.5.0 <5.28.5"
+        },
+        {
+          "source": 1102442,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "Undici's Proxy-Authorization header not cleared on cross-origin redirect for dispatch, request, stream, pipeline",
+          "url": "https://github.com/advisories/GHSA-m4v8-wqvr-p9f7",
+          "severity": "low",
+          "cwe": ["CWE-200", "CWE-285", "CWE-863"],
+          "cvss": {
+            "score": 3.9,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:R/S:U/C:L/I:L/A:L"
+          },
+          "range": "<5.28.4"
+        },
+        {
+          "source": 1104501,
+          "name": "undici",
+          "dependency": "undici",
+          "title": "undici Denial of Service attack via bad certificate data",
+          "url": "https://github.com/advisories/GHSA-cxrh-j4jr-qwg3",
+          "severity": "low",
+          "cwe": ["CWE-401"],
+          "cvss": {
+            "score": 3.1,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": "<5.29.0"
+        }
+      ],
+      "effects": [
+        "@miniflare/cache",
+        "@miniflare/core",
+        "@miniflare/durable-objects",
+        "@miniflare/html-rewriter",
+        "@miniflare/r2",
+        "@miniflare/web-sockets"
+      ],
+      "range": "<=5.28.5",
+      "nodes": ["onboarding/node_modules/undici"],
+      "fixAvailable": true
+    },
+    "vitest-environment-miniflare": {
+      "name": "vitest-environment-miniflare",
+      "severity": "low",
+      "isDirect": true,
+      "via": ["@miniflare/shared-test-environment"],
+      "effects": [],
+      "range": "2.10.0 - 2.14.3",
+      "nodes": ["onboarding/node_modules/vitest-environment-miniflare"],
+      "fixAvailable": true
+    },
+    "wrangler": {
+      "name": "wrangler",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": ["esbuild"],
+      "effects": [],
+      "range": "<=4.10.0",
+      "nodes": ["onboarding/node_modules/wrangler"],
+      "fixAvailable": true
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 12,
+      "moderate": 2,
+      "high": 1,
+      "critical": 0,
+      "total": 15
+    },
+    "dependencies": {
+      "prod": 234,
+      "dev": 579,
+      "optional": 189,
+      "peer": 4,
+      "peerOptional": 0,
+      "total": 917
+    }
+  }
+}

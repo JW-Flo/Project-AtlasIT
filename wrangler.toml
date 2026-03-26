@@ -1,0 +1,216 @@
+# Wrangler configuration for AtlasIT
+name = "atlasit-core"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+account_id = "620865722bd88ef0a77dbbb60c91392e"  # Injected after infra rebuild
+
+# Remove any invalid secret references. Do not use ${{ secrets.* }} or env var interpolation in wrangler.toml.
+# All secrets must be set using `wrangler secret put` or via GitHub Actions secrets.
+
+[[kv_namespaces]]
+binding = "MCP_STORE"
+id = "c7eba0c892bf4f2fbcf73fb60a38706c"
+
+# New core KV namespaces
+[[kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
+# D1 database bindings (one primary + supporting / audit / compliance / shadow)
+[[d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
+
+[[d1_databases]]
+binding = "ATLAS_COMPLIANCE_DB"
+database_name = "atlasit_compliance"
+database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5"
+
+[[d1_databases]]
+binding = "ATLAS_AUDIT_SHADOW"
+database_name = "atlas_audit_shadow"
+database_id = "d72ddfd9-c892-42ec-a5c3-b920788485c1"
+
+# R2 buckets (evidence / policies / artifacts)
+[[r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+
+[[r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+
+[[r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+# Queues were planned but are unavailable on current (free) plan; omit bindings until upgrade.
+# [[queues.producers]]
+# binding = "ATLAS_WORKFLOW_QUEUE"
+# queue = "atlas-workflow-queue"
+#
+# After upgrading to a Workers Paid plan, uncomment and adjust the following queue bindings:
+# [[queues.producers]]
+# binding = "ATLAS_WORKFLOW_QUEUE"
+# queue = "atlas-workflow-queue"
+#
+# [[queues.producers]]
+# binding = "POLICY_REBUILD_QUEUE"
+# queue = "policy-rebuild"
+#
+# [[queues.producers]]
+# binding = "RISK_RECALC_QUEUE"
+# queue = "risk-recalc"
+
+# Example Durable Object binding (uncomment and set if needed)
+# [[durable_objects.bindings]]
+# name = "ATLAS_DO"
+# class_name = "AtlasDurableObject"
+
+
+[env.dev]
+name = "atlasit-core-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+
+# Production environment (legacy canonical during transition)
+[env.production]
+route = "atlasit-core.kd8jc7v8cd.workers.dev/*"
+usage_model = "bundled"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+# New core AtlasIT worker environment (Phase 2 rename). Deployed in parallel.
+[env.core]
+name = "atlasit-core"
+main = "index.js"
+usage_model = "bundled"
+workers_dev = true
+# Route removed: core-api (Hono) now handles api.atlasit.pro exclusively.
+# Keeping this worker on workers.dev for internal/legacy use.
+
+[[env.core.kv_namespaces]]
+binding = "KV_SESSIONS"
+id = "c3017a1a156a4f2fa2da62dadc714c44"
+
+[[env.core.kv_namespaces]]
+binding = "KV_CACHE"
+id = "4f08086308004796bfd7cab01c34b006"
+
+[[env.core.kv_namespaces]]
+binding = "KV_FEATURE_FLAGS"
+id = "6a94dc4144f04b82a4989677c47509da"
+
+[[env.core.kv_namespaces]]
+binding = "MCP_STORE"
+id = "c7eba0c892bf4f2fbcf73fb60a38706c"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_CORE_DB"
+database_name = "atlas_core_db"
+database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_DB"
+database_name = "atlas_audit_db"
+database_id = "faa2caf5-0219-4507-9d8f-9ddab544615c"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_COMPLIANCE_DB"
+database_name = "atlasit_compliance"
+database_id = "25c2d388-8a76-4b8c-a594-21973239f0d5"
+
+[[env.core.d1_databases]]
+binding = "ATLAS_AUDIT_SHADOW"
+database_name = "atlas_audit_shadow"
+database_id = "d72ddfd9-c892-42ec-a5c3-b920788485c1"
+
+[[env.core.r2_buckets]]
+binding = "atlas_policies"
+bucket_name = "atlas-policies"
+
+[[env.core.r2_buckets]]
+binding = "atlas_evidence"
+bucket_name = "atlas-evidence"
+
+[[env.core.r2_buckets]]
+binding = "atlas_artifacts"
+bucket_name = "atlas-artifacts"
+
+[env.core.vars]
+ENVIRONMENT = "production"
+RENAMING_PHASE = "core_parallel"
+
+# Workers for Platforms dispatch namespace removed (requires Enterprise plan)
+# [[env.core.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "atlasit-dispatcher-namespace"
+
+# [env.production.durable_objects]
+# bindings = [
+#   { name = "MCP_OBJECT", class_name = "MyMCP" }
+# ]
+
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["MyMCP"]
+
+[observability.logs]
+enabled = true
+
+[env.ai]
+name = "atlasit-ai"
+main = "ai-worker.js"
+usage_model = "bundled"
+compatibility_date = "2025-05-16"
+workers_dev = true
+
+[env.ai.vars]
+# Add any environment-specific variables here
+
+## Dispatch namespace removed (free plan). Previously:
+# [[env.ai.dispatch_namespaces]]
+# binding = "dispatcher"
+# namespace = "atlasit-dispatcher-namespace"
+
+# Planned new dispatcher namespace (Phase 3). Create via `wrangler dispatch-namespace create atlasit-dispatcher-namespace` then add id.
+# [[env.ai.dispatch_namespaces]]
+# binding = "dispatcher_new"
+# namespace = "atlasit-dispatcher-namespace"
+
+[env.ai.logs]
+sampling_rate = 1.0
+include_invocation_logs = true
+
+[env.ai.observability.logs]
+enabled = true
+
+[env.ai.ai]
+binding = "AI"
+
+# Dispatch namespaces removed (account lacks feature on free plan). Reintroduce post-upgrade.
+
+# Tail consumer temporarily disabled to reduce deployment warnings; re-enable when log tail processing worker required.
+# [[tail_consumers]]
+# service = "documentation-worker"
+
+# For local development, use a .env file or export env vars in your shell
+# See .env.example for required variables

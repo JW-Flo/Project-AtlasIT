@@ -1,0 +1,29 @@
+id: asana
+name: Asana JML Workflow
+description: Joiner/Mover/Leaver workflow for Asana workspace
+
+joiner:
+  steps:
+    - action: api.addUserToWorkspace
+      params:
+        workspaceGid: "{{ config.workspaceGid }}"
+        email: "{{ user.email }}"
+    - action: api.addToProject
+      params:
+        projectGid: "{{ config.defaultProjectGid }}"
+        userGid: "{{ steps[0].result.gid }}"
+      condition: "{{ config.defaultProjectGid }}"
+
+mover:
+  steps:
+    - action: api.updateUserRole
+      params:
+        workspaceGid: "{{ config.workspaceGid }}"
+        userGid: "{{ user.externalId }}"
+
+leaver:
+  steps:
+    - action: api.removeUserFromWorkspace
+      params:
+        workspaceGid: "{{ config.workspaceGid }}"
+        userGid: "{{ user.externalId }}"

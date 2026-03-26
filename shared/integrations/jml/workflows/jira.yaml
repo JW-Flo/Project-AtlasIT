@@ -1,0 +1,41 @@
+id: jira
+name: Jira JML Workflow
+description: Joiner/Mover/Leaver workflow for Jira Cloud via Atlassian SCIM
+
+joiner:
+  steps:
+    - action: scim.createUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userName: "{{ user.email }}"
+        displayName: "{{ user.displayName }}"
+        emails:
+          - value: "{{ user.email }}"
+            type: work
+            primary: true
+    - action: scim.addToGroup
+      params:
+        directoryId: "{{ config.directoryId }}"
+        groupId: "{{ config.defaultGroupId }}"
+        userId: "{{ steps[0].result.id }}"
+      condition: "{{ config.defaultGroupId }}"
+
+mover:
+  steps:
+    - action: scim.updateUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userId: "{{ user.externalId }}"
+        department: "{{ user.department }}"
+        title: "{{ user.title }}"
+
+leaver:
+  steps:
+    - action: scim.deactivateUser
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userId: "{{ user.externalId }}"
+    - action: scim.removeFromAllGroups
+      params:
+        directoryId: "{{ config.directoryId }}"
+        userId: "{{ user.externalId }}"

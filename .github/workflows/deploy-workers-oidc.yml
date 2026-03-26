@@ -1,0 +1,49 @@
+name: Deploy Workers via OIDC Exchange
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_dir:
+        description: "Worker directory"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Fetch GitHub OIDC token
+        id: oidc
+        run: |
+          echo "token=$(curl -sS -H \"Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN\" \"$ACTIONS_ID_TOKEN_REQUEST_URL&audience=atlasit-cloudflare-deploy\" | jq -r '.value')" >> "$GITHUB_OUTPUT"
+
+      - name: Exchange OIDC token for Cloudflare deploy credentials
+        id: exchange
+        env:
+          OIDC_EXCHANGE_URL: ${{ vars.OIDC_EXCHANGE_URL }}
+        run: |
+          response=$(curl -sS -X POST "$OIDC_EXCHANGE_URL" \
+            -H "content-type: application/json" \
+            -d "{\"githubOidcToken\":\"${{ steps.oidc.outputs.token }}\"}")
+          echo "token=$(echo "$response" | jq -r '.data.apiToken')" >> "$GITHUB_OUTPUT"
+          echo "account=$(echo "$response" | jq -r '.data.accountId')" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via Wrangler
+        env:
+          WRANGLER_API_TOKEN: ${{ steps.exchange.outputs.token }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.exchange.outputs.account }}
+        run: npx wrangler deploy
+        working-directory: ${{ inputs.worker_dir }}

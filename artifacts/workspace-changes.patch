@@ -1,0 +1,471 @@
+diff --git a/.github/copilot-instructions.md b/.github/copilot-instructions.md
+index 32961e6..c9c207e 100644
+--- a/.github/copilot-instructions.md
++++ b/.github/copilot-instructions.md
+@@ -1,81 +1,304 @@
+-# Copilot Instructions (Project-AtlasIT Wrapper)
+-
+-## Overview
+-
+-This repository powers the AtlasIT platform, a Cloudflare Workers-based automation substrate for onboarding, orchestration, documentation, and compliance modules. It integrates multiple services, including onboarding, marketplace, authentication, and orchestration, with a focus on automation and scalability.
+-
+-## Architecture
+-
+-- **Core Services**:
+-  - `onboarding/`: Handles user onboarding workflows.
+-  - `marketplace/`: Manages marketplace-related operations.
+-  - `auth/`: Provides authentication services.
+-  - `orchestrator/`: Coordinates events and workflows across services.
+-- **Shared Utilities**:
+-  - `agents/`: Contains AI agents for automation tasks.
+-  - `utils/`: Shared helper functions and utilities.
+-- **Infrastructure**:
+-  - `wrangler.toml`: Configuration for Cloudflare Workers.
+-  - `docker/`: Docker configurations for local development.
+-
+-## Developer Workflows
+-
+-### Build and Test
+-
+-- **Install Dependencies**:
+-  ```bash
+-  npm install
+-  ```
+-- **Run Tests**:
+-  ```bash
+-  npm test
+-  ```
+-- **Lint and Format**:
+-  ```bash
+-  npm run lint
+-  npm run format
+-  ```
+-- **Deploy to Cloudflare**:
+-  ```bash
+-  wrangler deploy --env <environment>
+-  ```
+-
+-### Debugging
+-
+-- Use `wrangler dev` for local development and debugging.
+-- Check Cloudflare logs for runtime diagnostics.
+-
+-## Project Conventions
+-
+-- **Commit Messages**:
+-  - Format: `type(scope): message`
+-  - Examples:
+-    - `feat(auth): add JWT rotation`
+-    - `fix(onboarding): resolve null pointer exception`
+-- **Code Style**:
+-  - Follow ESLint rules defined in `eslint.config.js`.
+-  - Use snake_case for field names.
+-- **Environment Variables**:
+-  - Secrets must be set via `wrangler secret put`.
+-  - Avoid hardcoding sensitive data.
+-
+-## Integration Points
+-
+-- **External APIs**:
+-  - Slack Webhooks: Used for notifications.
+-  - OpenAI Agents SDK: Powers AI-driven workflows.
+-- **Data Stores**:
+-  - KV, D1, and R2 bindings configured in `wrangler.toml`.
+-- **CI/CD**:
+-  - GitHub Actions workflows for testing and deployment.
+-
+-## Examples and Documentation
+-
+-- Refer to `docs/` for detailed guides and examples.
+-- Explore `examples/` for common agent patterns and workflows.
+-
+-## Notes for AI Agents
+-
+-- Always validate environment configurations in `wrangler.toml`.
+-- Ensure generated code adheres to project conventions.
+-- Use the `make` commands for consistent formatting and testing.
++## AtlasIT – AI Assistant Comprehensive Guide
++Goal: Equip AI coding agents to make safe, high‑leverage changes fast. This document is intentionally thorough. Prefer ACTIONABLE + CURRENT state over roadmap speculation. If something is in mockups but absent in code (compliance engine, marketplace, risk matrix, policy editor), treat it as NOT IMPLEMENTED.
++
++---
++### 1. Current Implemented Surface (Reality Snapshot)
++Active Cloudflare Workers: `onboarding/`, `ai-orchestrator/`, `documentation-worker/`. Shared utilities + runtime hardening code under `src/runtime/**`. Experimental UI prototype lives in `console-app/` (SvelteKit) – avoid coupling backend changes to UI assumptions unless tests assert them.
++
++Non‑implemented (do NOT create endpoints ad‑hoc): compliance scoring API, policy engine, marketplace, risk assessment matrix, advanced directory/JML flows. Legacy Ignite/MCP materials retained in `LEGACY.md` – append-only unless an explicit migration task exists.
++
++---
++### 2. High-Level Architecture & Data Flows
++Edge‑native design: each Worker is a narrow responsibility boundary; shared logic (logging, env validation, dynamic feature registry) is imported where needed.
++Bindings (declared in `wrangler.toml`) drive persistence & runtime capabilities:
++- KV: sessions (`KV_SESSIONS`), generic cache (`KV_CACHE`), flags (`KV_FEATURE_FLAGS`), MCP store (`MCP_STORE`).
++- D1: core/audit/compliance DBs (`ATLAS_CORE_DB`, `ATLAS_AUDIT_DB`, etc.) – some referenced but not fully utilized yet (future compliance schema).
++- R2: artifacts/evidence/policies buckets (`atlas_artifacts`, `atlas_evidence`, `atlas_policies`). Health responses append R2 bucket usage metrics when present (see orchestrator tests).
++Request lifecycle typically: parse headers (API key), validate env, perform KV/D1/R2 operations, append diagnostics (never remove existing fields), return JSON.
++
++---
++### 3. Runtime Hardening (Dynamic Feature System)
++Location: `src/runtime/features/registry.ts` plus related modules (`scans/`, `jobs/`, `data/`, `routes/`).
++Feature kinds currently in play: `scan`, `job`, `data`, `route` (route registry utility). Each feature registers early on import using `registerFeature()` which validates presence of `id`, `kind`, and method contracts (`run`, `fetch`, or `schedule`).
++Snapshot access: `getFeatures(kind?)` returns an immutable array; downstream diagnostics and health endpoints consume snapshots to produce append-only metadata.
++Timeout & gating env vars (Phase A/B):
++- Scans: `ENABLED_SCAN_TYPES` allowlist overrides any disabled list; `DISABLED_SCAN_TYPES` applies only if allowlist absent.
++- Capability (future phases): `ENABLE_CAPABILITIES`, `DISABLE_CAPABILITIES` (planned – DO NOT invent yet).
++- Default timeout: `SCAN_MODULE_TIMEOUT_DEFAULT` or per‑module override `SCAN_MODULE_TIMEOUT_<UPPER_ID>`.
++Append-only health augmentation: new sections like `dynamicRegistry`, `scanPerf`, future `jobs`, `dataProviders` MUST add keys without renaming existing ones. Tests expect backwards compatibility.
++
++---
++### 4. Scan Runtime Deep Dive
++Files: `src/runtime/scans/service.ts`, modules in `src/runtime/scans/modules/*` (e.g. `headers.ts`, `ssl.ts`, `info.ts`, `threatIntel.ts`, `cve.ts`).
++Key exports:
++- `getAvailableScanTypes(config?)`
++- `runScan(id, url, ctx, config?)`
++- `runFullScan(url, ctx, config?)`
++- `resolveEnabledScanIds(config, { includeFull })`
++Enable/disable precedence:
++1. `ENABLED_SCAN_TYPES` (comma list explicit allowlist)
++2. `DISABLED_SCAN_TYPES` (comma list denylist if allowlist absent)
++3. Defaults (all core modules) if neither set.
++Full scan: executes all enabled modules, aggregates findings, attaches per-module timing & counts. Logs tagged `[runtime:scan.module.completed]` and aggregate completion.
++
++---
++### 5. Jobs & Data Providers (Phase B)
++Jobs: registered with `kind: 'job'`, include `schedule.intervalMs` and async `run()`; first execution delayed until interval passes (prevent cold start burst). Metrics tracked in-memory (runs, errors, lastRunAt, avgMs, totalMs). Snapshot accessor (`schedulerSnapshot()`) used for future diagnostic append.
++Data providers: `kind: 'data'` with `fetch(params, ctx)` returning lightweight computed metadata (e.g. `site-metadata` summarizing registry version & counts). Keep providers side-effect free & fast.
++Health representation of jobs/providers is staged; append-only principle applies when surfaces are added.
++
++---
++### 6. Route Registry & Introspection
++Utility module (e.g. `src/runtime/routes/registerRoute.ts`): handlers self-register (method, path, description). Endpoint `/api/_routes` returns snapshot used by tooling / UI for dynamic discovery. Maintain path stability; append new routes—do not repurpose existing IDs.
++
++---
++### 7. Secrets & Environment Validation
++Commands:
++- Set secret: `wrangler secret put <NAME> --env <env>` (e.g. `SLACK_WEBHOOK_URL`, `AI_GATEWAY_TOKEN`).
++- Validate config: `npm run validate:env` (fails fast on missing required bindings / secrets).
++Never hardcode secret values. Diagnostics on startup log missing bindings (`[bindings] Missing Cloudflare bindings detected`). Block production deploy until resolved.
++
++---
++### 8. Development & Execution Workflow
++Install deps: `npm install`
++Type safety: `npm run typecheck`
++Unit tests: `npm run test:unit` (Vitest; covers workers + shared runtime).
++Predeploy gate: `npm run predeploy` (aggregates env validation, typecheck, tests).
++Local multi-worker dev: `npm run dev:core` (or individual `npm run dev:onboarding`).
++Cloudflare worker preview: inside target worker folder run `wrangler dev`.
++Container (Codex) build & guard: task `codex:build image` builds Dockerfile `docker/Dockerfile.codex`; run guard script `docker/codex-exec.sh` to enforce protected globs from `codex-work.json`.
++
++---
++### 9. Testing Conventions & Patterns
++Framework: Vitest. Patterns from `ai-orchestrator/orchestrator.test.ts` & `tests/orchestrator.test.ts`:
++- API key gating validated by sending/omitting `x-api-key` header (expect 401 unauthorized vs 200/403 accepted/pending states).
++- Health endpoint tests assert presence of stable fields (`status`, `service`, `requestId`) + appended resources (`r2.atlas_policies`, etc.). Write tests defensively: allow multiple acceptable status codes when async workflows can yield 403 vs 200.
++- Idempotent / concurrency control (ETL run): first POST returns 202/200; immediate second call expects 200 duplicate or 409 already_running.
++When extending endpoints: update or add tests verifying appended JSON keys without breaking existing shape. DO NOT rewrite assertions to require new keys if older deployments may legitimately omit them (use conditional checks).
++
++---
++### 10. Safe Change Checklist (Before Opening PR)
++1. Confirm scope exists (no speculative compliance endpoints).
++2. Add/adjust minimal tests (feature registration, health append, endpoint logic).
++3. Run: `npm run validate:env`, `npm run typecheck`, `npm run test:unit`.
++4. For dynamic runtime changes: ensure registry snapshot logs (`[runtime:registry.snapshot]`) still emit once per build.
++5. Verify health payload keys only appended; diff serialized JSON if needed.
++6. If modifying guarded paths (policy/auth/runtime): update `codex-work.json` in same commit.
++7. Keep prompt context small: prefer referencing `codex-context.trimmed.txt` over embedding large file bodies.
++
++---
++### 11. Feature Registration Contract (Deep Reference)
++`registerFeature(feature)` requirements:
++- Mandatory fields: `id`, `kind`.
++- For scans: supply `run(url, ctx, config?)`.
++- For jobs: include `schedule.intervalMs` (>= 30s recommended) + `run()`.
++- For data providers: implement `fetch(params, ctx)`.
++Optional metadata: `version`, `meta` (object), `provides` / `requires` capability tags, lifecycle hooks (`activate`, `deactivate`), `health()` partial status builder.
++Validation rejects missing contracts with log `feature.invalid` (reason e.g. `scan-missing-run`). Returned snapshot is frozen; avoid direct mutation.
++
++---
++### 12. Observability & Diagnostics
++Endpoints: `/api/_diagnostics` (scan timings p50/p95/avg, timeout counts), `/api/admin/reload` (rebuild registry snapshot with debounce, returns version & enabledScanIds). Logging tags: `runtime:scan.module.completed`, `scan.full.completed`, `runtime:registry.snapshot`, `job.run.error`. When extending: follow existing tag format `<domain>.<category>.<event>` for consistency.
++Performance baselines: keep added scan modules fast (<100ms typical). If slow or high variance, include structured timing in diagnostics rather than ad‑hoc console prints.
++
++---
++### 13. Docker / Codex Guardrails
++Protected paths declared in `codex-work.json`; guard script aborts if modifications occur without updating the policy. For large refactors split changes so guard policy updates remain reviewable. Avoid expanding prompts with entire README—use trimmed context generation (`npm run codex:context`).
++
++---
++### 14. Common Pitfalls & How to Avoid Them
++- Premature compliance endpoint creation → Check README roadmap; open issue first.
++- Health payload key replacement → Always append; never rename existing keys.
++- Secret leakage in logs → Use redaction / avoid printing full values.
++- Overly granular feature registration → Group related tiny scans into one module to reduce overhead.
++- Blocking jobs on cold start → Respect delayed first run design; do not force immediate execution unless absolutely required.
++
++---
++### 15. Example: Adding a New Scan Module (Headers Hardening Variant)
++1. Create `src/runtime/scans/modules/securityHeadersExtended.ts` exporting `{ id: 'securityHeadersExtended', kind: 'scan', version, run() }`.
++2. Inside `run()`, measure start/end time; return findings with concise structure.
++3. Import module in central scan bootstrap so registration occurs.
++4. Add unit test asserting `getAvailableScanTypes()` includes new id when not gated.
++5. Extend diagnostics test to expect presence (conditionally) without breaking others.
++6. Run predeploy steps; ensure health response unchanged except appended `scanPerf.modules.securityHeadersExtended`.
++
++---
++### 16. Example: Adding a Background Job
++1. File: `src/runtime/jobs/metricsSnapshot.ts` registering `{ kind: 'job', id: 'metrics-snapshot', schedule: { intervalMs: 30000 }, run() }`.
++2. Track minimal in-memory metrics; expose via accessor for future diagnostics.
++3. Test: scheduler registers and executes at least once (use fake timers if available; else assert run invocation after delay).
++4. Health augmentation (if needed) appended under `dynamicRegistry.jobs` later—do NOT introduce prematurely.
++
++---
++### 17. Commit & PR Conventions
++Commit message format: `type(scope): message` (e.g. `feat(runtime): add data provider snapshot`). Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`. Scope = folder or domain (`runtime`, `onboarding`, `orchestrator`, `agents`). Keep commits focused; large multi-domain changes are harder to review & revert.
++PR checks: ensure tests added for behavioral changes; no secrets; health shape backward compatible; codex guard updates where necessary.
++
++---
++### 18. When Unsure / Decision Path
++1. Search for precedent (similar file in `scans/modules` / `jobs/` / tests).
++2. If no pattern, draft minimal addition + test harness; keep public surface narrow.
++3. Ask for clarification only if a needed abstraction truly absent (avoid speculative frameworks).
++4. Prefer incremental PR: one feature + tests rather than batching multiple unrelated changes.
++
++---
++### 19. Prompt Hygiene for AI-Driven Changes
++Use `codex-context.trimmed.txt` + targeted source files only. Avoid embedding entire README or large multi-module code unless absolutely required for semantic diff. Keep prompt size <25k characters to minimize truncation and token overflow. Reference file paths directly (`src/runtime/features/registry.ts`) instead of copying contents.
++
++---
++### 20. Guardrails Recap (TL;DR)
++- Append-only JSON contract.
++- Never hardcode secrets.
++- Respect gating precedence (`ENABLED_SCAN_TYPES` > `DISABLED_SCAN_TYPES`).
++- Register features early; avoid mutation post-snapshot.
++- Tests must pass (`npm run predeploy`) before proposing changes.
++- Update guard policy if touching protected paths.
++
++This guide is authoritative for current architecture. If a section becomes outdated, update both code + this document in the same PR to keep agents aligned.
++
++---
++### 21. AI Operating Modes (Planner / Orchestrator / Product Steward)
++Define explicit working modes to reduce ambiguity:
++- Planner: Break user objective into epics → stories → actionable file edits; produce dependency map & risk notes. Output: structured TODO with states (not-started/in-progress/completed) aligning to repository domains.
++- Orchestrator: Sequence multi-worker changes (e.g. scan module + health test). Ensures environment validation, test coverage, append-only contract preserved before merging.
++- Product Steward: Evaluate requested feature against roadmap & guardrails; confirm non-implemented domains are deferred; suggest smallest viable slice + acceptance criteria & success metrics.
++Switch modes deliberately; log mode in PR description or issue comment for transparency.
++
++### 22. Planning Framework (5-Step)
++1. Clarify Scope: Identify whether request touches runtime, worker endpoint, or agent script. Reject speculative compliance scope.
++2. Inventory Artifacts: List impacted files (e.g. `src/runtime/scans/service.ts`, tests path, `wrangler.toml` if bindings required).
++3. Risk Scoring: Consider JSON contract impact, secret handling, performance (<100ms scan target), guardrail modifications.
++4. Plan Validation: Draft test additions (happy path + at least one edge: missing key, timeout scenario).
++5. Execution Order: Environment validation → feature registration → tests → diagnostics append → docs update.
++
++### 23. Decision Matrix (Implement vs Defer)
++Implement now if: existing pattern present, no new binding type, health contract only appended, performance within baseline, tests straightforward.
++Defer if: introduces new compliance concept, requires schema migrations, adds persistent telemetry store, or changes auth surfaces.
++Escalate (ask maintainer) if: conflicting gating rules, large refactor to protected paths, unclear capability taxonomy.
++
++### 24. Codex Collaboration Workflow
++Use trimmed context (`codex-context.trimmed.txt`) + specific source files. For multi-phase features:
++- Phase Proposal: Add numbered section to prompt-update sheet (append-only) describing delta.
++- Implementation: Restrict edits to declared modules; run guard script to ensure no protected path drift.
++- Verification: Compare snapshot logs (`runtime:registry.snapshot`) count diff; ensure no renames in health JSON.
++- Telemetry: Add entries following proposed shape; maintain ring buffer size; update diagnostics tests.
++
++### 25. Structured TODO & State Management
++Maintain a machine-readable TODO list (IDs, titles, status). Transition one item at a time to `in-progress`. Complete before starting next. Reflect cross-dependency (e.g. test depends on registration). This mirrors orchestrator concurrency controls (avoid duplicate ETL run situations) and reduces race conditions in AI-driven edits.
++
++### 26. Acceptance Criteria Pattern
++For each change provide: Inputs → Process → Outputs → Edge Cases.
++Example (scan module):
++- Inputs: url string, env gating.
++- Process: run security headers audit, measure duration, catch timeout.
++- Outputs: findings array, timing metadata, status code in diagnostics.
++- Edge Cases: unreachable URL (graceful error), timeout (synthetic finding), no findings (empty array, still record timing).
++
++### 27. Performance & Telemetry Guidelines
++Scan modules <100ms typical; if >250ms p95 over 10 runs, document rationale & optimization plan. Add `status: 'slow'` flag only in telemetry buffer (append-only) – do NOT alter existing health keys. Avoid heavy external IO in jobs; favor cached provider fetches.
++
++### 28. Product Stewardship Heuristics
++When user requests broad feature (e.g. "add compliance scoring"), respond with: current state (not implemented), minimal viable step (e.g. stub data provider returning static score), risk summary (avoid implying production readiness), and migration path (data provider → real D1 schema next phase). Always cite guardrails (append-only, no new endpoints without roadmap alignment).
++
++### 29. PR / Issue Template Enhancements (Recommended)
++Add optional sections:
++- Mode: Planner | Orchestrator | Product Steward
++- Summary (≤280 chars)
++- Affected Paths
++- Append-Only Impact (Y/N; list keys appended)
++- Performance Considerations
++- Test Additions
++- Rollback Strategy
++These enable AI + human rapid review alignment.
++
++### 30. Expanded Risk & Scope Guardrails
++Risk Categories:
++- Contract Risk: health JSON breaking change → BLOCK
++- Secret Risk: new env var required without validation update → BLOCK
++- Performance Risk: p95 > target with no mitigation → WARN
++- Scope Creep: introduces roadmap phase feature prematurely → DEFER
++Classification influences decision matrix outcomes.
++
++### 31. Failure & Recovery Patterns
++If tests fail: capture failing assertion text, categorize (contract vs logic vs env). Attempt ≤3 focused patches. On telemetry mismatch: dump before/after timing summary; never silence failure by removing test.
++Rollback: revert module file + remove registration import; confirm tests green (absence tolerated). Document rollback in PR with "Reverted Scan Module X due to contract conflict".
++
++### 32. Multi-Worker Coordination
++Sequential changes across workers: update shared util first, run unit tests, then apply worker-specific endpoint augmentation. Avoid simultaneous edits that obscure root cause of failures (mirrors orchestrator concurrency principles). Use commit segmentation: `feat(runtime): add util`, then `feat(orchestrator): use util`.
++
++### 33. Capability Tag Future-Proofing
++When adding `provides`/`requires` lists pre-capability gating, ensure tags are stable, lowercase with dashes (`headers-security`, `evidence-export`). Document any new tag inside prompt-update sheet section (append-only). Avoid semantic overloading (one tag = one conceptual capability).
++
++### 34. AI Self-Audit Routine
++Before marking task complete:
++1. Re-run tests.
++2. Grep for hardcoded secrets patterns (`API_KEY=` like substrings).
++3. Diff health payload old vs new for appended-only compliance.
++4. Estimate performance impact (qualitative if metrics unavailable).
++5. Log summary in PR description.
++
++### 35. Continuous Improvement Hooks (Optional Enhancements)
++Potential additions (create only if requested):
++- `scripts/ai/self-audit.ts` executing routine above.
++- `tools/generate-ai-plan.ts` scaffolding TODO list from issue JSON.
++- `docs/AI_MODES.md` with examples for each operating mode.
++Treat these as incremental, low-risk; avoid bundling with runtime feature changes.
++
++### 36. Example Planner Output (Template)
++```yaml
++mode: planner
++objective: "Add extended security headers scan"
++epics:
++	- id: E1
++		title: Create module file
++		stories:
++			- id: S1
++				title: Implement run() with timing
++	- id: E2
++		title: Register & gate module
++		stories:
++			- id: S2
++				title: Import in scans bootstrap
++	- id: E3
++		title: Testing & diagnostics
++		stories:
++			- id: S3
++				title: Unit test inclusion
++			- id: S4
++				title: Diagnostics append validation
++risks:
++	- contract: "Must not rename existing health keys"
++	- performance: "Target <100ms p95"
++success_metrics:
++	- "Test passes for new scan id"
++	- "Health payload contains scanPerf.modules.securityHeadersExtended"
++rollback: "Remove module import & file; revert tests"
++```
++
++### 37. Orchestrator Mode Checklist
++1. Validate env & bindings.
++2. Confirm no protected path violation (codex guard dry run).
++3. Apply change in smallest diff.
++4. Add/adjust tests.
++5. Run predeploy suite.
++6. Self-audit & document.
++7. Await review or proceed to deployment script.
++
++### 38. Product Steward Response Template
++If feature request outside current surface:
++```
++Status: Not implemented.
++Minimal viable slice: <describe small provider/placeholder>.
++Risks: contract, scope creep.
++Recommendation: implement slice only after roadmap phase ticket exists.
++Next step: open issue with capability tag + acceptance criteria.
++```
++
++### 39. Mode Switching Guidance
++Allow only one active mode per task context. Planner → Orchestrator after plan acceptance; Orchestrator → Product Steward only if scope drift detected mid-execution. Record transition in commit message footers (`Mode-Transition: planner->orchestrator`).
++
++### 40. Living Document Maintenance
++When adding new operating guidance: append new numbered section; never edit existing text except to correct factual errors (include note: `Errata: section <n>`). Keep additions <250 lines per update to preserve readability.
++
++---
++End of extended AI operation guidance.
+diff --git a/.github/workflows/connect-health.yml b/.github/workflows/connect-health.yml
+index f8c7cdb..90f3ce8 100644
+--- a/.github/workflows/connect-health.yml
++++ b/.github/workflows/connect-health.yml
+@@ -2,7 +2,7 @@ name: connect-health
+ 
+ on:
+   schedule:
+-    - cron: '*/30 * * * *' # every 30 minutes
++    - cron: "*/30 * * * *" # every 30 minutes
+   workflow_dispatch:
+ 
+ jobs:
+@@ -40,4 +40,4 @@ jobs:
+             echo "Vault listing may have failed: $resp" >&2
+             exit 1
+           fi
+-          echo "Vaults response length: ${#resp}"
+\ No newline at end of file
++          echo "Vaults response length: ${#resp}"
+diff --git a/.github/workflows/docker-build-cloud.yml b/.github/workflows/docker-build-cloud.yml
+index 959e526..77392f0 100644
+--- a/.github/workflows/docker-build-cloud.yml
++++ b/.github/workflows/docker-build-cloud.yml
+@@ -2,9 +2,9 @@ name: docker-build-cloud
+ 
+ on:
+   push:
+-    branches: [ main ]
++    branches: [main]
+   pull_request:
+-    branches: [ main ]
++    branches: [main]
+   workflow_dispatch:
+ 
+ jobs:
+@@ -55,5 +55,5 @@ jobs:
+ 
+     # Notes:
+   # - Requires either (preferred) DOCKER_USER & DOCKER_PAT or fallback secrets OP_ATLAS_IT_CONNECT_SERVER_USER / OP_ATLAS_IT_CONNECT_SERVER_PAT.
+-    # - Image name aligned with connect server trial tag.
+-    # - Disable provenance/SBOM for faster trial builds; enable later for supply-chain visibility.
++  # - Image name aligned with connect server trial tag.
++  # - Disable provenance/SBOM for faster trial builds; enable later for supply-chain visibility.
+diff --git a/README.md b/README.md
+index d898b75..bbad75b 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,32 @@
+ 
+ Cloudflare Workers based automation substrate for onboarding, orchestration, docs, and future compliance modules.
+ 
++> Local setup & migration: see `MIGRATION_LOCAL.md` for WSL2/Dev Container steps, patch workflows, secret seeding, and troubleshooting. Quick environment probe: `bash scripts/env-check.sh`.
++
++## Local Migration (Codespaces → Local Overview)
++
++If leaving Codespaces:
++
++```bash
++# In Codespaces: capture uncommitted changes
++git diff > workspace-changes.patch
++bash scripts/export-workspace.sh
++
++# Locally: copy artifacts
++gh codespace list
++gh codespace cp <codespaceName>:/workspaces/Project-AtlasIT/workspace-changes.patch .
++gh codespace cp <codespaceName>:/workspaces/Project-AtlasIT/atlasit-export-<timestamp>.tgz .  # optional
++
++# Clone & apply
++git clone https://github.com/JW-Flo/Project-AtlasIT.git
++cd Project-AtlasIT
++bash scripts/patch-apply.sh ../workspace-changes.patch || echo 'Patch had conflicts; resolve manually.'
++npm run install:all
++npm run dev:core
++```
++
++For full details (WSL2, secrets, troubleshooting) read `MIGRATION_LOCAL.md`. This inline section is a fast reference. Secrets must be reseeded with `wrangler secret put ...`. 1Password CLI is optional (stubbed installer).
++
+ ## Cloudflare Binding Configuration (Diagnostics Reference)
+ 
+ If you encounter responses indicating missing bindings (e.g. `DISPATCHER_BINDING_MISSING` or console warnings `[bindings] Missing Cloudflare bindings detected`), ensure the following are present in `wrangler.toml` for the target environment (e.g. `[env.core]`, `[env.production]`, or `[env.ai]`).

@@ -1,0 +1,15 @@
+# Python artifacts
+*.pyc
+__pycache__/
+
+# Environment files
+.env
+.env.*
+
+# Virtual environments
+env/
+venv/
+
+# Git files
+.git
+.gitignore

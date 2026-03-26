@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(terraform state:*)",
+      "Bash(aws apigatewayv2:*)",
+      "Bash(aws sts:*)",
+      "Bash(aws configure:*)",
+      "Bash(\\\\ terraform:*)",
+      "Bash(terraform force-unlock:*)",
+      "Bash(terraform plan:*)",
+      "Bash(terraform apply:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run:*)",
+      "Bash(git revert:*)",
+      "Bash(git reset:*)",
+      "Bash(git branch:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(git stash:*)",
+      "Bash(gh workflow:*)"
+    ]
+  }
+}

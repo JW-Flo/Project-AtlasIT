@@ -1,0 +1,97 @@
+name = "atlasit-ai-orchestrator"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Custom domain route
+routes = [
+	{ pattern = "orchestrator.atlasit.pro/*", zone_name = "atlasit.pro" }
+]
+
+# KV Namespace for task tracking
+[[kv_namespaces]]
+binding = "TASKS"
+id = "fa174a1795c94a48b47c22d6a138de29"
+preview_id = "091c0fba72c84433b9fa0a453b1181ba"
+
+# Persistent AI quota counter (set real IDs per environment before deploy)
+[[kv_namespaces]]
+binding = "AI_QUOTA"
+id = "d4380b3e24094a24907b83c95238a0af"
+preview_id = "d4380b3e24094a24907b83c95238a0af"
+
+# KV Namespace for idempotency dedup (24h TTL)
+[[kv_namespaces]]
+binding = "IDEMPOTENCY_CACHE"
+id = "51f84cb9b5624496b062d46b4019d7c7"
+preview_id = "1528c13cdf7b4c45ac7648adf5b84425"
+
+# D1 Database (atlasit-shared) — all platform data lives here
+[[d1_databases]]
+binding = "DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
+
+# D1 Database (ATLAS_SHARED_DB) — automation rules and execution records live here
+[[d1_databases]]
+binding = "ATLAS_SHARED_DB"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
+
+[[durable_objects.bindings]]
+name = "WORKFLOW"
+class_name = "WorkflowDO"
+
+[[durable_objects.bindings]]
+name = "AUTOMATION"
+class_name = "AutomationDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorkflowDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["AutomationDO"]
+
+# R2 bucket for evidence storage
+[[r2_buckets]]
+binding = "EVIDENCE"
+bucket_name = "atlasit-evidence"
+
+[[queues.producers]]
+binding = "STEP_TASKS"
+queue = "atlasit-step-tasks"
+
+[[queues.consumers]]
+queue = "atlasit-step-tasks"
+max_batch_size = 10
+max_retries = 3
+
+[vars]
+ENVIRONMENT = "production"
+AI_PROVIDER = "groq"
+AI_FALLBACKS = "groq,together,cloudflare"
+SELF_URL = "https://orchestrator.atlasit.pro"
+ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
+COMPLIANCE_WORKER_URL = "https://compliance.atlasit.pro"
+
+[triggers]
+crons = ["*/5 * * * *", "0 2 * * *"]
+
+[observability.logs]
+enabled = true
+
+[env.dev]
+name = "atlasit-ai-orchestrator-dev"
+workers_dev = true
+
+[env.dev.vars]
+ENVIRONMENT = "development"
+AI_PROVIDER = "groq"
+AI_FALLBACKS = "groq,together,cloudflare"
+
+# Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
+# GROQ_API_KEY — Groq API key for AtlasIT Agent Mesh

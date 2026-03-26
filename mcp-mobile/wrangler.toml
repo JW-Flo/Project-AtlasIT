@@ -1,0 +1,36 @@
+name = "atlasit-mcp-mobile"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "index.js"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+# KV Namespace for mobile state
+[[kv_namespaces]]
+binding = "MOBILE_STATE"
+id = "atlasit-mobile-state"
+preview_id = "atlasit-mobile-state-preview"
+
+[env.production]
+route = "mobile.atlasit.workers.dev/*"
+usage_model = "bundled"
+
+# Security settings
+[env.production.vars]
+ENVIRONMENT = "production"
+JWT_SECRET = ""  # Set this via wrangler secret
+ADMIN_USER = ""  # Set this via wrangler secret
+ADMIN_PASSWORD = ""  # Set this via wrangler secret
+
+# SSL/TLS settings
+[env.production.ssl]
+mode = "strict"
+min_version = "TLSv1.2"
+
+# Observability
+[env.production.logs]
+enabled = true
+
+# Rate limiting
+[env.production.rate_limit]
+requests = 100
+period = 60 

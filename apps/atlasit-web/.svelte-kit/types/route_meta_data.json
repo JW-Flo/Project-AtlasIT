@@ -1,0 +1,15 @@
+{
+  "/": [],
+  "/governance/compliance": ["src/routes/governance/compliance/+page.ts"],
+  "/governance/evidence": [],
+  "/health": ["src/routes/health/+server.ts"],
+  "/it/policies/coverage": [],
+  "/it/policies/evaluate": [],
+  "/it/policies/generate": [],
+  "/it/policies/templates": [],
+  "/marketplace/slack": [],
+  "/security/activity": ["src/routes/security/activity/+page.ts"],
+  "/security/incidents": ["src/routes/security/incidents/+page.ts"],
+  "/workflows": [],
+  "/workflows/executions/[id]": []
+}

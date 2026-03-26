@@ -1,0 +1,96 @@
+{
+  "id": "discord",
+  "name": "Discord",
+  "category": "communication",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "client_credentials", "bot"],
+    "authorizeUrl": "https://discord.com/oauth2/authorize",
+    "tokenUrl": "https://discord.com/api/oauth2/token",
+    "revokeUrl": "https://discord.com/api/oauth2/token/revoke",
+    "scopes": {
+      "joiner": ["bot", "guilds", "guilds.join", "guilds.members.read"],
+      "mover": ["bot", "guilds.members.read"],
+      "leaver": ["bot", "guilds.members.read"]
+    },
+    "botPermissions": {
+      "joiner": [
+        "MANAGE_ROLES",
+        "KICK_MEMBERS",
+        "BAN_MEMBERS",
+        "MANAGE_NICKNAMES"
+      ],
+      "mover": ["MANAGE_ROLES", "MANAGE_NICKNAMES"],
+      "leaver": ["KICK_MEMBERS", "BAN_MEMBERS", "MANAGE_ROLES"]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false
+  },
+  "api": {
+    "baseUrl": "https://discord.com/api",
+    "version": "v10",
+    "endpoints": {
+      "getCurrentUser": "GET /users/@me",
+      "getUser": "GET /users/{user.id}",
+      "listGuildMembers": "GET /guilds/{guild.id}/members",
+      "getGuildMember": "GET /guilds/{guild.id}/members/{user.id}",
+      "searchGuildMembers": "GET /guilds/{guild.id}/members/search",
+      "addGuildMember": "PUT /guilds/{guild.id}/members/{user.id}",
+      "modifyGuildMember": "PATCH /guilds/{guild.id}/members/{user.id}",
+      "removeGuildMember": "DELETE /guilds/{guild.id}/members/{user.id}",
+      "createGuildBan": "PUT /guilds/{guild.id}/bans/{user.id}",
+      "removeGuildBan": "DELETE /guilds/{guild.id}/bans/{user.id}",
+      "listGuildBans": "GET /guilds/{guild.id}/bans",
+      "listGuildRoles": "GET /guilds/{guild.id}/roles",
+      "createGuildRole": "POST /guilds/{guild.id}/roles",
+      "modifyGuildRole": "PATCH /guilds/{guild.id}/roles/{role.id}",
+      "deleteGuildRole": "DELETE /guilds/{guild.id}/roles/{role.id}",
+      "addGuildMemberRole": "PUT /guilds/{guild.id}/members/{user.id}/roles/{role.id}",
+      "removeGuildMemberRole": "DELETE /guilds/{guild.id}/members/{user.id}/roles/{role.id}"
+    },
+    "rateLimits": {
+      "global": "50 requests per second (default), up to 1,200/s for qualified bots",
+      "perRoute": "Varies by endpoint, indicated via X-RateLimit-Bucket header",
+      "notes": "Rate limits are per-route and global. Parse X-RateLimit-* response headers. Do not hardcode limits."
+    },
+    "scim": {
+      "supported": false,
+      "endpoint": null,
+      "notes": "Discord does not support SCIM provisioning. User management is done via bot API endpoints for guild members."
+    }
+  },
+  "sdk": {
+    "npm": "discord.js",
+    "docsUrl": "https://discord.js.org/",
+    "exampleImport": "import { Client, GatewayIntentBits } from 'discord.js'",
+    "notes": "discord.js is the most popular Node.js library for the Discord API. Additional packages: @discordjs/rest for REST-only usage, @discordjs/core for minimal usage."
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "gateway_events",
+    "registrationEndpoint": "Gateway connection (WebSocket) or Interaction endpoint URL in app settings",
+    "eventTypes": [
+      "GUILD_MEMBER_ADD",
+      "GUILD_MEMBER_UPDATE",
+      "GUILD_MEMBER_REMOVE",
+      "GUILD_BAN_ADD",
+      "GUILD_BAN_REMOVE",
+      "GUILD_ROLE_CREATE",
+      "GUILD_ROLE_UPDATE",
+      "GUILD_ROLE_DELETE",
+      "GUILD_CREATE",
+      "GUILD_UPDATE",
+      "GUILD_DELETE"
+    ],
+    "notes": "Discord uses a WebSocket Gateway for real-time events, not HTTP webhooks. GUILD_MEMBERS is a privileged intent requiring approval for bots in 100+ guilds. Discord 'webhooks' are for sending messages to channels, not receiving events."
+  },
+  "sandbox": {
+    "available": false,
+    "notes": "No official developer sandbox. Developers create free test servers (guilds) for development. No cost to create servers or bot applications. No access to premium features without Nitro/boosts."
+  },
+  "needs_verification": [
+    "Whether addGuildMember (PUT) requires the user to have authorized with guilds.join scope",
+    "Exact rate limits per route for member management endpoints",
+    "Whether GUILD_MEMBERS privileged intent auto-approval threshold is still 100 guilds"
+  ]
+}

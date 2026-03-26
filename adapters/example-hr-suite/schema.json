@@ -1,0 +1,47 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Example HR Suite",
+    "version": "2025-09-17",
+    "description": "Sample schema used for adapter scaffolding"
+  },
+  "paths": {
+    "/employees": {
+      "get": {
+        "operationId": "listEmployees",
+        "summary": "List employees",
+        "responses": {
+          "200": {
+            "description": "Employees returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "email",
+                      "status"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

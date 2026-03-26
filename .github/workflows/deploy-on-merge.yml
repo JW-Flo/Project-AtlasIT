@@ -1,0 +1,238 @@
+name: Deploy on Merge
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-on-merge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  migrate-shared-db:
+    name: Apply shared DB migrations
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply D1 migrations (atlasit-shared)
+        run: npx wrangler d1 migrations apply atlasit-shared --config wrangler-shared-db.toml --remote
+      - name: Apply D1 migrations (atlasit_compliance)
+        run: npx wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml --remote
+
+  deploy-root-worker:
+    needs: [migrate-shared-db]
+    name: Deploy root worker (atlasit-core)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
+        run: npx wrangler deploy --config wrangler.toml --env core
+      # Smoke test skipped: root worker no longer routed to api.atlasit.pro
+      # (core-api handles that domain). Root worker deploys to workers.dev only.
+
+  deploy-core-api:
+    name: Deploy core-api (Hono)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: pnpm run build
+        working-directory: packages/shared
+      - name: Install core-api deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: core-api
+      - name: Deploy
+        run: npx wrangler deploy --config core-api/wrangler.toml --env production
+
+  deploy-orchestrator:
+    needs: [migrate-shared-db]
+    name: Deploy ai-orchestrator
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: pnpm run build
+        working-directory: packages/shared
+      - name: Install ai-orchestrator deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: ai-orchestrator
+      - name: Ensure queue exists
+        run: npx wrangler queues create atlasit-step-tasks || true
+      - name: Deploy
+        run: npx wrangler deploy --config ai-orchestrator/wrangler.toml
+      - name: Smoke test
+    
+        run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
+
+  deploy-compliance:
+    needs: [migrate-shared-db]
+    name: Deploy compliance-worker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install compliance-worker deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: compliance-worker
+      - name: Deploy
+        run: npx wrangler deploy --config compliance-worker/wrangler.toml
+      - name: Smoke test
+    
+        run: bash scripts/smoke-test.sh compliance-worker https://compliance.atlasit.pro
+
+  deploy-console:
+    name: Deploy console-app
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: pnpm run build
+        working-directory: packages/shared
+      - name: Install console deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: console-app
+      - name: Build
+        run: pnpm run build && touch .svelte-kit/cloudflare/.assetsignore
+        working-directory: console-app
+      - name: Deploy
+        run: npx wrangler deploy --config console-app/wrangler.toml
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh console-app https://www.atlasit.pro
+
+  deploy-onboarding:
+    name: Deploy onboarding
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
+        run: npx wrangler deploy --config onboarding/wrangler.toml --env production
+
+  deploy-slack-agent:
+    name: Deploy slack-notification-agent
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy
+        run: npx wrangler deploy --config slack-notification-agent/wrangler.toml
+
+  deploy-dispatch:
+    needs: [migrate-shared-db]
+    name: Deploy dispatch-worker
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install dispatch-worker deps
+        run: pnpm install --no-frozen-lockfile
+        working-directory: dispatch-worker
+      - name: Deploy
+        run: npx wrangler deploy --config dispatch-worker/wrangler.toml
+      - name: Smoke test
+    
+        run: bash scripts/smoke-test.sh dispatch-worker https://dispatch.atlasit.pro

@@ -1,0 +1,22 @@
+[
+  {
+    "id": "user-001",
+    "email": "jane.doe@okta.local",
+    "displayName": "Jane Doe",
+    "status": "active",
+    "groups": ["group-admins"],
+    "attributes": {
+      "department": "Engineering"
+    }
+  },
+  {
+    "id": "user-002",
+    "email": "sam.smith@okta.local",
+    "displayName": "Sam Smith",
+    "status": "active",
+    "groups": ["group-engineering"],
+    "attributes": {
+      "department": "Product"
+    }
+  }
+]

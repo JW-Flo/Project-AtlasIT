@@ -1,0 +1,111 @@
+import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
+import { buildDefaultControls, type Control } from "$lib/compliance/framework-controls";
+
+export const GET: RequestHandler = async ({ locals, platform }) => {
+  const user = locals.user;
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const env = (platform?.env as any) || {};
+  const db = env.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
+
+  // Get tenant frameworks
+  let frameworks: string[] = [];
+  let frameworksConfigured = true;
+  try {
+    const row = await db
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+      .bind(user.tenantId)
+      .first();
+    if (row?.value) {
+      frameworks = JSON.parse(row.value as string);
+    }
+  } catch {
+    // no frameworks set
+  }
+
+  if (frameworks.length === 0) {
+    frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    frameworksConfigured = false;
+  }
+
+  // Check for saved control statuses
+  let controls: Control[] | null = null;
+  try {
+    const row = await db
+      .prepare(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
+      )
+      .bind(user.tenantId)
+      .first();
+    if (row?.value) {
+      controls = JSON.parse(row.value as string);
+    }
+  } catch {
+    // no saved controls
+  }
+
+  if (!controls) {
+    controls = buildDefaultControls(frameworks);
+  }
+
+  // Fetch evidence counts per control for coverage indicators
+  const evidenceCounts: Record<string, number> = {};
+  try {
+    const { results: rows } = await db
+      .prepare(
+        `SELECT control_id, COUNT(*) as count
+         FROM compliance_evidence
+         WHERE tenant_id = ?
+         GROUP BY control_id`,
+      )
+      .bind(user.tenantId)
+      .all<{ control_id: string; count: number }>();
+    for (const row of rows ?? []) {
+      evidenceCounts[row.control_id] = row.count;
+    }
+  } catch {
+    // compliance_evidence table may not exist yet — return empty counts
+  }
+
+  // Filter controls to only include those for the tenant's selected frameworks
+  const frameworkSet = new Set(frameworks);
+  const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
+
+  return json({ frameworks, controls: scopedControls, evidenceCounts, frameworksConfigured });
+};
+
+export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
+  const user = locals.user;
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const env = (platform?.env as any) || {};
+  const db = env.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
+
+  const body = await request.json().catch(() => ({}));
+  const { controls } = body as { controls?: Control[] };
+
+  if (!controls || !Array.isArray(controls)) {
+    return json({ error: "controls array required" }, { status: 400 });
+  }
+
+  // Validate each control
+  const validStatuses = ["not_started", "in_progress", "implemented", "verified"];
+  for (const c of controls) {
+    if (!c.id || !c.framework || !c.name || !validStatuses.includes(c.status)) {
+      return json({ error: `Invalid control: ${c.id}` }, { status: 400 });
+    }
+  }
+
+  await db
+    .prepare(
+      `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+       VALUES (?, 'compliance_controls', ?)`,
+    )
+    .bind(user.tenantId, JSON.stringify(controls))
+    .run();
+
+  return json({ success: true });
+};

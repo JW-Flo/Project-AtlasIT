@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "type": "project",
+  "content": "AtlasIT is a zero-trust, fully autonomous DevSecOps platform spanning local (Prometheus) and cloud (GCP→AWS) environments."
+}

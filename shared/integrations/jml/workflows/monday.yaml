@@ -1,0 +1,28 @@
+id: monday
+name: Monday.com JML Workflow
+description: Joiner/Mover/Leaver workflow for Monday.com via GraphQL API
+
+joiner:
+  steps:
+    - action: api.inviteUser
+      params:
+        email: "{{ user.email }}"
+        kind: "{{ config.defaultUserKind | default: 'member' }}"
+    - action: api.addToTeam
+      params:
+        teamId: "{{ config.defaultTeamId }}"
+        userId: "{{ steps[0].result.id }}"
+      condition: "{{ config.defaultTeamId }}"
+
+mover:
+  steps:
+    - action: api.updateUser
+      params:
+        userId: "{{ user.externalId }}"
+        kind: "{{ user.kind }}"
+
+leaver:
+  steps:
+    - action: api.deactivateUser
+      params:
+        userId: "{{ user.externalId }}"

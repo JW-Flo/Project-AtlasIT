@@ -1,0 +1,10 @@
+{
+  "type": "mover",
+  "userId": "user-456",
+  "tenantId": "tenant-abc",
+  "attributes": {
+    "email": "jane.doe@example.com",
+    "department": "Sales",
+    "previousDepartment": "Engineering"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "runId": "demo-run-123",
+  "type": "joiner",
+  "userId": "user-demo-456",
+  "tenantId": "tenant-demo-789",
+  "status": "completed",
+  "steps": [
+    {
+      "id": "create-user",
+      "action": "createUser",
+      "retry": 3,
+      "status": "completed"
+    },
+    {
+      "id": "assign-entitlements",
+      "action": "assignEntitlements",
+      "retry": 3,
+      "status": "completed"
+    },
+    {
+      "id": "notify",
+      "action": "notify",
+      "retry": 1,
+      "status": "completed"
+    }
+  ],
+  "currentStep": 3,
+  "createdAt": "2025-01-20T10:00:00Z",
+  "completedAt": "2025-01-20T10:05:00Z"
+}

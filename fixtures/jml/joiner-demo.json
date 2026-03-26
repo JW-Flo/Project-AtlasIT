@@ -1,0 +1,10 @@
+{
+  "type": "joiner",
+  "userId": "user-123",
+  "tenantId": "tenant-abc",
+  "attributes": {
+    "email": "john.doe@example.com",
+    "department": "Engineering",
+    "manager": "jane.smith@example.com"
+  }
+}

@@ -1,0 +1,47 @@
+## AtlasIT Infrastructure & AI Addendum
+
+This addendum captures infrastructure decisions that support the AtlasIT workers. It supersedes earlier legacy documentation.
+
+---
+
+### ☁️ Deployment Architecture (Cloudflare-First)
+
+AtlasIT currently ships three Workers (onboarding, orchestrator, documentation) using a shared set of Cloudflare capabilities:
+
+| Concern          | Implementation Details |
+| ---------------- | ---------------------- |
+| Execution        | Cloudflare Workers (Wrangler-driven deploys) |
+| State            | Cloudflare KV (session data) and D1 (structured onboarding storage) |
+| Secrets          | `wrangler secret` scoped per worker (API keys, gateway tokens) |
+| Scheduling       | Worker CRON triggers (limited use today) |
+| Observability    | Structured logs with `x-request-id` propagation (metrics in roadmap) |
+
+Durable Objects are planned to persist orchestrator workflow state beyond a single isolate (see `docs/roadmap.md`).
+
+---
+
+### 🤖 Automation & AI Usage
+
+AI support is minimal and routed through the orchestrator:
+
+- Approval hooks can call external AI providers via tokens stored in secrets.
+- `@atlasit/shared` offers deterministic AI stubs for tests and production fallbacks.
+- Future enhancements (multi-provider orchestration, evidence summarisation) remain on the roadmap.
+
+---
+
+### 🛡️ Security & Compliance Notes
+
+- API keys gate onboarding/orchestrator endpoints (`x-api-key` headers).
+- `ops/DEPLOYMENT_SECRETS_CHECKLIST.md` tracks required secrets and rotation guidance.
+- `npm run validate:env` enforces Cloudflare token preference (`CLOUDFLARE_API_TOKEN` over legacy `CF_API_TOKEN`).
+- Secret scanning (`npm run scan:secrets`) is part of pre-push checks.
+
+---
+
+### 📚 References
+
+- [`README`](README.md) – Active components and deployment steps.
+- [`LEGACY.md`](LEGACY.md) – Archived historical documentation retained for reference.
+- [`docs/roadmap.md`](docs/roadmap.md) – Planned infrastructure milestones.
+- [`ops/DEPLOYMENT_READINESS_SUMMARY.md`](ops/DEPLOYMENT_READINESS_SUMMARY.md) – QA status and follow-ups.

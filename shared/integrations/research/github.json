@@ -1,0 +1,86 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "category": "infrastructure",
+  "auth": {
+    "type": "oauth2",
+    "grantTypes": ["authorization_code", "device_code"],
+    "authorizeUrl": "https://github.com/login/oauth/authorize",
+    "tokenUrl": "https://github.com/login/oauth/access_token",
+    "revokeUrl": "DELETE /applications/{client_id}/token",
+    "scopes": {
+      "joiner": ["admin:org", "write:org", "read:org"],
+      "mover": ["admin:org", "write:org", "read:org"],
+      "leaver": ["admin:org", "write:org", "read:org"]
+    },
+    "adminConsentRequired": false,
+    "domainWideDelegation": false,
+    "notes": "For organization management, use OAuth apps or GitHub Apps. GitHub Apps are preferred and use installation tokens. For SCIM provisioning on Enterprise Cloud, use a personal access token (classic) with scim:enterprise scope. Fine-grained PATs support organization-level member and team permissions."
+  },
+  "api": {
+    "baseUrl": "https://api.github.com",
+    "version": "2022-11-28",
+    "endpoints": {
+      "listOrgMembers": "GET /orgs/{org}/members",
+      "checkOrgMembership": "GET /orgs/{org}/members/{username}",
+      "removeOrgMember": "DELETE /orgs/{org}/members/{username}",
+      "getOrgMembership": "GET /orgs/{org}/memberships/{username}",
+      "setOrgMembership": "PUT /orgs/{org}/memberships/{username}",
+      "removeOrgMembership": "DELETE /orgs/{org}/memberships/{username}",
+      "listOrgInvitations": "GET /orgs/{org}/invitations",
+      "createOrgInvitation": "POST /orgs/{org}/invitations",
+      "cancelOrgInvitation": "DELETE /orgs/{org}/invitations/{invitation_id}",
+      "listTeams": "GET /orgs/{org}/teams",
+      "createTeam": "POST /orgs/{org}/teams",
+      "getTeam": "GET /orgs/{org}/teams/{team_slug}",
+      "updateTeam": "PATCH /orgs/{org}/teams/{team_slug}",
+      "deleteTeam": "DELETE /orgs/{org}/teams/{team_slug}",
+      "listTeamMembers": "GET /orgs/{org}/teams/{team_slug}/members",
+      "getTeamMembership": "GET /orgs/{org}/teams/{team_slug}/memberships/{username}",
+      "addTeamMember": "PUT /orgs/{org}/teams/{team_slug}/memberships/{username}",
+      "removeTeamMember": "DELETE /orgs/{org}/teams/{team_slug}/memberships/{username}",
+      "getUser": "GET /users/{username}",
+      "getAuthenticatedUser": "GET /user"
+    },
+    "rateLimits": "Authenticated: 5,000 requests/hour (15,000 for Enterprise Cloud). Unauthenticated: 60 requests/hour. GitHub Apps: min 5,000/hour, scales with repos/users. Secondary limits: 100 concurrent requests, 900 points/minute, 80 content-generating requests/minute. Org invitations: 50/day (free) or 500/day (paid/established org).",
+    "scim": {
+      "supported": true,
+      "endpoint": "https://api.github.com/scim/v2/enterprises/{enterprise}/",
+      "notes": "SCIM is available only on GitHub Enterprise Cloud with Enterprise Managed Users (EMU). Requires personal access token (classic) with scim:enterprise scope. Supports provisioning users and groups. Rate limit: max 1,000 users/hour through SCIM integration."
+    }
+  },
+  "sdk": {
+    "npm": "@octokit/rest",
+    "docsUrl": "https://octokit.github.io/rest.js/",
+    "exampleImport": "import { Octokit } from '@octokit/rest'",
+    "additionalPackages": {
+      "fullSdk": "octokit",
+      "core": "@octokit/core",
+      "graphql": "@octokit/graphql"
+    }
+  },
+  "webhooks": {
+    "supported": true,
+    "type": "http_post",
+    "eventTypes": [
+      "organization (member_invited, member_added, member_removed)",
+      "membership (added, removed - team membership changes)",
+      "team (created, deleted, edited, added_to_repository, removed_from_repository)",
+      "team_add",
+      "member (added, removed, edited - repository collaborator)",
+      "org_block (blocked, unblocked)"
+    ],
+    "registrationEndpoint": "POST /orgs/{org}/hooks",
+    "notes": "Organization webhooks can subscribe to member/team events. Repository webhooks cannot receive org-level events. GitHub Apps receive webhooks natively based on their configured permissions and subscribed events."
+  },
+  "sandbox": {
+    "available": true,
+    "notes": "GitHub Free plan supports unlimited public/private repos with up to 3 collaborators on private repos. Organizations are free to create. For SCIM testing, GitHub Enterprise Cloud offers a 30-day free trial. No dedicated sandbox environment but free orgs work well for dev/test."
+  },
+  "needs_verification": [
+    "Whether GitHub Apps can access all org member management endpoints or only OAuth apps",
+    "Exact SCIM rate limits beyond the 1,000 users/hour guideline",
+    "Whether fine-grained PATs can be used for SCIM (docs reference classic PATs)",
+    "Enterprise Cloud trial availability and duration"
+  ]
+}

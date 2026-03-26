@@ -1,0 +1,183 @@
+/**
+ * AtlasIT GitHub Proxy Worker
+ *
+ * Secure Cloudflare Worker that proxies requests from Codex agents to GitHub API
+ * without requiring direct outbound access from Codex environments.
+ *
+ * Security Controls:
+ * - Token-based authentication via X-Proxy-Token header
+ * - Path allowlisting (only /repos/HarderWorkingCo/Project-AtlasIT/*)
+ * - Authorization header stripping to prevent credential leaks
+ * - Trace ID logging for audit trail
+ */
+
+interface Env {
+  PROXY_SECRET: string;
+  GH_PAT: string;
+  ENVIRONMENT?: string;
+}
+
+function json(data: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type"))
+    headers.set("content-type", "application/json");
+  return new Response(JSON.stringify(data), { ...init, headers });
+}
+
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const url = new URL(request.url);
+    const traceId = crypto.randomUUID();
+    const baseHeaders: HeadersInit = {
+      "x-trace-id": traceId,
+      "x-service": "atlasit-github-proxy",
+    };
+
+    // Health check endpoint
+    if (url.pathname === "/health") {
+      return json(
+        {
+          status: "ok",
+          service: "atlasit-github-proxy",
+          traceId,
+        },
+        { status: 200, headers: baseHeaders },
+      );
+    }
+
+    // Verify proxy token
+    const token = request.headers.get("X-Proxy-Token");
+    if (!token || token !== env.PROXY_SECRET) {
+      console.log(
+        `[${traceId}] Unauthorized request - invalid or missing token`,
+      );
+      return json(
+        {
+          error: "Forbidden",
+          message: "Invalid or missing X-Proxy-Token",
+          traceId,
+        },
+        { status: 403, headers: baseHeaders },
+      );
+    }
+
+    // Extract target path from query parameter
+    const targetPath = url.searchParams.get("path");
+    if (!targetPath) {
+      return json(
+        {
+          error: "Bad Request",
+          message: "Missing required query parameter: path",
+          traceId,
+        },
+        { status: 400, headers: baseHeaders },
+      );
+    }
+
+    // Validate path is within allowed repository
+    if (!targetPath.match(/^\/repos\/HarderWorkingCo\/Project-AtlasIT(\/|$)/)) {
+      console.log(
+        `[${traceId}] Blocked request to unauthorized path: ${targetPath}`,
+      );
+      return json(
+        {
+          error: "Forbidden",
+          message:
+            "Path not allowed. Only /repos/HarderWorkingCo/Project-AtlasIT/* endpoints are permitted",
+          traceId,
+        },
+        { status: 403, headers: baseHeaders },
+      );
+    }
+
+    // Determine target host (api.github.com or raw.githubusercontent.com)
+    const isRawContent = url.searchParams.get("raw") === "true";
+    const targetHost = isRawContent
+      ? "raw.githubusercontent.com"
+      : "api.github.com";
+
+    // Build upstream URL
+    let upstreamUrl: string;
+    if (isRawContent) {
+      // For raw content: https://raw.githubusercontent.com/HarderWorkingCo/Project-AtlasIT/main/path/to/file
+      const branch = url.searchParams.get("ref") || "main";
+      const filePath = url.searchParams.get("file_path") || "";
+      upstreamUrl = `https://${targetHost}/HarderWorkingCo/Project-AtlasIT/${branch}/${filePath}`;
+    } else {
+      upstreamUrl = `https://${targetHost}${targetPath}`;
+    }
+
+    console.log(
+      `[${traceId}] Proxying ${request.method} request to: ${upstreamUrl}`,
+    );
+
+    // Prepare upstream request headers
+    const upstreamHeaders = new Headers({
+      Authorization: `Bearer ${env.GH_PAT}`,
+      "User-Agent": "AtlasIT-GitHub-Proxy/1.0",
+      Accept: "application/vnd.github.v3+json",
+    });
+
+    // Forward Content-Type if present
+    const contentType = request.headers.get("Content-Type");
+    if (contentType) {
+      upstreamHeaders.set("Content-Type", contentType);
+    }
+
+    // Prepare request body for non-GET requests
+    let body: string | undefined;
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      try {
+        body = await request.text();
+      } catch (error) {
+        console.error(`[${traceId}] Error reading request body:`, error);
+        return json(
+          {
+            error: "Bad Request",
+            message: "Invalid request body",
+            traceId,
+          },
+          { status: 400, headers: baseHeaders },
+        );
+      }
+    }
+
+    // Forward request to GitHub
+    try {
+      const upstreamResponse = await fetch(upstreamUrl, {
+        method: request.method,
+        headers: upstreamHeaders,
+        body,
+      });
+
+      console.log(
+        `[${traceId}] GitHub responded with status: ${upstreamResponse.status}`,
+      );
+
+      // Create response with trace ID
+      const responseHeaders = new Headers(upstreamResponse.headers);
+      responseHeaders.set("x-trace-id", traceId);
+      responseHeaders.set("x-service", "atlasit-github-proxy");
+
+      return new Response(upstreamResponse.body, {
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+        headers: responseHeaders,
+      });
+    } catch (error) {
+      console.error(`[${traceId}] Error forwarding request to GitHub:`, error);
+      return json(
+        {
+          error: "Bad Gateway",
+          message: "Failed to communicate with GitHub API",
+          traceId,
+        },
+        { status: 502, headers: baseHeaders },
+      );
+    }
+  },
+} satisfies ExportedHandler<Env>;

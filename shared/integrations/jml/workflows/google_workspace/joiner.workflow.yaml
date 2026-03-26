@@ -1,0 +1,167 @@
+workflow:
+  id: jml.joiner.google_workspace.v1
+  name: "Joiner - Standard Employee Onboarding (Google Workspace)"
+  type: joiner
+  version: 1.0.0
+  enabled: true
+  description: >
+    Creates identity, assigns baseline access, enforces MFA, emits evidence,
+    and updates compliance control state for new employees for Google Workspace.
+
+trigger:
+  source: hris
+  event_types:
+    - employee.created
+    - employee.activated
+  conditions:
+    - field: employment_status
+      op: in
+      value: ["active", "prehire"]
+    - field: worker_type
+      op: not_in
+      value: ["terminated"]
+
+inputs:
+  required:
+    - tenant_id
+    - employee_id
+    - primary_email
+    - first_name
+    - last_name
+    - department
+    - title
+    - manager_email
+    - start_date
+  optional:
+    - location
+    - employment_type
+    - cost_center
+    - group_overrides
+    - app_bundle_override
+
+mapping:
+  identity_profile:
+    username: "{{ primary_email }}"
+    display_name: "{{ first_name }} {{ last_name }}"
+    department: "{{ department }}"
+    title: "{{ title }}"
+    manager: "{{ manager_email }}"
+  access_bundle_resolution:
+    mode: template_plus_ai
+    base_templates:
+      Engineering:
+        - google_workspace.core
+        - slack.standard
+        - github.engineering
+        - notion.standard
+      Sales:
+        - google_workspace.core
+        - slack.standard
+        - salesforce.standard
+      Finance:
+        - google_workspace.core
+        - slack.standard
+        - netsuite.read
+    ai_assist:
+      enabled: true
+      require_review_below_confidence: 0.85
+
+policy:
+  preflight_checks:
+    - name: tenant_active
+      type: gate
+      policy_ref: policy.tenant.active
+    - name: subject_unique
+      type: gate
+      policy_ref: policy.identity.unique_email
+    - name: access_bundle_allowed
+      type: gate
+      policy_ref: policy.access.bundle_allowed
+    - name: no_sod_violation
+      type: gate
+      policy_ref: policy.sod.joiner
+
+steps:
+  - id: resolve_access_bundle
+    type: action
+    action_ref: atlas.resolve_access_bundle
+    retry:
+      max_attempts: 2
+      backoff: exponential
+    outputs:
+      - access_bundle
+      - confidence_score
+
+  - id: review_low_confidence_mapping
+    type: approval
+    when:
+      expr: "steps.resolve_access_bundle.outputs.confidence_score < 0.85"
+    approver_role: Admin
+    timeout: 24h
+    on_timeout: fail
+
+  - id: create_idp_user
+    type: action
+    action_ref: google_workspace.create_user
+    retry:
+      max_attempts: 6
+      backoff: exponential_jitter
+    idempotency_key: "{{ tenant_id }}:joiner:create_idp_user:{{ employee_id }}"
+    outputs:
+      - idp_user_id
+
+  - id: assign_groups
+    type: action
+    action_ref: google_workspace.assign_groups
+    inputs:
+      principal_id: "{{ steps.create_idp_user.outputs.idp_user_id }}"
+      groups: "{{ steps.resolve_access_bundle.outputs.access_bundle }}"
+    retry:
+      max_attempts: 6
+      backoff: exponential_jitter
+
+  - id: provision_application
+    type: action
+    action_ref: atlas.connectors.google_workspace.provision_user
+    retry:
+      max_attempts: 6
+      backoff: exponential_jitter
+
+  - id: enforce_mfa
+    type: remediate
+    action_ref: google_workspace.enforce_2sv
+    retry:
+      max_attempts: 4
+      backoff: exponential_jitter
+
+  - id: emit_joiner_evidence
+    type: evidence
+    producer: atlas.workflow.joiner
+    control_refs:
+      - ACCESS_MFA_ENFORCED
+    payload:
+      employee_id: "{{ employee_id }}"
+      idp_user_id: "{{ steps.create_idp_user.outputs.idp_user_id }}"
+      assigned_bundle: "{{ steps.resolve_access_bundle.outputs.access_bundle }}"
+      mfa_enforced: true
+
+  - id: update_cdt
+    type: action
+    action_ref: cdt.update_control_state
+    inputs:
+      event_type: jml.joiner.completed
+      subject_id: "{{ employee_id }}"
+      control_refs:
+        - ACCESS_MFA_ENFORCED
+      evidence_ref_step: emit_joiner_evidence
+
+failure:
+  strategy: partial_recovery
+  dead_letter_queue: jml.joiner.dlq
+  compensation:
+    - action_ref: google_workspace.suspend_user
+      when_step_failed_after: create_idp_user
+
+success:
+  result: pass
+  emit_summary_evidence: true

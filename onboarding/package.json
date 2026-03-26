@@ -1,0 +1,40 @@
+{
+  "name": "atlasit-onboarding",
+  "version": "1.0.0",
+  "description": "AtlasIT Onboarding Service",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "bundle": "esbuild dist/onboarding/src/index.js --bundle --format=esm --platform=browser --outfile=src/bundled-worker.mjs",
+    "pretest": "npm --prefix .. run build:shared && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@atlasit/shared": "workspace:*",
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@sveltejs/adapter-cloudflare": "^7.2.3",
+    "@sveltejs/kit": "^2.43.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "@typescript-eslint/eslint-plugin": "^8.18.2",
+    "@typescript-eslint/parser": "^8.18.2",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.17.0",
+    "miniflare": "^4.20251001.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4",
+    "vitest-environment-miniflare": "^2.14.4",
+    "wrangler": "^4.46.0"
+  }
+}
