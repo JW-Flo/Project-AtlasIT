@@ -304,10 +304,7 @@ const worker = {
     //    so policy pass/fail affects control status.
     let policyEvalsTriggered = 0;
     const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
-    // Always evaluate on every cron — audit dual-writes and platform state
-    // create evidence outside this counter, so gating on evidenceCollected
-    // would skip evaluation when only user-driven evidence arrived.
-    if (complianceWorkerUrl) {
+    if (complianceWorkerUrl && (evidenceCollected > 0 || event.cron === "0 2 * * *")) {
       const { results: policyTenants } = await sharedDb
         .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
         .all<{ id: string }>();
@@ -338,9 +335,8 @@ const worker = {
     let scoresRefreshed = 0;
     const isDaily = event.cron === "0 2 * * *";
 
-    // Always recalculate — evidence arrives from audit dual-writes, platform
-    // state probes, and adapter polls; the cron counter misses the first two.
-    if (complianceWorkerUrl) {
+    // Trigger recalculation when evidence was collected OR on the daily cron
+    if (complianceWorkerUrl && (evidenceCollected > 0 || isDaily)) {
       const { results: allTenants } = await sharedDb
         .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
         .all<{ id: string }>();
@@ -386,6 +382,107 @@ const worker = {
       checks.kv = { status: "fail", ms: Date.now() - kvStart };
     }
 
+    // ── Duty 4b: Auto-promote control statuses based on evidence density ───
+    //    For each tenant, read compliance_controls from tenant_preferences,
+    //    count evidence per framework/control, and promote statuses where
+    //    evidence thresholds are met. Never demotes or touches `verified`.
+    let controlsPromoted = 0;
+    {
+      const { results: promotionTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const promotionSettled = await Promise.allSettled(
+        (promotionTenants ?? []).map(async (row) => {
+          // Read the controls blob
+          const prefRow = await sharedDb
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'",
+            )
+            .first<{ value: string }>(row.id);
+
+          if (!prefRow?.value) return 0;
+
+          let controls: Array<Record<string, string>>;
+          try {
+            controls = JSON.parse(prefRow.value);
+          } catch {
+            return 0;
+          }
+
+          if (!Array.isArray(controls) || controls.length === 0) return 0;
+
+          // Count evidence per framework (coarse) and per control_id (fine)
+          const { results: evidenceRows } = await sharedDb
+            .prepare(
+              "SELECT framework, control_id, COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = ? GROUP BY framework, control_id",
+            )
+            .all<{ framework: string; control_id: string; cnt: number }>(row.id);
+
+          // Build maps: framework → total count, control_id → count
+          const frameworkTotals = new Map<string, number>();
+          const controlIdCounts = new Map<string, number>();
+          for (const ev of evidenceRows ?? []) {
+            frameworkTotals.set(
+              ev.framework,
+              (frameworkTotals.get(ev.framework) ?? 0) + ev.cnt,
+            );
+            controlIdCounts.set(ev.control_id, (controlIdCounts.get(ev.control_id) ?? 0) + ev.cnt);
+          }
+
+          let promoted = 0;
+          const updated = controls.map((control) => {
+            const status = control.status ?? "not_started";
+
+            // Never touch verified controls
+            if (status === "verified") return control;
+
+            const framework = (control.framework ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            const frameworkEvidenceCount = (() => {
+              // Match loosely: "SOC2", "SOC 2", "SOC_2" → normalise key
+              for (const [fw, cnt] of frameworkTotals) {
+                const normFw = fw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (normFw === framework || normFw.startsWith(framework) || framework.startsWith(normFw)) {
+                  return cnt;
+                }
+              }
+              return 0;
+            })();
+
+            // Fine-grained count for the specific control_id (exact match)
+            const controlEvidenceCount = controlIdCounts.get(control.id ?? "") ?? 0;
+
+            if (status === "not_started" && frameworkEvidenceCount > 0) {
+              promoted++;
+              return { ...control, status: "in_progress" };
+            }
+
+            if (status === "in_progress" && controlEvidenceCount >= 3) {
+              promoted++;
+              return { ...control, status: "implemented" };
+            }
+
+            return control;
+          });
+
+          if (promoted > 0) {
+            await sharedDb
+              .prepare(
+                "INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value) VALUES (?, 'compliance_controls', ?)",
+              )
+              .bind(row.id, JSON.stringify(updated))
+              .run();
+          }
+
+          return promoted;
+        }),
+      );
+
+      for (const r of promotionSettled) {
+        if (r.status === "fulfilled") controlsPromoted += r.value;
+      }
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -399,6 +496,7 @@ const worker = {
         automationFailures,
         evidenceCollected,
         scoresRefreshed,
+        controlsPromoted,
         checks,
       }),
     );
