@@ -87,11 +87,22 @@ Wrangler `[env.<name>]` sections do NOT inherit top-level bindings. Each named e
 
 ### Deploy workflow conventions
 
-- All deploy jobs are in `.github/workflows/deploy-on-merge.yml`
+- All deploy jobs are in `.github/workflows/deploy-on-merge.yml` — triggers on push to main and workflow_dispatch
 - Workers behind CF Access need `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` env vars for smoke tests
 - Subdirectory `pnpm install --no-frozen-lockfile` is required for workers not in the root `workspaces` array (core-api, dispatch-worker) and for workspace members with local devDependencies (ai-orchestrator, compliance-worker)
 - Use `WRANGLER_LOG=debug` env var for deploy debugging (NOT `--log-level` which doesn't exist on `wrangler deploy`)
 - Smoke tests use `scripts/smoke-test.sh <worker-name> <base-url>` — supports CF Access auth headers when env vars are set
+- **Shared package build**: Always `rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json` in `packages/shared` before deploying — stale `.tsbuildinfo` can cause empty `dist/`
+
+### Post-deploy validation (partial deploys)
+
+When deploying fewer than all workers (e.g. only console-app), validate cross-worker synchronization:
+
+1. **API contract check** — verify console-app API routes that proxy to other workers still get valid responses (not 502/503)
+2. **Shared types** — if `packages/shared` types changed, all consumers (console-app, ai-orchestrator, compliance-worker) must be redeployed together
+3. **D1 migrations** — if new migrations were added, run `npx wrangler d1 migrations apply` before deploying workers that depend on new schema
+4. **Cron dependencies** — if orchestrator cron duties reference new API endpoints on compliance-worker or console-app, those workers must deploy first
+5. **Smoke test all affected workers** — `bash scripts/smoke-test.sh <worker> <url>` for each deployed worker
 
 ### Workspace membership
 
@@ -117,37 +128,37 @@ Never launch multiple write agents against the same branch — they will overwri
 
 Read these files directly at session start — do NOT explore or search for them.
 
-| Area | File |
-|------|------|
-| **Automation engine** | `packages/shared/src/automation/engine.ts` |
-| **Automation types** | `packages/shared/src/automation/types.ts` |
-| **Compliance mapping** | `packages/shared/src/automation/compliance-mapping.ts` |
-| **Suggestion generation** | `packages/shared/src/automation/learner.ts` |
-| **NL rule builder** | `packages/shared/src/automation/nl-builder.ts` |
-| **Shared barrel** | `packages/shared/src/index.ts` → `automation/index.ts` |
-| **Orchestrator cron** | `ai-orchestrator/src/index.ts` |
-| **Console layout/nav** | `console-app/src/lib/components/layout/AppFrame.svelte` |
-| **Session store** | `console-app/src/lib/stores/session.ts` |
-| **Compliance store** | `console-app/src/lib/stores/compliance.ts` |
-| **Theme store** | `console-app/src/lib/stores/theme.ts` |
-| **Toast system** | `console-app/src/lib/components/feedback/toastStore.ts` |
-| **Integrations catalog** | `console-app/src/lib/data/integrations.ts` |
-| **Dashboard page** | `console-app/src/routes/console/+page.svelte` |
-| **Compliance page** | `console-app/src/routes/console/compliance/+page.svelte` |
-| **Automation page** | `console-app/src/routes/console/automation/+page.svelte` |
-| **Workflows page** | `console-app/src/routes/console/workflows/+page.svelte` |
-| **Directory page** | `console-app/src/routes/console/directory/+page.svelte` |
-| **Automation rules API** | `console-app/src/routes/api/automation/rules/+server.ts` |
-| **Simulate API** | `console-app/src/routes/api/automation/simulate/+server.ts` |
-| **Evaluate API** | `console-app/src/routes/api/automation/evaluate/+server.ts` |
-| **Evidence feed API** | `console-app/src/routes/api/evidence-feed/+server.ts` |
-| **Compliance scores API** | `console-app/src/routes/api/tenant-compliance/scores/+server.ts` |
-| **Automation server helpers** | `console-app/src/lib/server/automation.ts` |
-| **Action handlers** | `console-app/src/lib/server/automation-actions.ts` |
-| **Auth provider** | `console-app/src/lib/auth/provider.ts` |
-| **DB migrations** | `migrations/` (numbered SQL files) |
-| **CDT rules** | `shared/services/cdt/` (60 compliance rules) |
-| **CI/CD** | `.github/workflows/deploy-on-merge.yml` |
+| Area                          | File                                                             |
+| ----------------------------- | ---------------------------------------------------------------- |
+| **Automation engine**         | `packages/shared/src/automation/engine.ts`                       |
+| **Automation types**          | `packages/shared/src/automation/types.ts`                        |
+| **Compliance mapping**        | `packages/shared/src/automation/compliance-mapping.ts`           |
+| **Suggestion generation**     | `packages/shared/src/automation/learner.ts`                      |
+| **NL rule builder**           | `packages/shared/src/automation/nl-builder.ts`                   |
+| **Shared barrel**             | `packages/shared/src/index.ts` → `automation/index.ts`           |
+| **Orchestrator cron**         | `ai-orchestrator/src/index.ts`                                   |
+| **Console layout/nav**        | `console-app/src/lib/components/layout/AppFrame.svelte`          |
+| **Session store**             | `console-app/src/lib/stores/session.ts`                          |
+| **Compliance store**          | `console-app/src/lib/stores/compliance.ts`                       |
+| **Theme store**               | `console-app/src/lib/stores/theme.ts`                            |
+| **Toast system**              | `console-app/src/lib/components/feedback/toastStore.ts`          |
+| **Integrations catalog**      | `console-app/src/lib/data/integrations.ts`                       |
+| **Dashboard page**            | `console-app/src/routes/console/+page.svelte`                    |
+| **Compliance page**           | `console-app/src/routes/console/compliance/+page.svelte`         |
+| **Automation page**           | `console-app/src/routes/console/automation/+page.svelte`         |
+| **Workflows page**            | `console-app/src/routes/console/workflows/+page.svelte`          |
+| **Directory page**            | `console-app/src/routes/console/directory/+page.svelte`          |
+| **Automation rules API**      | `console-app/src/routes/api/automation/rules/+server.ts`         |
+| **Simulate API**              | `console-app/src/routes/api/automation/simulate/+server.ts`      |
+| **Evaluate API**              | `console-app/src/routes/api/automation/evaluate/+server.ts`      |
+| **Evidence feed API**         | `console-app/src/routes/api/evidence-feed/+server.ts`            |
+| **Compliance scores API**     | `console-app/src/routes/api/tenant-compliance/scores/+server.ts` |
+| **Automation server helpers** | `console-app/src/lib/server/automation.ts`                       |
+| **Action handlers**           | `console-app/src/lib/server/automation-actions.ts`               |
+| **Auth provider**             | `console-app/src/lib/auth/provider.ts`                           |
+| **DB migrations**             | `migrations/` (numbered SQL files)                               |
+| **CDT rules**                 | `shared/services/cdt/` (60 compliance rules)                     |
+| **CI/CD**                     | `.github/workflows/deploy-on-merge.yml`                          |
 
 ## Project Architecture
 
