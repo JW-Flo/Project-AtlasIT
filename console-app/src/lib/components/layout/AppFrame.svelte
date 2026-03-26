@@ -9,6 +9,7 @@
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
   import { fetchSession } from "../../stores/session";
+  import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
   import {
     LayoutDashboard,
     Shield,
@@ -115,6 +116,7 @@
     : navSections;
 
   async function exitImpersonation() {
+    clearComplianceCache();
     await fetch("/api/admin/impersonate/exit", { method: "POST" });
     location.href = "/console/admin";
   }
@@ -148,6 +150,18 @@
 
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
+
+    // Fetch compliance score
+    fetchComplianceScore().catch(() => {});
+  });
+
+  // Poll compliance score every 60s
+  let compliancePollTimer: ReturnType<typeof setInterval>;
+  onMount(() => {
+    compliancePollTimer = setInterval(() => {
+      refreshComplianceScore().catch(() => {});
+    }, 60000);
+    return () => clearInterval(compliancePollTimer);
   });
 
   let unreadCount = 0;
@@ -194,6 +208,7 @@
     : "?";
 
   async function signOut() {
+    clearComplianceCache();
     await fetch("/api/auth/logout", { method: "POST" });
     location.href = "/console/login";
   }
@@ -402,6 +417,25 @@
             </span>
           {/if}
         </a>
+
+        <!-- Compliance Score Badge -->
+        {#if $complianceScore}
+          <a
+            href="/console/compliance"
+            class="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-semibold transition-colors
+              {$complianceScore.overallScore >= 80
+                ? 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-green-500/25'
+                : $complianceScore.overallScore >= 60
+                  ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/25'
+                  : 'bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25'}"
+            title="Compliance: {$complianceScore.frameworks.map(f => `${f.framework} ${f.grade} (${f.score}%)`).join(', ')}"
+            aria-label="Compliance score: {$complianceScore.grade} {$complianceScore.overallScore}%"
+          >
+            <ShieldCheck class="h-3.5 w-3.5" />
+            <span>{$complianceScore.grade}</span>
+            <span class="text-[10px] opacity-75">{$complianceScore.overallScore}%</span>
+          </a>
+        {/if}
 
         <!-- Theme toggle -->
         <button

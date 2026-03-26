@@ -5,7 +5,11 @@ import type {
   ActionResult,
   RuleAction,
   AutomationExecution,
+  ConditionResult,
+  ActionPreview,
+  SimulationResult,
 } from "./types";
+import { ACTION_COMPLIANCE_MAP } from "./compliance-mapping";
 
 /**
  * Evaluate whether a rule's conditions match a given event payload.
@@ -115,6 +119,148 @@ export function buildExecutionSummary(
   return { status, actionsRun, actionsFailed, durationMs };
 }
 
+/**
+ * Evaluate a single condition and return detailed pass/fail information
+ * including the actual value observed vs. the expected value.
+ */
+export function evaluateConditionDetailed(
+  condition: RuleCondition,
+  payload: Record<string, unknown>,
+): ConditionResult {
+  const actual = getNestedValue(payload, condition.field);
+
+  let passed: boolean;
+  switch (condition.operator) {
+    case "equals":
+      passed = String(actual) === String(condition.value);
+      break;
+    case "not_equals":
+      passed = String(actual) !== String(condition.value);
+      break;
+    case "contains":
+      passed = String(actual).includes(String(condition.value));
+      break;
+    case "in":
+      passed =
+        Array.isArray(condition.value) &&
+        condition.value.includes(String(actual));
+      break;
+    case "not_in":
+      passed =
+        Array.isArray(condition.value) &&
+        !condition.value.includes(String(actual));
+      break;
+    case "gt":
+      passed = Number(actual) > Number(condition.value);
+      break;
+    case "lt":
+      passed = Number(actual) < Number(condition.value);
+      break;
+    default:
+      passed = false;
+  }
+
+  return {
+    field: condition.field,
+    operator: condition.operator,
+    expected: condition.value,
+    actual,
+    passed,
+  };
+}
+
+const ACTION_DESCRIPTION_TEMPLATES: Record<string, string> = {
+  provision_app_access: "Provision access to {{appId}}",
+  revoke_app_access: "Revoke access to {{appId}}",
+  send_notification: "Send notification: {{message}}",
+  run_workflow: "Run {{workflowType}} workflow",
+  assign_role: "Assign role {{role}}",
+  remove_role: "Remove role {{role}}",
+  sync_directory: "Sync directory",
+  create_incident: "Create incident: {{title}}",
+  update_compliance_status: "Update compliance status for {{framework}}",
+  request_access_review: "Request access review for {{userId}}",
+};
+
+/**
+ * Simulate a rule against an event without executing any actions.
+ * Returns a full preview of what would happen including condition results,
+ * interpolated action configs, and compliance impact.
+ */
+export function simulateRule(
+  rule: AutomationRule,
+  event: AutomationEvent,
+): SimulationResult {
+  const triggerMatch = rule.triggerType === event.type && matchesTriggerConfig(rule, event);
+
+  const conditionResults = rule.conditions.map((condition) =>
+    evaluateConditionDetailed(condition, event.payload),
+  );
+
+  const allConditionsPassed =
+    conditionResults.length === 0 || conditionResults.every((r) => r.passed);
+  const triggered = triggerMatch && allConditionsPassed;
+
+  const sortedActions = sortActions(rule.actions);
+
+  const actionsPreview: ActionPreview[] = sortedActions.map((action) => {
+    const interpolated: Record<string, string> = {};
+    for (const [key, val] of Object.entries(action.config)) {
+      interpolated[key] = interpolateTemplate(String(val), event.payload);
+    }
+
+    const descTemplate =
+      ACTION_DESCRIPTION_TEMPLATES[action.type] ??
+      `Execute ${action.type} action`;
+    const configAsStrings: Record<string, unknown> = { ...action.config };
+    const description = interpolateTemplate(descTemplate, {
+      ...event.payload,
+      ...configAsStrings,
+    });
+
+    return {
+      type: action.type,
+      order: action.order,
+      config: action.config,
+      interpolated,
+      description,
+    };
+  });
+
+  // Build compliance impact grouped by framework
+  const frameworkMap = new Map<string, Map<string, string>>();
+  for (const action of sortedActions) {
+    const controls = ACTION_COMPLIANCE_MAP[action.type] ?? [];
+    for (const control of controls) {
+      if (!frameworkMap.has(control.framework)) {
+        frameworkMap.set(control.framework, new Map());
+      }
+      frameworkMap.get(control.framework)!.set(control.controlId, control.controlName);
+    }
+  }
+
+  const complianceImpact = Array.from(frameworkMap.entries()).map(
+    ([framework, controlsMap]) => ({
+      framework,
+      controls: Array.from(controlsMap.entries()).map(([id, name]) => ({
+        id,
+        name,
+      })),
+    }),
+  );
+
+  return {
+    ruleId: rule.id,
+    ruleName: rule.name,
+    enabled: rule.enabled,
+    triggered,
+    triggerMatch,
+    conditionResults,
+    actionsPreview,
+    complianceImpact,
+  };
+}
+
 // --- Internal helpers ---
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
@@ -130,7 +276,7 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   }, obj);
 }
 
-function matchesTriggerConfig(
+export function matchesTriggerConfig(
   rule: AutomationRule,
   event: AutomationEvent,
 ): boolean {

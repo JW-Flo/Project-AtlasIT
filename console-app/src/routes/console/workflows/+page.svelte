@@ -135,6 +135,16 @@
   // Bulk selection
   let selectedUsers: Set<string> = new Set();
   let bulkType: "joiner" | "mover" | "leaver" = "joiner";
+  let bulkProgress = 0;
+  let bulkTotal = 0;
+
+  // Leaver confirmation dialog
+  let showLeaverConfirm = false;
+  let leaverConfirmCallback: (() => void) | null = null;
+  let leaverConfirmMessage = "";
+
+  // User fetch error tracking
+  let userFetchError = false;
 
   // App workflows
   $: connectedWorkflows = workflows.filter((w) => w.connected);
@@ -235,13 +245,20 @@
   }
 
   async function fetchUsers() {
+    userFetchError = false;
     try {
       const res = await fetch("/api/directory/users?limit=500");
       if (res.ok) {
         const data = await res.json();
         users = data.users || [];
+      } else {
+        userFetchError = true;
+        users = [];
       }
-    } catch { users = []; }
+    } catch {
+      userFetchError = true;
+      users = [];
+    }
   }
 
   async function fetchRuns() {
@@ -312,34 +329,51 @@
     if (emails.length === 0) return;
 
     if (bulkType === "leaver") {
-      const confirmed = confirm(
-        `This will run the leaver workflow for ${emails.length} user(s). This may revoke access irreversibly. Continue?`
-      );
-      if (!confirmed) return;
+      leaverConfirmMessage = `This will run the leaver workflow for ${emails.length} user(s). This may revoke access irreversibly.`;
+      leaverConfirmCallback = () => runBulkExecution(emails);
+      showLeaverConfirm = true;
+      return;
     }
 
+    await runBulkExecution(emails);
+  }
+
+  async function runBulkExecution(emails: string[]) {
     executing = true;
+    bulkProgress = 0;
+    bulkTotal = emails.length;
     let succeeded = 0;
     let failed = 0;
+    const failedEmails: string[] = [];
 
     for (const email of emails) {
       try {
-        await fetch("/api/workflows/execute", {
+        const res = await fetch("/api/workflows/execute", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ type: bulkType, subjectEmail: email, idpSource }),
         });
-        succeeded++;
+        if (res.ok) {
+          succeeded++;
+        } else {
+          failed++;
+          failedEmails.push(email);
+        }
       } catch {
         failed++;
+        failedEmails.push(email);
       }
+      bulkProgress++;
     }
 
     executing = false;
+    bulkProgress = 0;
+    bulkTotal = 0;
     selectedUsers = new Set();
+    const failedDetail = failedEmails.length > 0 ? ` (failed: ${failedEmails.slice(0, 3).join(", ")}${failedEmails.length > 3 ? ` +${failedEmails.length - 3} more` : ""})` : "";
     pushToast({
-      message: `Bulk ${bulkType}: ${succeeded} succeeded, ${failed} failed`,
-      variant: failed > 0 ? "warning" : "success",
+      message: `Bulk ${bulkType}: ${succeeded} succeeded, ${failed} failed${failedDetail}`,
+      variant: failed > 0 ? "error" : "success",
     });
     fetchRuns();
     fetchChangelog();
@@ -349,12 +383,17 @@
     if (!modalApp || !modalEmail) return;
 
     if (modalType === "leaver") {
-      const confirmed = confirm(
-        `This will revoke access for ${modalEmail} across all configured apps. This action may be irreversible. Continue?`
-      );
-      if (!confirmed) return;
+      leaverConfirmMessage = `This will revoke access for ${modalEmail} across all configured apps. This action may be irreversible.`;
+      leaverConfirmCallback = () => runSingleExecution();
+      showLeaverConfirm = true;
+      return;
     }
 
+    await runSingleExecution();
+  }
+
+  async function runSingleExecution() {
+    if (!modalApp || !modalEmail) return;
     executing = true;
     executionResult = null;
 
@@ -371,8 +410,16 @@
       });
 
       const data = await res.json().catch(() => null);
-      if (res.ok && data?.steps) {
+      if (!res.ok) {
+        executionResult = {
+          success: false,
+          steps: [],
+          message: data?.error || `Workflow failed (HTTP ${res.status})`,
+        };
+        pushToast({ message: `${modalType} workflow failed for ${modalEmail}`, variant: "error" });
+      } else if (data?.steps) {
         executionResult = data;
+        pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
       } else {
         const steps = modalApp[modalType] || [];
         executionResult = {
@@ -380,8 +427,8 @@
           steps: steps.map((s: WorkflowStep) => ({ name: s.name, status: "success" as const })),
           message: `${modalType} workflow executed for ${modalEmail}`,
         };
+        pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
       }
-      pushToast({ message: `${modalType} workflow completed for ${modalEmail}`, variant: "success" });
     } catch {
       executionResult = {
         success: false,
@@ -544,13 +591,22 @@
               </select>
               <Button size="sm" on:click={executeBulk} disabled={executing}>
                 <Play class="w-3 h-3 mr-1" />
-                {executing ? "Running..." : `Run for ${selectedUsers.size}`}
+                {executing ? `Processing ${bulkProgress}/${bulkTotal}...` : `Run for ${selectedUsers.size}`}
               </Button>
             </div>
           {/if}
         </div>
 
-        {#if users.length === 0}
+        {#if userFetchError}
+          <Card class="border-dashed border-destructive/30">
+            <CardContent class="py-10 text-center">
+              <AlertTriangle class="w-12 h-12 mx-auto mb-4 text-destructive/50" />
+              <p class="text-lg font-semibold mb-1">Failed to load users</p>
+              <p class="text-sm text-muted-foreground mb-5">Could not fetch directory users. Check your connection and try again.</p>
+              <Button on:click={fetchUsers}>Retry</Button>
+            </CardContent>
+          </Card>
+        {:else if users.length === 0}
           <Card class="border-dashed">
             <CardContent class="py-10 text-center">
               <Users class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
@@ -881,4 +937,16 @@
       </div>
     {/if}
   {/if}
+</Dialog>
+
+<!-- Leaver Confirmation Dialog -->
+<Dialog open={showLeaverConfirm} onClose={() => { showLeaverConfirm = false; leaverConfirmCallback = null; }}>
+  <div class="space-y-4">
+    <h3 class="text-lg font-semibold text-destructive">Confirm Leaver Workflow</h3>
+    <p class="text-sm text-muted-foreground">{leaverConfirmMessage}</p>
+    <DialogFooter>
+      <Button variant="outline" on:click={() => { showLeaverConfirm = false; leaverConfirmCallback = null; }}>Cancel</Button>
+      <Button variant="destructive" on:click={() => { showLeaverConfirm = false; if (leaverConfirmCallback) leaverConfirmCallback(); leaverConfirmCallback = null; }}>Continue</Button>
+    </DialogFooter>
+  </div>
 </Dialog>
