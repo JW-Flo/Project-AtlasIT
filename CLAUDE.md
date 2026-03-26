@@ -63,14 +63,13 @@ Full PR workflow:
 
 1. Create feature branch: `feat/<desc>` or `phase<N>/<desc>`
 2. Commit with concise why-focused messages (no session URLs)
-3. Push and open PR: `gh pr create --title "..." --body "..."`
-4. Request Copilot review: `gh pr edit <num> --add-reviewer copilot`
-5. Wait ~60s, check: `gh pr view <num> --json reviews,comments`
-6. Address actionable findings; if no findings after 1-2 checks → merge
-7. Merge: `gh pr merge <num> --squash`
-8. Delete remote branch: `git push origin --delete <branch>`
-
-Do not poll Copilot more than 2-3 times. If nothing reported, merge and move on.
+3. **Self-review (mandatory before pushing to main):**
+   - Read the full diff (`git diff main..HEAD`) and review every changed file for: bugs, security issues (auth bypass, tenant data leakage, injection), type safety, edge cases, error handling, and consistency with codebase patterns
+   - Fix all issues found — this is not optional. Do not merge with known defects.
+   - Commit remediation as a separate commit so fixes are visible in history
+4. Push and open PR: `gh pr create --title "..." --body "..."`
+5. Merge: `gh pr merge <num> --squash`
+6. Delete remote branch: `git push origin --delete <branch>`
 
 ## CI/CD & Deploy Validation
 
