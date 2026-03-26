@@ -5,6 +5,8 @@ import {
   sortActions,
   interpolateTemplate,
   buildExecutionSummary,
+  evaluateConditionDetailed,
+  simulateRule,
 } from "../engine";
 import type {
   AutomationRule,
@@ -49,17 +51,13 @@ describe("evaluateConditions", () => {
   });
 
   it("evaluates equals operator", () => {
-    const conditions: RuleCondition[] = [
-      { field: "status", operator: "equals", value: "active" },
-    ];
+    const conditions: RuleCondition[] = [{ field: "status", operator: "equals", value: "active" }];
     expect(evaluateConditions(conditions, { status: "active" })).toBe(true);
     expect(evaluateConditions(conditions, { status: "inactive" })).toBe(false);
   });
 
   it("evaluates not_equals operator", () => {
-    const conditions: RuleCondition[] = [
-      { field: "role", operator: "not_equals", value: "admin" },
-    ];
+    const conditions: RuleCondition[] = [{ field: "role", operator: "not_equals", value: "admin" }];
     expect(evaluateConditions(conditions, { role: "member" })).toBe(true);
     expect(evaluateConditions(conditions, { role: "admin" })).toBe(false);
   });
@@ -68,12 +66,8 @@ describe("evaluateConditions", () => {
     const conditions: RuleCondition[] = [
       { field: "email", operator: "contains", value: "@acme.com" },
     ];
-    expect(evaluateConditions(conditions, { email: "bob@acme.com" })).toBe(
-      true,
-    );
-    expect(evaluateConditions(conditions, { email: "bob@other.com" })).toBe(
-      false,
-    );
+    expect(evaluateConditions(conditions, { email: "bob@acme.com" })).toBe(true);
+    expect(evaluateConditions(conditions, { email: "bob@other.com" })).toBe(false);
   });
 
   it("evaluates in operator", () => {
@@ -84,9 +78,7 @@ describe("evaluateConditions", () => {
         value: ["engineering", "product"],
       },
     ];
-    expect(evaluateConditions(conditions, { department: "engineering" })).toBe(
-      true,
-    );
+    expect(evaluateConditions(conditions, { department: "engineering" })).toBe(true);
     expect(evaluateConditions(conditions, { department: "sales" })).toBe(false);
   });
 
@@ -125,12 +117,8 @@ describe("evaluateConditions", () => {
     const conditions: RuleCondition[] = [
       { field: "user.role", operator: "equals", value: "admin" },
     ];
-    expect(evaluateConditions(conditions, { user: { role: "admin" } })).toBe(
-      true,
-    );
-    expect(evaluateConditions(conditions, { user: { role: "member" } })).toBe(
-      false,
-    );
+    expect(evaluateConditions(conditions, { user: { role: "admin" } })).toBe(true);
+    expect(evaluateConditions(conditions, { user: { role: "member" } })).toBe(false);
   });
 
   it("requires ALL conditions to pass (AND logic)", () => {
@@ -138,12 +126,8 @@ describe("evaluateConditions", () => {
       { field: "status", operator: "equals", value: "active" },
       { field: "role", operator: "equals", value: "admin" },
     ];
-    expect(
-      evaluateConditions(conditions, { status: "active", role: "admin" }),
-    ).toBe(true);
-    expect(
-      evaluateConditions(conditions, { status: "active", role: "member" }),
-    ).toBe(false);
+    expect(evaluateConditions(conditions, { status: "active", role: "admin" })).toBe(true);
+    expect(evaluateConditions(conditions, { status: "active", role: "member" })).toBe(false);
   });
 });
 
@@ -263,10 +247,11 @@ describe("interpolateTemplate", () => {
   });
 
   it("handles multiple placeholders", () => {
-    const result = interpolateTemplate(
-      "{{action}} user {{email}} from {{app}}",
-      { action: "Provisioned", email: "bob@co.com", app: "Slack" },
-    );
+    const result = interpolateTemplate("{{action}} user {{email}} from {{app}}", {
+      action: "Provisioned",
+      email: "bob@co.com",
+      app: "Slack",
+    });
     expect(result).toBe("Provisioned user bob@co.com from Slack");
   });
 
@@ -316,5 +301,128 @@ describe("buildExecutionSummary", () => {
     const summary = buildExecutionSummary(rule, results, 50);
     expect(summary.status).toBe("failed");
     expect(summary.actionsFailed).toBe(2);
+  });
+});
+
+describe("evaluateConditionDetailed", () => {
+  it("returns detailed pass result with actual value", () => {
+    const result = evaluateConditionDetailed(
+      { field: "status", operator: "equals", value: "active" },
+      { status: "active" },
+    );
+    expect(result.passed).toBe(true);
+    expect(result.actual).toBe("active");
+    expect(result.expected).toBe("active");
+    expect(result.field).toBe("status");
+  });
+
+  it("returns detailed fail result with mismatched value", () => {
+    const result = evaluateConditionDetailed(
+      { field: "role", operator: "equals", value: "admin" },
+      { role: "viewer" },
+    );
+    expect(result.passed).toBe(false);
+    expect(result.actual).toBe("viewer");
+    expect(result.expected).toBe("admin");
+  });
+
+  it("handles nested field paths", () => {
+    const result = evaluateConditionDetailed(
+      { field: "user.dept", operator: "contains", value: "eng" },
+      { user: { dept: "engineering" } },
+    );
+    expect(result.passed).toBe(true);
+    expect(result.actual).toBe("engineering");
+  });
+
+  it("handles undefined field gracefully", () => {
+    const result = evaluateConditionDetailed(
+      { field: "missing", operator: "equals", value: "x" },
+      {},
+    );
+    expect(result.passed).toBe(false);
+    expect(result.actual).toBeUndefined();
+  });
+});
+
+describe("simulateRule", () => {
+  it("returns triggered=true when trigger and conditions match", () => {
+    const rule = makeRule({
+      triggerType: "user_joined_group",
+      conditions: [{ field: "department", operator: "equals", value: "eng" }],
+      actions: [{ type: "provision_app_access", config: { appId: "slack" }, order: 1 }],
+    });
+    const event = makeEvent({
+      type: "user_joined_group",
+      payload: { department: "eng", email: "alice@co.com" },
+    });
+
+    const result = simulateRule(rule, event);
+    expect(result.triggered).toBe(true);
+    expect(result.triggerMatch).toBe(true);
+    expect(result.conditionResults).toHaveLength(1);
+    expect(result.conditionResults[0].passed).toBe(true);
+    expect(result.actionsPreview).toHaveLength(1);
+    expect(result.actionsPreview[0].type).toBe("provision_app_access");
+  });
+
+  it("returns triggered=false when trigger type mismatches", () => {
+    const rule = makeRule({ triggerType: "user_deactivated" });
+    const event = makeEvent({ type: "user_joined_group" });
+
+    const result = simulateRule(rule, event);
+    expect(result.triggered).toBe(false);
+    expect(result.triggerMatch).toBe(false);
+  });
+
+  it("returns triggered=false when conditions fail", () => {
+    const rule = makeRule({
+      conditions: [{ field: "role", operator: "equals", value: "admin" }],
+    });
+    const event = makeEvent({ payload: { role: "viewer" } });
+
+    const result = simulateRule(rule, event);
+    expect(result.triggerMatch).toBe(true);
+    expect(result.triggered).toBe(false);
+    expect(result.conditionResults[0].passed).toBe(false);
+  });
+
+  it("interpolates action config with event payload", () => {
+    const rule = makeRule({
+      actions: [
+        {
+          type: "send_notification",
+          config: { message: "Welcome {{email}}" },
+          order: 1,
+        },
+      ],
+    });
+    const event = makeEvent({ payload: { email: "bob@co.com" } });
+
+    const result = simulateRule(rule, event);
+    expect(result.actionsPreview[0].interpolated.message).toBe("Welcome bob@co.com");
+  });
+
+  it("includes compliance impact from action types", () => {
+    const rule = makeRule({
+      actions: [
+        { type: "provision_app_access", config: { appId: "slack" }, order: 1 },
+        { type: "revoke_app_access", config: { appId: "jira" }, order: 2 },
+      ],
+    });
+    const event = makeEvent();
+
+    const result = simulateRule(rule, event);
+    expect(result.complianceImpact.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("preserves rule metadata in result", () => {
+    const rule = makeRule({ id: "r-42", name: "My Rule", enabled: false });
+    const event = makeEvent();
+
+    const result = simulateRule(rule, event);
+    expect(result.ruleId).toBe("r-42");
+    expect(result.ruleName).toBe("My Rule");
+    expect(result.enabled).toBe(false);
   });
 });

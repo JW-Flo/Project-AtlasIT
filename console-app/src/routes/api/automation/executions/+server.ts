@@ -6,8 +6,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ executions: [], total: 0 });
@@ -21,8 +20,25 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const filters: string[] = ["e.tenant_id = ?"];
   const binds: (string | number)[] = [tenantId];
 
-  if (ruleId) { filters.push("e.rule_id = ?"); binds.push(ruleId); }
-  if (status) { filters.push("e.status = ?"); binds.push(status); }
+  if (ruleId) {
+    filters.push("e.rule_id = ?");
+    binds.push(ruleId);
+  }
+  if (status) {
+    filters.push("e.status = ?");
+    binds.push(status);
+  }
+
+  const from = url.searchParams.get("from") ?? null;
+  const to = url.searchParams.get("to") ?? null;
+  if (from) {
+    filters.push("e.started_at >= ?");
+    binds.push(from);
+  }
+  if (to) {
+    filters.push("e.started_at <= ?");
+    binds.push(to);
+  }
 
   const where = filters.join(" AND ");
 
