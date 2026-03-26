@@ -163,6 +163,14 @@
 
   async function executeWorkflow() {
     if (!modalApp || !modalEmail) return;
+
+    if (modalType === "leaver") {
+      const confirmed = confirm(
+        `This will revoke access for ${modalEmail} across all configured apps. This action may be irreversible. Continue?`
+      );
+      if (!confirmed) return;
+    }
+
     executing = true;
     executionResult = null;
 
@@ -201,9 +209,24 @@
     executing = false;
   }
 
+  async function fetchIdpSource() {
+    try {
+      const res = await fetch("/api/directory/connect");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.provider) {
+          idpSource = data.provider;
+        }
+      }
+    } catch {
+      // fall back to "okta" default
+    }
+  }
+
   let mounted = false;
-  onMount(() => {
+  onMount(async () => {
     mounted = true;
+    await fetchIdpSource();
     fetchWorkflows();
   });
 

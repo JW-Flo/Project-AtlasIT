@@ -3,6 +3,24 @@ import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
 
+export const GET: RequestHandler = async ({ locals, platform }) => {
+  const user = locals.user as any;
+  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+
+  const tenantId = user.tenantId;
+  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ provider: null }, { status: 200 });
+
+  const row = await db
+    .prepare(`SELECT provider, status FROM directory_connections WHERE tenant_id = ? LIMIT 1`)
+    .bind(tenantId)
+    .first();
+
+  return json({ provider: row?.provider ?? null, status: row?.status ?? null });
+};
+
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "unauthorized" }, { status: 401 });
