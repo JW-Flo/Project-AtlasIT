@@ -109,7 +109,7 @@
   }
 
   // ---- State ----------------------------------------------------------------
-  let activeTab: "overview" | "rules" | "health" | "history" | "jml" | "live" = "overview";
+  let activeTab: "overview" | "rules" | "health" | "history" | "jml" | "live" | "simulations" = "overview";
   let loading = true;
   let error: string | null = null;
 
@@ -166,6 +166,33 @@
   } | null = null;
   let simCustomPayload = "";
   let simShowCustom = false;
+
+  // Simulation history
+  interface SimulationRecord {
+    id: string;
+    ruleId: string;
+    ruleName: string;
+    matched: boolean;
+    actions: any[];
+    ranBy: string;
+    createdAt: string;
+  }
+  let simHistory: SimulationRecord[] = [];
+  let simHistoryTotal = 0;
+  let simHistoryLoading = false;
+
+  async function fetchSimHistory() {
+    simHistoryLoading = true;
+    try {
+      const res = await fetch("/api/automation/simulations?limit=50");
+      if (res.ok) {
+        const data = await res.json();
+        simHistory = data.simulations ?? [];
+        simHistoryTotal = data.total ?? 0;
+      }
+    } catch { /* non-fatal */ }
+    finally { simHistoryLoading = false; }
+  }
 
   // Suggestions error tracking
   let suggestionsError = false;
@@ -641,6 +668,7 @@
   $: if (historyPage > totalHistoryPages) historyPage = totalHistoryPages;
 
   $: if (activeTab === "live") { startActivityPoll(); } else { stopActivityPoll(); }
+  $: if (activeTab === "simulations" && simHistory.length === 0 && !simHistoryLoading) { fetchSimHistory(); }
 
   onMount(() => {
     fetchAll();
@@ -669,6 +697,7 @@
       { id: "rules", label: "Rules" },
       { id: "health", label: "Environment Health" },
       { id: "history", label: "History" },
+      { id: "simulations", label: "Simulations" },
     ] as tab}
       <button
         type="button"
@@ -1323,6 +1352,64 @@
             <Button variant="outline" size="sm" disabled={historyPage >= totalHistoryPages} on:click={() => (historyPage += 1)}>Next</Button>
           </div>
         </div>
+      {/if}
+    {/if}
+
+  {:else if activeTab === "simulations"}
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm text-muted-foreground">Dry-run simulation history — every simulation is recorded for audit.</p>
+      <Button variant="outline" size="sm" on:click={fetchSimHistory}>Refresh</Button>
+    </div>
+
+    {#if simHistoryLoading}
+      <div class="space-y-3">
+        {#each [1, 2, 3] as _}
+          <Skeleton class="h-12 rounded-lg" />
+        {/each}
+      </div>
+    {:else if simHistory.length === 0}
+      <Card class="border-dashed">
+        <CardContent class="py-12 text-center">
+          <p class="text-sm text-muted-foreground">No simulations have been run yet. Use the "Dry Run" button on any rule to test it.</p>
+        </CardContent>
+      </Card>
+    {:else}
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-4 py-3 font-medium">Rule</th>
+                  <th class="px-4 py-3 font-medium">Result</th>
+                  <th class="px-4 py-3 font-medium">Actions</th>
+                  <th class="px-4 py-3 font-medium">Run By</th>
+                  <th class="px-4 py-3 font-medium text-right">When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each simHistory as sim}
+                  <tr class="border-t hover:bg-muted/50">
+                    <td class="px-4 py-3 font-medium">{sim.ruleName}</td>
+                    <td class="px-4 py-3">
+                      <Badge variant={sim.matched ? "default" : "secondary"}>
+                        {sim.matched ? "Would fire" : "Would not fire"}
+                      </Badge>
+                    </td>
+                    <td class="px-4 py-3 text-muted-foreground">{sim.actions.length} action{sim.actions.length !== 1 ? "s" : ""}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{sim.ranBy}</td>
+                    <td class="px-4 py-3 text-right">
+                      <span class="text-muted-foreground" title={new Date(sim.createdAt).toLocaleString()}>{timeAgo(sim.createdAt)}</span>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+      {#if simHistoryTotal > simHistory.length}
+        <p class="text-xs text-muted-foreground mt-2">Showing {simHistory.length} of {simHistoryTotal} simulations</p>
       {/if}
     {/if}
   {/if}

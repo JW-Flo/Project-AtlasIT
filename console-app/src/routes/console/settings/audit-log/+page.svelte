@@ -6,7 +6,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-svelte";
+  import { AlertTriangle, ChevronLeft, ChevronRight, Download, Filter, X } from "lucide-svelte";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -32,11 +32,32 @@
   let offset = 0;
   const limit = 50;
 
+  // Filters
+  let filterAction = "";
+  let filterFrom = "";
+  let filterTo = "";
+  let showFilters = false;
+  let exporting = false;
+
+  function buildQueryParams(extra: Record<string, string> = {}): string {
+    const params = new URLSearchParams();
+    params.set("limit", String(extra.limit ?? limit));
+    params.set("offset", String(extra.offset ?? offset));
+    if (filterAction) params.set("action", filterAction);
+    if (filterFrom) params.set("from", filterFrom);
+    if (filterTo) params.set("to", filterTo);
+    for (const [k, v] of Object.entries(extra)) {
+      if (k !== "limit" && k !== "offset") params.set(k, v);
+    }
+    return params.toString();
+  }
+
   async function loadAuditLog() {
     loading = true;
     error = "";
     try {
-      const res = await fetch(`/api/tenant/audit-log?limit=${limit}&offset=${offset}`);
+      const qs = buildQueryParams();
+      const res = await fetch(`/api/tenant/audit-log?${qs}`);
       if (!res.ok) throw new Error(`Failed to load audit log (${res.status})`);
       const data: { entries?: AuditEntry[]; total?: number } = await res.json();
       entries = data.entries || [];
@@ -46,6 +67,19 @@
     } finally {
       loading = false;
     }
+  }
+
+  function applyFilters() {
+    offset = 0;
+    loadAuditLog();
+  }
+
+  function clearFilters() {
+    filterAction = "";
+    filterFrom = "";
+    filterTo = "";
+    offset = 0;
+    loadAuditLog();
   }
 
   function prevPage() {
@@ -60,11 +94,56 @@
     loadAuditLog();
   }
 
+  async function exportLog(format: "csv" | "json") {
+    exporting = true;
+    try {
+      const params = new URLSearchParams();
+      params.set("format", format);
+      if (filterAction) params.set("action", filterAction);
+      if (filterFrom) params.set("from", filterFrom);
+      if (filterTo) params.set("to", filterTo);
+      const res = await fetch(`/api/tenant/audit-log/export?${params}`);
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-log-export.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      error = e?.message || "Export failed";
+    } finally {
+      exporting = false;
+    }
+  }
+
+  $: hasActiveFilters = filterAction || filterFrom || filterTo;
+
   onMount(loadAuditLog);
 </script>
 
 <div class="space-y-6">
-  <h1 class="text-2xl font-semibold tracking-tight">Audit Log</h1>
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold tracking-tight">Audit Log</h1>
+    <div class="flex gap-2">
+      <Button variant="outline" size="sm" on:click={() => (showFilters = !showFilters)}>
+        <Filter class="h-4 w-4 mr-1" />
+        Filters
+        {#if hasActiveFilters}
+          <span class="ml-1 h-2 w-2 rounded-full bg-primary inline-block"></span>
+        {/if}
+      </Button>
+      <Button variant="outline" size="sm" on:click={() => exportLog("csv")} disabled={exporting}>
+        <Download class="h-4 w-4 mr-1" />
+        CSV
+      </Button>
+      <Button variant="outline" size="sm" on:click={() => exportLog("json")} disabled={exporting}>
+        <Download class="h-4 w-4 mr-1" />
+        JSON
+      </Button>
+    </div>
+  </div>
 
   <div class="flex gap-1 border-b">
     {#each settingsTabs as tab}
@@ -76,6 +155,50 @@
       >{tab.label}</a>
     {/each}
   </div>
+
+  {#if showFilters}
+    <Card>
+      <CardContent class="p-4">
+        <div class="flex flex-wrap items-end gap-4">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-muted-foreground" for="filter-action">Action</label>
+            <input
+              id="filter-action"
+              type="text"
+              bind:value={filterAction}
+              placeholder="e.g. user.invited"
+              class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-muted-foreground" for="filter-from">From</label>
+            <input
+              id="filter-from"
+              type="date"
+              bind:value={filterFrom}
+              class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-medium text-muted-foreground" for="filter-to">To</label>
+            <input
+              id="filter-to"
+              type="date"
+              bind:value={filterTo}
+              class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            />
+          </div>
+          <Button size="sm" on:click={applyFilters}>Apply</Button>
+          {#if hasActiveFilters}
+            <Button variant="ghost" size="sm" on:click={clearFilters}>
+              <X class="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          {/if}
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 
   {#if error}
     <Alert variant="destructive">

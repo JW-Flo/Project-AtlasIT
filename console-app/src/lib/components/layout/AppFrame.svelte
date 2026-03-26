@@ -99,7 +99,6 @@
     {
       title: "System",
       items: [
-        { href: "/console/audit-log", label: "Audit Log", icon: FileText },
         { href: "/console/platform-status", label: "Platform Status", icon: Activity },
         { href: "/console/settings", label: "Settings", icon: Settings },
       ],

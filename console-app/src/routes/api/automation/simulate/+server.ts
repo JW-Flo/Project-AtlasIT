@@ -5,9 +5,15 @@ import { simulateRule } from "@atlasit/shared";
 import type { AutomationEvent, TriggerType } from "@atlasit/shared";
 
 const VALID_TRIGGER_TYPES: Set<string> = new Set([
-  "user_joined_group", "user_left_group", "user_created", "user_deactivated",
-  "app_connected", "app_disconnected", "app_health_changed",
-  "schedule", "compliance_score_changed",
+  "user_joined_group",
+  "user_left_group",
+  "user_created",
+  "user_deactivated",
+  "app_connected",
+  "app_disconnected",
+  "app_health_changed",
+  "schedule",
+  "compliance_score_changed",
 ]);
 
 /**
@@ -20,8 +26,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
@@ -46,8 +51,15 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   let event: AutomationEvent;
 
   if (body.testEvent) {
-    if (!body.testEvent.type || typeof body.testEvent.type !== "string" || !VALID_TRIGGER_TYPES.has(body.testEvent.type)) {
-      return json({ error: `Invalid trigger type. Must be one of: ${[...VALID_TRIGGER_TYPES].join(", ")}` }, { status: 400 });
+    if (
+      !body.testEvent.type ||
+      typeof body.testEvent.type !== "string" ||
+      !VALID_TRIGGER_TYPES.has(body.testEvent.type)
+    ) {
+      return json(
+        { error: `Invalid trigger type. Must be one of: ${[...VALID_TRIGGER_TYPES].join(", ")}` },
+        { status: 400 },
+      );
     }
     if (!body.testEvent.payload || typeof body.testEvent.payload !== "object") {
       return json({ error: "testEvent.payload must be an object" }, { status: 400 });
@@ -71,6 +83,31 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   }
 
   const result = simulateRule(rule, event);
+
+  // Persist simulation for history
+  try {
+    await db
+      .prepare(
+        `INSERT INTO automation_simulations
+         (id, tenant_id, rule_id, rule_name, trigger_event, matched, actions_preview, condition_results, ran_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        tenantId,
+        body.ruleId,
+        rule.name,
+        JSON.stringify(event),
+        result.matched ? 1 : 0,
+        JSON.stringify(result.actions ?? []),
+        JSON.stringify(result.conditionResults ?? []),
+        user.email,
+      )
+      .run();
+  } catch {
+    // Non-fatal — simulation result still returned
+  }
+
   return json(result);
 };
 
@@ -83,9 +120,7 @@ async function generateSamplePayload(
     case "user_created":
     case "user_deactivated": {
       const user = await db
-        .prepare(
-          "SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1",
-        )
+        .prepare("SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1")
         .bind(tenantId)
         .first<{ id: string; email: string; display_name: string }>();
 
@@ -97,16 +132,12 @@ async function generateSamplePayload(
     case "user_joined_group":
     case "user_left_group": {
       const user = await db
-        .prepare(
-          "SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1",
-        )
+        .prepare("SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1")
         .bind(tenantId)
         .first<{ id: string; email: string; display_name: string }>();
 
       const group = await db
-        .prepare(
-          "SELECT id, name FROM directory_groups WHERE tenant_id = ? LIMIT 1",
-        )
+        .prepare("SELECT id, name FROM directory_groups WHERE tenant_id = ? LIMIT 1")
         .bind(tenantId)
         .first<{ id: string; name: string }>();
 
@@ -123,9 +154,7 @@ async function generateSamplePayload(
     case "app_disconnected":
     case "app_health_changed": {
       const app = await db
-        .prepare(
-          "SELECT app_id FROM app_health_checks WHERE tenant_id = ? LIMIT 1",
-        )
+        .prepare("SELECT app_id FROM app_health_checks WHERE tenant_id = ? LIMIT 1")
         .bind(tenantId)
         .first<{ app_id: string }>();
 
