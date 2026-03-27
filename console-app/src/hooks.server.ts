@@ -1,6 +1,6 @@
 import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
-import { activeProviders, type UserPrincipal } from "./lib/auth/provider";
+import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 
 /** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
@@ -70,90 +70,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   const devBypass = isDevAuthBypass(envRaw ?? {});
 
   // ------------------------------------------------------------------
-  // 1. Provider resolution (Cloudflare Access JWT)
+  // 1. Authentication is session-based (email/password via /api/auth/login)
   // ------------------------------------------------------------------
-  if (!devBypass && !sessionId) {
-    for (const p of activeProviders) {
-      try {
-        const resolved = await p.resolve({
-          headers: event.request.headers,
-          env: {
-            CF_ACCESS_AUD: envRaw?.["CF_ACCESS_AUD"],
-            CF_ACCESS_TEAM_DOMAIN: envRaw?.["CF_ACCESS_TEAM_DOMAIN"],
-            ALLOWED_ACCESS_EMAILS: envRaw?.["ALLOWED_ACCESS_EMAILS"],
-            SUPER_ADMIN_EMAIL: envRaw?.["SUPER_ADMIN_EMAIL"],
-          },
-          kv: envAny?.["KV_SESSIONS"] as KVNamespace | undefined,
-          db: envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined,
-        });
-        if (resolved) {
-          user = resolved;
-
-          // Enrich with tenantId from D1 if the provider didn't set one
-          if (!user.tenantId) {
-            try {
-              const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
-              if (db) {
-                // Try console_users first
-                const row = await db
-                  .prepare(
-                    "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
-                  )
-                  .bind(user.email)
-                  .first<{ tenant_id: string }>();
-                if (row?.tenant_id) {
-                  user.tenantId = row.tenant_id;
-                } else {
-                  // Single-tenant fallback: use first tenant from tenants table
-                  const fallback = await db
-                    .prepare("SELECT id FROM tenants LIMIT 1")
-                    .first<{ id: string }>();
-                  if (fallback?.id) {
-                    user.tenantId = fallback.id;
-                  }
-                }
-              }
-            } catch (e) {
-              console.error(
-                JSON.stringify({
-                  level: "error",
-                  event: "auth.tenant_lookup_failed",
-                  email: user.email,
-                  err: String(e),
-                }),
-              );
-            }
-          }
-
-          // Persist minimal session in KV so subsequent requests do not
-          // re-validate the JWT (certs fetch is cached by the runtime, but
-          // still best to avoid repeated signature verification).
-          const sid = crypto.randomUUID();
-          const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-          if (kv) {
-            await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
-            event.cookies.set("atlas_session", sid, {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: 604800,
-            });
-          }
-          break;
-        }
-      } catch (err) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            event: "auth.provider_error",
-            provider: p.name,
-            err: String(err),
-          }),
-        );
-      }
-    }
-  }
 
   // ------------------------------------------------------------------
   // 2. Session lookup — use cache cookie to avoid KV reads
@@ -271,34 +189,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = user;
 
   // ------------------------------------------------------------------
-  // 4. Structured auth decision log (no PII beyond email)
-  // ------------------------------------------------------------------
-  try {
-    const jwtHeader = event.request.headers.get("cf-access-jwt-assertion");
-    const accessEmail = event.request.headers.get(
-      "cf-access-authenticated-user-email",
-    );
-    if (jwtHeader || accessEmail) {
-      console.log(
-        JSON.stringify({
-          level: "info",
-          event: "auth.request",
-          accessEmail: accessEmail ?? null,
-          jwtPresent: !!jwtHeader,
-          authenticated: !!user,
-          provider: user?.provider ?? null,
-          path: event.url.pathname,
-          method: event.request.method,
-          ts: new Date().toISOString(),
-        }),
-      );
-    }
-  } catch {
-    // Logging must never block the request
-  }
-
-  // ------------------------------------------------------------------
-  // 5. Centralized RBAC enforcement for API routes
+  // 4. Centralized RBAC enforcement for API routes
   // ------------------------------------------------------------------
   if (event.url.pathname.startsWith("/api/")) {
     const requiredRoles = matchRoutePermission(
@@ -332,7 +223,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // ------------------------------------------------------------------
-  // 6. Route protection: /console/* requires authentication
+  // 5. Route protection: /console/* requires authentication
   // ------------------------------------------------------------------
   if (
     event.url.pathname.startsWith("/console") &&
