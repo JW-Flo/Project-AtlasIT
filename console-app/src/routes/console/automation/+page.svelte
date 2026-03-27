@@ -498,6 +498,8 @@
       });
       if (res.ok) {
         simResult = await res.json();
+        // Invalidate simulation history so it refreshes on next view
+        simHistory = [];
       } else {
         pushToast({ message: "Simulation failed", variant: "error" });
         showSimDialog = false;
@@ -533,6 +535,7 @@
       });
       if (res.ok) {
         simResult = await res.json();
+        simHistory = [];
       } else {
         pushToast({ message: "Simulation failed", variant: "error" });
       }
