@@ -313,6 +313,322 @@ app.post("/api/notify/approval", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Provision: invite user to Slack workspace
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{
+    tenantId: string;
+    userProfile: {
+      id?: string;
+      externalId?: string;
+      email?: string;
+      displayName?: string;
+      firstName?: string;
+      lastName?: string;
+      department?: string;
+      title?: string;
+      manager?: string;
+      phone?: string;
+      groups: string[];
+      appAccess: unknown[];
+      rawAttributes: Record<string, unknown>;
+    };
+    config?: Record<string, unknown>;
+  }>();
+
+  if (!body.tenantId) {
+    return c.json({ error: "tenantId is required", correlationId }, 400);
+  }
+  if (!body.userProfile?.email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const { tenantId, userProfile } = body;
+
+  // Step 1: get team_id
+  let teamId: string;
+  try {
+    const teamRes = await fetch("https://slack.com/api/team.info", {
+      headers: { Authorization: `Bearer ${c.env.SLACK_BOT_TOKEN}` },
+    });
+    const teamData = await teamRes.json<{ ok: boolean; team?: { id: string }; error?: string }>();
+    if (!teamData.ok || !teamData.team) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Failed to fetch Slack team info",
+          slackError: teamData.error ?? "unknown",
+        }),
+      );
+      return c.json({ error: "Failed to fetch Slack team info", correlationId }, 502);
+    }
+    teamId = teamData.team.id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Slack team.info request failed",
+        error: msg,
+      }),
+    );
+    return c.json({ error: "Slack team.info request failed", correlationId }, 502);
+  }
+
+  // Step 2: invite via admin.users.invite (Enterprise Grid)
+  const inviteParams = new URLSearchParams({
+    team_id: teamId,
+    email: userProfile.email,
+    ...(userProfile.firstName ? { first_name: userProfile.firstName } : {}),
+    ...(userProfile.lastName ? { last_name: userProfile.lastName } : {}),
+  });
+
+  try {
+    const inviteRes = await fetch("https://slack.com/api/admin.users.invite", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${c.env.SLACK_BOT_TOKEN}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: inviteParams.toString(),
+    });
+    const inviteData = await inviteRes.json<{ ok: boolean; error?: string }>();
+
+    if (!inviteData.ok) {
+      // admin.users.invite requires Enterprise Grid — fall back to pending_manual
+      if (
+        inviteData.error === "not_allowed" ||
+        inviteData.error === "not_supported" ||
+        inviteData.error === "missing_scope" ||
+        inviteData.error === "enterprise_only"
+      ) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            correlationId,
+            tenantId,
+            message: "admin.users.invite unavailable; returning pending_manual",
+            slackError: inviteData.error,
+            email: userProfile.email,
+          }),
+        );
+        return c.json({
+          status: "pending_manual",
+          correlationId,
+          tenantId,
+          email: userProfile.email,
+          reason: "admin.users.invite requires Enterprise Grid; manual invite required",
+        });
+      }
+
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Slack admin.users.invite failed",
+          slackError: inviteData.error,
+          email: userProfile.email,
+        }),
+      );
+      return c.json({ error: `Slack invite failed: ${inviteData.error}`, correlationId }, 502);
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "User provisioned in Slack",
+        email: userProfile.email,
+      }),
+    );
+
+    return c.json({
+      status: "provisioned",
+      correlationId,
+      tenantId,
+      email: userProfile.email,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Slack provision request failed",
+        error: msg,
+      }),
+    );
+    return c.json({ error: msg, correlationId }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Deprovision: deactivate user from Slack workspace
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{
+    tenantId: string;
+    userProfile: {
+      id?: string;
+      externalId?: string;
+      email?: string;
+      displayName?: string;
+      firstName?: string;
+      lastName?: string;
+      department?: string;
+      title?: string;
+      manager?: string;
+      phone?: string;
+      groups: string[];
+      appAccess: unknown[];
+      rawAttributes: Record<string, unknown>;
+    };
+    config?: Record<string, unknown>;
+  }>();
+
+  if (!body.tenantId) {
+    return c.json({ error: "tenantId is required", correlationId }, 400);
+  }
+  if (!body.userProfile?.email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const { tenantId, userProfile } = body;
+
+  // Step 1: look up user by email
+  let slackUserId: string;
+  let teamId: string;
+  try {
+    const lookupUrl = `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(userProfile.email)}`;
+    const lookupRes = await fetch(lookupUrl, {
+      headers: { Authorization: `Bearer ${c.env.SLACK_BOT_TOKEN}` },
+    });
+    const lookupData = await lookupRes.json<{
+      ok: boolean;
+      user?: { id: string; team_id: string };
+      error?: string;
+    }>();
+
+    if (!lookupData.ok || !lookupData.user) {
+      if (lookupData.error === "users_not_found") {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            correlationId,
+            tenantId,
+            message: "User not found in Slack; skipping deprovision",
+            email: userProfile.email,
+          }),
+        );
+        return c.json({
+          status: "deprovisioned",
+          correlationId,
+          tenantId,
+          email: userProfile.email,
+          reason: "User not found in Slack workspace",
+        });
+      }
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Slack users.lookupByEmail failed",
+          slackError: lookupData.error ?? "unknown",
+          email: userProfile.email,
+        }),
+      );
+      return c.json({ error: `Slack user lookup failed: ${lookupData.error}`, correlationId }, 502);
+    }
+
+    slackUserId = lookupData.user.id;
+    teamId = lookupData.user.team_id;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Slack users.lookupByEmail request failed",
+        error: msg,
+      }),
+    );
+    return c.json({ error: "Slack user lookup request failed", correlationId }, 502);
+  }
+
+  // Step 2: deactivate via admin.users.remove (Enterprise Grid)
+  const removeParams = new URLSearchParams({ team_id: teamId, user_id: slackUserId });
+
+  try {
+    const removeRes = await fetch("https://slack.com/api/admin.users.remove", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${c.env.SLACK_BOT_TOKEN}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: removeParams.toString(),
+    });
+    const removeData = await removeRes.json<{ ok: boolean; error?: string }>();
+
+    if (!removeData.ok) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Slack admin.users.remove failed",
+          slackError: removeData.error,
+          email: userProfile.email,
+          slackUserId,
+        }),
+      );
+      return c.json({ error: `Slack deprovision failed: ${removeData.error}`, correlationId }, 502);
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "User deprovisioned from Slack",
+        email: userProfile.email,
+        slackUserId,
+      }),
+    );
+
+    return c.json({
+      status: "deprovisioned",
+      correlationId,
+      tenantId,
+      email: userProfile.email,
+      slackUserId,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Slack deprovision request failed",
+        error: msg,
+      }),
+    );
+    return c.json({ error: msg, correlationId }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // OAuth2 authorization redirect
 // ---------------------------------------------------------------------------
 app.get("/auth/authorize", async (c) => {

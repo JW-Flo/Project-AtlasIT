@@ -142,58 +142,17 @@ app.post("/api/sync", async (c) => {
 
   const { tenantId } = body;
 
-  // Retrieve stored OAuth tokens
-  const tokenRow = await c.env.DB.prepare(
-    "SELECT access_token, refresh_token, expires_at FROM connector_tokens WHERE tenant_id = ? AND connector_slug = ?",
-  )
-    .bind(tenantId, "microsoft-365")
-    .first<{
-      access_token: string;
-      refresh_token: string | null;
-      expires_at: string;
-    }>();
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
 
-  if (!tokenRow) {
-    return c.json(
-      {
-        error: "No OAuth tokens found -- connect first via /auth/authorize",
-        correlationId,
-      },
-      401,
-    );
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
   }
 
-  let accessToken = tokenRow.access_token;
-
-  // Refresh if expired or about to expire
-  const expiresAt = new Date(tokenRow.expires_at).getTime();
-  if (Date.now() >= expiresAt - 60_000) {
-    if (!tokenRow.refresh_token) {
-      return c.json(
-        {
-          error: "Access token expired and no refresh token available",
-          correlationId,
-        },
-        401,
-      );
-    }
-
-    const refreshed = await refreshAccessToken(
-      c.env as unknown as Record<string, string>,
-      tokenRow.refresh_token,
-    );
-
-    accessToken = refreshed.access_token;
-    const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-
-    await c.env.DB.prepare(
-      `UPDATE connector_tokens
-       SET access_token = ?, expires_at = ?
-       WHERE tenant_id = ? AND connector_slug = ?`,
-    )
-      .bind(accessToken, newExpiresAt, tenantId, "microsoft-365")
-      .run();
-  }
+  const { accessToken } = resolved;
 
   // Update connection status to syncing
   await c.env.DB.prepare(
@@ -459,6 +418,320 @@ app.post("/webhooks/microsoft/notifications", async (c) => {
   );
 
   return c.json({ status: "received", correlationId });
+});
+
+// ---------------------------------------------------------------------------
+// Token resolution helper — retrieves and auto-refreshes the stored OAuth token
+// ---------------------------------------------------------------------------
+async function resolveAccessToken(
+  db: D1Database,
+  env: Record<string, string>,
+  tenantId: string,
+): Promise<{ accessToken: string } | { error: string; status: 401 }> {
+  const tokenRow = await db
+    .prepare(
+      "SELECT access_token, refresh_token, expires_at FROM connector_tokens WHERE tenant_id = ? AND connector_slug = ?",
+    )
+    .bind(tenantId, "microsoft-365")
+    .first<{ access_token: string; refresh_token: string | null; expires_at: string }>();
+
+  if (!tokenRow) {
+    return { error: "No OAuth tokens found -- connect first via /auth/authorize", status: 401 };
+  }
+
+  let accessToken = tokenRow.access_token;
+
+  const expiresAt = new Date(tokenRow.expires_at).getTime();
+  if (Date.now() >= expiresAt - 60_000) {
+    if (!tokenRow.refresh_token) {
+      return { error: "Access token expired and no refresh token available", status: 401 };
+    }
+
+    const refreshed = await refreshAccessToken(env, tokenRow.refresh_token);
+    accessToken = refreshed.access_token;
+    const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+
+    await db
+      .prepare(
+        `UPDATE connector_tokens
+         SET access_token = ?, expires_at = ?
+         WHERE tenant_id = ? AND connector_slug = ?`,
+      )
+      .bind(accessToken, newExpiresAt, tenantId, "microsoft-365")
+      .run();
+  }
+
+  return { accessToken };
+}
+
+// ---------------------------------------------------------------------------
+// Provision — enable user sign-in via Microsoft Graph
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  type ProvisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<ProvisionBody>().catch((): ProvisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  // Look up the user by email
+  const lookupRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (lookupRes.status === 404) {
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        email,
+        message: "User not found in Microsoft 365 tenant",
+      }),
+    );
+    return c.json({ error: "User not found in Microsoft 365 tenant", correlationId }, 404);
+  }
+
+  if (!lookupRes.ok) {
+    const errText = await lookupRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        message: "Graph API user lookup failed",
+        status: lookupRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Graph API user lookup failed", correlationId }, 502);
+  }
+
+  const user = await lookupRes.json<{ id: string; displayName?: string }>();
+
+  // Enable sign-in
+  const patchRes = await fetch(`https://graph.microsoft.com/v1.0/users/${user.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountEnabled: true }),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API enable account failed",
+        status: patchRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to enable user account", correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      email,
+      userId: user.id,
+      message: "User provisioned (sign-in enabled)",
+    }),
+  );
+
+  return c.json({
+    status: "provisioned",
+    correlationId,
+    userId: user.id,
+    email,
+    displayName: user.displayName ?? body.userProfile?.displayName ?? null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deprovision — block sign-in and revoke sessions via Microsoft Graph
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  type DeprovisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<DeprovisionBody>().catch((): DeprovisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  // Look up the user by email
+  const lookupRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (lookupRes.status === 404) {
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        email,
+        message: "User not found in Microsoft 365 tenant",
+      }),
+    );
+    return c.json({ error: "User not found in Microsoft 365 tenant", correlationId }, 404);
+  }
+
+  if (!lookupRes.ok) {
+    const errText = await lookupRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        message: "Graph API user lookup failed",
+        status: lookupRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Graph API user lookup failed", correlationId }, 502);
+  }
+
+  const user = await lookupRes.json<{ id: string; displayName?: string }>();
+
+  // Block sign-in
+  const patchRes = await fetch(`https://graph.microsoft.com/v1.0/users/${user.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountEnabled: false }),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API disable account failed",
+        status: patchRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to disable user account", correlationId }, 502);
+  }
+
+  // Revoke all active sessions
+  const revokeRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${user.id}/revokeSignInSessions`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (!revokeRes.ok) {
+    const errText = await revokeRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API revoke sessions failed",
+        status: revokeRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to revoke user sessions", correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      email,
+      userId: user.id,
+      message: "User deprovisioned (sign-in blocked, sessions revoked)",
+    }),
+  );
+
+  return c.json({
+    status: "deprovisioned",
+    correlationId,
+    userId: user.id,
+    email,
+    displayName: user.displayName ?? body.userProfile?.displayName ?? null,
+  });
 });
 
 // ---------------------------------------------------------------------------

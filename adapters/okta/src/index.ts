@@ -147,18 +147,26 @@ async function fetchOktaPolicies(
   }
 }
 
-function evaluateMfaPolicy(
-  policies: Array<Record<string, unknown>> | null,
-): AdapterEvidenceItem {
+function evaluateMfaPolicy(policies: Array<Record<string, unknown>> | null): AdapterEvidenceItem {
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"];
 
   if (policies === null) {
-    return { type: "mfa_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch MFA policies" } };
+    return {
+      type: "mfa_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch MFA policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "mfa_policy", controlRefs, status: "fail", details: { reason: "No active MFA enrollment policy found" } };
+    return {
+      type: "mfa_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active MFA enrollment policy found" },
+    };
   }
 
   const hasRequired = active.some((p) => {
@@ -169,7 +177,12 @@ function evaluateMfaPolicy(
     return Object.values(factors).some((f) => f?.enroll?.self === "REQUIRED");
   });
 
-  return { type: "mfa_policy", controlRefs, status: hasRequired ? "pass" : "fail", details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired } };
+  return {
+    type: "mfa_policy",
+    controlRefs,
+    status: hasRequired ? "pass" : "fail",
+    details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired },
+  };
 }
 
 function evaluatePasswordPolicy(
@@ -178,16 +191,28 @@ function evaluatePasswordPolicy(
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.3.1"];
 
   if (policies === null) {
-    return { type: "password_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch password policies" } };
+    return {
+      type: "password_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch password policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "password_policy", controlRefs, status: "fail", details: { reason: "No active password policy found" } };
+    return {
+      type: "password_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active password policy found" },
+    };
   }
 
   const complexity = (
-    (active[0].settings as Record<string, unknown> | undefined)?.password as Record<string, unknown> | undefined
+    (active[0].settings as Record<string, unknown> | undefined)?.password as
+      | Record<string, unknown>
+      | undefined
   )?.complexity as Record<string, number> | undefined;
 
   const minLength = complexity?.minLength ?? 0;
@@ -197,7 +222,12 @@ function evaluatePasswordPolicy(
 
   const pass = minLength >= 8 && (minLowerCase > 0 || minUpperCase > 0 || minNumber > 0);
 
-  return { type: "password_policy", controlRefs, status: pass ? "pass" : "fail", details: { minLength, minLowerCase, minUpperCase, minNumber } };
+  return {
+    type: "password_policy",
+    controlRefs,
+    status: pass ? "pass" : "fail",
+    details: { minLength, minLowerCase, minUpperCase, minNumber },
+  };
 }
 
 function evaluateSessionPolicy(
@@ -206,21 +236,286 @@ function evaluateSessionPolicy(
   const controlRefs = ["SOC2-CC6.7", "ISO-27001-A.9.4.2"];
 
   if (policies === null) {
-    return { type: "session_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch sign-on policies" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch sign-on policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "No active sign-on policy found" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active sign-on policy found" },
+    };
   }
 
-  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)?.maxSessionIdleMinutes;
+  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)
+    ?.maxSessionIdleMinutes;
   if (maxSessionIdleMinutes === undefined) {
-    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "maxSessionIdleMinutes not configured" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "maxSessionIdleMinutes not configured" },
+    };
   }
 
-  return { type: "session_policy", controlRefs, status: maxSessionIdleMinutes <= 60 ? "pass" : "fail", details: { maxSessionIdleMinutes } };
+  return {
+    type: "session_policy",
+    controlRefs,
+    status: maxSessionIdleMinutes <= 60 ? "pass" : "fail",
+    details: { maxSessionIdleMinutes },
+  };
 }
+
+interface UserProfile {
+  id?: string;
+  externalId?: string;
+  email?: string;
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
+  department?: string;
+  title?: string;
+  manager?: string;
+  phone?: string;
+  groups?: string[];
+  appAccess?: unknown[];
+  rawAttributes?: Record<string, unknown>;
+}
+
+interface JmlRequestBody {
+  tenantId?: string;
+  userProfile?: UserProfile;
+  config?: Record<string, unknown>;
+}
+
+app.post("/api/provision", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const body = await c.req.json<JmlRequestBody>().catch(() => null);
+  if (!body?.userProfile) {
+    return c.json({ error: "Missing userProfile in request body" }, 400);
+  }
+
+  const { userProfile } = body;
+  if (!userProfile.email) {
+    return c.json({ error: "userProfile.email is required" }, 400);
+  }
+
+  const correlationId = crypto.randomUUID();
+  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = c.env.OKTA_API_TOKEN;
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Provisioning Okta user",
+      email: userProfile.email,
+    }),
+  );
+
+  try {
+    const res = await fetch(`${orgUrl}/api/v1/users?activate=true`, {
+      method: "POST",
+      headers: {
+        Authorization: `SSWS ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        profile: {
+          firstName: userProfile.firstName ?? "",
+          lastName: userProfile.lastName ?? "",
+          email: userProfile.email,
+          login: userProfile.email,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Okta provision failed",
+          status: res.status,
+          body: errText,
+        }),
+      );
+      return c.json(
+        { error: `Okta API error: ${res.status}`, correlationId },
+        res.status >= 500 ? 502 : 400,
+      );
+    }
+
+    const created = (await res.json()) as Record<string, unknown>;
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "Okta user provisioned",
+        oktaUserId: created.id,
+        email: userProfile.email,
+      }),
+    );
+
+    return c.json({ status: "provisioned", correlationId, oktaUserId: created.id });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown provision error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Provision request failed",
+        error: errorMsg,
+      }),
+    );
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+app.post("/api/deprovision", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const body = await c.req.json<JmlRequestBody>().catch(() => null);
+  if (!body?.userProfile) {
+    return c.json({ error: "Missing userProfile in request body" }, 400);
+  }
+
+  const { userProfile } = body;
+  if (!userProfile.email) {
+    return c.json({ error: "userProfile.email is required" }, 400);
+  }
+
+  const correlationId = crypto.randomUUID();
+  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = c.env.OKTA_API_TOKEN;
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Deprovisioning Okta user",
+      email: userProfile.email,
+    }),
+  );
+
+  try {
+    const search = encodeURIComponent(`profile.email eq "${userProfile.email}"`);
+    const lookupRes = await fetch(`${orgUrl}/api/v1/users?search=${search}`, {
+      headers: {
+        Authorization: `SSWS ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!lookupRes.ok) {
+      const errText = await lookupRes.text();
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Okta user lookup failed",
+          status: lookupRes.status,
+          body: errText,
+        }),
+      );
+      return c.json(
+        { error: `Okta API error during lookup: ${lookupRes.status}`, correlationId },
+        502,
+      );
+    }
+
+    const users = (await lookupRes.json()) as Array<Record<string, unknown>>;
+    if (users.length === 0) {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          correlationId,
+          tenantId,
+          message: "Okta user not found, treating as already deprovisioned",
+          email: userProfile.email,
+        }),
+      );
+      return c.json({ status: "deprovisioned", correlationId, note: "user not found in Okta" });
+    }
+
+    const oktaUserId = users[0].id as string;
+
+    const deactivateRes = await fetch(`${orgUrl}/api/v1/users/${oktaUserId}/lifecycle/deactivate`, {
+      method: "POST",
+      headers: {
+        Authorization: `SSWS ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!deactivateRes.ok) {
+      const errText = await deactivateRes.text();
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Okta deactivation failed",
+          oktaUserId,
+          status: deactivateRes.status,
+          body: errText,
+        }),
+      );
+      return c.json(
+        { error: `Okta API error during deactivation: ${deactivateRes.status}`, correlationId },
+        deactivateRes.status >= 500 ? 502 : 400,
+      );
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "Okta user deprovisioned",
+        oktaUserId,
+        email: userProfile.email,
+      }),
+    );
+
+    return c.json({ status: "deprovisioned", correlationId, oktaUserId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown deprovision error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Deprovision request failed",
+        error: errorMsg,
+      }),
+    );
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
 
 app.post("/api/evidence", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID");
