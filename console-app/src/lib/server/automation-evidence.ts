@@ -18,11 +18,29 @@ export async function emitRuleComplianceEvidence(
 ): Promise<void> {
   const now = new Date().toISOString();
 
+  // Check which controls already have evidence for this rule to avoid duplicates
+  // (e.g. toggling a rule off/on shouldn't inflate scores)
+  const existing = await db
+    .prepare(
+      `SELECT framework, control_id FROM compliance_evidence
+       WHERE tenant_id = ? AND source = 'automation_rule' AND source_id = ?`,
+    )
+    .bind(tenantId, ruleId)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  const existingKeys = new Set(
+    (existing.results ?? []).map((r: any) => `${r.framework}:${r.control_id}`),
+  );
+
   for (const action of actions) {
     const controls = ACTION_COMPLIANCE_MAP[action.type];
     if (!controls?.length) continue;
 
     for (const ctrl of controls) {
+      const key = `${ctrl.framework}:${ctrl.controlId}`;
+      if (existingKeys.has(key)) continue;
+
       try {
         await db
           .prepare(
@@ -51,6 +69,7 @@ export async function emitRuleComplianceEvidence(
             now,
           )
           .run();
+        existingKeys.add(key);
       } catch {
         // Non-fatal
       }
