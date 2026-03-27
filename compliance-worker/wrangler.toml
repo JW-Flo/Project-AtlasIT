@@ -8,7 +8,7 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 [vars]
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
 ENVIRONMENT = "development"
-ADAPTER_URLS = '{"github":"https://atlasit-github.workers.dev","okta":"https://atlasit-okta.workers.dev","google_workspace":"https://atlasit-google-workspace.workers.dev","microsoft_365":"https://atlasit-microsoft-365.workers.dev","aws":"https://atlasit-aws.workers.dev","slack":"https://atlasit-slack.workers.dev"}'
+ADAPTER_URLS = '{"github":"https://atlasit-github.workers.dev","okta":"https://atlasit-okta.workers.dev","google_workspace":"https://atlasit-google-workspace.workers.dev","microsoft_365":"https://atlasit-microsoft-365.workers.dev","aws":"https://atlasit-aws.workers.dev","slack":"https://atlasit-slack.workers.dev","adp":"https://atlasit-adp.workers.dev","auth0":"https://atlasit-auth0.workers.dev","azure":"https://atlasit-azure.workers.dev","bamboohr":"https://atlasit-bamboohr.workers.dev","crowdstrike":"https://atlasit-crowdstrike.workers.dev","discord":"https://atlasit-discord.workers.dev","gcp":"https://atlasit-gcp.workers.dev","quickbooks":"https://atlasit-quickbooks.workers.dev","stripe":"https://atlasit-stripe.workers.dev","teams":"https://atlasit-teams.workers.dev","workday":"https://atlasit-workday.workers.dev","xero":"https://atlasit-xero.workers.dev","zoom":"https://atlasit-zoom.workers.dev"}'
 # WEBHOOK_SECRET — set via `wrangler secret put WEBHOOK_SECRET`
 
 [[d1_databases]]
@@ -56,7 +56,7 @@ routes = [
 [env.production.vars]
 ENVIRONMENT = "production"
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
-ADAPTER_URLS = '{"github":"https://atlasit-github.atlasit.pro","okta":"https://atlasit-okta.atlasit.pro","google_workspace":"https://atlasit-google-workspace.atlasit.pro","microsoft_365":"https://atlasit-microsoft-365.atlasit.pro","aws":"https://atlasit-aws.atlasit.pro","slack":"https://atlasit-slack.atlasit.pro"}'
+ADAPTER_URLS = '{"github":"https://atlasit-github.atlasit.pro","okta":"https://atlasit-okta.atlasit.pro","google_workspace":"https://atlasit-google-workspace.atlasit.pro","microsoft_365":"https://atlasit-microsoft-365.atlasit.pro","aws":"https://atlasit-aws.atlasit.pro","slack":"https://atlasit-slack.atlasit.pro","adp":"https://atlasit-adp.atlasit.pro","auth0":"https://atlasit-auth0.atlasit.pro","azure":"https://atlasit-azure.atlasit.pro","bamboohr":"https://atlasit-bamboohr.atlasit.pro","crowdstrike":"https://atlasit-crowdstrike.atlasit.pro","discord":"https://atlasit-discord.atlasit.pro","gcp":"https://atlasit-gcp.atlasit.pro","quickbooks":"https://atlasit-quickbooks.atlasit.pro","stripe":"https://atlasit-stripe.atlasit.pro","teams":"https://atlasit-teams.atlasit.pro","workday":"https://atlasit-workday.atlasit.pro","xero":"https://atlasit-xero.atlasit.pro","zoom":"https://atlasit-zoom.atlasit.pro"}'
 
 [[env.production.d1_databases]]
 binding = "D1_COMPLIANCE"

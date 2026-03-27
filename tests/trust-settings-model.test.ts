@@ -10,6 +10,7 @@ describe("trust settings model", () => {
     expect(normalizeTrustSettings(undefined)).toEqual({
       isPublic: false,
       visibleFrameworks: [],
+      controlVisibility: {},
     });
   });
 
@@ -22,6 +23,7 @@ describe("trust settings model", () => {
     expect(settings).toEqual({
       isPublic: true,
       visibleFrameworks: ["SOC 2"],
+      controlVisibility: {},
     });
   });
 

@@ -9,6 +9,7 @@ const mockEnv: any = {};
 
 beforeEach(() => {
   __resetAiStateForTests();
+  (globalThis as any).TEST_MCP_APPROVE_ALL = true;
 });
 
 async function call(method: string, path: string, body?: any) {

@@ -339,6 +339,296 @@ async function updateConnectionStatus(
 }
 
 // ---------------------------------------------------------------------------
+// IAM provisioning helpers
+// ---------------------------------------------------------------------------
+
+function deriveIamUsername(email: string): string {
+  const local = email.split("@")[0];
+  // IAM usernames: max 64 chars, allowed chars [a-zA-Z0-9+=,.@_-]
+  return local.replace(/[^a-zA-Z0-9+=,.@_-]/g, "_").slice(0, 64);
+}
+
+async function iamPost(
+  params: Record<string, string>,
+  config: AwsConfig,
+): Promise<{ ok: boolean; status: number; xml: string }> {
+  const body = new URLSearchParams({ ...params, Version: "2010-05-08" }).toString();
+  const url = "https://iam.amazonaws.com/";
+  const signedHeaders = await signAwsRequest(
+    "POST",
+    url,
+    "iam",
+    config.region,
+    config.accessKeyId,
+    config.secretAccessKey,
+    body,
+  );
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...signedHeaders, "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const xml = await res.text();
+  return { ok: res.ok, status: res.status, xml };
+}
+
+function xmlErrorCode(xml: string): string | null {
+  const m = xml.match(/<Code>([^<]+)<\/Code>/);
+  return m ? m[1] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Provision — create IAM user
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  type ProvisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<ProvisionBody>().catch((): ProvisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
+  }
+
+  const username = deriveIamUsername(email);
+  const config = buildAwsConfig(c.env);
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Provisioning IAM user",
+      username,
+    }),
+  );
+
+  // Step 1: CreateUser
+  const createRes = await iamPost(
+    { Action: "CreateUser", UserName: username, Path: "/atlasit/" },
+    config,
+  );
+
+  if (!createRes.ok) {
+    const code = xmlErrorCode(createRes.xml);
+    if (code !== "EntityAlreadyExists") {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "CreateUser failed",
+          username,
+          awsErrorCode: code,
+        }),
+      );
+      return c.json({ error: `AWS CreateUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+    }
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "IAM user already exists, continuing with tag update",
+        username,
+      }),
+    );
+  }
+
+  // Step 2: TagUser
+  const tagRes = await iamPost(
+    {
+      Action: "TagUser",
+      UserName: username,
+      "Tags.member.1.Key": "email",
+      "Tags.member.1.Value": email,
+      "Tags.member.2.Key": "tenant_id",
+      "Tags.member.2.Value": tenantId,
+    },
+    config,
+  );
+
+  if (!tagRes.ok) {
+    const code = xmlErrorCode(tagRes.xml);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "TagUser failed",
+        username,
+        awsErrorCode: code,
+      }),
+    );
+    return c.json({ error: `AWS TagUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "IAM user provisioned",
+      username,
+    }),
+  );
+
+  return c.json({
+    status: "provisioned",
+    correlationId,
+    username,
+    iamPath: "/atlasit/",
+    email,
+    tenantId,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deprovision — delete IAM user and clean up dependencies
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  type DeprovisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<DeprovisionBody>().catch((): DeprovisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
+  }
+
+  const username = deriveIamUsername(email);
+  const config = buildAwsConfig(c.env);
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Deprovisioning IAM user",
+      username,
+    }),
+  );
+
+  // Step 1: Delete access keys
+  const listKeysRes = await iamPost({ Action: "ListAccessKeys", UserName: username }, config);
+  if (listKeysRes.ok) {
+    const keyIds = [...listKeysRes.xml.matchAll(/<AccessKeyId>([^<]+)<\/AccessKeyId>/g)].map(
+      (m) => m[1],
+    );
+    for (const keyId of keyIds) {
+      await iamPost({ Action: "DeleteAccessKey", UserName: username, AccessKeyId: keyId }, config);
+    }
+  }
+
+  // Step 2: Detach managed policies
+  const listPoliciesRes = await iamPost(
+    { Action: "ListAttachedUserPolicies", UserName: username },
+    config,
+  );
+  if (listPoliciesRes.ok) {
+    const policyArns = [...listPoliciesRes.xml.matchAll(/<PolicyArn>([^<]+)<\/PolicyArn>/g)].map(
+      (m) => m[1],
+    );
+    for (const arn of policyArns) {
+      await iamPost({ Action: "DetachUserPolicy", UserName: username, PolicyArn: arn }, config);
+    }
+  }
+
+  // Step 3: Remove from groups
+  const listGroupsRes = await iamPost({ Action: "ListGroupsForUser", UserName: username }, config);
+  if (listGroupsRes.ok) {
+    const groupNames = [...listGroupsRes.xml.matchAll(/<GroupName>([^<]+)<\/GroupName>/g)].map(
+      (m) => m[1],
+    );
+    for (const group of groupNames) {
+      await iamPost(
+        { Action: "RemoveUserFromGroup", UserName: username, GroupName: group },
+        config,
+      );
+    }
+  }
+
+  // Step 4: Delete login profile (ignore NoSuchEntity / 404)
+  const deleteProfileRes = await iamPost(
+    { Action: "DeleteLoginProfile", UserName: username },
+    config,
+  );
+  if (!deleteProfileRes.ok && xmlErrorCode(deleteProfileRes.xml) !== "NoSuchEntity") {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "DeleteLoginProfile returned unexpected error",
+        username,
+        awsErrorCode: xmlErrorCode(deleteProfileRes.xml),
+      }),
+    );
+  }
+
+  // Step 5: Delete user
+  const deleteRes = await iamPost({ Action: "DeleteUser", UserName: username }, config);
+  if (!deleteRes.ok) {
+    const code = xmlErrorCode(deleteRes.xml);
+    if (code === "NoSuchEntity") {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          correlationId,
+          tenantId,
+          message: "IAM user not found, treating as already deprovisioned",
+          username,
+        }),
+      );
+      return c.json({ status: "deprovisioned", correlationId, username, tenantId });
+    }
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "DeleteUser failed",
+        username,
+        awsErrorCode: code,
+      }),
+    );
+    return c.json({ error: `AWS DeleteUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "IAM user deprovisioned",
+      username,
+    }),
+  );
+
+  return c.json({ status: "deprovisioned", correlationId, username, tenantId });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {
