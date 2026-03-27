@@ -32,6 +32,7 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       "X-Tenant-ID": TENANT_ID,
+      Authorization: "Bearer test-token",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -46,7 +47,7 @@ describe("POST /api/provision", () => {
   it("returns 400 when X-Tenant-ID header is missing", async () => {
     const req = new Request("https://okta-adapter.test/api/provision", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
       body: JSON.stringify({ userProfile: { email: USER_EMAIL } }),
     });
     const res = await app.fetch(req, BASE_ENV);
@@ -126,14 +127,38 @@ describe("POST /api/provision", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe("SSWS test-ssws-token");
   });
 
-  it("returns error when Okta API returns non-ok status", async () => {
+  it("returns provisioned (idempotent) when Okta returns E0000001 (user already exists)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: false,
         status: 400,
         json: async () => ({ errorCode: "E0000001" }),
-        text: async () => "Bad Request",
+        text: async () => "E0000001",
+      }),
+    );
+
+    const res = await app.fetch(
+      makeRequest("/api/provision", {
+        userProfile: { email: USER_EMAIL },
+      }),
+      BASE_ENV,
+    );
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { status: string; note: string };
+    expect(data.status).toBe("provisioned");
+    expect(data.note).toMatch(/already exists/i);
+  });
+
+  it("returns error when Okta API returns non-ok status (non-E0000001)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({ errorCode: "E0000006" }),
+        text: async () => "Bad Request E0000006",
       }),
     );
 
@@ -154,7 +179,7 @@ describe("POST /api/deprovision", () => {
   it("returns 400 when X-Tenant-ID header is missing", async () => {
     const req = new Request("https://okta-adapter.test/api/deprovision", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
       body: JSON.stringify({ userProfile: { email: USER_EMAIL } }),
     });
     const res = await app.fetch(req, BASE_ENV);

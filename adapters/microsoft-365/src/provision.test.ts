@@ -425,7 +425,7 @@ describe("POST /api/deprovision — microsoft-365", () => {
     expect(revokeCall[1].method).toBe("POST");
   });
 
-  it("returns 404 when user is not found in Microsoft 365 tenant", async () => {
+  it("returns 200 deprovisioned when user is not found in Microsoft 365 tenant (idempotent)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -446,9 +446,10 @@ describe("POST /api/deprovision — microsoft-365", () => {
     });
 
     const res = await app.fetch(req, makeEnv());
-    expect(res.status).toBe(404);
-    const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/not found/i);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string; note: string };
+    expect(body.status).toBe("deprovisioned");
+    expect(body.note).toMatch(/not found/i);
   });
 
   it("returns 502 when Graph API user lookup returns a non-404 error", async () => {

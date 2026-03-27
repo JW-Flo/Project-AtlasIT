@@ -181,7 +181,7 @@ export function registerBuiltinHandlers(): void {
   registerHandler(
     "*.provision",
     async (ctx) => {
-      const appId = ctx.stepId.replace(/^(provision_|provision_new_)/, "").replace(/_.*$/, "");
+      const appId = ctx.stepId.replace(/^(provision_|provision_new_)/, "");
       const adapterUrl = ctx.adapterUrls[appId];
       if (!adapterUrl) throw new Error(`No adapter URL for "${appId}"`);
 
@@ -207,9 +207,7 @@ export function registerBuiltinHandlers(): void {
   registerHandler(
     "*.deprovision",
     async (ctx) => {
-      const appId = ctx.stepId
-        .replace(/^(revoke_|revoke_old_|deprovision_)/, "")
-        .replace(/_.*$/, "");
+      const appId = ctx.stepId.replace(/^(revoke_|revoke_old_|deprovision_)/, "");
       const adapterUrl = ctx.adapterUrls[appId];
       if (!adapterUrl) throw new Error(`No adapter URL for "${appId}"`);
 

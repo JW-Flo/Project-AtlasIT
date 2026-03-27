@@ -110,19 +110,7 @@ describe("POST /api/provision", () => {
   it("invites user to GitHub org and returns success", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((url: string) => {
-        if (typeof url === "string" && url.includes("search/users")) {
-          return Promise.resolve(
-            mockResponse(200, { total_count: 1, items: [{ login: GITHUB_USERNAME }] }),
-          );
-        }
-        if (typeof url === "string" && url.includes(`/memberships/${GITHUB_USERNAME}`)) {
-          return Promise.resolve(
-            mockResponse(200, { state: "active", role: "member" }),
-          );
-        }
-        return Promise.resolve(mockResponse(404));
-      }),
+      vi.fn().mockResolvedValue(mockResponse(201, { id: 123, email: USER_EMAIL })),
     );
 
     const res = await app.fetch(
@@ -139,15 +127,11 @@ describe("POST /api/provision", () => {
     expect(data.status).toBe("provisioned");
   });
 
-  it("returns 404 when no GitHub account matches the email", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        mockResponse(200, { total_count: 0, items: [] }),
-      ),
-    );
+  it("passes the email to the GitHub invitations API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse(201, { id: 123 }));
+    vi.stubGlobal("fetch", fetchMock);
 
-    const res = await app.fetch(
+    await app.fetch(
       makeProvisionRequest({
         tenantId: TENANT_ID,
         userProfile: { email: USER_EMAIL },
@@ -155,22 +139,17 @@ describe("POST /api/provision", () => {
       { DB: makeDb(), ...BASE_ENV },
     );
 
-    expect(res.status).toBe(404);
-    const data = (await res.json()) as { error: string };
-    expect(data.error).toMatch(/No GitHub account/i);
+    expect(fetchMock).toHaveBeenCalled();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(`/orgs/${ORG_NAME}/invitations`);
+    const reqBody = JSON.parse(init.body as string) as { email: string };
+    expect(reqBody.email).toBe(USER_EMAIL);
   });
 
-  it("returns 502 when GitHub invite API fails", async () => {
+  it("returns error when GitHub invite API fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((url: string) => {
-        if (typeof url === "string" && url.includes("search/users")) {
-          return Promise.resolve(
-            mockResponse(200, { total_count: 1, items: [{ login: GITHUB_USERNAME }] }),
-          );
-        }
-        return Promise.resolve(mockResponse(500, { message: "Internal Server Error" }));
-      }),
+      vi.fn().mockResolvedValue(mockResponse(500, { message: "Internal Server Error" })),
     );
 
     const res = await app.fetch(
@@ -181,7 +160,26 @@ describe("POST /api/provision", () => {
       { DB: makeDb(), ...BASE_ENV },
     );
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(500);
+    const data = (await res.json()) as { error: string };
+    expect(data.error).toBeTruthy();
+  });
+
+  it("returns 422 when GitHub returns 422 (e.g. already invited)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(mockResponse(422, { message: "Unprocessable Entity" })),
+    );
+
+    const res = await app.fetch(
+      makeProvisionRequest({
+        tenantId: TENANT_ID,
+        userProfile: { email: USER_EMAIL },
+      }),
+      { DB: makeDb(), ...BASE_ENV },
+    );
+
+    expect(res.status).toBe(422);
     const data = (await res.json()) as { error: string };
     expect(data.error).toBeTruthy();
   });
@@ -244,7 +242,7 @@ describe("POST /api/deprovision", () => {
     expect(data.status).toBe("deprovisioned");
   });
 
-  it("returns 404 when GitHub user not found by email", async () => {
+  it("returns 200 success when GitHub user not found by email (idempotent)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -260,9 +258,11 @@ describe("POST /api/deprovision", () => {
       { DB: makeDb(), ...BASE_ENV },
     );
 
-    expect(res.status).toBe(404);
-    const data = (await res.json()) as { error: string };
-    expect(data.error).toMatch(/No GitHub account/i);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { success: boolean; status: string; note: string };
+    expect(data.success).toBe(true);
+    expect(data.status).toBe("deprovisioned");
+    expect(data.note).toMatch(/No GitHub account|already removed/i);
   });
 
   it("treats 404 on member removal as success (already removed)", async () => {

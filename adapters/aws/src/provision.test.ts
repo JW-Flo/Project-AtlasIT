@@ -171,23 +171,6 @@ describe("POST /api/provision — aws", () => {
     expect(body.error).toMatch(/X-Tenant-ID/);
   });
 
-  it("returns 400 when tenantId is missing from the request body", async () => {
-    const req = new Request("http://localhost/api/provision", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": "tenant-1",
-        Authorization: "Bearer test",
-      },
-      body: JSON.stringify({ userProfile: { email: "alice@example.com" } }),
-    });
-
-    const res = await app.fetch(req, makeEnv());
-    expect(res.status).toBe(400);
-    const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/tenantId/);
-  });
-
   it("returns 400 when userProfile.email is missing from the request body", async () => {
     const req = new Request("http://localhost/api/provision", {
       method: "POST",
@@ -406,23 +389,6 @@ describe("POST /api/deprovision — aws", () => {
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
     expect(body.error).toMatch(/X-Tenant-ID/);
-  });
-
-  it("returns 400 when tenantId is missing from the request body", async () => {
-    const req = new Request("http://localhost/api/deprovision", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": "tenant-1",
-        Authorization: "Bearer test",
-      },
-      body: JSON.stringify({ userProfile: { email: "alice@example.com" } }),
-    });
-
-    const res = await app.fetch(req, makeEnv());
-    expect(res.status).toBe(400);
-    const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/tenantId/);
   });
 
   it("returns 400 when userProfile.email is missing from the request body", async () => {

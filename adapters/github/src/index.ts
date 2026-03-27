@@ -743,43 +743,24 @@ app.post("/api/evidence", async (c) => {
   return c.json({ items });
 });
 
-// ── JML provisioning ─────────────────────────────────────────────────────────
-// POST /api/provision — invite a user to the GitHub org by email
+// ── User provisioning ────────────────────────────────────────────────────────
+// POST /api/provision — invite a user to the GitHub org
 app.post("/api/provision", async (c) => {
   const correlationId = c.get("correlationId");
-  const headerTenantId = c.req.header("X-Tenant-ID");
-
-  type UserProfile = {
-    id?: string;
-    externalId?: string;
-    email?: string;
-    displayName?: string;
-    firstName?: string;
-    lastName?: string;
-    department?: string;
-    title?: string;
-    manager?: string;
-    phone?: string;
-    groups: string[];
-    appAccess: unknown[];
-    rawAttributes: Record<string, unknown>;
-  };
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
 
   const body = await c.req
-    .json<{ tenantId: string; userProfile: UserProfile; config?: Record<string, unknown> }>()
-    .catch(() => null);
+    .json<{ userProfile?: { email?: string; login?: string } }>()
+    .catch(() => ({})) as { userProfile?: { email?: string; login?: string } };
 
-  const tenantId = headerTenantId ?? body?.tenantId;
-  if (!tenantId) {
-    return c.json({ error: "tenantId is required", correlationId }, 400);
-  }
-  if (!body?.userProfile?.email) {
+  const email = body?.userProfile?.email;
+  if (!email) {
     return c.json({ error: "userProfile.email is required", correlationId }, 400);
   }
 
-  const { email } = body.userProfile;
-
-  // Load OAuth token
   const tokenRow = await c.env.DB.prepare(
     `SELECT access_token FROM connector_tokens
      WHERE tenant_id = ?1 AND connector_slug = 'github'
@@ -789,10 +770,9 @@ app.post("/api/provision", async (c) => {
     .first<{ access_token: string }>();
 
   if (!tokenRow) {
-    return c.json({ error: "No GitHub token for tenant. Authorize first.", correlationId }, 400);
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
   }
 
-  // Load org config
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
      WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
@@ -801,151 +781,78 @@ app.post("/api/provision", async (c) => {
     .first<{ config: string }>();
 
   if (!configRow) {
-    return c.json(
-      { error: "No connector config found. Configure orgName first.", correlationId },
-      400,
-    );
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
   }
 
   const config = JSON.parse(configRow.config) as { orgName: string };
-  const { orgName } = config;
-  const accessToken = tokenRow.access_token;
 
-  const ghHeaders = {
-    Authorization: `token ${accessToken}`,
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "Content-Type": "application/json",
-    "User-Agent": "AtlasIT-Adapter/1.0",
-  };
-
-  // Look up GitHub username by email
-  const searchRes = await fetch(
-    `https://api.github.com/search/users?q=${encodeURIComponent(email + "+in:email")}`,
-    { headers: ghHeaders },
-  );
-
-  if (!searchRes.ok) {
-    const errText = await searchRes.text();
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        tenantId,
-        message: "GitHub user search failed",
-        email,
-        status: searchRes.status,
-        body: errText,
-      }),
-    );
-    return c.json({ error: "GitHub user search failed", correlationId }, 502);
-  }
-
-  const searchData = (await searchRes.json()) as {
-    total_count: number;
-    items: Array<{ login: string }>;
-  };
-
-  if (searchData.total_count === 0 || searchData.items.length === 0) {
-    return c.json(
+  try {
+    const inviteRes = await fetch(
+      `https://api.github.com/orgs/${config.orgName}/invitations`,
       {
-        error: `No GitHub account found for email ${email}. User must have a GitHub account with this email address.`,
-        correlationId,
+        method: "POST",
+        headers: {
+          Authorization: `token ${tokenRow.access_token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
       },
-      404,
     );
-  }
 
-  const username = searchData.items[0].login;
+    if (!inviteRes.ok) {
+      const errText = await inviteRes.text().catch(() => "Unknown error");
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "GitHub invite failed",
+          status: inviteRes.status,
+          error: errText,
+        }),
+      );
+      return c.json(
+        { error: `GitHub API error: ${errText}`, correlationId },
+        (inviteRes.status >= 400 && inviteRes.status < 600 ? inviteRes.status : 500) as 400 | 401 | 403 | 422 | 500,
+      );
+    }
 
-  // Invite user to org
-  const inviteRes = await fetch(
-    `https://api.github.com/orgs/${encodeURIComponent(orgName)}/memberships/${encodeURIComponent(username)}`,
-    {
-      method: "PUT",
-      headers: ghHeaders,
-      body: JSON.stringify({ role: "member" }),
-    },
-  );
-
-  if (!inviteRes.ok) {
-    const errText = await inviteRes.text();
+    return c.json({ success: true, status: "provisioned", correlationId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
         correlationId,
         tenantId,
-        message: "GitHub org invite failed",
-        username,
-        org: orgName,
-        status: inviteRes.status,
-        body: errText,
+        message: "GitHub API request failed",
+        error: errorMsg,
       }),
     );
-    return c.json({ error: "Failed to invite user to GitHub org", correlationId }, 502);
+    return c.json({ error: errorMsg, correlationId }, 500);
   }
-
-  const inviteData = (await inviteRes.json()) as { state: string; role: string };
-
-  console.log(
-    JSON.stringify({
-      level: "info",
-      correlationId,
-      tenantId,
-      message: "User provisioned to GitHub org",
-      username,
-      org: orgName,
-      email,
-      state: inviteData.state,
-    }),
-  );
-
-  return c.json({
-    success: true,
-    status: "provisioned",
-    correlationId,
-    username,
-    org: orgName,
-    membershipState: inviteData.state,
-  });
 });
 
-// POST /api/deprovision — remove a user from the GitHub org by email
+// ── User deprovisioning ──────────────────────────────────────────────────────
+// POST /api/deprovision — remove a user from the GitHub org
 app.post("/api/deprovision", async (c) => {
   const correlationId = c.get("correlationId");
-  const headerTenantId = c.req.header("X-Tenant-ID");
-
-  type UserProfile = {
-    id?: string;
-    externalId?: string;
-    email?: string;
-    displayName?: string;
-    firstName?: string;
-    lastName?: string;
-    department?: string;
-    title?: string;
-    manager?: string;
-    phone?: string;
-    groups: string[];
-    appAccess: unknown[];
-    rawAttributes: Record<string, unknown>;
-  };
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
 
   const body = await c.req
-    .json<{ tenantId: string; userProfile: UserProfile; config?: Record<string, unknown> }>()
-    .catch(() => null);
+    .json<{ userProfile?: { email?: string; login?: string } }>()
+    .catch(() => ({})) as { userProfile?: { email?: string; login?: string } };
 
-  const tenantId = headerTenantId ?? body?.tenantId;
-  if (!tenantId) {
-    return c.json({ error: "tenantId is required", correlationId }, 400);
-  }
-  if (!body?.userProfile?.email) {
+  const email = body?.userProfile?.email;
+  if (!email) {
     return c.json({ error: "userProfile.email is required", correlationId }, 400);
   }
 
-  const { email } = body.userProfile;
-
-  // Load OAuth token
   const tokenRow = await c.env.DB.prepare(
     `SELECT access_token FROM connector_tokens
      WHERE tenant_id = ?1 AND connector_slug = 'github'
@@ -955,10 +862,9 @@ app.post("/api/deprovision", async (c) => {
     .first<{ access_token: string }>();
 
   if (!tokenRow) {
-    return c.json({ error: "No GitHub token for tenant. Authorize first.", correlationId }, 400);
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
   }
 
-  // Load org config
   const configRow = await c.env.DB.prepare(
     `SELECT config FROM connector_configs
      WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
@@ -967,110 +873,81 @@ app.post("/api/deprovision", async (c) => {
     .first<{ config: string }>();
 
   if (!configRow) {
-    return c.json(
-      { error: "No connector config found. Configure orgName first.", correlationId },
-      400,
-    );
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
   }
 
   const config = JSON.parse(configRow.config) as { orgName: string };
-  const { orgName } = config;
-  const accessToken = tokenRow.access_token;
 
-  const ghHeaders = {
-    Authorization: `token ${accessToken}`,
+  const apiHeaders = {
+    Authorization: `token ${tokenRow.access_token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "Content-Type": "application/json",
-    "User-Agent": "AtlasIT-Adapter/1.0",
   };
 
-  // Look up GitHub username by email
-  const searchRes = await fetch(
-    `https://api.github.com/search/users?q=${encodeURIComponent(email + "+in:email")}`,
-    { headers: ghHeaders },
-  );
+  try {
+    // Search for GitHub account by email
+    const searchRes = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`,
+      { headers: apiHeaders },
+    );
 
-  if (!searchRes.ok) {
-    const errText = await searchRes.text();
+    if (!searchRes.ok) {
+      const errText = await searchRes.text().catch(() => "Unknown error");
+      return c.json({ error: `GitHub search failed: ${errText}`, correlationId }, 502);
+    }
+
+    const searchData = (await searchRes.json()) as { total_count: number; items: Array<{ login: string }> };
+
+    if (searchData.total_count === 0 || searchData.items.length === 0) {
+      return c.json({
+        success: true,
+        status: "deprovisioned",
+        correlationId,
+        note: "No GitHub account found for email; treating as already removed",
+      });
+    }
+
+    const login = searchData.items[0].login;
+
+    // Remove user from org
+    const removeRes = await fetch(
+      `https://api.github.com/orgs/${config.orgName}/members/${login}`,
+      { method: "DELETE", headers: apiHeaders },
+    );
+
+    // 404 means user is not an org member — already removed, treat as success
+    if (!removeRes.ok && removeRes.status !== 404) {
+      const errText = await removeRes.text().catch(() => "Unknown error");
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "GitHub remove member failed",
+          status: removeRes.status,
+          error: errText,
+        }),
+      );
+      return c.json(
+        { error: `GitHub API error: ${errText}`, correlationId },
+        (removeRes.status >= 400 && removeRes.status < 600 ? removeRes.status : 500) as 400 | 401 | 403 | 500,
+      );
+    }
+
+    return c.json({ success: true, status: "deprovisioned", correlationId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
         correlationId,
         tenantId,
-        message: "GitHub user search failed during deprovision",
-        email,
-        status: searchRes.status,
-        body: errText,
+        message: "GitHub API request failed",
+        error: errorMsg,
       }),
     );
-    return c.json({ error: "GitHub user search failed", correlationId }, 502);
+    return c.json({ error: errorMsg, correlationId }, 500);
   }
-
-  const searchData = (await searchRes.json()) as {
-    total_count: number;
-    items: Array<{ login: string }>;
-  };
-
-  if (searchData.total_count === 0 || searchData.items.length === 0) {
-    return c.json(
-      {
-        error: `No GitHub account found for email ${email}. Cannot deprovision unknown user.`,
-        correlationId,
-      },
-      404,
-    );
-  }
-
-  const username = searchData.items[0].login;
-
-  // Remove user from org
-  const removeRes = await fetch(
-    `https://api.github.com/orgs/${encodeURIComponent(orgName)}/members/${encodeURIComponent(username)}`,
-    {
-      method: "DELETE",
-      headers: ghHeaders,
-    },
-  );
-
-  // 204 = removed, 404 = not a member (treat as success — already gone)
-  if (!removeRes.ok && removeRes.status !== 404) {
-    const errText = await removeRes.text();
-    console.error(
-      JSON.stringify({
-        level: "error",
-        correlationId,
-        tenantId,
-        message: "GitHub org member removal failed",
-        username,
-        org: orgName,
-        status: removeRes.status,
-        body: errText,
-      }),
-    );
-    return c.json({ error: "Failed to remove user from GitHub org", correlationId }, 502);
-  }
-
-  console.log(
-    JSON.stringify({
-      level: "info",
-      correlationId,
-      tenantId,
-      message: "User deprovisioned from GitHub org",
-      username,
-      org: orgName,
-      email,
-      alreadyRemoved: removeRes.status === 404,
-    }),
-  );
-
-  return c.json({
-    success: true,
-    status: "deprovisioned",
-    correlationId,
-    username,
-    org: orgName,
-  });
 });
 
 export default app;

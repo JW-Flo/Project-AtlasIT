@@ -142,17 +142,58 @@ app.post("/api/sync", async (c) => {
 
   const { tenantId } = body;
 
-  const resolved = await resolveAccessToken(
-    c.env.DB,
-    c.env as unknown as Record<string, string>,
-    tenantId,
-  );
+  // Retrieve stored OAuth tokens
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token, refresh_token, expires_at FROM connector_tokens WHERE tenant_id = ? AND connector_slug = ?",
+  )
+    .bind(tenantId, "microsoft-365")
+    .first<{
+      access_token: string;
+      refresh_token: string | null;
+      expires_at: string;
+    }>();
 
-  if ("error" in resolved) {
-    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  if (!tokenRow) {
+    return c.json(
+      {
+        error: "No OAuth tokens found -- connect first via /auth/authorize",
+        correlationId,
+      },
+      401,
+    );
   }
 
-  const { accessToken } = resolved;
+  let accessToken = tokenRow.access_token;
+
+  // Refresh if expired or about to expire
+  const expiresAt = new Date(tokenRow.expires_at).getTime();
+  if (Date.now() >= expiresAt - 60_000) {
+    if (!tokenRow.refresh_token) {
+      return c.json(
+        {
+          error: "Access token expired and no refresh token available",
+          correlationId,
+        },
+        401,
+      );
+    }
+
+    const refreshed = await refreshAccessToken(
+      c.env as unknown as Record<string, string>,
+      tokenRow.refresh_token,
+    );
+
+    accessToken = refreshed.access_token;
+    const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+
+    await c.env.DB.prepare(
+      `UPDATE connector_tokens
+       SET access_token = ?, expires_at = ?
+       WHERE tenant_id = ? AND connector_slug = ?`,
+    )
+      .bind(accessToken, newExpiresAt, tenantId, "microsoft-365")
+      .run();
+  }
 
   // Update connection status to syncing
   await c.env.DB.prepare(
@@ -633,14 +674,19 @@ app.post("/api/deprovision", async (c) => {
   if (lookupRes.status === 404) {
     console.log(
       JSON.stringify({
-        level: "warn",
+        level: "info",
         correlationId,
         tenantId,
         email,
-        message: "User not found in Microsoft 365 tenant",
+        message: "User not found in Microsoft 365 tenant; treating as already deprovisioned",
       }),
     );
-    return c.json({ error: "User not found in Microsoft 365 tenant", correlationId }, 404);
+    return c.json({
+      status: "deprovisioned",
+      correlationId,
+      email,
+      note: "User not found in Microsoft 365 tenant; treating as already deprovisioned",
+    });
   }
 
   if (!lookupRes.ok) {

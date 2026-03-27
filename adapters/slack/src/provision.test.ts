@@ -32,25 +32,35 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
 // Request helpers
 // ---------------------------------------------------------------------------
 
-function provisionRequest(body: Record<string, unknown>) {
+function provisionRequest(body: Record<string, unknown>, tenantId?: string) {
+  // tenantId is read from X-Tenant-ID header; extract it from body if provided there
+  const { tenantId: bodyTenantId, ...bodyWithoutTenant } = body as { tenantId?: string } & Record<string, unknown>;
+  const resolvedTenantId = tenantId ?? bodyTenantId;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer test",
+  };
+  if (resolvedTenantId !== undefined) headers["X-Tenant-ID"] = resolvedTenantId;
   return new Request("http://localhost/api/provision", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer test",
-    },
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(bodyWithoutTenant),
   });
 }
 
-function deprovisionRequest(body: Record<string, unknown>) {
+function deprovisionRequest(body: Record<string, unknown>, tenantId?: string) {
+  // tenantId is read from X-Tenant-ID header; extract it from body if provided there
+  const { tenantId: bodyTenantId, ...bodyWithoutTenant } = body as { tenantId?: string } & Record<string, unknown>;
+  const resolvedTenantId = tenantId ?? bodyTenantId;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: "Bearer test",
+  };
+  if (resolvedTenantId !== undefined) headers["X-Tenant-ID"] = resolvedTenantId;
   return new Request("http://localhost/api/deprovision", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer test",
-    },
-    body: JSON.stringify(body),
+    headers,
+    body: JSON.stringify(bodyWithoutTenant),
   });
 }
 
@@ -79,7 +89,7 @@ describe("POST /api/provision", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/tenantId/i);
+    expect(body.error).toMatch(/X-Tenant-ID/i);
   });
 
   it("returns 400 when userProfile.email is missing", async () => {
@@ -357,7 +367,7 @@ describe("POST /api/deprovision", () => {
     );
     expect(res.status).toBe(400);
     const body = await res.json() as { error: string };
-    expect(body.error).toMatch(/tenantId/i);
+    expect(body.error).toMatch(/X-Tenant-ID/i);
   });
 
   it("returns 400 when userProfile.email is missing", async () => {

@@ -317,8 +317,12 @@ app.post("/api/notify/approval", async (c) => {
 // ---------------------------------------------------------------------------
 app.post("/api/provision", async (c) => {
   const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
   const body = await c.req.json<{
-    tenantId: string;
     userProfile: {
       id?: string;
       externalId?: string;
@@ -335,16 +339,16 @@ app.post("/api/provision", async (c) => {
       rawAttributes: Record<string, unknown>;
     };
     config?: Record<string, unknown>;
-  }>();
+  }>().catch(() => null);
 
-  if (!body.tenantId) {
-    return c.json({ error: "tenantId is required", correlationId }, 400);
+  if (!body) {
+    return c.json({ error: "Invalid JSON body", correlationId }, 400);
   }
   if (!body.userProfile?.email) {
     return c.json({ error: "userProfile.email is required", correlationId }, 400);
   }
 
-  const { tenantId, userProfile } = body;
+  const { userProfile } = body;
 
   // Step 1: get team_id
   let teamId: string;
@@ -475,8 +479,12 @@ app.post("/api/provision", async (c) => {
 // ---------------------------------------------------------------------------
 app.post("/api/deprovision", async (c) => {
   const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
   const body = await c.req.json<{
-    tenantId: string;
     userProfile: {
       id?: string;
       externalId?: string;
@@ -493,16 +501,16 @@ app.post("/api/deprovision", async (c) => {
       rawAttributes: Record<string, unknown>;
     };
     config?: Record<string, unknown>;
-  }>();
+  }>().catch(() => null);
 
-  if (!body.tenantId) {
-    return c.json({ error: "tenantId is required", correlationId }, 400);
+  if (!body) {
+    return c.json({ error: "Invalid JSON body", correlationId }, 400);
   }
   if (!body.userProfile?.email) {
     return c.json({ error: "userProfile.email is required", correlationId }, 400);
   }
 
-  const { tenantId, userProfile } = body;
+  const { userProfile } = body;
 
   // Step 1: look up user by email
   let slackUserId: string;
@@ -581,6 +589,32 @@ app.post("/api/deprovision", async (c) => {
     const removeData = await removeRes.json<{ ok: boolean; error?: string }>();
 
     if (!removeData.ok) {
+      // admin.users.remove requires Enterprise Grid — fall back to pending_manual
+      if (
+        removeData.error === "not_allowed" ||
+        removeData.error === "not_supported" ||
+        removeData.error === "missing_scope" ||
+        removeData.error === "enterprise_only"
+      ) {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            correlationId,
+            tenantId,
+            message: "admin.users.remove unavailable; returning pending_manual",
+            slackError: removeData.error,
+            email: userProfile.email,
+          }),
+        );
+        return c.json({
+          status: "pending_manual",
+          correlationId,
+          tenantId,
+          email: userProfile.email,
+          reason: "admin.users.remove requires Enterprise Grid; manual deactivation required",
+        });
+      }
+
       console.error(
         JSON.stringify({
           level: "error",

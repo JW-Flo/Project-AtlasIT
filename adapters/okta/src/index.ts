@@ -4,7 +4,7 @@ import { syncDirectory } from "./sync.js";
 import { handleVerification, handleEventHook } from "./webhooks.js";
 import { scimRouter } from "./scim/router.js";
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: { correlationId: string } }>();
 
 // Mount SCIM 2.0 provisioning endpoints
 app.route("/scim/v2", scimRouter);
@@ -19,6 +19,21 @@ app.get("/health", (c) => {
   });
 });
 
+app.use("*", async (c, next) => {
+  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
+  c.set("correlationId", correlationId);
+  c.header("X-Correlation-ID", correlationId);
+  await next();
+});
+
+app.use("/api/*", async (c, next) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid Authorization header" }, 401);
+  }
+  await next();
+});
+
 app.post("/api/sync", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID");
   if (!tenantId) {
@@ -30,7 +45,7 @@ app.post("/api/sync", async (c) => {
     return c.json({ error: "Missing orgUrl in request body" }, 400);
   }
 
-  const correlationId = c.req.header("X-Correlation-ID") ?? crypto.randomUUID();
+  const correlationId = c.get("correlationId");
 
   console.log(
     JSON.stringify({
@@ -147,26 +162,18 @@ async function fetchOktaPolicies(
   }
 }
 
-function evaluateMfaPolicy(policies: Array<Record<string, unknown>> | null): AdapterEvidenceItem {
+function evaluateMfaPolicy(
+  policies: Array<Record<string, unknown>> | null,
+): AdapterEvidenceItem {
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"];
 
   if (policies === null) {
-    return {
-      type: "mfa_policy",
-      controlRefs,
-      status: "unknown",
-      details: { error: "Failed to fetch MFA policies" },
-    };
+    return { type: "mfa_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch MFA policies" } };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return {
-      type: "mfa_policy",
-      controlRefs,
-      status: "fail",
-      details: { reason: "No active MFA enrollment policy found" },
-    };
+    return { type: "mfa_policy", controlRefs, status: "fail", details: { reason: "No active MFA enrollment policy found" } };
   }
 
   const hasRequired = active.some((p) => {
@@ -177,12 +184,7 @@ function evaluateMfaPolicy(policies: Array<Record<string, unknown>> | null): Ada
     return Object.values(factors).some((f) => f?.enroll?.self === "REQUIRED");
   });
 
-  return {
-    type: "mfa_policy",
-    controlRefs,
-    status: hasRequired ? "pass" : "fail",
-    details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired },
-  };
+  return { type: "mfa_policy", controlRefs, status: hasRequired ? "pass" : "fail", details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired } };
 }
 
 function evaluatePasswordPolicy(
@@ -191,28 +193,16 @@ function evaluatePasswordPolicy(
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.3.1"];
 
   if (policies === null) {
-    return {
-      type: "password_policy",
-      controlRefs,
-      status: "unknown",
-      details: { error: "Failed to fetch password policies" },
-    };
+    return { type: "password_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch password policies" } };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return {
-      type: "password_policy",
-      controlRefs,
-      status: "fail",
-      details: { reason: "No active password policy found" },
-    };
+    return { type: "password_policy", controlRefs, status: "fail", details: { reason: "No active password policy found" } };
   }
 
   const complexity = (
-    (active[0].settings as Record<string, unknown> | undefined)?.password as
-      | Record<string, unknown>
-      | undefined
+    (active[0].settings as Record<string, unknown> | undefined)?.password as Record<string, unknown> | undefined
   )?.complexity as Record<string, number> | undefined;
 
   const minLength = complexity?.minLength ?? 0;
@@ -222,12 +212,7 @@ function evaluatePasswordPolicy(
 
   const pass = minLength >= 8 && (minLowerCase > 0 || minUpperCase > 0 || minNumber > 0);
 
-  return {
-    type: "password_policy",
-    controlRefs,
-    status: pass ? "pass" : "fail",
-    details: { minLength, minLowerCase, minUpperCase, minNumber },
-  };
+  return { type: "password_policy", controlRefs, status: pass ? "pass" : "fail", details: { minLength, minLowerCase, minUpperCase, minNumber } };
 }
 
 function evaluateSessionPolicy(
@@ -236,41 +221,20 @@ function evaluateSessionPolicy(
   const controlRefs = ["SOC2-CC6.7", "ISO-27001-A.9.4.2"];
 
   if (policies === null) {
-    return {
-      type: "session_policy",
-      controlRefs,
-      status: "unknown",
-      details: { error: "Failed to fetch sign-on policies" },
-    };
+    return { type: "session_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch sign-on policies" } };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return {
-      type: "session_policy",
-      controlRefs,
-      status: "fail",
-      details: { reason: "No active sign-on policy found" },
-    };
+    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "No active sign-on policy found" } };
   }
 
-  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)
-    ?.maxSessionIdleMinutes;
+  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)?.maxSessionIdleMinutes;
   if (maxSessionIdleMinutes === undefined) {
-    return {
-      type: "session_policy",
-      controlRefs,
-      status: "fail",
-      details: { reason: "maxSessionIdleMinutes not configured" },
-    };
+    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "maxSessionIdleMinutes not configured" } };
   }
 
-  return {
-    type: "session_policy",
-    controlRefs,
-    status: maxSessionIdleMinutes <= 60 ? "pass" : "fail",
-    details: { maxSessionIdleMinutes },
-  };
+  return { type: "session_policy", controlRefs, status: maxSessionIdleMinutes <= 60 ? "pass" : "fail", details: { maxSessionIdleMinutes } };
 }
 
 interface UserProfile {
@@ -311,7 +275,7 @@ app.post("/api/provision", async (c) => {
     return c.json({ error: "userProfile.email is required" }, 400);
   }
 
-  const correlationId = crypto.randomUUID();
+  const correlationId = c.get("correlationId");
   const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
   const token = c.env.OKTA_API_TOKEN;
 
@@ -345,6 +309,10 @@ app.post("/api/provision", async (c) => {
 
     if (!res.ok) {
       const errText = await res.text();
+      // Idempotent: if user already exists, treat as success
+      if (res.status === 400 && errText.includes("E0000001")) {
+        return c.json({ status: "provisioned", correlationId, note: "user already exists in Okta" });
+      }
       console.error(
         JSON.stringify({
           level: "error",
@@ -406,7 +374,7 @@ app.post("/api/deprovision", async (c) => {
     return c.json({ error: "userProfile.email is required" }, 400);
   }
 
-  const correlationId = crypto.randomUUID();
+  const correlationId = c.get("correlationId");
   const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
   const token = c.env.OKTA_API_TOKEN;
 

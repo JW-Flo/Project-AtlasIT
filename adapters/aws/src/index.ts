@@ -396,9 +396,6 @@ app.post("/api/provision", async (c) => {
   const body = await c.req.json<ProvisionBody>().catch((): ProvisionBody => ({}));
   const email = body.userProfile?.email;
 
-  if (!body.tenantId) {
-    return c.json({ error: "Missing tenantId in request body", correlationId }, 400);
-  }
   if (!email) {
     return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
   }
@@ -515,9 +512,6 @@ app.post("/api/deprovision", async (c) => {
   const body = await c.req.json<DeprovisionBody>().catch((): DeprovisionBody => ({}));
   const email = body.userProfile?.email;
 
-  if (!body.tenantId) {
-    return c.json({ error: "Missing tenantId in request body", correlationId }, 400);
-  }
   if (!email) {
     return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
   }
