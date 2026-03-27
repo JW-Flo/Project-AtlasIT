@@ -17,6 +17,17 @@
   import Label from "$lib/components/ui/label.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import { AlertTriangle, KeyRound, Plus, Check, X, Zap, ShieldCheck } from "lucide-svelte";
+  import { session } from "$lib/stores/session";
+  import { integrations } from "$lib/data/integrations";
+
+  const JUSTIFICATION_OPTIONS = [
+    "Business need",
+    "Temporary access for project",
+    "Compliance requirement",
+    "Incident response",
+    "Role change / promotion",
+    "Other",
+  ];
 
   let items: AccessRequest[] = [];
   let loading = true;
@@ -42,7 +53,10 @@
     }
   }
 
-  onMount(() => { load(true); });
+  onMount(() => {
+    if ($session?.email) form.subjectRef = $session.email;
+    load(true);
+  });
 
   async function submit() {
     formError = "";
@@ -117,11 +131,21 @@
         </div>
         <div class="flex flex-col gap-1.5">
           <Label htmlFor="ar-resource">Resource *</Label>
-          <Input id="ar-resource" placeholder="production-db" bind:value={form.resource} />
+          <select id="ar-resource" bind:value={form.resource} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select resource...</option>
+            {#each integrations as integration}
+              <option value={integration.id}>{integration.name}</option>
+            {/each}
+          </select>
         </div>
         <div class="flex flex-col gap-1.5">
           <Label htmlFor="ar-justification">Justification</Label>
-          <Input id="ar-justification" placeholder="Reason for access" bind:value={form.justification} />
+          <select id="ar-justification" bind:value={form.justification} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select justification...</option>
+            {#each JUSTIFICATION_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
         </div>
         <Button disabled={submitting} on:click={submit}>
           <Plus class="h-4 w-4 mr-1" />
