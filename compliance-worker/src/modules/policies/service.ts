@@ -30,6 +30,8 @@ export async function listTemplates(
 export interface GeneratePolicyOptions {
   db: D1Database;
   tenantId: string;
+  tenantName?: string;
+  tenantIndustry?: string;
   templateKey: string;
   input?: Record<string, unknown>;
   groqApiKey?: string;
@@ -57,6 +59,8 @@ export async function generatePolicyDocument(
   const generated = await generatePolicy({
     template,
     tenantId: options.tenantId,
+    tenantName: options.tenantName,
+    tenantIndustry: options.tenantIndustry,
     input: options.input,
     groqApiKey: options.groqApiKey,
   });

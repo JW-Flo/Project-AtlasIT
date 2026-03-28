@@ -328,6 +328,23 @@ export async function submitDecision(
   }
 }
 
+export async function updateCampaignStatus(
+  db: D1Database,
+  tenantId: string,
+  campaignId: string,
+  status: "active" | "completed",
+): Promise<void> {
+  const completedAt = status === "completed" ? new Date().toISOString() : null;
+  await db
+    .prepare(
+      `UPDATE access_review_campaigns
+       SET status = ?, updated_at = datetime('now'), completed_at = COALESCE(?, completed_at)
+       WHERE id = ? AND tenant_id = ?`,
+    )
+    .bind(status, completedAt, campaignId, tenantId)
+    .run();
+}
+
 /** Expire overdue active campaigns (called by a cron or on-demand). */
 export async function expireOverdueCampaigns(
   db: D1Database,

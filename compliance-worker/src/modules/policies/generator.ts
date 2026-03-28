@@ -7,6 +7,8 @@ import type { PolicyTemplateRecord } from "./templates";
 export interface GeneratePolicyOptions {
   template: PolicyTemplateRecord;
   tenantId: string;
+  tenantName?: string;
+  tenantIndustry?: string;
   input?: Record<string, unknown>;
 }
 
@@ -92,13 +94,18 @@ async function generateWithAI(
   baseContent: string,
   input: Record<string, unknown>,
   groqApiKey: string | undefined,
+  tenantName?: string,
+  tenantIndustry?: string,
 ): Promise<string> {
   if (!groqApiKey) return baseContent;
 
   const userContext = input.summary
     ? `\nAdditional context from user: ${input.summary}`
     : "";
-  const prompt = `You are a compliance policy expert. Enhance the following ${template.name} policy document with specific, actionable details. Keep the same structure and headings but expand each section with industry best practices, specific procedures, and implementation guidance. Be thorough but concise.${userContext}
+  const tenantContext = tenantName
+    ? `\nThis policy is for ${tenantName}${tenantIndustry ? `, operating in the ${tenantIndustry} industry` : ""}. Tailor the policy content accordingly.`
+    : "";
+  const prompt = `You are a compliance policy expert. Enhance the following ${template.name} policy document with specific, actionable details. Keep the same structure and headings but expand each section with industry best practices, specific procedures, and implementation guidance. Be thorough but concise.${tenantContext}${userContext}
 
 Here is the base policy to enhance:
 
@@ -165,9 +172,13 @@ export async function generatePolicy(
 ): Promise<GeneratedPolicyData> {
   const generatedAt = new Date().toISOString();
   const input = options.input ?? {};
+  const tenantName = options.tenantName ?? options.tenantId;
+  const tenantIndustry = options.tenantIndustry ?? "";
   // Stable context for hashing/caching should exclude volatile timestamps
   const stableContext = {
     tenantId: options.tenantId,
+    tenantName,
+    tenantIndustry,
     templateKey: options.template.key,
     input,
     ai: !!options.groqApiKey,
@@ -184,6 +195,8 @@ export async function generatePolicy(
     content,
     input,
     options.groqApiKey,
+    tenantName,
+    tenantIndustry,
   );
 
   const hash = await sha256Hex(content);
