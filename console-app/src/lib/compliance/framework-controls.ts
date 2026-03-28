@@ -169,6 +169,63 @@ export const FRAMEWORK_CONTROLS: Record<
   ],
 };
 
+/**
+ * Maps simplified control IDs to CDT evidence control ID prefixes.
+ * Evidence in compliance_evidence uses granular IDs like CC6.1, A.9.2.2, PR.AC-1.
+ * This mapping lets us aggregate evidence counts for the simplified controls view.
+ */
+export const CONTROL_TO_CDT_PREFIXES: Record<string, string[]> = {
+  // SOC2
+  soc2_access_control: ["CC6"],
+  soc2_change_management: ["CC8"],
+  soc2_incident_response: ["CC7"],
+  soc2_risk_assessment: ["CC3", "CC4"],
+  soc2_vendor_management: ["CC9"],
+  // ISO27001
+  iso27001_information_security_policy: ["A.5", "A.6"],
+  iso27001_asset_management: ["A.7", "A.8"],
+  iso27001_access_control: ["A.9"],
+  iso27001_cryptography: ["A.10"],
+  iso27001_physical_security: ["A.11"],
+  // NIST CSF
+  "nist_csf_identify": ["ID"],
+  "nist_csf_protect": ["PR"],
+  "nist_csf_detect": ["DE"],
+  "nist_csf_respond": ["RS"],
+  "nist_csf_recover": ["RC"],
+  // HIPAA
+  hipaa_privacy_rule: ["164.502", "164.514"],
+  hipaa_security_rule: ["164.312"],
+  hipaa_breach_notification: ["164.404", "164.408"],
+  hipaa_administrative_safeguards: ["164.308"],
+  // GDPR
+  gdpr_data_mapping: ["Art.30"],
+  gdpr_consent_management: ["Art.7"],
+  gdpr_data_subject_rights: ["Art.15", "Art.17"],
+  gdpr_dpo_appointment: ["Art.37"],
+  gdpr_breach_notification: ["Art.33", "Art.34"],
+};
+
+/**
+ * Given raw CDT evidence counts (keyed by CDT control IDs like CC6.1, A.9.2.2),
+ * aggregate them into counts per simplified control ID.
+ */
+export function aggregateEvidenceForControls(
+  cdtCounts: Record<string, number>,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [simplifiedId, prefixes] of Object.entries(CONTROL_TO_CDT_PREFIXES)) {
+    let total = 0;
+    for (const [cdtId, count] of Object.entries(cdtCounts)) {
+      if (prefixes.some((p) => cdtId.startsWith(p))) {
+        total += count;
+      }
+    }
+    if (total > 0) result[simplifiedId] = total;
+  }
+  return result;
+}
+
 export function buildDefaultControls(frameworks: string[]): Control[] {
   const controls: Control[] = [];
   for (const fw of frameworks) {

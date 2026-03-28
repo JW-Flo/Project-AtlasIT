@@ -1,6 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { buildDefaultControls, type Control } from "$lib/compliance/framework-controls";
+import { buildDefaultControls, aggregateEvidenceForControls, type Control } from "$lib/compliance/framework-controls";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
@@ -54,9 +54,8 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const frameworkSet = new Set(frameworks);
   const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
 
-  // Fetch evidence counts per control — include ALL control IDs from compliance_evidence
-  // (CDT uses granular IDs like CC6.1, A.9.2.2 while simplified controls use soc2_access_control)
-  const evidenceCounts: Record<string, number> = {};
+  // Fetch evidence counts per CDT control ID, then aggregate into simplified control IDs
+  const rawCdtCounts: Record<string, number> = {};
   let totalEvidenceCount = 0;
   try {
     const { results: rows } = await db
@@ -69,14 +68,17 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .bind(user.tenantId)
       .all<{ control_id: string; count: number }>();
     for (const row of rows ?? []) {
-      evidenceCounts[row.control_id] = row.count;
+      rawCdtCounts[row.control_id] = row.count;
       totalEvidenceCount += row.count;
     }
   } catch {
     // compliance_evidence table may not exist yet — return empty counts
   }
 
-  return json({ frameworks, controls: scopedControls, evidenceCounts, totalEvidenceCount, frameworksConfigured });
+  // Map CDT evidence (CC6.1, A.9.2.2, PR.AC-1, etc.) to simplified control IDs
+  const evidenceCounts = aggregateEvidenceForControls(rawCdtCounts);
+
+  return json({ frameworks, controls: scopedControls, evidenceCounts, rawCdtCounts, totalEvidenceCount, frameworksConfigured });
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
