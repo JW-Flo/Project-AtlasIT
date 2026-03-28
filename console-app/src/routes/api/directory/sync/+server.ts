@@ -281,7 +281,6 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     await autoSuggestMappings(db, tenantId);
 
     // Emit lifecycle events to the orchestrator JML engine
-    const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL;
     if (orchestratorUrl) {
       // Deactivated: previously active users absent from this sync
       const deactivatedEmails = [...existingActiveEmails].filter((e) => !incomingEmails.has(e));
