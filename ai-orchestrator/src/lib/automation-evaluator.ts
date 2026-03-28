@@ -226,6 +226,40 @@ export async function evaluateAutomationRules(
       )
       .run();
 
+    // Emit activity stream entry so the Live Feed on the automation page reflects rule firings
+    try {
+      const isFailed = summary.status === "failed";
+      await db
+        .prepare(
+          `INSERT INTO activity_stream
+             (tenant_id, event_type, title, detail, severity, entity_type, entity_id, actor, metadata)
+           VALUES (?, ?, ?, ?, ?, 'automation_execution', ?, 'system', ?)`,
+        )
+        .bind(
+          tenantId,
+          isFailed ? "automation.rule_failed" : "automation.rule_fired",
+          isFailed
+            ? `Rule '${rule.name}' failed`
+            : `Rule '${rule.name}' fired`,
+          isFailed
+            ? `Rule execution failed after ${summary.actionsRun} action(s) — ${summary.actionsFailed} failed`
+            : `Rule executed successfully: ${summary.actionsRun} action(s) completed`,
+          isFailed ? "error" : "success",
+          executionId,
+          JSON.stringify({
+            ruleId: rule.id,
+            ruleName: rule.name,
+            triggerEvent: eventType,
+            actionsRun: summary.actionsRun,
+            actionsFailed: summary.actionsFailed,
+            durationMs: summary.durationMs,
+          }),
+        )
+        .run();
+    } catch {
+      // Non-critical — activity stream write must not break rule execution
+    }
+
     // Update rule stats
     const statusUpdate =
       summary.status === "failed" ? ", error_count = error_count + 1" : "";

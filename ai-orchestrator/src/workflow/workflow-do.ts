@@ -172,7 +172,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     this.definition = body.definition;
 
     const now = new Date().toISOString();
-    const runId = crypto.randomUUID();
+    const runId = body.correlationId || crypto.randomUUID();
     const steps: StepState[] = body.definition.steps.map((step) => ({
       stepId: step.id,
       action: step.handler,

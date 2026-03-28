@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { session } from "$lib/stores/session";
+  import { CONTROL_TO_CDT_PREFIXES } from "$lib/compliance/framework-controls";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -409,23 +410,6 @@
     verifyNotes = "";
   }
 
-  // CDT prefix mapping — imported logic for evidence drill-down
-  const CDT_PREFIXES: Record<string, string[]> = {
-    soc2_access_control: ["CC6"], soc2_change_management: ["CC8"],
-    soc2_incident_response: ["CC7"], soc2_risk_assessment: ["CC3", "CC4"],
-    soc2_vendor_management: ["CC9"],
-    iso27001_information_security_policy: ["A.5", "A.6"],
-    iso27001_asset_management: ["A.7", "A.8"], iso27001_access_control: ["A.9"],
-    iso27001_cryptography: ["A.10"], iso27001_physical_security: ["A.11"],
-    "nist_csf_identify": ["ID"], "nist_csf_protect": ["PR"],
-    "nist_csf_detect": ["DE"], "nist_csf_respond": ["RS"], "nist_csf_recover": ["RC"],
-    hipaa_privacy_rule: ["164.502", "164.514"], hipaa_security_rule: ["164.312"],
-    hipaa_breach_notification: ["164.404", "164.408"], hipaa_administrative_safeguards: ["164.308"],
-    gdpr_data_mapping: ["Art.30"], gdpr_consent_management: ["Art.7"],
-    gdpr_data_subject_rights: ["Art.15", "Art.17"], gdpr_dpo_appointment: ["Art.37"],
-    gdpr_breach_notification: ["Art.33", "Art.34"],
-  };
-
   async function toggleControlEvidence(controlId: string, framework: string) {
     if (expandedControlId === controlId) {
       expandedControlId = null;
@@ -435,10 +419,10 @@
     expandedControlId = controlId;
     controlEvidenceLoading = true;
     try {
-      const prefixes = CDT_PREFIXES[controlId];
       const params = new URLSearchParams({ controlId, framework, limit: "20" });
-      if (prefixes) {
-        params.set("controlPrefixes", prefixes.join(","));
+      const cdtPrefixes = CONTROL_TO_CDT_PREFIXES[controlId];
+      if (cdtPrefixes && cdtPrefixes.length > 0) {
+        params.set("controlPrefixes", cdtPrefixes.join(","));
       }
       const res = await fetch(`/api/evidence-feed?${params}`);
       if (res.ok) {
@@ -510,7 +494,9 @@
     evidenceLoading = true;
     evidenceError = null;
     try {
-      const params = new URLSearchParams({ limit: String(evidencePageSize) });
+      // Request more raw items to account for grouping (multiple control refs per evidence event)
+      const rawLimit = Math.min(evidencePageSize * 5, 200);
+      const params = new URLSearchParams({ limit: String(rawLimit) });
       if (cursor) params.set("cursor", cursor);
       const res = await fetch(`/api/tenant-compliance/evidence?${params}`);
       if (!res.ok) throw new Error(`Failed to load evidence (${res.status})`);

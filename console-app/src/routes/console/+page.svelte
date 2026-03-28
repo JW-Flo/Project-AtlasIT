@@ -724,7 +724,7 @@
               </thead>
               <tbody>
                 {#each recentAutomationRuns as run}
-                  <tr class="border-t hover:bg-muted/50">
+                  <tr class="border-t hover:bg-muted/50 cursor-pointer transition-colors" on:click={() => { window.location.href = `/console/automation?tab=history&exec=${run.id}`; }}>
                     <td class="px-5 py-3 font-medium">{run.ruleName || run.ruleId || "Untitled rule"}</td>
                     <td class="px-5 py-3 text-muted-foreground">{triggerLabel(run.triggerEvent)}</td>
                     <td class="px-5 py-3">
