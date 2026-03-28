@@ -332,7 +332,7 @@
                     <span class="w-2 h-2 rounded-full {app.healthy !== false ? 'bg-green-500' : 'bg-destructive'}"></span>
                   </div>
                   <div class="text-xs text-muted-foreground">
-                    {authLabel(app.auth)} &middot; {app.credentialFields.length} field{app.credentialFields.length !== 1 ? "s" : ""}
+                    {authLabel(app.auth)}{#if app.credentialFields.length > 0} &middot; {app.credentialFields.length} field{app.credentialFields.length !== 1 ? "s" : ""}{/if}
                     {#if app.connectedAt}
                       &middot; Connected {new Date(app.connectedAt).toLocaleDateString()}
                     {/if}
