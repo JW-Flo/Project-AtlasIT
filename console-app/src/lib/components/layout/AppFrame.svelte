@@ -34,6 +34,7 @@
     Zap,
     Menu,
     X,
+    Search,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -94,6 +95,7 @@
       items: [
         { href: "/console/apps", label: "Connected Apps", icon: AppWindow },
         { href: "/console/marketplace", label: "Marketplace", icon: Store },
+        { href: "/console/discovery", label: "Discovery", icon: Search },
       ],
     },
     {
