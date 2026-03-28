@@ -23,7 +23,10 @@ import {
   collectAllAdapterEvidence,
   parseControlRef,
   collectPlatformStateEvidence,
+  analyzeComplianceGaps,
+  detectComplianceDrift,
 } from "@atlasit/shared";
+import type { DriftEvent } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -430,10 +433,7 @@ const worker = {
           const frameworkTotals = new Map<string, number>();
           const controlIdCounts = new Map<string, number>();
           for (const ev of evidenceRows ?? []) {
-            frameworkTotals.set(
-              ev.framework,
-              (frameworkTotals.get(ev.framework) ?? 0) + ev.cnt,
-            );
+            frameworkTotals.set(ev.framework, (frameworkTotals.get(ev.framework) ?? 0) + ev.cnt);
             controlIdCounts.set(ev.control_id, (controlIdCounts.get(ev.control_id) ?? 0) + ev.cnt);
           }
 
@@ -491,18 +491,136 @@ const worker = {
           controlsPromoted += r.value;
         } else {
           const tenantId = (promotionTenants ?? [])[i]?.id ?? "unknown";
-          console.error(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: "error",
-            event: "duty4b.promotion_failed",
-            tenantId,
-            error: r.reason?.message ?? String(r.reason),
-          }));
+          console.error(
+            JSON.stringify({
+              ts: new Date().toISOString(),
+              level: "error",
+              event: "duty4b.promotion_failed",
+              tenantId,
+              error: r.reason?.message ?? String(r.reason),
+            }),
+          );
         }
       }
     }
 
-    // ── Duty 5: NHI token expiry processing ──────────────────────────────
+    // ── Duty 6: Compliance intelligence scan ──────────────────────────────
+    //    Run gap analysis and drift detection for each tenant.
+    //    Store results in compliance_insights table for API consumption.
+    let insightsWritten = 0;
+    if (isDaily || evidenceCollected > 0) {
+      const { results: insightTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const insightSettled = await Promise.allSettled(
+        (insightTenants ?? []).map(async (row) => {
+          let written = 0;
+
+          // Get tenant's selected frameworks
+          const prefRow = await sharedDb
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
+            )
+            .bind(row.id)
+            .first<{ value: string }>();
+
+          let frameworks: string[];
+          try {
+            frameworks = prefRow?.value ? JSON.parse(prefRow.value) : ["SOC2"];
+          } catch {
+            frameworks = ["SOC2"];
+          }
+
+          // Run gap analysis
+          const gapResult = await analyzeComplianceGaps(sharedDb, row.id, frameworks);
+
+          // Store high-priority gaps as insights
+          for (const gap of gapResult.gaps.filter(
+            (g) => g.priority === "critical" || g.priority === "high",
+          )) {
+            try {
+              await sharedDb
+                .prepare(
+                  `INSERT OR IGNORE INTO compliance_insights (id, tenant_id, insight_type, severity, category, data, created_at)
+                   VALUES (?, ?, 'gap', ?, ?, ?, ?)`,
+                )
+                .bind(
+                  crypto.randomUUID(),
+                  row.id,
+                  gap.priority,
+                  gap.gapType,
+                  JSON.stringify(gap),
+                  new Date().toISOString(),
+                )
+                .run();
+              written++;
+            } catch {
+              // duplicate or schema not ready
+            }
+          }
+
+          // Check for recent drift events
+          const { results: recentEvents } = await sharedDb
+            .prepare(
+              `SELECT type, source, created_at as timestamp, metadata
+               FROM events
+               WHERE tenant_id = ? AND created_at > datetime('now', '-1 hour')
+                 AND type IN ('app_disconnected', 'app_health_changed', 'compliance_score_changed')
+               ORDER BY created_at DESC LIMIT 20`,
+            )
+            .bind(row.id)
+            .all<{ type: string; source: string; timestamp: string; metadata: string }>();
+
+          if (recentEvents?.length) {
+            const driftEvents: DriftEvent[] = recentEvents.map((e) => ({
+              type: e.type,
+              source: e.source,
+              timestamp: e.timestamp,
+              metadata: (() => {
+                try {
+                  return JSON.parse(e.metadata ?? "{}");
+                } catch {
+                  return {};
+                }
+              })(),
+            }));
+
+            const driftResult = await detectComplianceDrift(sharedDb, row.id, driftEvents);
+
+            for (const alert of driftResult.alerts) {
+              try {
+                await sharedDb
+                  .prepare(
+                    `INSERT OR IGNORE INTO compliance_insights (id, tenant_id, insight_type, severity, category, data, created_at)
+                     VALUES (?, ?, 'drift', ?, ?, ?, ?)`,
+                  )
+                  .bind(
+                    alert.id,
+                    row.id,
+                    alert.severity,
+                    alert.alertType,
+                    JSON.stringify(alert),
+                    alert.detectedAt,
+                  )
+                  .run();
+                written++;
+              } catch {
+                // duplicate or schema not ready
+              }
+            }
+          }
+
+          return written;
+        }),
+      );
+
+      for (const r of insightSettled) {
+        if (r.status === "fulfilled") insightsWritten += r.value;
+      }
+    }
+
+    // ── Duty 7: NHI token expiry processing ──────────────────────────────
     //    Scan nhi_credentials for tokens expiring within grace period or
     //    already expired. Emit compliance evidence and update statuses.
     let nhiExpirySoon = 0;
@@ -512,12 +630,14 @@ const worker = {
       nhiExpirySoon = nhiResult.expiringSoon;
       nhiExpired = nhiResult.expired;
     } catch (err) {
-      console.error(JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "error",
-        event: "duty5.nhi_expiry_failed",
-        error: err instanceof Error ? err.message : String(err),
-      }));
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty5.nhi_expiry_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
 
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
@@ -534,6 +654,7 @@ const worker = {
         evidenceCollected,
         scoresRefreshed,
         controlsPromoted,
+        insightsWritten,
         nhiExpirySoon,
         nhiExpired,
         checks,
