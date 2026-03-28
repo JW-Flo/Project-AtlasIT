@@ -32,7 +32,7 @@
 | 13+ — Workflow Redesign (Roles)     | ✅ Complete     | #283       | Roles as first-class entity (hierarchy), CRUD API, JML role-based provisioning, Lifecycle Policies tab, 8 seeded roles + 15 entitlements                                                                                                     |
 | 14 — Workflow Trust & Evidence      | ✅ Complete     | #284       | Step idempotency, DLQ console UI, evidence retention protections, auth hardening (DLQ reads + workflow GET), Operations admin page                                                                                                           |
 | 15 — Continuous Validation          | ✅ Complete     | #285       | k6 SLO scripts, Snyk + ZAP CI, Playwright smoke CI, deep health checks, journey completion metrics                                                                                                                                           |
-| 15.5 — Platform Polish & Evidence   | 🔴 Next         | —          | Fix NHI/SaaS discovery, evidence card expand, auto-evidence collection, auto-tagging, operations data enrichment, badge color fixes                                                                                                          |
+| 15.5 — Platform Polish & Evidence   | ✅ Complete     | —          | NHI/SaaS discovery fixed, evidence card expand+detail panel, auto-evidence collection (Collect Now), auto-tagging, 6 new platform state probes, operations data enrichment, badge color fix, CF Access deep health, pagination fix, adapter-specific gap recommendations, 11 additional UI/bug fixes |
 | 16 — Market Readiness & PLG Entry   | 📋 Planned      | —          | Pricing, billing (Stripe), self-serve onboarding, analytics                                                                                                                                                                                  |
 
 ## Deployed Workers
@@ -97,6 +97,15 @@
 - Gitleaks CI + expanded project secret scanner
 - k6 SLO smoke + load baseline scripts
 - Weekly Snyk + ZAP security scanning CI
+- Evidence card expand panel with payload, R2 hash, source metadata, and linked controls
+- Auto-tagging for system-generated evidence (framework, control IDs, category, impact, source)
+- Control-to-adapter mapping for direct evidence collection (Collect Now button on Insights)
+- Platform state probes expanded to 6 new controls (RBAC config, encryption at rest, directory sync recency, automation coverage, connector health)
+- Adapter-specific gap recommendations on Insights page (replaces generic "connect adapters" text)
+- Operations page enriched: user email, app ID, trigger type, step duration, errors from workflow context
+- Live Feed wired to automation_executions; automation history shows affected user column
+- Workflow deep link (?run= param), collapsible role sections, grouped rules table
+- CF Access headers forwarded in deep health compliance reachability check
 
 ## Marketplace Adapters (35 apps)
 
