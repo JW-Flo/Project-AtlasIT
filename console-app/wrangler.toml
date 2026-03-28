@@ -66,6 +66,8 @@ ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
 ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
 TENANT_ID = "atlasit-prod"
+# Secret bindings (set via `wrangler secret put <KEY> --name atlasit-console`):
+# GROQ_API_KEY — Required for NL automation rule builder and AI features
 # DEV_AUTH_BYPASS must NEVER be set here — only in local dev env vars alongside NODE_ENV=development
 
 [observability]

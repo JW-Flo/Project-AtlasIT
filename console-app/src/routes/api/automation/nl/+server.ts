@@ -76,6 +76,17 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     }
   }
 
+  // Check AI provider is configured
+  if (!env.GROQ_API_KEY && !env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY) {
+    return json(
+      {
+        error: "AI provider not configured",
+        detail: "GROQ_API_KEY secret must be set for the console-app worker. Run: wrangler secret put GROQ_API_KEY --name atlasit-console",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const result = await buildAutomationFromNL(env, {
       prompt,
