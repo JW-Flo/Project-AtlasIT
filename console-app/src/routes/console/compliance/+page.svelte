@@ -217,13 +217,15 @@
     if (impact === "detrimental") return "destructive";
     return "secondary";
   }
-  async function loadScores(notify = false) {
+  async function loadScores(notify = false, forceRecalculate = false) {
     const previousOverall = scores.length > 0
       ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100
       : 0;
 
     try {
-      const res = await fetch("/api/tenant-compliance/scores");
+      const res = forceRecalculate
+        ? await fetch("/api/tenant-compliance/scores", { method: "POST" })
+        : await fetch("/api/tenant-compliance/scores");
       if (res.ok) {
         const data = await res.json();
         scores = data.scores || [];
@@ -298,7 +300,7 @@
     try {
       const [controlsRes] = await Promise.all([
         fetch("/api/tenant-compliance/controls"),
-        loadScores(),
+        loadScores(false, true),
         loadHistory(),
         loadEvidenceFeedPreview(),
       ]);
@@ -327,7 +329,7 @@
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       pushToast({ message: "Control statuses saved", variant: "success" });
-      await loadScores(true);
+      await loadScores(true, true);
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save", variant: "error" });
     } finally {

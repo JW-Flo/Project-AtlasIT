@@ -78,6 +78,50 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   // Map CDT evidence (CC6.1, A.9.2.2, PR.AC-1, etc.) to simplified control IDs
   const evidenceCounts = aggregateEvidenceForControls(rawCdtCounts);
 
+  // Auto-promote control statuses based on evidence:
+  //   - evidence exists (1-2 items) → at least "in_progress"
+  //   - 3+ evidence items → at least "implemented"
+  //   - user-set "verified" is never downgraded
+  const STATUS_RANK: Record<string, number> = {
+    not_started: 0,
+    in_progress: 1,
+    implemented: 2,
+    verified: 3,
+  };
+  const RANK_STATUS = ["not_started", "in_progress", "implemented", "verified"] as const;
+  let promoted = false;
+
+  for (const control of scopedControls) {
+    const evCount = evidenceCounts[control.id] || 0;
+    if (evCount === 0) continue;
+    const currentRank = STATUS_RANK[control.status] ?? 0;
+    const evidenceRank = evCount >= 3 ? 2 : 1; // 3+ → implemented, 1-2 → in_progress
+    if (evidenceRank > currentRank) {
+      control.status = RANK_STATUS[evidenceRank];
+      promoted = true;
+    }
+  }
+
+  // Persist auto-promoted statuses back to DB so scores stay in sync
+  if (promoted) {
+    try {
+      // Re-merge with full control list (including controls outside current framework filter)
+      const allControls = controls!.map((c) => {
+        const updated = scopedControls.find((sc) => sc.id === c.id);
+        return updated || c;
+      });
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+           VALUES (?, 'compliance_controls', ?)`,
+        )
+        .bind(user.tenantId, JSON.stringify(allControls))
+        .run();
+    } catch {
+      // Best-effort — don't fail the GET
+    }
+  }
+
   return json({ frameworks, controls: scopedControls, evidenceCounts, rawCdtCounts, totalEvidenceCount, frameworksConfigured });
 };
 
