@@ -1006,5 +1006,129 @@ app.post("/api/nhi/discovery", async (c) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// OAuth Grants — POST /api/oauth-grants
+// Returns a complete view of all OAuth grants across all users (up to 50 at a
+// time to stay within Admin SDK quota). Unlike /api/nhi/discovery which caps
+// at 20 users and aggregates NHI types, this endpoint is focused purely on
+// OAuth grants with a normalized grant shape.
+// ---------------------------------------------------------------------------
+app.post("/api/oauth-grants", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(tenantId, "google-workspace")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth tokens found for tenant" }, 401);
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+
+  // List up to 500 users, then process the first 50 to stay within quota
+  const usersRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=500&fields=users(id,primaryEmail)",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+
+  if (!usersRes.ok) {
+    const errText = await usersRes.text().catch(() => "Unknown error");
+    return c.json(
+      { error: `Failed to list users: ${errText}` },
+      (usersRes.status >= 400 && usersRes.status < 600 ? usersRes.status : 500) as
+        | 400
+        | 401
+        | 403
+        | 500,
+    );
+  }
+
+  const usersData = (await usersRes.json()) as {
+    users?: Array<{ id?: string; primaryEmail?: string }>;
+  };
+
+  const users = (usersData.users ?? []).slice(0, 50);
+
+  await Promise.all(
+    users.map(async (user) => {
+      if (!user.id || !user.primaryEmail) return;
+      try {
+        const tokensRes = await fetch(
+          `https://www.googleapis.com/admin/directory/v1/users/${encodeURIComponent(user.id)}/tokens`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+
+        if (!tokensRes.ok) return;
+
+        const tokensData = (await tokensRes.json()) as {
+          items?: Array<{
+            clientId?: string;
+            displayText?: string;
+            scopes?: string[];
+            anonymous?: boolean;
+            nativeApp?: boolean;
+            userKey?: string;
+          }>;
+        };
+
+        for (const token of tokensData.items ?? []) {
+          if (!token.clientId) continue;
+
+          grants.push({
+            appName: token.displayText ?? token.clientId,
+            clientId: token.clientId,
+            userEmail: user.primaryEmail!,
+            scopes: token.scopes ?? [],
+            metadata: {
+              anonymous: token.anonymous,
+              nativeApp: token.nativeApp,
+              userKey: token.userKey,
+            },
+          });
+        }
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            message: "oauth-grants: failed to fetch tokens for user",
+            tenantId,
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+    }),
+  );
+
+  return c.json({
+    provider: "google_workspace",
+    grants,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
 export default app;
+
 

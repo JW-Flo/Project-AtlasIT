@@ -13,6 +13,7 @@ import { jmlRoutes } from "./routes/jml";
 import { streamRoutes } from "./routes/stream";
 import { directoryRoutes } from "./routes/directory";
 import { nhiRoutes } from "./routes/nhi";
+import { discoveryRoutes } from "./routes/discovery";
 import { evaluateAutomationRules, type ActionContext } from "./lib/automation-evaluator";
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
@@ -137,6 +138,7 @@ app.route("/api/v1/jml", jmlRoutes);
 app.route("/api/v1/stream", streamRoutes);
 app.route("/api/v1/directory", directoryRoutes);
 app.route("/api/v1/nhi", nhiRoutes);
+app.route("/api/v1/discovery", discoveryRoutes);
 
 export { WorkflowDO } from "./workflow/workflow-do";
 export { AutomationDO } from "./automation/automation-do";
