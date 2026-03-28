@@ -73,10 +73,13 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     };
   } else {
     const payload = await generateSamplePayload(db, tenantId, rule.triggerType);
+    // Merge rule's triggerConfig into payload so the simulation matches
+    // (e.g., if the rule targets a specific groupId, include it)
+    const mergedPayload = { ...payload, ...rule.triggerConfig };
     event = {
       type: rule.triggerType,
       tenantId,
-      payload,
+      payload: mergedPayload,
       timestamp,
       source: "simulate",
     };
