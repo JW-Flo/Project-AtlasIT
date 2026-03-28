@@ -315,30 +315,43 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   );
 
   if (evidenceScores && evidenceScores.length > 0) {
-    await persistScores(db, user.tenantId, evidenceScores);
+    // Blend with self-assessed scores: for each framework, take the higher
+    // of evidence-grounded vs self-assessed so manual overrides are respected
+    const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+    const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
+
+    const blended: FrameworkScore[] = [];
+    const coveredFrameworks = new Set(evidenceScores.map((s) => s.framework));
+
+    for (const ev of evidenceScores) {
+      const sa = selfMap.get(ev.framework);
+      if (sa && sa.score > ev.score) {
+        blended.push(sa);
+      } else {
+        blended.push(ev);
+      }
+      selfMap.delete(ev.framework);
+    }
 
     // Fill in any frameworks that the compliance-worker doesn't cover
-    // (e.g. NIST CSF, HIPAA, GDPR — no control definitions in cdt-rules yet)
-    const coveredFrameworks = new Set(evidenceScores.map((s) => s.framework));
+    // with self-assessed scores or zeros
     const uncoveredFrameworks = frameworks.filter(
       (fw) => !coveredFrameworks.has(fw),
     );
-
-    if (uncoveredFrameworks.length > 0) {
-      // For uncovered frameworks, return zero scores (no evidence-grounded data yet)
-      for (const fw of uncoveredFrameworks) {
-        evidenceScores.push({
-          framework: fw,
-          score: 0,
-          grade: "F",
-          controlsTotal: 0,
-          controlsImplemented: 0,
-          controlsVerified: 0,
-        });
-      }
+    for (const fw of uncoveredFrameworks) {
+      const sa = selfMap.get(fw);
+      blended.push(sa ?? {
+        framework: fw,
+        score: 0,
+        grade: "F",
+        controlsTotal: 0,
+        controlsImplemented: 0,
+        controlsVerified: 0,
+      });
     }
 
-    return json({ scores: evidenceScores, source: "evidence", frameworksConfigured });
+    await persistScores(db, user.tenantId, blended);
+    return json({ scores: blended, source: "evidence", frameworksConfigured });
   }
 
   // Fallback: return cached scores from DB, scoped to tenant's current frameworks
@@ -441,11 +454,26 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   );
 
   if (scores && scores.length > 0) {
-    // Fill uncovered frameworks with zero scores
+    // Blend with self-assessed scores: take higher per framework
+    const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+    const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
+    const blended: FrameworkScore[] = [];
     const covered = new Set(scores.map((s) => s.framework));
+
+    for (const ev of scores) {
+      const sa = selfMap.get(ev.framework);
+      if (sa && sa.score > ev.score) {
+        blended.push(sa);
+      } else {
+        blended.push(ev);
+      }
+      selfMap.delete(ev.framework);
+    }
+
     for (const fw of frameworks) {
       if (!covered.has(fw)) {
-        scores.push({
+        const sa = selfMap.get(fw);
+        blended.push(sa ?? {
           framework: fw,
           score: 0,
           grade: "F",
@@ -456,12 +484,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       }
     }
 
-    await persistScores(db, user.tenantId, scores);
+    await persistScores(db, user.tenantId, blended);
 
     // Emit compliance.score_changed for any framework whose score changed
     const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
     if (orchestratorUrl) {
-      for (const fw of scores) {
+      for (const fw of blended) {
         const previousScore = previousScores[fw.framework];
         if (previousScore !== undefined && previousScore !== fw.score) {
           fetch(`${orchestratorUrl}/api/v1/events`, {
@@ -488,7 +516,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       }
     }
 
-    return json({ scores, recalculated: true, source: "evidence" });
+    return json({ scores: blended, recalculated: true, source: "evidence" });
   }
 
   // Compliance-worker unavailable — try self-assessed scores
