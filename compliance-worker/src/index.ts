@@ -721,7 +721,7 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
             try {
               await sharedDb
                 .prepare(
-                  `INSERT INTO compliance_evidence
+                  `INSERT OR IGNORE INTO compliance_evidence
                  (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 )

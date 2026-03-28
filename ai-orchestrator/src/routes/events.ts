@@ -394,7 +394,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     if (ep.controlId && ep.framework) {
       const evidencePromise = sharedDb
         .prepare(
-          `INSERT INTO compliance_evidence
+          `INSERT OR IGNORE INTO compliance_evidence
              (id, tenant_id, framework, framework_id, control_id, control_name,
               evidence_type, source, source_id, actor, subject, metadata, created_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
