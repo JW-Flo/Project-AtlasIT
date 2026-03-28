@@ -445,7 +445,7 @@
   let recordingEvidence = false;
   let newEvidenceDescription = "";
   let newEvidencePack = "manual";
-  let linkingEvidenceId: number | null = null;
+  let linkingEvidenceId: number | string | null = null;
   let linkControlKey = "";
 
   const INTERNAL_CONTROLS = [
@@ -643,6 +643,53 @@
       evaluating = false;
     }
   }
+
+  // Group evidence items by subject+pack to avoid duplicate rows when the same
+  // logical evidence maps to multiple control refs (e.g. A.9.2.2, PR.AC-4, CC6.3).
+  interface GroupedEvidenceItem {
+    id: number | string;
+    hash: string;
+    tenantId: string;
+    pack: string;
+    subject: string | null;
+    createdAt: string;
+    controls: Array<{ key: string; framework?: string | null; controlName?: string | null }>;
+    source?: string;
+  }
+
+  $: groupedEvidenceItems = (() => {
+    const map = new Map<string, GroupedEvidenceItem>();
+    for (const item of evidenceItems) {
+      const groupKey = `${item.subject ?? ""}||${item.pack ?? ""}`;
+      if (map.has(groupKey)) {
+        const existing = map.get(groupKey)!;
+        if (item.linkedControl) {
+          const already = existing.controls.some((c) => c.key === item.linkedControl);
+          if (!already) {
+            existing.controls.push({
+              key: item.linkedControl,
+              framework: item.framework,
+              controlName: item.controlName,
+            });
+          }
+        }
+      } else {
+        map.set(groupKey, {
+          id: item.id,
+          hash: item.hash,
+          tenantId: item.tenantId,
+          pack: item.pack,
+          subject: item.subject,
+          createdAt: item.createdAt,
+          source: item.source,
+          controls: item.linkedControl
+            ? [{ key: item.linkedControl, framework: item.framework, controlName: item.controlName }]
+            : [],
+        });
+      }
+    }
+    return Array.from(map.values());
+  })();
 
   $: if (activeTab === "evidence" && evidenceItems.length === 0 && !evidenceLoading && !evidenceError) {
     loadEvidence();
@@ -1258,7 +1305,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each evidenceItems as item (item.id)}
+              {#each groupedEvidenceItems as item (item.id)}
                 <tr class="border-t hover:bg-muted/50">
                   <td class="px-4 py-3">
                     <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash || String(item.id))}</span>
@@ -1269,8 +1316,12 @@
                   <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
                   <td class="px-4 py-3">
-                    {#if item.linkedControl}
-                      <Badge variant="success">{item.linkedControl}</Badge>
+                    {#if item.controls.length > 0}
+                      <div class="flex flex-wrap gap-1">
+                        {#each item.controls as ctrl}
+                          <Badge variant="success" title={ctrl.controlName || ctrl.key}>{ctrl.key}</Badge>
+                        {/each}
+                      </div>
                     {:else if linkingEvidenceId === item.id}
                       <div class="flex items-center gap-2">
                         <select

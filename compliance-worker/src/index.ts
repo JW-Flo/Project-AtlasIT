@@ -73,6 +73,9 @@ import {
 // ----------------------------------------------------------------------------------
 
 const SNAPSHOT_TTL_SECONDS = 300;
+
+// Policy infrastructure is idempotent DDL+seed — run once per isolate lifetime.
+let policyInfraReady = false;
 const DEFAULT_TENANT = "demo";
 const DEFAULT_PACK = "unspecified";
 const DEFAULT_SUBJECT = "unknown";
@@ -1520,7 +1523,10 @@ async function handlePolicyTemplates(
   }
 
   try {
-    await ensurePolicyInfrastructure(db);
+    if (!policyInfraReady) {
+      await ensurePolicyInfrastructure(db);
+      policyInfraReady = true;
+    }
     const templates = await listPolicyTemplates(db);
     const body = {
       templates: templates.map((tpl) => ({
@@ -1612,11 +1618,25 @@ async function handlePolicyGenerate(
   const input = body?.input && typeof body.input === "object" ? body.input : {};
 
   try {
+    if (!policyInfraReady) {
+      await ensurePolicyInfrastructure(db);
+      policyInfraReady = true;
+    }
+
+    const tenantRow = await db
+      .prepare(`SELECT name, industry FROM tenants WHERE id = ? LIMIT 1`)
+      .bind(tenant.tenantId)
+      .first<{ name: string; industry: string | null }>();
+    const tenantName = tenantRow?.name ?? tenant.tenantId;
+    const tenantIndustry = tenantRow?.industry ?? "";
+
     const genStart = Date.now();
     const groqApiKey = (env as any).GROQ_API_KEY;
     const result = await generatePolicyDocument({
       db,
       tenantId: tenant.tenantId,
+      tenantName,
+      tenantIndustry,
       templateKey,
       input,
       groqApiKey,
