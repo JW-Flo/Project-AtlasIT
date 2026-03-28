@@ -111,7 +111,7 @@ export const PATCH: RequestHandler = async ({
     status?: string;
   };
 
-  const ALLOWED_STATUSES = ["active", "inactive", "revoked", "pending_review"];
+  const ALLOWED_STATUSES = ["active", "revoked", "rotation_pending"];
   if (status !== undefined && !ALLOWED_STATUSES.includes(status)) {
     return json({ error: "invalid status value" }, { status: 400 });
   }
@@ -176,6 +176,7 @@ export const PATCH: RequestHandler = async ({
     .bind(id, tenantId)
     .first();
 
+  if (!updated) return json({ error: "update succeeded but row not found" }, { status: 500 });
   return json({ credential: toCamel(mapNhiRow(updated as Record<string, unknown>)) });
 };
 
