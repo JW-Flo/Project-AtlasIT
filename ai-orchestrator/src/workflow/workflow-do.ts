@@ -227,13 +227,29 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       return this.jsonResponse({ error: "Workflow not initialized" }, 400);
 
     const stepId = path.split("/step/")[1].split("/complete")[0];
-    const body = (await request.json()) as { output?: unknown };
+    const body = (await request.json()) as { output?: unknown; idempotencyKey?: string };
 
     const stepIndex = this.state.steps.findIndex((s) => s.stepId === stepId);
     if (stepIndex === -1)
       return this.jsonResponse({ error: "Unknown step" }, 404);
 
     const step = this.state.steps[stepIndex];
+
+    // Idempotency check: if a completion for this exact attempt already exists
+    // in history, return the cached result instead of processing again.
+    if (body.idempotencyKey && step.status === "completed") {
+      const existingCompletion = this.state.history.find(
+        (h) => h.stepId === stepId && h.status === "completed",
+      );
+      if (existingCompletion) {
+        return this.jsonResponse({
+          status: "already_completed",
+          output: existingCompletion.output,
+          idempotencyKey: body.idempotencyKey,
+        });
+      }
+    }
+
     if (step.status !== "running")
       return this.jsonResponse(
         { error: `Step is ${step.status}, not running` },
@@ -499,11 +515,13 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         step.attempts = 1;
         const bus = this.getQueueBus();
         if (bus) {
+          const idempotencyKey = `${this.state.id}:${step.stepId}:attempt-1`;
           await bus.publish("step-tasks", {
             kind: "step-task",
             runId: this.state.id,
             stepId: step.stepId,
             attempt: 1,
+            idempotencyKey,
           });
         }
         this.state.history.push({
@@ -729,13 +747,15 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         attemptNumber: 1,
       });
 
-      // Dispatch step task via queue
+      // Dispatch step task via queue with idempotency key
       if (bus) {
+        const idempotencyKey = `${this.state.id}:${step.stepId}:attempt-${step.attempts}`;
         const msg: StepTaskMessage = {
           kind: "step-task",
           runId: this.state.id,
           stepId: step.stepId,
           attempt: step.attempts,
+          idempotencyKey,
         };
         await bus.publish("step-tasks", msg);
       }
@@ -897,12 +917,14 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       });
 
       if (bus) {
+        const idempotencyKey = `${this.state.id}:${compensationStep.stepId}:attempt-1`;
         const msg: StepTaskMessage = {
           kind: "step-task",
           runId: this.state.id,
           stepId: compensationStep.stepId,
           attempt: 1,
           compensation: true,
+          idempotencyKey,
         };
         await bus.publish("step-tasks", msg);
       }

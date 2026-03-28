@@ -37,3 +37,9 @@ export {
 } from "./platform-evidence";
 
 export { collectPlatformStateEvidence, type StateEvidenceResult } from "./platform-state-collector";
+
+export {
+  isEvidenceDeletionAllowed,
+  enforceRetentionPolicy,
+  type RetentionResult,
+} from "./retention";
