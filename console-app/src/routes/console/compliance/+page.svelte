@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { session } from "$lib/stores/session";
-  import { CONTROL_TO_CDT_PREFIXES } from "$lib/compliance/framework-controls";
+  import { CONTROL_TO_CDT_PREFIXES, FRAMEWORK_CONTROLS } from "$lib/compliance/framework-controls";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -470,20 +470,16 @@
   let linkControlKey = "";
   let connectedApps: Array<{ id: string; connected: boolean }> = [];
 
-  const INTERNAL_CONTROLS = [
-    { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
-    { key: "SOC2_CC2.2", framework: "SOC2", title: "Communication and information" },
-    { key: "SOC2_CC6.1", framework: "SOC2", title: "Logical access" },
-    { key: "ISO27001_A.8", framework: "ISO27001", title: "Asset management" },
-    { key: "ISO27001_A.9", framework: "ISO27001", title: "Access control" },
-    { key: "ISO27001_A.10", framework: "ISO27001", title: "Cryptography" },
-    { key: "ISO27001_A.16", framework: "ISO27001", title: "Incident management" },
-    { key: "NIST_ID", framework: "NIST CSF", title: "Identify" },
-    { key: "NIST_PR", framework: "NIST CSF", title: "Protect" },
-    { key: "NIST_DE", framework: "NIST CSF", title: "Detect" },
-    { key: "NIST_RS", framework: "NIST CSF", title: "Respond" },
-    { key: "NIST_RC", framework: "NIST CSF", title: "Recover" },
-  ];
+  // Build evidence control dropdown from FRAMEWORK_CONTROLS — all 139 controls
+  // Keys use the CDT control ID prefix (e.g. CC1.1, A.9.2.2, ID.AM, 164.308(a)(1), Art.5)
+  const INTERNAL_CONTROLS: { key: string; framework: string; title: string }[] = [];
+  for (const [fw, defs] of Object.entries(FRAMEWORK_CONTROLS)) {
+    for (const def of defs) {
+      // Extract the CDT ID from the control name (everything before " - ")
+      const cdtId = def.name.split(" - ")[0].trim();
+      INTERNAL_CONTROLS.push({ key: cdtId, framework: fw, title: def.name });
+    }
+  }
 
   function shortHash(hash: string): string {
     if (!hash || hash.length <= 16) return hash;
@@ -1424,8 +1420,8 @@
                 class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <option value="">None</option>
-                {#each INTERNAL_CONTROLS as ctrl}
-                  <option value={ctrl.key}>{ctrl.key} — {ctrl.title}</option>
+                {#each INTERNAL_CONTROLS.filter(c => frameworks.length === 0 || frameworks.includes(c.framework)) as ctrl}
+                  <option value={ctrl.key}>{ctrl.framework} {ctrl.key} — {ctrl.title.includes(" - ") ? ctrl.title.split(" - ").slice(1).join(" - ") : ctrl.title}</option>
                 {/each}
               </select>
             </div>
@@ -1511,8 +1507,8 @@
                         >
                           <option value="">Select control or app...</option>
                           <optgroup label="Controls">
-                            {#each INTERNAL_CONTROLS as ctrl}
-                              <option value={ctrl.key}>{ctrl.key} — {ctrl.title}</option>
+                            {#each INTERNAL_CONTROLS.filter(c => frameworks.length === 0 || frameworks.includes(c.framework)) as ctrl}
+                              <option value={ctrl.key}>{ctrl.framework} {ctrl.key} — {ctrl.title.includes(" - ") ? ctrl.title.split(" - ").slice(1).join(" - ") : ctrl.title}</option>
                             {/each}
                           </optgroup>
                           {#if connectedApps.length > 0}

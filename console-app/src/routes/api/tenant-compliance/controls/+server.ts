@@ -46,8 +46,16 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     // no saved controls
   }
 
-  if (!controls) {
-    controls = buildDefaultControls(frameworks);
+  // Generate fresh defaults and merge: if saved controls are stale (fewer than
+  // current FRAMEWORK_CONTROLS), rebuild from defaults and preserve existing statuses/notes.
+  const defaults = buildDefaultControls(frameworks);
+  if (!controls || controls.length < defaults.length) {
+    const savedMap = new Map((controls || []).map((c) => [c.id, c]));
+    controls = defaults.map((d) => {
+      const saved = savedMap.get(d.id);
+      if (saved) return { ...d, status: saved.status, notes: saved.notes };
+      return d;
+    });
   }
 
   // Filter controls to only include those for the tenant's selected frameworks
