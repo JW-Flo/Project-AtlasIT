@@ -524,6 +524,7 @@ const worker = {
             WORKFLOW: env.WORKFLOW,
             ADAPTER_URLS: env.ADAPTER_URLS,
             EVIDENCE: env.EVIDENCE,
+            DB: (env as any).ATLAS_SHARED_DB ?? (env as any).DB,
           });
           message.ack();
         } catch {

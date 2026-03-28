@@ -61,18 +61,53 @@ const handleSendNotification: ActionHandler = async (config, ctx) => {
 };
 
 const handleCreateIncident: ActionHandler = async (config, ctx) => {
-  const eventId = await emitEvent(
+  const id = crypto.randomUUID().replace(/-/g, "");
+  const title =
+    (config.title as string) ||
+    (config.message as string) ||
+    `Auto-incident: ${ctx.payload?.eventType || "unknown event"}`;
+  const severity = (config.severity as string) || "medium";
+  const description =
+    (config.description as string) ||
+    `Created by automation rule. Trigger: ${JSON.stringify(ctx.payload).slice(0, 500)}`;
+
+  try {
+    await ctx.db
+      .prepare(
+        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, source_id, description)
+         VALUES (?, ?, ?, ?, 'open', 'automation', ?, ?)`,
+      )
+      .bind(
+        id,
+        ctx.tenantId,
+        title,
+        severity,
+        (config.ruleId as string) || null,
+        description,
+      )
+      .run();
+  } catch (e: any) {
+    return {
+      actionType: "create_incident",
+      status: "failed",
+      message: `Failed to create incident: ${e?.message || "DB error"}`,
+    };
+  }
+
+  // Also emit event for downstream consumers (Slack notifications, etc.)
+  await emitEvent(
     ctx.db,
     ctx.tenantId,
     "incident.created",
     "automation-engine",
-    { ...config, triggerPayload: ctx.payload },
+    { incidentId: id, title, severity, triggerPayload: ctx.payload },
   );
+
   return {
     actionType: "create_incident",
     status: "success",
-    message: `Incident creation event emitted`,
-    details: { eventId, ...config },
+    message: `Incident created`,
+    details: { incidentId: id, title, severity },
   };
 };
 
