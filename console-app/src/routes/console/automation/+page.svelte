@@ -671,6 +671,23 @@
       )
     : rules;
 
+  // Grouped rules by trigger type for table view
+  $: groupedRulesByTrigger = (() => {
+    const groups: { triggerType: string; label: string; rules: typeof filteredRules }[] = [];
+    const seen = new Map<string, typeof filteredRules>();
+    for (const rule of filteredRules) {
+      const existing = seen.get(rule.triggerType);
+      if (existing) {
+        existing.push(rule);
+      } else {
+        const arr = [rule];
+        seen.set(rule.triggerType, arr);
+        groups.push({ triggerType: rule.triggerType, label: triggerLabel(rule.triggerType), rules: arr });
+      }
+    }
+    return groups;
+  })();
+
   // Filtered executions (P3 #13)
   $: filteredExecutions = executions.filter((e) => {
     if (historyStatusFilter && e.status !== historyStatusFilter) return false;
@@ -1136,122 +1153,90 @@
         </CardContent>
       </Card>
     {:else}
-      <div class="space-y-2">
-        {#each filteredRules as rule}
-          <Card>
-            <CardContent class="py-3 px-4">
-              <div class="flex items-center gap-4">
-                <!-- Toggle (P1 #8) -->
-                <button
-                  type="button"
-                  on:click={() => toggleRule(rule)}
-                  class="w-10 h-6 rounded-full relative transition-colors shrink-0"
-                  style="background: {rule.enabled ? 'hsl(var(--primary))' : 'hsl(var(--muted))'};"
-                  aria-label="Toggle {rule.name}"
-                  aria-checked={rule.enabled}
-                  role="switch"
-                >
-                  <span
-                    class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
-                    style="left: {rule.enabled ? '22px' : '4px'};"
-                  ></span>
-                </button>
-
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm font-medium" class:text-muted-foreground={!rule.enabled}>{rule.name}</div>
-                  <div class="flex items-center gap-2 mt-1 flex-wrap">
-                    <Badge variant="outline">{triggerLabel(rule.triggerType)}</Badge>
-                    {#if rule.lastRunAt}
-                      <span class="text-xs text-muted-foreground" title={new Date(rule.lastRunAt).toLocaleString()}>Last: {timeAgo(rule.lastRunAt)}</span>
-                    {/if}
-                    {#if rule.runCount > 0}
-                      <span class="text-xs text-muted-foreground">{rule.runCount} run{rule.runCount !== 1 ? "s" : ""}</span>
-                    {/if}
-                    {#if rule.lastStatus}
-                      <Badge variant={statusVariant(rule.lastStatus)} class="capitalize">{rule.lastStatus}</Badge>
-                    {/if}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  class="inline-flex items-center justify-center h-10 px-2.5 rounded-md text-xs font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 text-muted-foreground"
-                  on:click={() => simulateDryRun(rule.id)}
-                  title="Preview what this rule would do"
-                >
-                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  Dry Run
-                </button>
-                <button
-                  type="button"
-                  class="inline-flex items-center justify-center h-10 w-10 rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 text-muted-foreground"
-                  on:click={() => duplicateRule(rule)}
-                  title="Duplicate rule"
-                  aria-label="Duplicate {rule.name}"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                </button>
-                <button
-                  type="button"
-                  class="inline-flex items-center justify-center h-10 w-10 rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  on:click={() => requestDeleteRule(rule)}
-                  aria-label="Delete {rule.name}"
-                >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                </button>
-              </div>
-              <div class="flex items-center gap-2 mt-2 ml-14">
-                {#if rule.description}
-                  <p class="text-xs text-muted-foreground flex-1">{rule.description}</p>
-                {/if}
-                <button
-                  type="button"
-                  class="text-[11px] text-muted-foreground hover:text-primary transition-colors shrink-0"
-                  on:click={() => toggleComplianceView(rule.id)}
-                >
-                  {expandedRuleId === rule.id ? "Hide" : "Show"} Compliance Coverage
-                </button>
-              </div>
-
-              {#if expandedRuleId === rule.id}
-                <div class="mt-3 ml-14 p-3 rounded-md bg-muted/50 border border-border/50">
-                  {#if complianceLoading}
-                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Skeleton class="h-3 w-3 rounded-full" /> Loading compliance data...
-                    </div>
-                  {:else if complianceData}
-                    <div class="space-y-3">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-medium">{complianceData.summary.totalControls} control{complianceData.summary.totalControls !== 1 ? 's' : ''} covered</span>
-                        {#each complianceData.summary.frameworks as fw}
-                          <Badge variant="outline" class="text-[10px]">{fw}</Badge>
-                        {/each}
-                      </div>
-                      {#each complianceData.actions as action}
-                        {#if action.controls.length > 0}
-                          <div>
-                            <div class="text-[11px] font-medium text-muted-foreground mb-1">{triggerLabel(action.type) || action.type.replace(/_/g, ' ')}</div>
-                            <div class="flex flex-wrap gap-1">
-                              {#each action.controls as ctrl}
-                                <span class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] bg-background" title="{ctrl.controlName} ({ctrl.evidenceType})">
-                                  <span class="font-medium">{ctrl.framework}</span>
-                                  <span class="text-muted-foreground">{ctrl.controlId}</span>
-                                </span>
-                              {/each}
+      <div class="space-y-6">
+        {#each groupedRulesByTrigger as group}
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{group.label} ({group.rules.length})</h3>
+            <Card>
+              <CardContent class="p-0">
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                        <th class="px-3 py-2 font-medium w-12"></th>
+                        <th class="px-3 py-2 font-medium">Name</th>
+                        <th class="px-3 py-2 font-medium hidden md:table-cell">Last Run</th>
+                        <th class="px-3 py-2 font-medium hidden sm:table-cell">Runs</th>
+                        <th class="px-3 py-2 font-medium hidden sm:table-cell">Errors</th>
+                        <th class="px-3 py-2 font-medium hidden lg:table-cell">Status</th>
+                        <th class="px-3 py-2 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each group.rules as rule}
+                        <tr class="border-t hover:bg-muted/50 transition-colors">
+                          <td class="px-3 py-2">
+                            <button
+                              type="button"
+                              on:click={() => toggleRule(rule)}
+                              class="w-8 h-5 rounded-full relative transition-colors shrink-0"
+                              style="background: {rule.enabled ? 'hsl(var(--primary))' : 'hsl(var(--muted))'};"
+                              aria-label="Toggle {rule.name}"
+                              aria-checked={rule.enabled}
+                              role="switch"
+                            >
+                              <span
+                                class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                                style="left: {rule.enabled ? '14px' : '2px'};"
+                              ></span>
+                            </button>
+                          </td>
+                          <td class="px-3 py-2">
+                            <div class="text-sm font-medium" class:text-muted-foreground={!rule.enabled}>{rule.name}</div>
+                            {#if rule.description}
+                              <div class="text-[11px] text-muted-foreground truncate max-w-xs">{rule.description}</div>
+                            {/if}
+                          </td>
+                          <td class="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell">
+                            {rule.lastRunAt ? timeAgo(rule.lastRunAt) : "—"}
+                          </td>
+                          <td class="px-3 py-2 text-xs text-muted-foreground hidden sm:table-cell">{rule.runCount}</td>
+                          <td class="px-3 py-2 text-xs hidden sm:table-cell">
+                            {#if rule.errorCount > 0}
+                              <span class="text-red-500">{rule.errorCount}</span>
+                            {:else}
+                              <span class="text-muted-foreground">0</span>
+                            {/if}
+                          </td>
+                          <td class="px-3 py-2 hidden lg:table-cell">
+                            {#if rule.lastStatus}
+                              <Badge variant={statusVariant(rule.lastStatus)} class="capitalize text-[10px]">{rule.lastStatus}</Badge>
+                            {:else}
+                              <span class="text-xs text-muted-foreground">—</span>
+                            {/if}
+                          </td>
+                          <td class="px-3 py-2 text-right">
+                            <div class="flex items-center justify-end gap-1">
+                              <button type="button" class="inline-flex items-center justify-center h-7 px-2 rounded text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" on:click={() => simulateDryRun(rule.id)} title="Dry Run">
+                                <svg class="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                                Test
+                              </button>
+                              <button type="button" class="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" on:click={() => duplicateRule(rule)} title="Duplicate">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                              </button>
+                              <button type="button" class="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" on:click={() => requestDeleteRule(rule)} title="Delete">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                              </button>
                             </div>
-                          </div>
-                        {/if}
+                          </td>
+                        </tr>
                       {/each}
-                    </div>
-                  {:else if complianceError}
-                    <p class="text-xs text-destructive">Failed to load compliance data. <button class="underline hover:text-destructive/80" on:click={() => toggleComplianceView(expandedRuleId || '')}>Retry</button></p>
-                  {:else}
-                    <p class="text-xs text-muted-foreground">No compliance data available for this rule.</p>
-                  {/if}
+                    </tbody>
+                  </table>
                 </div>
-              {/if}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         {/each}
       </div>
     {/if}

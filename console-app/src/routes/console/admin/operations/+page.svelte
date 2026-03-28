@@ -33,12 +33,16 @@
     id: string;
     type: string;
     status: string;
-    subjectEmail: string;
-    appId: string;
+    email: string;
+    userId: string | null;
+    trigger: string | null;
     startedAt: string;
     completedAt: string | null;
-    stepsCompleted: number;
+    stepsDone: number;
     stepsTotal: number;
+    durationMs: number | null;
+    error: string | null;
+    context: string | null;
   }
 
   // ── State ──────────────────────────────────────────────────────────
@@ -356,14 +360,14 @@
                     <td class="px-3 sm:px-4 py-3">
                       <Badge variant="outline">{run.type}</Badge>
                     </td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{run.subjectEmail}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{run.email || run.userId || "—"}</td>
                     <td class="px-3 sm:px-4 py-3">
                       <Badge variant={runStatusVariant(run.status)}>
                         <span class={runStatusColor(run.status)}>{run.status}</span>
                       </Badge>
                     </td>
                     <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
-                      <span class="text-muted-foreground">{run.stepsCompleted}/{run.stepsTotal}</span>
+                      <span class="text-muted-foreground">{run.stepsDone}/{run.stepsTotal}</span>
                     </td>
                     <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{timeAgo(run.startedAt)}</td>
                     <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{run.completedAt ? timeAgo(run.completedAt) : "-"}</td>
@@ -371,14 +375,18 @@
                   {#if expandedRun === run.id}
                     <tr class="bg-muted/30">
                       <td colspan="8" class="px-4 py-4">
-                        <div class="grid grid-cols-2 gap-4 text-xs">
+                        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                           <div>
                             <span class="font-medium text-muted-foreground">Run ID:</span>
                             <span class="font-mono ml-1">{run.id}</span>
                           </div>
                           <div>
-                            <span class="font-medium text-muted-foreground">App ID:</span>
-                            <span class="ml-1">{run.appId}</span>
+                            <span class="font-medium text-muted-foreground">Subject:</span>
+                            <span class="ml-1">{run.email || run.userId || "—"}</span>
+                          </div>
+                          <div>
+                            <span class="font-medium text-muted-foreground">Trigger:</span>
+                            <span class="ml-1">{run.trigger || "—"}</span>
                           </div>
                           <div>
                             <span class="font-medium text-muted-foreground">Started:</span>
@@ -389,13 +397,19 @@
                             <span class="ml-1">{formatDate(run.completedAt)}</span>
                           </div>
                           <div>
-                            <span class="font-medium text-muted-foreground">Progress:</span>
-                            <span class="ml-1">{run.stepsCompleted} of {run.stepsTotal} steps</span>
+                            <span class="font-medium text-muted-foreground">Duration:</span>
+                            <span class="ml-1">{run.durationMs ? `${run.durationMs}ms` : "—"}</span>
                           </div>
                           <div>
-                            <span class="font-medium text-muted-foreground">Subject:</span>
-                            <span class="ml-1">{run.subjectEmail}</span>
+                            <span class="font-medium text-muted-foreground">Progress:</span>
+                            <span class="ml-1">{run.stepsDone ?? 0} of {run.stepsTotal ?? 0} steps</span>
                           </div>
+                          {#if run.error}
+                            <div class="col-span-2">
+                              <span class="font-medium text-red-500">Error:</span>
+                              <span class="ml-1 text-red-500">{run.error}</span>
+                            </div>
+                          {/if}
                         </div>
                       </td>
                     </tr>

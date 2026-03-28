@@ -62,7 +62,7 @@
   let impact: "all" | Impact = "all";
   let since = "";
 
-  let limit = 25;
+  let limit = 50;
   let offset = 0;
   let total = 0;
   let expandedId: string | null = null;
@@ -323,7 +323,19 @@
     </div>
 
     <div class="flex items-center justify-between text-sm text-muted-foreground">
-      <div>Showing {pageStart}–{pageEnd} of {total}</div>
+      <div class="flex items-center gap-3">
+        <span>Showing {pageStart}–{pageEnd} of {total}</span>
+        <div class="flex items-center gap-1">
+          <span class="text-xs">Per page:</span>
+          {#each [25, 50, 100] as size}
+            <button
+              type="button"
+              class="px-2 py-0.5 text-xs rounded border {limit === size ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background hover:bg-muted'}"
+              on:click={() => { limit = size; offset = 0; loadFeed(); }}
+            >{size}</button>
+          {/each}
+        </div>
+      </div>
       <div class="flex items-center gap-2">
         <Button size="sm" variant="outline" on:click={prevPage} disabled={!canPrev}>Previous</Button>
         <Button size="sm" variant="outline" on:click={nextPage} disabled={!canNext}>Next</Button>

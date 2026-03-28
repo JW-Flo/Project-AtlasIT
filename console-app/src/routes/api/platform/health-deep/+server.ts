@@ -24,15 +24,25 @@ export const GET: RequestHandler = async ({ platform }) => {
 
   const results: ServiceDeepCheck[] = [];
 
+  // CF Access credentials for worker-to-worker calls behind Access
+  const cfAccessId = env.CF_ACCESS_CLIENT_ID as string | undefined;
+  const cfAccessSecret = env.CF_ACCESS_CLIENT_SECRET as string | undefined;
+
   await Promise.allSettled(
     Object.entries(services).map(async ([name, baseUrl]) => {
       const start = Date.now();
       try {
+        const headers: Record<string, string> = {};
+        if (cfAccessId && cfAccessSecret) {
+          headers["CF-Access-Client-Id"] = cfAccessId;
+          headers["CF-Access-Client-Secret"] = cfAccessSecret;
+        }
         const res = await fetch(`${baseUrl}/health`, {
+          headers,
           signal: AbortSignal.timeout(5000),
         });
         const latencyMs = Date.now() - start;
-        const data = await res.json() as any;
+        const data = (await res.json()) as any;
 
         const functionalChecks: Record<string, "pass" | "fail" | "unknown"> = {};
 
@@ -88,18 +98,12 @@ export const GET: RequestHandler = async ({ platform }) => {
   });
 
   const allHealthy = results.every(
-    (r) =>
-      r.reachable &&
-      Object.values(r.functionalChecks).every((v) => v === "pass"),
+    (r) => r.reachable && Object.values(r.functionalChecks).every((v) => v === "pass"),
   );
 
-  const totalChecks = results.reduce(
-    (sum, r) => sum + Object.keys(r.functionalChecks).length,
-    0,
-  );
+  const totalChecks = results.reduce((sum, r) => sum + Object.keys(r.functionalChecks).length, 0);
   const passingChecks = results.reduce(
-    (sum, r) =>
-      sum + Object.values(r.functionalChecks).filter((v) => v === "pass").length,
+    (sum, r) => sum + Object.values(r.functionalChecks).filter((v) => v === "pass").length,
     0,
   );
 
