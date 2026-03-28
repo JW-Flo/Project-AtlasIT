@@ -65,7 +65,7 @@
     connected: boolean;
   }
   let connectedApps: ConnectedApp[] = [];
-  let groupApps: Array<{ appId: string; role: string }> = [];
+  let groupApps: Array<{ id?: string; appId: string; role: string }> = [];
   let newAppId = "";
   let newAppRole = "member";
 
@@ -106,6 +106,10 @@
       const data = await res.json();
       group = data.group;
       members = data.members || [];
+
+      if (data.appMappings) {
+        groupApps = data.appMappings.map((m: any) => ({ id: m.id, appId: m.appId || m.app_id, role: m.role }));
+      }
 
       if (group) {
         editName = group.name || "";
@@ -197,17 +201,30 @@
     } catch {}
   }
 
-  function addAppAssignment() {
-    if (!newAppId) return;
-    if (groupApps.some((a) => a.appId === newAppId)) return;
-    groupApps = [...groupApps, { appId: newAppId, role: newAppRole }];
-    newAppId = "";
-    newAppRole = "member";
-    pushToast({ message: "Application assignment added", variant: "success" });
+  async function addAppAssignment() {
+    if (!newAppId || groupApps.some(a => a.appId === newAppId)) return;
+    try {
+      const res = await fetch("/api/directory/mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groupId: group!.id, appId: newAppId, role: newAppRole || "member" }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      const data = await res.json();
+      groupApps = [...groupApps, { id: data.mapping?.id, appId: newAppId, role: newAppRole || "member" }];
+      newAppId = "";
+      newAppRole = "member";
+    } catch {
+      pushToast({ title: "Error", description: "Failed to assign app", variant: "destructive" });
+    }
   }
 
-  function removeAppAssignment(appId: string) {
-    groupApps = groupApps.filter((a) => a.appId !== appId);
+  async function removeAppAssignment(appId: string) {
+    const mapping = groupApps.find(a => a.appId === appId);
+    if (mapping?.id) {
+      await fetch(`/api/directory/mappings?id=${mapping.id}`, { method: "DELETE" });
+    }
+    groupApps = groupApps.filter(a => a.appId !== appId);
   }
 
   onMount(() => {

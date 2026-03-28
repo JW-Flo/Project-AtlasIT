@@ -46,16 +46,29 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     // no saved controls
   }
 
-  // Generate fresh defaults and merge: if saved controls are stale (fewer than
-  // current FRAMEWORK_CONTROLS), rebuild from defaults and preserve existing statuses/notes.
+  // Build defaults for current frameworks; if saved controls are stale (fewer
+  // than defaults — e.g. old 5-per-framework vs current 139), rebuild the set
+  // while preserving any saved statuses/notes.
   const defaults = buildDefaultControls(frameworks);
   if (!controls || controls.length < defaults.length) {
-    const savedMap = new Map((controls || []).map((c) => [c.id, c]));
+    const savedMap = new Map((controls || []).map((c: Control) => [c.id, c]));
     controls = defaults.map((d) => {
       const saved = savedMap.get(d.id);
       if (saved) return { ...d, status: saved.status, notes: saved.notes };
       return d;
     });
+    // Persist the expanded controls so this migration only runs once
+    try {
+      await db
+        .prepare(
+          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
+           VALUES (?, 'compliance_controls', ?)`,
+        )
+        .bind(user.tenantId, JSON.stringify(controls))
+        .run();
+    } catch {
+      // best-effort
+    }
   }
 
   // Filter controls to only include those for the tenant's selected frameworks

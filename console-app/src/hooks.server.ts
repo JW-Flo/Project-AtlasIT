@@ -2,6 +2,9 @@ import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
+import { validateEncryptionConfig } from "$lib/server/credentials";
+
+let encryptionValidated = false;
 
 /** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
 const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
@@ -56,6 +59,11 @@ function isDevAuthBypass(env: Record<string, string | undefined>): boolean {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+  if (!encryptionValidated && event.platform?.env) {
+    validateEncryptionConfig(event.platform.env as Record<string, unknown>);
+    encryptionValidated = true;
+  }
+
   const sessionId = event.cookies.get("atlas_session");
   let user: UserPrincipal | null = null;
 

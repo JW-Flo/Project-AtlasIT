@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import { integrations } from "$lib/data/integrations";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
@@ -313,6 +314,11 @@
     deleteTarget = null;
   }
 
+  function getAppName(appId: string): string {
+    const app = integrations.find(i => i.id === appId);
+    return app?.name ?? appId;
+  }
+
   function formatTime(iso: string | undefined): string {
     if (!iso) return "Never";
     try {
@@ -589,7 +595,7 @@
                 {#each mappings as mapping}
                   <tr class="border-t hover:bg-muted/50">
                     <td class="px-4 py-3 font-medium">{mapping.groupName}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{mapping.appId}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{getAppName(mapping.appId)}</td>
                     <td class="px-4 py-3 text-muted-foreground">{mapping.role}</td>
                     <td class="px-4 py-3">
                       {#if mapping.suggested}

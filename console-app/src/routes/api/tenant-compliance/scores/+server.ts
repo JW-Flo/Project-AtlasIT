@@ -305,8 +305,6 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     frameworksConfigured = false;
   }
 
-  const frameworkSet = new Set(frameworks);
-
   // Try evidence-grounded scoring from compliance-worker first
   const evidenceScores = await fetchEvidenceGroundedScores(
     platform,
@@ -314,10 +312,14 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     frameworks,
   );
 
+  // Always compute self-assessed scores from tenant controls as the primary source
+  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+
   if (evidenceScores && evidenceScores.length > 0) {
-    // Blend with self-assessed scores: for each framework, take the higher
-    // of evidence-grounded vs self-assessed so manual overrides are respected
-    const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+    // Blend: use self-assessed as the base (covers all controls), then incorporate
+    // evidence-grounded data where it provides ADDITIONAL detail (e.g. controlsVerified
+    // from evidence auto-promotion). Never allow stale evidence scores to inflate
+    // beyond what the controls actually show.
     const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
 
     const blended: FrameworkScore[] = [];
@@ -325,7 +327,8 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
     for (const ev of evidenceScores) {
       const sa = selfMap.get(ev.framework);
-      if (sa && sa.score > ev.score) {
+      // Use self-assessed when it has more controls (stale evidence eval may have fewer)
+      if (sa && sa.controlsTotal > ev.controlsTotal) {
         blended.push(sa);
       } else {
         blended.push(ev);
@@ -333,64 +336,29 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       selfMap.delete(ev.framework);
     }
 
-    // Fill in any frameworks that the compliance-worker doesn't cover
-    // with self-assessed scores or zeros
-    const uncoveredFrameworks = frameworks.filter(
-      (fw) => !coveredFrameworks.has(fw),
-    );
-    for (const fw of uncoveredFrameworks) {
-      const sa = selfMap.get(fw);
-      blended.push(sa ?? {
-        framework: fw,
-        score: 0,
-        grade: "F",
-        controlsTotal: 0,
-        controlsImplemented: 0,
-        controlsVerified: 0,
-      });
+    // Fill in frameworks the compliance-worker doesn't cover
+    for (const fw of frameworks) {
+      if (!coveredFrameworks.has(fw)) {
+        const sa = selfMap.get(fw);
+        blended.push(sa ?? {
+          framework: fw,
+          score: 0,
+          grade: "F",
+          controlsTotal: 0,
+          controlsImplemented: 0,
+          controlsVerified: 0,
+        });
+      }
     }
 
     await persistScores(db, user.tenantId, blended);
     return json({ scores: blended, source: "evidence", frameworksConfigured });
   }
 
-  // Fallback: return cached scores from DB, scoped to tenant's current frameworks
-  const { results: cachedRows } = await db
-    .prepare(
-      `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified
-       FROM compliance_scores WHERE tenant_id = ?`,
-    )
-    .bind(user.tenantId)
-    .all<{
-      framework: string;
-      score: number;
-      grade: string;
-      controls_total: number;
-      controls_implemented: number;
-      controls_verified: number;
-    }>();
-
-  if (cachedRows && cachedRows.length > 0) {
-    const scores: FrameworkScore[] = cachedRows
-      .filter((row) => frameworkSet.has(row.framework))
-      .map((row) => ({
-        framework: row.framework,
-        score: row.score,
-        grade: row.grade,
-        controlsTotal: row.controls_total,
-        controlsImplemented: row.controls_implemented,
-        controlsVerified: row.controls_verified,
-      }));
-    if (scores.length > 0) {
-      return json({ scores, source: "cached", frameworksConfigured });
-    }
-  }
-
-  // Fallback: compute scores from tenant's self-assessed control statuses
-  const selfAssessedScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
-  if (selfAssessedScores.length > 0) {
-    await persistScores(db, user.tenantId, selfAssessedScores);
-    return json({ scores: selfAssessedScores, source: "self-assessed", frameworksConfigured });
+  // Use self-assessed scores from controls (primary path when compliance-worker unavailable)
+  if (selfScores.length > 0) {
+    await persistScores(db, user.tenantId, selfScores);
+    return json({ scores: selfScores, source: "self-assessed", frameworksConfigured });
   }
 
   // No scores available at all — return empty
@@ -446,6 +414,9 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     previousScores[row.framework] = row.score;
   }
 
+  // Always compute self-assessed scores from controls as the primary source
+  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+
   // Recalculate from evidence via compliance-worker
   const scores = await fetchEvidenceGroundedScores(
     platform,
@@ -453,16 +424,18 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     frameworks,
   );
 
+  let finalScores: FrameworkScore[];
+  let source: string;
+
   if (scores && scores.length > 0) {
-    // Blend with self-assessed scores: take higher per framework
-    const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+    // Blend: prefer self-assessed when it has more controls (stale evidence may have fewer)
     const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
     const blended: FrameworkScore[] = [];
     const covered = new Set(scores.map((s) => s.framework));
 
     for (const ev of scores) {
       const sa = selfMap.get(ev.framework);
-      if (sa && sa.score > ev.score) {
+      if (sa && sa.controlsTotal > ev.controlsTotal) {
         blended.push(sa);
       } else {
         blended.push(ev);
@@ -484,68 +457,58 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       }
     }
 
-    await persistScores(db, user.tenantId, blended);
-
-    // Emit compliance.score_changed for any framework whose score changed
-    const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
-    if (orchestratorUrl) {
-      for (const fw of blended) {
-        const previousScore = previousScores[fw.framework];
-        if (previousScore !== undefined && previousScore !== fw.score) {
-          fetch(`${orchestratorUrl}/api/v1/events`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tenantId: user.tenantId,
-              type: "compliance.score_changed",
-              source: "compliance-scores-api",
-              payload: {
-                framework: fw.framework,
-                score: fw.score,
-                previousScore,
-                grade: fw.grade,
-                direction: fw.score < previousScore ? "below" : "above",
-                controlsTotal: fw.controlsTotal,
-                controlsImplemented: fw.controlsImplemented,
-                controlsVerified: fw.controlsVerified,
-              },
-              idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
-            }),
-          }).catch(() => {}); // best-effort, non-blocking
-        }
-      }
-    }
-
-    return json({ scores: blended, recalculated: true, source: "evidence" });
-  }
-
-  // Compliance-worker unavailable — try self-assessed scores
-  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
-  if (selfScores.length > 0) {
-    await persistScores(db, user.tenantId, selfScores);
-    return json({ scores: selfScores, recalculated: true, source: "self-assessed" });
-  }
-
-  // Final fallback: stale cached scores
-  const cachedScores: FrameworkScore[] = (prevRows ?? []).map((row) => ({
-    framework: row.framework,
-    score: row.score,
-    grade: computeGrade(row.score),
-    controlsTotal: 0,
-    controlsImplemented: 0,
-    controlsVerified: 0,
-  }));
-
-  return json({
-    scores: cachedScores.length > 0 ? cachedScores : frameworks.map((fw) => ({
+    finalScores = blended;
+    source = "evidence";
+  } else if (selfScores.length > 0) {
+    finalScores = selfScores;
+    source = "self-assessed";
+  } else {
+    finalScores = frameworks.map((fw) => ({
       framework: fw,
       score: 0,
       grade: "F",
       controlsTotal: 0,
       controlsImplemented: 0,
       controlsVerified: 0,
-    })),
-    recalculated: false,
-    source: "cached",
+    }));
+    source = "empty";
+  }
+
+  await persistScores(db, user.tenantId, finalScores);
+
+  // Emit compliance.score_changed for any framework whose score changed
+  const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+  if (orchestratorUrl) {
+    for (const fw of finalScores) {
+      const previousScore = previousScores[fw.framework];
+      if (previousScore !== undefined && previousScore !== fw.score) {
+        fetch(`${orchestratorUrl}/api/v1/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenantId: user.tenantId,
+            type: "compliance.score_changed",
+            source: "compliance-scores-api",
+            payload: {
+              framework: fw.framework,
+              score: fw.score,
+              previousScore,
+              grade: fw.grade,
+              direction: fw.score < previousScore ? "below" : "above",
+              controlsTotal: fw.controlsTotal,
+              controlsImplemented: fw.controlsImplemented,
+              controlsVerified: fw.controlsVerified,
+            },
+            idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
+          }),
+        }).catch(() => {}); // best-effort, non-blocking
+      }
+    }
+  }
+
+  return json({
+    scores: finalScores,
+    recalculated: true,
+    source,
   });
 };
