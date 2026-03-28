@@ -17,6 +17,7 @@ import { evaluateAutomationRules, type ActionContext } from "./lib/automation-ev
 import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
+import { processExpiringNhiCredentials } from "./lib/nhi-expiry-processor";
 import {
   collectAllAdapterEvidence,
   parseControlRef,
@@ -499,6 +500,24 @@ const worker = {
       }
     }
 
+    // ── Duty 5: NHI token expiry processing ──────────────────────────────
+    //    Scan nhi_credentials for tokens expiring within grace period or
+    //    already expired. Emit compliance evidence and update statuses.
+    let nhiExpirySoon = 0;
+    let nhiExpired = 0;
+    try {
+      const nhiResult = await processExpiringNhiCredentials({ sharedDb });
+      nhiExpirySoon = nhiResult.expiringSoon;
+      nhiExpired = nhiResult.expired;
+    } catch (err) {
+      console.error(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "error",
+        event: "duty5.nhi_expiry_failed",
+        error: err instanceof Error ? err.message : String(err),
+      }));
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -513,6 +532,8 @@ const worker = {
         evidenceCollected,
         scoresRefreshed,
         controlsPromoted,
+        nhiExpirySoon,
+        nhiExpired,
         checks,
       }),
     );
