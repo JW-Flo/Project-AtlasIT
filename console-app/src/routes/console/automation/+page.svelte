@@ -86,15 +86,15 @@
   interface WorkflowRun {
     id: string;
     type: string;
-    user_id: string;
+    userId: string;
     email: string;
     status: string;
     trigger: string;
-    steps_total: number;
-    steps_done: number;
-    started_at: string;
-    completed_at: string | null;
-    duration_ms: number | null;
+    stepsTotal: number;
+    stepsDone: number;
+    startedAt: string;
+    completedAt: string | null;
+    durationMs: number | null;
   }
 
   interface ActivityItem {
@@ -1031,11 +1031,11 @@
                         <td class="px-4 py-3">
                           <Badge variant={run.type === "leaver" ? "destructive" : run.type === "mover" ? "warning" : "success"} class="capitalize">{run.type}</Badge>
                         </td>
-                        <td class="px-4 py-3">{run.email ?? run.user_id ?? "-"}</td>
+                        <td class="px-4 py-3">{run.email ?? run.userId ?? "-"}</td>
                         <td class="px-4 py-3"><Badge variant={statusVariant(run.status)} class="capitalize">{run.status}</Badge></td>
-                        <td class="px-4 py-3 text-muted-foreground">{run.steps_done}/{run.steps_total}</td>
+                        <td class="px-4 py-3 text-muted-foreground">{run.stepsDone ?? 0}/{run.stepsTotal ?? 0}</td>
                         <td class="px-4 py-3 text-right">
-                          <span class="text-muted-foreground" title={new Date(run.started_at).toLocaleString()}>{timeAgo(run.started_at)}</span>
+                          <span class="text-muted-foreground" title={run.startedAt ? new Date(run.startedAt).toLocaleString() : ''}>{run.startedAt ? timeAgo(run.startedAt) : '-'}</span>
                         </td>
                       </tr>
                     {/each}
