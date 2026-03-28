@@ -211,6 +211,67 @@ async function persistScores(
   }
 }
 
+// ── Self-assessed scoring from tenant control statuses ──────────────────────
+
+async function computeSelfAssessedScores(
+  db: any,
+  tenantId: string,
+  frameworks: string[],
+): Promise<FrameworkScore[]> {
+  try {
+    const row = await db
+      .prepare(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
+      )
+      .bind(tenantId)
+      .first();
+    if (!row?.value) return [];
+
+    const controls: Array<{ id: string; framework: string; status: string }> =
+      JSON.parse(row.value as string);
+    if (!Array.isArray(controls) || controls.length === 0) return [];
+
+    const frameworkSet = new Set(frameworks);
+    const byFramework = new Map<string, typeof controls>();
+    for (const c of controls) {
+      if (!frameworkSet.has(c.framework)) continue;
+      const list = byFramework.get(c.framework) || [];
+      list.push(c);
+      byFramework.set(c.framework, list);
+    }
+
+    const scores: FrameworkScore[] = [];
+    for (const fw of frameworks) {
+      const fwControls = byFramework.get(fw) || [];
+      const total = fwControls.length;
+      if (total === 0) {
+        scores.push({ framework: fw, score: 0, grade: "F", controlsTotal: 0, controlsImplemented: 0, controlsVerified: 0 });
+        continue;
+      }
+      const weightSum = fwControls.reduce(
+        (sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0),
+        0,
+      );
+      const score = Math.round((weightSum / total) * 100 * 100) / 100;
+      const implemented = fwControls.filter(
+        (c) => c.status === "implemented" || c.status === "verified",
+      ).length;
+      const verified = fwControls.filter((c) => c.status === "verified").length;
+      scores.push({
+        framework: fw,
+        score,
+        grade: computeGrade(score),
+        controlsTotal: total,
+        controlsImplemented: implemented,
+        controlsVerified: verified,
+      });
+    }
+    return scores;
+  } catch {
+    return [];
+  }
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
@@ -310,6 +371,13 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     if (scores.length > 0) {
       return json({ scores, source: "cached", frameworksConfigured });
     }
+  }
+
+  // Fallback: compute scores from tenant's self-assessed control statuses
+  const selfAssessedScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+  if (selfAssessedScores.length > 0) {
+    await persistScores(db, user.tenantId, selfAssessedScores);
+    return json({ scores: selfAssessedScores, source: "self-assessed", frameworksConfigured });
   }
 
   // No scores available at all — return empty
@@ -423,7 +491,14 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     return json({ scores, recalculated: true, source: "evidence" });
   }
 
-  // Compliance-worker unavailable — return stale cached scores
+  // Compliance-worker unavailable — try self-assessed scores
+  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+  if (selfScores.length > 0) {
+    await persistScores(db, user.tenantId, selfScores);
+    return json({ scores: selfScores, recalculated: true, source: "self-assessed" });
+  }
+
+  // Final fallback: stale cached scores
   const cachedScores: FrameworkScore[] = (prevRows ?? []).map((row) => ({
     framework: row.framework,
     score: row.score,

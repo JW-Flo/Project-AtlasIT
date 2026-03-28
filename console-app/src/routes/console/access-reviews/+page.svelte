@@ -6,6 +6,7 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Input from "$lib/components/ui/input.svelte";
+  import Label from "$lib/components/ui/label.svelte";
   import {
     computeCampaignProgress,
     derivePendingItems,
@@ -14,18 +15,26 @@
     type AccessReviewCampaign,
   } from "./model";
 
+  interface ConnectedApp {
+    id: string;
+    connected: boolean;
+  }
+
   interface AccessReviewsResponse {
     campaigns?: AccessReviewCampaign[];
   }
 
   let loading = true;
   let campaigns: AccessReviewCampaign[] = [];
+  let connectedApps: ConnectedApp[] = [];
 
   let showForm = false;
   let creating = false;
   let formName = "";
   let formDueDate = "";
   let formScope = "";
+  let formResource = "";
+  let formReviewType = "membership";
   let formError = "";
 
   let statusUpdatingId: string | null = null;
@@ -49,9 +58,23 @@
     }
   }
 
+  async function loadConnectedApps() {
+    try {
+      const res = await fetch("/api/apps/status");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.applications || []).filter((a: any) => a.connected);
+      }
+    } catch {}
+  }
+
   async function createCampaign() {
     if (!formName.trim()) {
       formError = "Campaign name is required.";
+      return;
+    }
+    if (!formResource) {
+      formError = "Select a resource to review.";
       return;
     }
 
@@ -66,6 +89,8 @@
           name: formName.trim(),
           dueDate: formDueDate || null,
           scope: formScope.trim() || undefined,
+          resource: formResource,
+          reviewType: formReviewType,
         }),
       });
 
@@ -78,6 +103,8 @@
       formName = "";
       formDueDate = "";
       formScope = "";
+      formResource = "";
+      formReviewType = "membership";
       showForm = false;
       await loadCampaigns();
     } catch {
@@ -113,7 +140,10 @@
     return date.toLocaleDateString();
   }
 
-  onMount(loadCampaigns);
+  onMount(() => {
+    loadCampaigns();
+    loadConnectedApps();
+  });
 </script>
 
 <div class="space-y-6">
@@ -138,20 +168,49 @@
       <CardContent class="py-5 space-y-4">
         <h2 class="text-base font-semibold">New Access Review Campaign</h2>
 
-        <div class="grid gap-3 sm:grid-cols-3">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div class="space-y-1">
-            <label class="text-sm font-medium" for="campaign-name">Campaign Name <span class="text-destructive">*</span></label>
+            <Label htmlFor="campaign-name">Campaign Name <span class="text-destructive">*</span></Label>
             <Input id="campaign-name" type="text" placeholder="Q2 2026 Access Review" bind:value={formName} disabled={creating} />
           </div>
 
           <div class="space-y-1">
-            <label class="text-sm font-medium" for="campaign-due-date">Due Date</label>
-            <Input id="campaign-due-date" type="date" bind:value={formDueDate} disabled={creating} />
+            <Label htmlFor="campaign-resource">Resource <span class="text-destructive">*</span></Label>
+            <select
+              id="campaign-resource"
+              bind:value={formResource}
+              disabled={creating}
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">Select application...</option>
+              {#each connectedApps as app}
+                <option value={app.id}>{app.id}</option>
+              {/each}
+            </select>
           </div>
 
           <div class="space-y-1">
-            <label class="text-sm font-medium" for="campaign-scope">Scope</label>
-            <Input id="campaign-scope" type="text" placeholder="all users, finance team…" bind:value={formScope} disabled={creating} />
+            <Label htmlFor="campaign-review-type">Review Type</Label>
+            <select
+              id="campaign-review-type"
+              bind:value={formReviewType}
+              disabled={creating}
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="membership">Membership (who has access)</option>
+              <option value="roles">Roles & Permissions</option>
+              <option value="entitlements">Full Entitlements</option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
+            <Label htmlFor="campaign-due-date">Due Date</Label>
+            <Input id="campaign-due-date" type="date" bind:value={formDueDate} disabled={creating} />
+          </div>
+
+          <div class="space-y-1 lg:col-span-2">
+            <Label htmlFor="campaign-scope">Scope</Label>
+            <Input id="campaign-scope" type="text" placeholder="all users, finance team, engineering…" bind:value={formScope} disabled={creating} />
           </div>
         </div>
 
