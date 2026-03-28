@@ -132,6 +132,15 @@
   let executing = false;
   let executionResult: ExecutionResult | null = null;
 
+  // Mover-specific fields
+  let moverNewDepartment = "";
+  let moverNewTitle = "";
+  let moverNewManager = "";
+  let moverGroupsToAdd = "";
+  let moverGroupsToRemove = "";
+  let moverAppsToAdd = "";
+  let moverAppsToRevoke = "";
+
   // Bulk selection
   let selectedUsers: Set<string> = new Set();
   let bulkType: "joiner" | "mover" | "leaver" = "joiner";
@@ -295,6 +304,13 @@
     modalApp = app;
     modalType = type;
     modalEmail = "";
+    moverNewDepartment = "";
+    moverNewTitle = "";
+    moverNewManager = "";
+    moverGroupsToAdd = "";
+    moverGroupsToRemove = "";
+    moverAppsToAdd = "";
+    moverAppsToRevoke = "";
     executionResult = null;
     showModal = true;
   }
@@ -406,6 +422,17 @@
           type: modalType,
           subjectEmail: modalEmail,
           idpSource,
+          ...(modalType === "mover" ? {
+            moverContext: {
+              newDepartment: moverNewDepartment || undefined,
+              newTitle: moverNewTitle || undefined,
+              newManager: moverNewManager || undefined,
+              groupsToAdd: moverGroupsToAdd ? moverGroupsToAdd.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+              groupsToRemove: moverGroupsToRemove ? moverGroupsToRemove.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+              appsToAdd: moverAppsToAdd ? moverAppsToAdd.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+              appsToRevoke: moverAppsToRevoke ? moverAppsToRevoke.split(",").map(s => s.trim()).filter(Boolean) : undefined,
+            },
+          } : {}),
         }),
       });
 
@@ -886,6 +913,46 @@
           <Label>Subject Email</Label>
           <Input type="email" bind:value={modalEmail} placeholder="user@company.com" />
         </div>
+
+        {#if modalType === "mover"}
+          <div class="space-y-3 rounded-md border border-border p-3">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Role & Group Changes</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <Label class="text-xs">New Department</Label>
+                <Input type="text" bind:value={moverNewDepartment} placeholder="Engineering" class="h-8 text-xs" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs">New Title</Label>
+                <Input type="text" bind:value={moverNewTitle} placeholder="Senior Engineer" class="h-8 text-xs" />
+              </div>
+              <div class="col-span-2 space-y-1">
+                <Label class="text-xs">New Manager</Label>
+                <Input type="email" bind:value={moverNewManager} placeholder="manager@company.com" class="h-8 text-xs" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <Label class="text-xs">Groups to Add</Label>
+                <Input type="text" bind:value={moverGroupsToAdd} placeholder="eng-team, devops" class="h-8 text-xs" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs">Groups to Remove</Label>
+                <Input type="text" bind:value={moverGroupsToRemove} placeholder="sales-team" class="h-8 text-xs" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <Label class="text-xs">Apps to Provision</Label>
+                <Input type="text" bind:value={moverAppsToAdd} placeholder="github, jira" class="h-8 text-xs" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs">Apps to Revoke</Label>
+                <Input type="text" bind:value={moverAppsToRevoke} placeholder="salesforce" class="h-8 text-xs" />
+              </div>
+            </div>
+          </div>
+        {/if}
 
         {#if modalApp[modalType]?.length}
           <div>
