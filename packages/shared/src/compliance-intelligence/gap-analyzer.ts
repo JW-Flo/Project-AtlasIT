@@ -29,6 +29,7 @@ const ANALYZABLE_CONTROLS: Record<string, { controlId: string; controlName: stri
     { controlId: "CC4.1", controlName: "Ongoing Monitoring" },
     { controlId: "CC4.2", controlName: "Findings and Corrections" },
     { controlId: "CC5.1", controlName: "Control Activities Design" },
+    { controlId: "CC5.2", controlName: "Segregation of Duties" },
     { controlId: "CC5.3", controlName: "Authorization Procedures" },
     { controlId: "CC6.1", controlName: "Access Control" },
     { controlId: "CC6.2", controlName: "MFA Enforcement" },
@@ -38,8 +39,10 @@ const ANALYZABLE_CONTROLS: Record<string, { controlId: string; controlName: stri
     { controlId: "CC6.6", controlName: "Access Control Review" },
     { controlId: "CC6.7", controlName: "Access Termination" },
     { controlId: "CC7.1", controlName: "System Configuration" },
+    { controlId: "CC7.2", controlName: "Anomalous Activity Monitoring" },
     { controlId: "CC7.3", controlName: "Incident Response Plan" },
     { controlId: "CC7.4", controlName: "Incident Response Procedures" },
+    { controlId: "CC7.5", controlName: "Audit Log Retention and Review" },
     { controlId: "CC8.1", controlName: "Change Control Procedures" },
     { controlId: "CC9.2", controlName: "Third-Party Risk Management" },
   ],
@@ -59,27 +62,57 @@ const ANALYZABLE_CONTROLS: Record<string, { controlId: string; controlName: stri
     { controlId: "A.9.2.6", controlName: "Removal of Access Rights" },
     { controlId: "A.9.3.1", controlName: "Use of Secret Authentication" },
     { controlId: "A.9.4.1", controlName: "Information Access Restriction" },
+    { controlId: "A.9.4.2", controlName: "Secure Log-on (MFA)" },
+    { controlId: "A.12.4.1", controlName: "Event Logging" },
+    { controlId: "A.12.4.2", controlName: "Protection of Log Information" },
+    { controlId: "A.12.4.3", controlName: "Admin and Operator Logs" },
+    { controlId: "A.12.4.4", controlName: "Clock Synchronisation" },
+    { controlId: "A.12.6.1", controlName: "Technical Vulnerability Management" },
     { controlId: "A.16.1.2", controlName: "Reporting Security Events" },
     { controlId: "A.16.1.4", controlName: "Assessment of Security Events" },
+    { controlId: "A.16.1.5", controlName: "Response to Security Incidents" },
+    { controlId: "A.16.1.6", controlName: "Learning from Incidents" },
     { controlId: "A.18.2.1", controlName: "Independent Security Review" },
   ],
   NIST_CSF: [
     { controlId: "PR.AC-1", controlName: "Identity & Credential Management" },
     { controlId: "PR.AC-3", controlName: "Remote Access Management" },
     { controlId: "PR.AC-4", controlName: "Least Privilege Enforcement" },
+    { controlId: "PR.AC-5", controlName: "Segregation of Duties" },
+    { controlId: "PR.DS-1", controlName: "Data-at-Rest Protection" },
+    { controlId: "PR.DS-2", controlName: "Data-in-Transit Protection" },
     { controlId: "PR.IP-3", controlName: "Configuration Change Control" },
+    { controlId: "DE.AE-3", controlName: "Event Correlation and Analysis" },
     { controlId: "DE.CM-1", controlName: "Network Monitoring" },
+    { controlId: "DE.CM-3", controlName: "Personnel Activity Monitoring" },
     { controlId: "RS.CO-2", controlName: "Incidents Reported" },
+    { controlId: "RS.AN-1", controlName: "Investigation and Notifications" },
   ],
   HIPAA: [
     { controlId: "164.312(a)(1)", controlName: "Access Control" },
     { controlId: "164.312(a)(2)(i)", controlName: "Unique User Identification" },
+    { controlId: "164.312(a)(2)(ii)", controlName: "Emergency Access Procedure" },
+    { controlId: "164.312(a)(2)(iii)", controlName: "Automatic Logoff" },
+    { controlId: "164.312(a)(2)(iv)", controlName: "Encryption and Decryption" },
     { controlId: "164.312(b)", controlName: "Audit Controls" },
+    { controlId: "164.312(c)(1)", controlName: "Integrity Controls" },
     { controlId: "164.312(d)", controlName: "Person or Entity Authentication" },
+    { controlId: "164.312(e)(1)", controlName: "Transmission Security" },
+    { controlId: "164.308(a)(1)(ii)(D)", controlName: "Information System Activity Review" },
+    { controlId: "164.308(a)(5)(ii)(C)", controlName: "Log-in Monitoring" },
   ],
   GDPR: [
+    { controlId: "Art.5(1)(a)", controlName: "Lawfulness, Fairness and Transparency" },
+    { controlId: "Art.5(1)(b)", controlName: "Purpose Limitation" },
+    { controlId: "Art.5(1)(c)", controlName: "Data Minimisation" },
+    { controlId: "Art.5(1)(d)", controlName: "Accuracy" },
+    { controlId: "Art.5(1)(e)", controlName: "Storage Limitation" },
     { controlId: "Art.5(1)(f)", controlName: "Integrity and Confidentiality" },
+    { controlId: "Art.5(2)", controlName: "Accountability" },
     { controlId: "Art.17", controlName: "Right to Erasure" },
+    { controlId: "Art.25", controlName: "Data Protection by Design" },
+    { controlId: "Art.32", controlName: "Security of Processing" },
+    { controlId: "Art.33", controlName: "Breach Notification" },
   ],
 };
 
@@ -115,6 +148,76 @@ const ACTION_RECOMMENDATIONS: Record<string, string> = {
   revoke_nhi_token: "Create NHI token revocation rules for decommissioned services",
 };
 
+/**
+ * Control-specific recommendations for controls that aren't directly
+ * covered by ACTION_COMPLIANCE_MAP (process controls, audit controls, etc.)
+ */
+const CONTROL_SPECIFIC_RECOMMENDATIONS: Record<string, string> = {
+  // Audit log controls — identified as weak in compliance review
+  "CC7.2":
+    "Enable anomalous activity monitoring. Connect SIEM or log management adapter and configure anomaly detection rules",
+  "CC7.5":
+    "Establish audit log retention policy. Configure log storage with retention periods and tamper-proof archival in connected apps",
+  "A.12.4.1":
+    "Enable comprehensive event logging across all connected apps. Verify each adapter collects audit log evidence",
+  "A.12.4.2":
+    "Protect log information from tampering. Enable immutable log storage and configure access controls on log management systems",
+  "A.12.4.3":
+    "Collect administrator and operator activity logs from all connected apps with privileged access tracking",
+  "A.12.4.4":
+    "Enable NTP/clock synchronisation evidence from connected infrastructure. Verify timestamps are consistent across adapters",
+  "A.12.6.1":
+    "Connect vulnerability scanning tools (e.g., Snyk, Qualys) to collect technical vulnerability management evidence",
+
+  // Access control depth — identified as needing more than "groups configured"
+  "CC5.2":
+    "Implement segregation of duties checks. Configure rules that flag when users hold conflicting roles across apps",
+  "CC6.5":
+    "Set up access monitoring rules. Create automation that detects and alerts on suspicious access patterns",
+  "A.9.4.2":
+    "Verify MFA enforcement evidence from identity providers. Connect Okta/M365/Google Workspace MFA policy data",
+  "PR.AC-5":
+    "Configure SoD (Separation of Duties) rules to detect conflicting access grants across connected apps",
+
+  // Offboarding — identified as under-evidenced
+  "CC6.7":
+    "Create offboarding automation rules that revoke access across ALL connected apps, emit evidence, and create audit trail",
+  "A.7.3.1":
+    "Configure JML leaver workflows with session revocation, device wipe triggers, and shared credential rotation steps",
+
+  // HIPAA-specific — need end-to-end audit evidence
+  "164.312(b)":
+    "Audit controls require evidence of log generation, retention, review, and anomaly detection across all PHI-relevant systems. Connect healthcare app adapters",
+  "164.308(a)(1)(ii)(D)":
+    "Configure regular information system activity review. Create scheduled automation rules to collect and review access logs",
+  "164.308(a)(5)(ii)(C)":
+    "Enable log-in monitoring evidence. Connect identity provider adapters and configure failed login alerting rules",
+  "164.312(a)(2)(ii)":
+    "Document emergency access (break-glass) procedures and create automation rules to track emergency access usage",
+  "164.312(c)(1)":
+    "Enable data integrity controls. Verify content-addressed evidence storage and hash verification are active",
+  "164.312(e)(1)":
+    "Verify TLS/encryption evidence from connected apps. Connect infrastructure adapters that report encryption status",
+
+  // GDPR process controls
+  "Art.5(2)":
+    "Establish accountability records. Generate data processing activity logs and controller/processor documentation",
+  "Art.25":
+    "Document data protection by design measures. Generate policies covering privacy-first architecture decisions",
+  "Art.32":
+    "Verify security of processing controls. Collect encryption, access control, and pseudonymization evidence from connected apps",
+  "Art.33":
+    "Configure breach notification workflows. Create automation rules that detect potential breaches and trigger notification procedures",
+
+  // NIST CSF detection and response
+  "DE.AE-3":
+    "Set up event correlation rules. Connect SIEM adapters and configure cross-app anomaly detection automation",
+  "DE.CM-3":
+    "Enable personnel activity monitoring. Create rules that track privileged user actions across connected apps",
+  "RS.AN-1":
+    "Configure investigation workflows. Create automation rules for incident triage with evidence collection from affected apps",
+};
+
 function buildRecommendation(
   controlId: string,
   controlName: string,
@@ -122,6 +225,7 @@ function buildRecommendation(
   staleDays: number | null,
 ): { recommendation: string; suggestedAction: string | null } {
   const actionTypes = REVERSE_CONTROL_MAP.get(controlId);
+  const controlSpecific = CONTROL_SPECIFIC_RECOMMENDATIONS[controlId];
 
   if (gapType === "stale" && staleDays !== null) {
     const baseRec = `Evidence for ${controlName} (${controlId}) is ${staleDays} days old — trigger re-collection`;
@@ -131,21 +235,34 @@ function buildRecommendation(
         suggestedAction: actionTypes[0],
       };
     }
+    if (controlSpecific) {
+      return { recommendation: `${baseRec}. ${controlSpecific}`, suggestedAction: null };
+    }
     return { recommendation: baseRec, suggestedAction: null };
   }
 
   if (gapType === "failing") {
     const baseRec = `Evidence for ${controlName} (${controlId}) is failing — review adapter configuration or policy settings`;
-    if (actionTypes?.length) {
+    if (controlSpecific) {
       return {
-        recommendation: baseRec,
-        suggestedAction: actionTypes[0],
+        recommendation: `${baseRec}. ${controlSpecific}`,
+        suggestedAction: actionTypes?.[0] ?? null,
       };
+    }
+    if (actionTypes?.length) {
+      return { recommendation: baseRec, suggestedAction: actionTypes[0] };
     }
     return { recommendation: baseRec, suggestedAction: null };
   }
 
-  // missing
+  // missing — use control-specific recommendation if available
+  if (controlSpecific) {
+    return {
+      recommendation: `No evidence for ${controlName} (${controlId}). ${controlSpecific}`,
+      suggestedAction: actionTypes?.[0] ?? null,
+    };
+  }
+
   if (actionTypes?.length) {
     const primaryAction = actionTypes[0];
     return {
