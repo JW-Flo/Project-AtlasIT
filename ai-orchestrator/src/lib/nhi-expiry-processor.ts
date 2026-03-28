@@ -161,9 +161,9 @@ export async function processExpiringNhiCredentials(
         // Update status to expired
         await sharedDb
           .prepare(
-            "UPDATE nhi_credentials SET status = 'expired', updated_at = ? WHERE id = ?",
+            "UPDATE nhi_credentials SET status = 'expired', updated_at = ? WHERE id = ? AND tenant_id = ?",
           )
-          .bind(now.toISOString(), row.id)
+          .bind(now.toISOString(), row.id, row.tenant_id)
           .run();
 
         // Audit log

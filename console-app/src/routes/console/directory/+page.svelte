@@ -65,6 +65,20 @@
     status: "active" | "expired" | "revoked" | "rotation_pending";
   }
 
+  function mapNhiFromApi(raw: Record<string, any>): NhiCredential {
+    return {
+      id: raw.id,
+      name: raw.displayName ?? raw.name ?? raw.display_name ?? "",
+      type: raw.credentialType ?? raw.type ?? raw.credential_type ?? "",
+      provider: raw.provider ?? "",
+      owner: raw.ownerEmail ?? raw.owner ?? raw.owner_email,
+      lastUsed: raw.lastUsedAt ?? raw.lastUsed ?? raw.last_used_at,
+      expiry: raw.expiresAt ?? raw.expiry ?? raw.expires_at,
+      riskScore: raw.riskScore ?? raw.risk_score ?? 0,
+      status: raw.status ?? "active",
+    };
+  }
+
   // --- State ---
   let syncStatus: SyncStatus = { connected: false };
   let users: DirectoryUser[] = [];
@@ -194,7 +208,8 @@
       const res = await fetch("/api/nhi?limit=200");
       if (res.ok) {
         const data = await res.json();
-        nhiCredentials = data.credentials || data.items || data || [];
+        const rawList = data.credentials || data.items || data || [];
+        nhiCredentials = rawList.map(mapNhiFromApi);
       }
     } catch {}
   }
@@ -726,8 +741,7 @@
               <tbody>
                 {#each pagedNhi as nhi}
                   <tr
-                    class="border-t hover:bg-muted/50 cursor-pointer"
-                    on:click={() => goto(`/console/directory/nhi/${nhi.id}`)}
+                    class="border-t hover:bg-muted/50"
                   >
                     <td class="px-3 sm:px-4 py-3 font-medium">
                       <div>{nhi.name}</div>
