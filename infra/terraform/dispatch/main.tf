@@ -6,12 +6,31 @@ terraform {
       version = ">= 4.0.0"
     }
   }
+
+  # Remote state — encrypted at rest, locking via DynamoDB
+  # Uncomment and configure for your environment:
+  # backend "s3" {
+  #   bucket         = "atlasit-terraform-state"
+  #   key            = "dispatch/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "atlasit-terraform-locks"
+  # }
 }
 
-provider "cloudflare" { api_token = var.api_token }
+provider "cloudflare" {
+  api_token = var.api_token
+}
 
-variable "account_id" { type = string }
-variable "api_token" { type = string }
+variable "account_id" {
+  type      = string
+  sensitive = false
+}
+
+variable "api_token" {
+  type      = string
+  sensitive = true
+}
 variable "worker_name" {
   type    = string
   default = "atlasit-dispatch"
