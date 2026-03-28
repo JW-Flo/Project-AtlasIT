@@ -54,6 +54,35 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     });
 
     const data = await res.json();
+
+    if (res.ok) {
+      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+      if (db) {
+        try {
+          // Read existing generated_policies list and append templateKey
+          const existing = await db
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'generated_policies'",
+            )
+            .bind(tenantId)
+            .first<{ value: string }>();
+          const current: string[] = existing?.value ? JSON.parse(existing.value) : [];
+          if (!current.includes(templateKey)) current.push(templateKey);
+          const newValue = JSON.stringify(current);
+          await db
+            .prepare(
+              `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+               VALUES (?, 'generated_policies', ?, datetime('now'))
+               ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+            )
+            .bind(tenantId, newValue, newValue)
+            .run();
+        } catch {
+          // Non-fatal: don't fail the response if preference write fails
+        }
+      }
+    }
+
     return new Response(JSON.stringify(data), {
       status: res.status,
       headers: { "Content-Type": "application/json" },

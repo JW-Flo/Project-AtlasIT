@@ -210,6 +210,38 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = user;
 
   // ------------------------------------------------------------------
+  // 3b. Disabled tenant check — block all non-super-admin access
+  // ------------------------------------------------------------------
+  if (user && user.tenantId && !user.superAdmin) {
+    try {
+      const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
+      if (db) {
+        const tenantRow = await db
+          .prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1")
+          .bind(user.tenantId)
+          .first<{ status: string }>();
+        if (tenantRow?.status === "disabled") {
+          const isApiRoute = event.url.pathname.startsWith("/api/");
+          if (isApiRoute) {
+            return new Response(
+              JSON.stringify({ error: "Tenant account is disabled", code: "tenant_disabled" }),
+              { status: 403, headers: { "content-type": "application/json" } },
+            );
+          }
+          // Clear session cookies so the user is not stuck in a redirect loop
+          event.cookies.delete("atlas_session", { path: "/" });
+          event.cookies.delete("atlas_session_cache", { path: "/" });
+          throw redirect(302, "/console/login?error=tenant_disabled");
+        }
+      }
+    } catch (e) {
+      // Re-throw redirects; only swallow DB errors
+      if (e instanceof Response || (e as any)?.status) throw e;
+      console.error(JSON.stringify({ level: "error", event: "auth.tenant_status_check_failed", err: String(e) }));
+    }
+  }
+
+  // ------------------------------------------------------------------
   // 4. Centralized RBAC enforcement for API routes
   // ------------------------------------------------------------------
   if (event.url.pathname.startsWith("/api/")) {

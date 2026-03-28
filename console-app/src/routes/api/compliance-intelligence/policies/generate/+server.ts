@@ -107,6 +107,29 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       diff = diffPolicies(body.existingPolicyText, generatedText);
     }
 
+    // Record that policies have been generated for this tenant
+    try {
+      const existing = await db
+        .prepare(
+          "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'generated_policies'",
+        )
+        .bind(tenantId)
+        .first<{ value: string }>();
+      const current: string[] = existing?.value ? JSON.parse(existing.value) : [];
+      if (!current.includes(policyType)) current.push(policyType);
+      const newValue = JSON.stringify(current);
+      await db
+        .prepare(
+          `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+           VALUES (?, 'generated_policies', ?, datetime('now'))
+           ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+        )
+        .bind(tenantId, newValue, newValue)
+        .run();
+    } catch {
+      // Non-fatal: preference write failure should not fail the generation response
+    }
+
     return json({ status: "success", data: { policy, diff } });
   } catch (err: any) {
     console.error("Policy generation failed:", err?.message);

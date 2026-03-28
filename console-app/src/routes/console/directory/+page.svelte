@@ -155,6 +155,16 @@
   let addGroupLoading = false;
   let addGroupForm = { name: "", description: "" };
 
+  // Add Mapping dialog state
+  let addMappingOpen = false;
+  let addMappingLoading = false;
+  let addMappingForm = { groupId: "", appId: "", role: "member" };
+  let connectedApps: { appId: string; name: string }[] = [];
+
+  // Inline role editing
+  let editingRoleId: string | null = null;
+  let editingRoleValue = "";
+
   // Delete confirmation dialog state
   let deleteOpen = false;
   let deleteLoading = false;
@@ -245,7 +255,7 @@
   async function loadAll() {
     loading = true;
     syncStatus = await fetchStatus();
-    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings(), fetchNhi()];
+    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings(), fetchNhi(), fetchConnectedApps()];
     await Promise.all(promises);
     loading = false;
 
@@ -410,6 +420,71 @@
     deleteLoading = false;
     deleteOpen = false;
     deleteTarget = null;
+  }
+
+  async function fetchConnectedApps() {
+    try {
+      const res = await fetch("/api/integrations/connected");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.apps || []).map((a: any) => ({
+          appId: a.app_id || a.appId || a.id,
+          name: getAppName(a.app_id || a.appId || a.id),
+        }));
+      }
+    } catch {}
+  }
+
+  async function submitAddMapping() {
+    if (!addMappingForm.groupId || !addMappingForm.appId) return;
+    addMappingLoading = true;
+    try {
+      const res = await fetch("/api/directory/mappings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          groupId: addMappingForm.groupId,
+          appId: addMappingForm.appId,
+          role: addMappingForm.role || "member",
+        }),
+      });
+      if (res.ok) {
+        pushToast({ message: "Mapping created", variant: "success" });
+        addMappingOpen = false;
+        addMappingForm = { groupId: "", appId: "", role: "member" };
+        await fetchMappings();
+      } else {
+        const data = await res.json().catch(() => ({ error: "Failed to create mapping" }));
+        pushToast({ message: data.error || "Failed to create mapping", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Create mapping request failed", variant: "error" });
+    }
+    addMappingLoading = false;
+  }
+
+  async function updateMappingRole(id: string, role: string) {
+    try {
+      const res = await fetch(`/api/directory/mappings/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      if (res.ok) {
+        mappings = mappings.map((m) => (m.id === id ? { ...m, role } : m));
+        pushToast({ message: "Role updated", variant: "success" });
+      } else {
+        pushToast({ message: "Failed to update role", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Update role request failed", variant: "error" });
+    }
+    editingRoleId = null;
+  }
+
+  function startEditRole(mapping: Mapping) {
+    editingRoleId = mapping.id;
+    editingRoleValue = mapping.role;
   }
 
   function getAppName(appId: string): string {
@@ -819,10 +894,16 @@
         <p class="text-sm text-muted-foreground">
           Map IdP groups to application roles for automatic provisioning
         </p>
-        <Button class="shrink-0" variant="secondary" on:click={autoSuggest} disabled={suggesting}>
-          <Sparkles class="h-4 w-4 mr-1.5" />
-          {suggesting ? "Suggesting..." : "Auto-suggest"}
-        </Button>
+        <div class="flex gap-2">
+          <Button class="shrink-0" variant="default" on:click={() => { addMappingOpen = true; }}>
+            <Plus class="h-4 w-4 mr-1.5" />
+            Add Mapping
+          </Button>
+          <Button class="shrink-0" variant="secondary" on:click={autoSuggest} disabled={suggesting}>
+            <Sparkles class="h-4 w-4 mr-1.5" />
+            {suggesting ? "Suggesting..." : "Auto-suggest"}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -843,7 +924,25 @@
                   <tr class="border-t hover:bg-muted/50">
                     <td class="px-4 py-3 font-medium">{mapping.groupName}</td>
                     <td class="px-4 py-3 text-muted-foreground">{getAppName(mapping.appId)}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{mapping.role}</td>
+                    <td class="px-4 py-3 text-muted-foreground">
+                      {#if editingRoleId === mapping.id}
+                        <select
+                          class="bg-background border border-input rounded px-2 py-1 text-sm"
+                          bind:value={editingRoleValue}
+                          on:change={() => updateMappingRole(mapping.id, editingRoleValue)}
+                          on:blur={() => { editingRoleId = null; }}
+                        >
+                          <option value="member">member</option>
+                          <option value="admin">admin</option>
+                          <option value="viewer">viewer</option>
+                          <option value="editor">editor</option>
+                        </select>
+                      {:else}
+                        <button class="hover:underline cursor-pointer" on:click={() => startEditRole(mapping)}>
+                          {mapping.role}
+                        </button>
+                      {/if}
+                    </td>
                     <td class="px-4 py-3">
                       {#if mapping.suggested}
                         <Badge variant="warning">Suggested</Badge>
@@ -929,6 +1028,59 @@
       <Button variant="outline" type="button" on:click={() => addGroupOpen = false}>Cancel</Button>
       <Button type="submit" disabled={!addGroupForm.name || addGroupLoading}>
         {addGroupLoading ? "Adding..." : "Add Group"}
+      </Button>
+    </DialogFooter>
+  </form>
+</Dialog>
+
+<!-- Add Mapping Dialog -->
+<Dialog open={addMappingOpen} onClose={() => addMappingOpen = false} title="Add Mapping">
+  <form on:submit|preventDefault={submitAddMapping} class="space-y-4">
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-group">Group *</Label>
+      <select
+        id="add-mapping-group"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.groupId}
+        required
+      >
+        <option value="">Select a group...</option>
+        {#each groups as group}
+          <option value={group.id}>{group.name}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-app">App *</Label>
+      <select
+        id="add-mapping-app"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.appId}
+        required
+      >
+        <option value="">Select an app...</option>
+        {#each connectedApps as app}
+          <option value={app.appId}>{app.name}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-role">Role</Label>
+      <select
+        id="add-mapping-role"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.role}
+      >
+        <option value="member">member</option>
+        <option value="admin">admin</option>
+        <option value="viewer">viewer</option>
+        <option value="editor">editor</option>
+      </select>
+    </div>
+    <DialogFooter>
+      <Button variant="outline" type="button" on:click={() => addMappingOpen = false}>Cancel</Button>
+      <Button type="submit" disabled={!addMappingForm.groupId || !addMappingForm.appId || addMappingLoading}>
+        {addMappingLoading ? "Creating..." : "Create Mapping"}
       </Button>
     </DialogFooter>
   </form>
