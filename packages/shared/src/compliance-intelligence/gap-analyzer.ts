@@ -354,11 +354,11 @@ export async function analyzeComplianceGaps(
        GROUP BY framework, control_id`,
     )
     .bind(tenantId)
-    .all<EvidenceRow>();
+    .all();
 
   // Build lookup: "framework:controlId" → evidence row
   const evidenceMap = new Map<string, EvidenceRow>();
-  for (const row of evidenceRows ?? []) {
+  for (const row of (evidenceRows ?? []) as EvidenceRow[]) {
     evidenceMap.set(`${row.framework}:${row.control_id}`, row);
   }
 

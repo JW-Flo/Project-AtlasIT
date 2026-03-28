@@ -76,10 +76,14 @@ async function handleAdapterDisconnected(
        WHERE tenant_id = ? AND source LIKE ?`,
     )
     .bind(tenantId, `%${appId}%`)
-    .all<{ framework: string; control_id: string }>();
+    .all();
 
-  const affectedControls = (affectedEvidence ?? []).map((r) => `${r.framework}:${r.control_id}`);
-  const affectedFrameworks = [...new Set((affectedEvidence ?? []).map((r) => r.framework))];
+  const affectedControls = (
+    (affectedEvidence ?? []) as Array<{ framework: string; control_id: string }>
+  ).map((r) => `${r.framework}:${r.control_id}`);
+  const affectedFrameworks = [
+    ...new Set(((affectedEvidence ?? []) as Array<{ framework: string }>).map((r) => r.framework)),
+  ];
 
   return {
     id: crypto.randomUUID(),

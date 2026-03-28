@@ -79,9 +79,10 @@ export async function detectRiskAnomalies(
        LIMIT 500`,
     )
     .bind(tenantId)
-    .all<ExecutionRow>();
+    .all();
 
   if (!executions?.length) return [];
+  const typedExecutions = executions as ExecutionRow[];
 
   const anomalies: RiskAnomaly[] = [];
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
@@ -91,7 +92,7 @@ export async function detectRiskAnomalies(
   const recentRevocations: { email: string; appId: string; at: string }[] = [];
   const offHoursProvisions: { email: string; appId: string; at: string }[] = [];
 
-  for (const exec of executions) {
+  for (const exec of typedExecutions) {
     const actions = parseActions(exec.results);
     const email = parseUserEmail(exec.trigger_event);
     const execTime = new Date(exec.created_at).getTime();
