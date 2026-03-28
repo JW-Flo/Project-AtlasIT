@@ -18,8 +18,8 @@ OAUTH2_REDIRECT_URI = "https://adapter-slack.atlasit.pro/auth/callback"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "atlas-shared-db"
-database_id = "" # Set per environment
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 [observability.logs]
 enabled = true
