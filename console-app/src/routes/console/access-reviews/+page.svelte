@@ -5,6 +5,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import Badge from "$lib/components/ui/badge.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
+  import Input from "$lib/components/ui/input.svelte";
   import {
     computeCampaignProgress,
     derivePendingItems,
@@ -19,6 +20,15 @@
 
   let loading = true;
   let campaigns: AccessReviewCampaign[] = [];
+
+  let showForm = false;
+  let creating = false;
+  let formName = "";
+  let formDueDate = "";
+  let formScope = "";
+  let formError = "";
+
+  let statusUpdatingId: string | null = null;
 
   async function loadCampaigns() {
     loading = true;
@@ -36,6 +46,63 @@
       campaigns = [];
     } finally {
       loading = false;
+    }
+  }
+
+  async function createCampaign() {
+    if (!formName.trim()) {
+      formError = "Campaign name is required.";
+      return;
+    }
+
+    formError = "";
+    creating = true;
+
+    try {
+      const res = await fetch("/api/access-reviews", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: formName.trim(),
+          dueDate: formDueDate || null,
+          scope: formScope.trim() || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        formError = (data as any).error ?? "Failed to create campaign.";
+        return;
+      }
+
+      formName = "";
+      formDueDate = "";
+      formScope = "";
+      showForm = false;
+      await loadCampaigns();
+    } catch {
+      formError = "Unexpected error. Please try again.";
+    } finally {
+      creating = false;
+    }
+  }
+
+  async function updateStatus(campaignId: string, status: "active" | "completed") {
+    statusUpdatingId = campaignId;
+
+    try {
+      const res = await fetch(`/api/access-reviews/${campaignId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!res.ok) return;
+      await loadCampaigns();
+    } catch {
+      // no-op; list retains current state
+    } finally {
+      statusUpdatingId = null;
     }
   }
 
@@ -58,8 +125,48 @@
       </p>
     </div>
 
-    <Button variant="outline" class="shrink-0 self-start sm:self-auto" on:click={loadCampaigns}>Refresh</Button>
+    <div class="flex gap-2 shrink-0 self-start sm:self-auto">
+      <Button variant="outline" on:click={loadCampaigns}>Refresh</Button>
+      <Button on:click={() => { showForm = !showForm; formError = ""; }}>
+        {showForm ? "Cancel" : "New Campaign"}
+      </Button>
+    </div>
   </div>
+
+  {#if showForm}
+    <Card>
+      <CardContent class="py-5 space-y-4">
+        <h2 class="text-base font-semibold">New Access Review Campaign</h2>
+
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="space-y-1">
+            <label class="text-sm font-medium" for="campaign-name">Campaign Name <span class="text-destructive">*</span></label>
+            <Input id="campaign-name" type="text" placeholder="Q2 2026 Access Review" bind:value={formName} disabled={creating} />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-sm font-medium" for="campaign-due-date">Due Date</label>
+            <Input id="campaign-due-date" type="date" bind:value={formDueDate} disabled={creating} />
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-sm font-medium" for="campaign-scope">Scope</label>
+            <Input id="campaign-scope" type="text" placeholder="all users, finance team…" bind:value={formScope} disabled={creating} />
+          </div>
+        </div>
+
+        {#if formError}
+          <p class="text-sm text-destructive">{formError}</p>
+        {/if}
+
+        <div class="flex justify-end">
+          <Button on:click={createCampaign} disabled={creating}>
+            {creating ? "Creating…" : "Create Campaign"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 
   {#if loading}
     <div class="space-y-3">
@@ -72,7 +179,7 @@
       <CardContent class="py-10 text-center">
         <p class="text-lg font-semibold mb-1">No access review campaigns yet</p>
         <p class="text-sm text-muted-foreground">
-          Campaigns created through automation or API will appear here.
+          Create a campaign above or let automation generate one.
         </p>
       </CardContent>
     </Card>
@@ -87,7 +194,7 @@
                 <th class="px-4 py-3 font-medium">Status</th>
                 <th class="px-4 py-3 font-medium">Due Date</th>
                 <th class="px-4 py-3 font-medium">Progress</th>
-                <th class="px-4 py-3 font-medium text-right">Action</th>
+                <th class="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -120,9 +227,30 @@
                   </td>
 
                   <td class="px-4 py-3 align-top text-right">
-                    <a href={`/console/access-reviews/${campaign.id}`}>
-                      <Button variant="outline" size="sm">View</Button>
-                    </a>
+                    <div class="flex justify-end gap-2 flex-wrap">
+                      {#if campaign.status === "draft"}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={statusUpdatingId === campaign.id}
+                          on:click={() => updateStatus(campaign.id, "active")}
+                        >
+                          Activate
+                        </Button>
+                      {:else if campaign.status === "active"}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={statusUpdatingId === campaign.id}
+                          on:click={() => updateStatus(campaign.id, "completed")}
+                        >
+                          Complete
+                        </Button>
+                      {/if}
+                      <a href={`/console/access-reviews/${campaign.id}`}>
+                        <Button variant="outline" size="sm">View</Button>
+                      </a>
+                    </div>
                   </td>
                 </tr>
               {/each}

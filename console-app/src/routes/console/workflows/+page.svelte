@@ -559,9 +559,9 @@
     <!-- Tabs: Users / Apps / Activity -->
     <Tabs bind:value={activeTab}>
       <TabsList>
-        <TabsTrigger value="pipeline">Users</TabsTrigger>
-        <TabsTrigger value="apps">App Workflows</TabsTrigger>
-        <TabsTrigger value="activity">Activity</TabsTrigger>
+        <TabsTrigger value="pipeline" active={activeTab === "pipeline"} on:click={() => activeTab = "pipeline"}>Users</TabsTrigger>
+        <TabsTrigger value="apps" active={activeTab === "apps"} on:click={() => activeTab = "apps"}>App Workflows</TabsTrigger>
+        <TabsTrigger value="activity" active={activeTab === "activity"} on:click={() => activeTab = "activity"}>Activity</TabsTrigger>
       </TabsList>
     </Tabs>
 
