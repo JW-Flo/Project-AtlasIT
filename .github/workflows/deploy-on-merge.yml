@@ -10,7 +10,83 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      migrations: ${{ steps.filter.outputs.migrations }}
+      root-worker: ${{ steps.filter.outputs.root-worker }}
+      core-api: ${{ steps.filter.outputs.core-api }}
+      orchestrator: ${{ steps.filter.outputs.orchestrator }}
+      compliance: ${{ steps.filter.outputs.compliance }}
+      console: ${{ steps.filter.outputs.console }}
+      onboarding: ${{ steps.filter.outputs.onboarding }}
+      slack-agent: ${{ steps.filter.outputs.slack-agent }}
+      dispatch: ${{ steps.filter.outputs.dispatch }}
+      adapter-github: ${{ steps.filter.outputs.adapter-github }}
+      adapter-okta: ${{ steps.filter.outputs.adapter-okta }}
+      adapter-slack: ${{ steps.filter.outputs.adapter-slack }}
+      adapter-microsoft-365: ${{ steps.filter.outputs.adapter-microsoft-365 }}
+      adapter-aws: ${{ steps.filter.outputs.adapter-aws }}
+      adapter-google-workspace: ${{ steps.filter.outputs.adapter-google-workspace }}
+      adapter-zscaler: ${{ steps.filter.outputs.adapter-zscaler }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            migrations:
+              - 'migrations/**'
+              - 'compliance-worker/migrations/**'
+              - 'wrangler-shared-db.toml'
+            root-worker:
+              - 'src/**'
+              - 'wrangler.toml'
+            core-api:
+              - 'core-api/**'
+              - 'packages/shared/**'
+            orchestrator:
+              - 'ai-orchestrator/**'
+              - 'packages/shared/**'
+            compliance:
+              - 'compliance-worker/**'
+              - 'packages/shared/**'
+            console:
+              - 'console-app/**'
+              - 'packages/shared/**'
+            onboarding:
+              - 'onboarding/**'
+            slack-agent:
+              - 'slack-notification-agent/**'
+            dispatch:
+              - 'dispatch-worker/**'
+              - 'packages/shared/**'
+            adapter-github:
+              - 'adapters/github/**'
+              - 'packages/shared/**'
+            adapter-okta:
+              - 'adapters/okta/**'
+              - 'packages/shared/**'
+            adapter-slack:
+              - 'adapters/slack/**'
+              - 'packages/shared/**'
+            adapter-microsoft-365:
+              - 'adapters/microsoft-365/**'
+              - 'packages/shared/**'
+            adapter-aws:
+              - 'adapters/aws/**'
+              - 'packages/shared/**'
+            adapter-google-workspace:
+              - 'adapters/google-workspace/**'
+              - 'packages/shared/**'
+            adapter-zscaler:
+              - 'adapters/zscaler/**'
+              - 'packages/shared/**'
+
   migrate-shared-db:
+    needs: [changes]
+    if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
     name: Apply shared DB migrations
     runs-on: ubuntu-latest
     permissions:
@@ -32,7 +108,8 @@ jobs:
         run: npx wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml --remote
 
   deploy-root-worker:
-    needs: [migrate-shared-db]
+    needs: [changes]
+    if: needs.changes.outputs.root-worker == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy root worker (atlasit-core)
     runs-on: ubuntu-latest
     permissions:
@@ -54,6 +131,8 @@ jobs:
       # (core-api handles that domain). Root worker deploys to workers.dev only.
 
   deploy-core-api:
+    needs: [changes]
+    if: needs.changes.outputs.core-api == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy core-api (Hono)
     runs-on: ubuntu-latest
     permissions:
@@ -79,10 +158,13 @@ jobs:
         run: npx wrangler deploy --config core-api/wrangler.toml --env production
 
   deploy-orchestrator:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.orchestrator == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy ai-orchestrator
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
     env:
@@ -110,7 +192,11 @@ jobs:
         run: bash scripts/smoke-test.sh ai-orchestrator https://orchestrator.atlasit.pro
 
   deploy-compliance:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.compliance == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy compliance-worker
     runs-on: ubuntu-latest
     permissions:
@@ -135,6 +221,8 @@ jobs:
         run: bash scripts/smoke-test.sh compliance-worker https://compliance.atlasit.pro
 
   deploy-console:
+    needs: [changes]
+    if: needs.changes.outputs.console == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy console-app
     runs-on: ubuntu-latest
     permissions:
@@ -165,6 +253,8 @@ jobs:
         run: bash scripts/smoke-test.sh console-app https://www.atlasit.pro
 
   deploy-onboarding:
+    needs: [changes]
+    if: needs.changes.outputs.onboarding == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy onboarding
     runs-on: ubuntu-latest
     permissions:
@@ -184,6 +274,8 @@ jobs:
         run: npx wrangler deploy --config onboarding/wrangler.toml --env production
 
   deploy-slack-agent:
+    needs: [changes]
+    if: needs.changes.outputs.slack-agent == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy slack-notification-agent
     runs-on: ubuntu-latest
     permissions:
@@ -203,10 +295,13 @@ jobs:
         run: npx wrangler deploy --config slack-notification-agent/wrangler.toml
 
   deploy-dispatch:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.dispatch == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy dispatch-worker
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
     env:
@@ -234,7 +329,11 @@ jobs:
   # the shared package must be built first.
 
   deploy-adapter-github:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-github == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — github
     runs-on: ubuntu-latest
     permissions:
@@ -260,7 +359,11 @@ jobs:
         run: npx wrangler deploy --config adapters/github/wrangler.toml
 
   deploy-adapter-okta:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-okta == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — okta
     runs-on: ubuntu-latest
     permissions:
@@ -283,7 +386,11 @@ jobs:
         run: npx wrangler deploy --config adapters/okta/wrangler.toml
 
   deploy-adapter-slack:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-slack == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — slack
     runs-on: ubuntu-latest
     permissions:
@@ -306,7 +413,11 @@ jobs:
         run: npx wrangler deploy --config adapters/slack/wrangler.toml
 
   deploy-adapter-microsoft-365:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-microsoft-365 == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — microsoft-365
     runs-on: ubuntu-latest
     permissions:
@@ -329,7 +440,11 @@ jobs:
         run: npx wrangler deploy --config adapters/microsoft-365/wrangler.toml
 
   deploy-adapter-aws:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-aws == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — aws
     runs-on: ubuntu-latest
     permissions:
@@ -352,7 +467,11 @@ jobs:
         run: npx wrangler deploy --config adapters/aws/wrangler.toml
 
   deploy-adapter-google-workspace:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-google-workspace == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — google-workspace
     runs-on: ubuntu-latest
     permissions:
@@ -378,7 +497,11 @@ jobs:
         run: npx wrangler deploy --config adapters/google-workspace/wrangler.toml
 
   deploy-adapter-zscaler:
-    needs: [migrate-shared-db]
+    needs: [changes, migrate-shared-db]
+    if: |
+      always() &&
+      (needs.migrate-shared-db.result == 'success' || needs.migrate-shared-db.result == 'skipped') &&
+      (needs.changes.outputs.adapter-zscaler == 'true' || github.event_name == 'workflow_dispatch')
     name: Deploy adapter — zscaler
     runs-on: ubuntu-latest
     permissions:
