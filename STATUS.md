@@ -32,6 +32,8 @@
 | 13+ — Workflow Redesign (Roles)     | ✅ Complete     | #283       | Roles as first-class entity (hierarchy), CRUD API, JML role-based provisioning, Lifecycle Policies tab, 8 seeded roles + 15 entitlements                                                                                                     |
 | 14 — Workflow Trust & Evidence      | ✅ Complete     | #284       | Step idempotency, DLQ console UI, evidence retention protections, auth hardening (DLQ reads + workflow GET), Operations admin page                                                                                                           |
 | 15 — Continuous Validation          | ✅ Complete     | #285       | k6 SLO scripts, Snyk + ZAP CI, Playwright smoke CI, deep health checks, journey completion metrics                                                                                                                                           |
+| 15.5 — Platform Polish & Evidence   | 🔴 Next         | —          | Fix NHI/SaaS discovery, evidence card expand, auto-evidence collection, auto-tagging, operations data enrichment, badge color fixes                                                                                                          |
+| 16 — Market Readiness & PLG Entry   | 📋 Planned      | —          | Pricing, billing (Stripe), self-serve onboarding, analytics                                                                                                                                                                                  |
 
 ## Deployed Workers
 

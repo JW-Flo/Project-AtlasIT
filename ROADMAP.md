@@ -391,6 +391,45 @@ Directory Event / Schedule / Webhook
 - [x] Journey completion rate metrics: /api/platform/journey-metrics tracks 5-step activation funnel per tenant
 - [x] Existing site crawl + axe a11y scanning (WCAG 2.2) already in tests/full/site-crawl.spec.ts
 
+## Phase 15.5 — Platform Polish & Evidence Automation
+
+> **Context**: User-reported issues from QA review of Phases 13-15. The platform has the right features
+> but several UX gaps, broken flows, and missed automation opportunities reduce trust and increase friction.
+> This phase focuses on fixing what's broken and automating what's manual before adding new features.
+
+### P0 — Broken Features
+
+- [ ] **NHI Discovery failing** — `/console/discovery` NHI tab errors; investigate and fix adapter NHI endpoint calls
+- [ ] **SaaS & AI Discovery failing** — Shadow AI discovery scan returning errors; debug OAuth grant analysis flow and adapter connectivity
+- [ ] **Evidence card click-through broken** — Evidence items in the evidence locker/feed are clickable but don't expand or open detail view; implement expand/detail panel showing full evidence payload, R2 content hash, source metadata, and linked controls
+
+### P1 — Evidence Automation (Reduce Friction)
+
+- [ ] **Auto-evidence collection from connected adapters** — For each gap identified by the gap analyzer, automatically attempt to pull correlating evidence from connected systems instead of requiring manual upload. Map controls to adapter evidence endpoints (e.g., CC6.1 → Okta MFA policy status, CC7.5 → adapter audit log settings, A.9.2.6 → offboarding completion records)
+- [ ] **Auto-tagging evidence** — When evidence is ingested (from adapters, automation rules, or platform state probes), automatically tag with: framework, control IDs, evidence category, impact level, and confidence score. Remove the "+ Tag" manual interaction for system-generated evidence
+- [ ] **Evidence gap → adapter mapping** — On the Insights page, when a gap is shown for a control that has a connected adapter capable of providing evidence, show a "Collect Now" button that triggers immediate evidence pull from that adapter
+- [ ] **Platform state evidence expansion** — Expand `collectPlatformStateEvidence()` probes to cover more controls: RBAC configuration evidence (CC5.2, CC6.1), encryption at rest (CC7.4), directory sync recency (A.9.2.1), automation rule coverage (CC4.1)
+
+### P2 — Operations & UI Polish
+
+- [ ] **Operations page data enrichment** — Workflow Runs tab shows missing data (empty User Email, App ID, Subject fields). Populate from workflow context/trigger event payload. Show step-level detail in expanded rows (action name, status, duration, output)
+- [ ] **"Running" badge color fix** — Running status badge uses `bg-blue-500 text-blue-100` which is barely readable on dark backgrounds. Change to `bg-blue-600 text-white` or use the existing theme's primary color
+- [ ] **Deep health compliance reachability** — Worker-to-worker call to compliance endpoint reports `reachable: false` due to edge-to-edge routing. Use service binding or internal fetch instead of public URL
+- [ ] **Evidence locker pagination** — Evidence feed returns 432 items but only shows ~20; ensure proper pagination with load-more/infinite scroll
+- [ ] **Insights page gap recommendations** — Currently all gaps show generic "Connect relevant adapters" text. Replace with specific adapter names when the tenant has that adapter connected (e.g., "Collect MFA policy evidence from your connected Okta adapter")
+
+### Files likely affected
+
+- `console-app/src/routes/console/compliance/+page.svelte` — evidence card expand
+- `console-app/src/routes/api/evidence-feed/+server.ts` — auto-tagging, pagination
+- `console-app/src/routes/console/insights/+page.svelte` — adapter-specific recommendations
+- `console-app/src/routes/console/admin/operations/+page.svelte` — data enrichment, badge color
+- `console-app/src/routes/console/discovery/+page.svelte` — NHI + SaaS discovery fixes
+- `packages/shared/src/evidence/adapter-collector.ts` — expanded evidence collection
+- `packages/shared/src/evidence/platform-state-collector.ts` — expanded state probes
+- `packages/shared/src/compliance-intelligence/gap-analyzer.ts` — adapter-aware recommendations
+- `ai-orchestrator/src/index.ts` — evidence auto-collection on gap detection
+
 ## Phase 16 — Market Readiness & PLG Entry
 
 > **Strategic context**: The compliance market is overwhelmingly sales-led with opaque pricing.
