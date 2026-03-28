@@ -6,6 +6,8 @@
   import Button from "$lib/components/ui/button.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
+  import Dialog from "$lib/components/ui/dialog.svelte";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { AlertTriangle } from "lucide-svelte";
 
   type RunStatus = "success" | "failed" | "skipped";
@@ -20,9 +22,22 @@
     affectedUserEmail: string | null;
   }
 
+  interface ExecutionDetail {
+    id: string;
+    ruleName: string;
+    triggerType?: string;
+    status: string;
+    durationMs?: number;
+    startedAt: string;
+    completedAt?: string | null;
+    results: Array<{ actionType: string; status: string; message?: string }>;
+  }
+
   let loading = true;
   let error: string | null = null;
   let runs: AutomationExecution[] = [];
+  let selectedExecution: ExecutionDetail | null = null;
+  let loadingDetail = false;
 
   let statusFilter: "all" | RunStatus = "all";
   let limit = 25;
@@ -142,6 +157,33 @@
     loadRuns();
   }
 
+  async function viewExecution(run: AutomationExecution) {
+    loadingDetail = true;
+    selectedExecution = null;
+    try {
+      const res = await fetch(`/api/automation/executions/${run.id}`);
+      if (res.ok) {
+        const data: any = await res.json();
+        selectedExecution = data.execution;
+      } else {
+        pushToast({ message: "Failed to load execution details", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to load execution details", variant: "error" });
+    } finally {
+      loadingDetail = false;
+    }
+  }
+
+  function closeExecutionDetail() {
+    selectedExecution = null;
+    loadingDetail = false;
+  }
+
+  function actionTypeLabel(type: string): string {
+    return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   onMount(loadRuns);
 </script>
 
@@ -199,7 +241,7 @@
               </thead>
               <tbody>
                 {#each runs as run}
-                  <tr class="border-t hover:bg-muted/40">
+                  <tr class="border-t hover:bg-muted/40 cursor-pointer" on:click={() => viewExecution(run)}>
                     <td class="px-4 py-3 font-medium">{run.ruleName || "Unnamed rule"}</td>
                     <td class="px-4 py-3 text-muted-foreground">{triggerLabel(run.triggerEvent)}</td>
                     <td class="px-4 py-3">
@@ -235,3 +277,68 @@
     </div>
   {/if}
 </div>
+
+<Dialog open={loadingDetail || selectedExecution !== null} onClose={closeExecutionDetail} title="Execution Detail">
+  {#if loadingDetail}
+    <div class="space-y-3">
+      <Skeleton class="h-5 w-48" />
+      <Skeleton class="h-4 w-32" />
+      <div class="grid grid-cols-2 gap-3">
+        <Skeleton class="h-12" />
+        <Skeleton class="h-12" />
+        <Skeleton class="h-12" />
+        <Skeleton class="h-12" />
+      </div>
+      <Skeleton class="h-24" />
+    </div>
+  {:else if selectedExecution}
+    <div class="mb-4">
+      <div class="text-sm font-medium">{selectedExecution.ruleName}</div>
+      {#if selectedExecution.triggerType}
+        <Badge variant="outline" class="mt-1">{selectedExecution.triggerType}</Badge>
+      {/if}
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div>
+        <div class="text-xs text-muted-foreground mb-0.5">Status</div>
+        <Badge variant={statusVariant(selectedExecution.status as RunStatus)} class="capitalize">{selectedExecution.status}</Badge>
+      </div>
+      <div>
+        <div class="text-xs text-muted-foreground mb-0.5">Duration</div>
+        <span class="text-sm">{selectedExecution.durationMs ? `${selectedExecution.durationMs}ms` : "-"}</span>
+      </div>
+      <div>
+        <div class="text-xs text-muted-foreground mb-0.5">Started</div>
+        <span class="text-xs">{new Date(selectedExecution.startedAt).toLocaleString()}</span>
+      </div>
+      <div>
+        <div class="text-xs text-muted-foreground mb-0.5">Completed</div>
+        <span class="text-xs">{selectedExecution.completedAt ? new Date(selectedExecution.completedAt).toLocaleString() : "-"}</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Action Results</div>
+      {#if selectedExecution.results && selectedExecution.results.length > 0}
+        <div class="space-y-2">
+          {#each selectedExecution.results as result}
+            <Card>
+              <CardContent class="py-2 px-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <Badge variant={statusVariant(result.status as RunStatus)} class="capitalize">{result.status}</Badge>
+                  <span class="text-xs font-medium">{actionTypeLabel(result.actionType)}</span>
+                </div>
+                {#if result.message}
+                  <div class="text-xs text-muted-foreground mt-1">{result.message}</div>
+                {/if}
+              </CardContent>
+            </Card>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-xs text-muted-foreground">No action results recorded.</p>
+      {/if}
+    </div>
+  {/if}
+</Dialog>

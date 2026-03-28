@@ -65,6 +65,7 @@
   let limit = 25;
   let offset = 0;
   let total = 0;
+  let expandedId: string | null = null;
 
   $: pageStart = total === 0 ? 0 : offset + 1;
   $: pageEnd = Math.min(offset + limit, total);
@@ -86,6 +87,14 @@
     if (!hash) return "--";
     if (hash.length <= 16) return hash;
     return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
+  }
+
+  async function copyHash(hash: string) {
+    try {
+      await navigator.clipboard.writeText(hash);
+    } catch {
+      // clipboard access not available
+    }
   }
 
   function buildQuery(): string {
@@ -177,6 +186,7 @@
 
 <div class="space-y-6">
   <div>
+    <a href="/console/compliance" class="text-sm text-primary hover:underline">← Back to Compliance</a>
     <h1 class="text-2xl font-semibold tracking-tight">Evidence Activity Feed</h1>
     <p class="text-sm text-muted-foreground">Lifecycle operations mapped to compliance controls with evidence impact.</p>
   </div>
@@ -255,7 +265,7 @@
   {:else}
     <div class="space-y-3">
       {#each feed as item}
-        <Card>
+        <Card class="cursor-pointer" on:click={() => expandedId = expandedId === item.id ? null : item.id}>
           <CardContent class="pt-4">
             <div class="flex items-start justify-between gap-3">
               <div class="space-y-1.5">
@@ -277,6 +287,23 @@
                 <div class="text-[11px] text-muted-foreground mt-1" title={item.contentHash}>hash: {shortHash(item.contentHash)}</div>
               </div>
             </div>
+            {#if expandedId === item.id}
+              <div class="mt-3 pt-3 border-t space-y-2" on:click|stopPropagation>
+                <div>
+                  <div class="text-xs font-semibold text-muted-foreground mb-1">Full Hash</div>
+                  <div class="flex items-center gap-2">
+                    <code class="text-[11px] bg-muted px-2 py-1 rounded break-all">{item.contentHash || "--"}</code>
+                    {#if item.contentHash}
+                      <Button size="sm" variant="outline" on:click={() => copyHash(item.contentHash)}>Copy</Button>
+                    {/if}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-muted-foreground mb-1">Metadata</div>
+                  <pre class="text-[11px] bg-muted px-2 py-1.5 rounded overflow-x-auto whitespace-pre-wrap">{JSON.stringify({ id: item.id, framework: item.framework, controlId: item.controlId, controlName: item.controlName, category: item.category, source: item.source, actor: item.actor, subject: item.subject, impact: item.impact, confidence: item.confidence, eventType: item.eventType, createdAt: item.createdAt }, null, 2)}</pre>
+                </div>
+              </div>
+            {/if}
           </CardContent>
         </Card>
       {/each}
