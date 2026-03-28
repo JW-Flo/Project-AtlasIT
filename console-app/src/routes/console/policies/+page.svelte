@@ -11,6 +11,7 @@
   import Alert from "$lib/components/ui/alert.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { session } from "$lib/stores/session";
   import { FileText, Download, AlertTriangle } from "lucide-svelte";
 
   interface PolicyTemplate {
@@ -105,7 +106,10 @@
     URL.revokeObjectURL(url);
   }
 
-  onMount(loadTemplates);
+  onMount(() => {
+    loadTemplates();
+    if ($session?.email) contactEmail = $session.email;
+  });
 </script>
 
 <div class="space-y-6">

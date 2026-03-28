@@ -1113,9 +1113,9 @@
         </div>
       </div>
     {:else}
-      <Alert class="mb-4">
+      <Alert class="mb-4" variant="default">
         <AlertTriangle class="h-4 w-4" />
-        <span class="text-sm">No compliance evidence collected yet. Connect directory sync and adapters to start generating evidence automatically.</span>
+        <span class="text-sm">No automated evidence collected yet. Control statuses below reflect your self-assessment. Connect directory sync and adapters to generate evidence automatically.</span>
       </Alert>
     {/if}
 

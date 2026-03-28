@@ -226,7 +226,7 @@
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
+  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0" style={accentColor ? `--accent-brand: ${accentColor}` : ''}>
     <!-- Logo -->
     <div class="flex items-center gap-2 px-6 h-16 border-b">
       {#if logoUrl}
@@ -261,7 +261,7 @@
                 class={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   active
-                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                    ? "nav-active bg-primary/10 text-primary border-l-2 border-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
                 )}
               >
@@ -513,3 +513,11 @@
     </main>
   </div>
 </div>
+
+<style>
+  :global(.nav-active) {
+    color: var(--accent-brand, hsl(var(--primary))) !important;
+    border-color: var(--accent-brand, hsl(var(--primary))) !important;
+    background-color: color-mix(in srgb, var(--accent-brand, hsl(var(--primary))) 10%, transparent) !important;
+  }
+</style>
