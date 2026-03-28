@@ -125,28 +125,41 @@ export const handle: Handle = async ({ event, resolve }) => {
       try {
         const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
         if (db) {
+          // Try console_user_roles first (RBAC table)
           const roleRow = await db
             .prepare("SELECT tenant_id FROM console_user_roles WHERE email = ? LIMIT 1")
             .bind(user.email)
             .first<{ tenant_id: string }>();
           if (roleRow?.tenant_id) {
             user.tenantId = roleRow.tenant_id;
-          } else {
+          }
+          // Then console_users
+          if (!user.tenantId) {
             const userRow = await db
               .prepare("SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1")
               .bind(user.email)
               .first<{ tenant_id: string }>();
-            if (userRow?.tenant_id) {
-              user.tenantId = userRow.tenant_id;
-            } else {
-              const fallback = await db
-                .prepare("SELECT id FROM tenants LIMIT 1")
-                .first<{ id: string }>();
-              if (fallback?.id) user.tenantId = fallback.id;
-            }
+            if (userRow?.tenant_id) user.tenantId = userRow.tenant_id;
+          }
+          // Then users table (directory users)
+          if (!user.tenantId) {
+            const dirRow = await db
+              .prepare("SELECT tenant_id FROM users WHERE email = ? LIMIT 1")
+              .bind(user.email)
+              .first<{ tenant_id: string }>();
+            if (dirRow?.tenant_id) user.tenantId = dirRow.tenant_id;
+          }
+          // Last resort: first tenant
+          if (!user.tenantId) {
+            const fallback = await db
+              .prepare("SELECT id FROM tenants LIMIT 1")
+              .first<{ id: string }>();
+            if (fallback?.id) user.tenantId = fallback.id;
           }
         }
-      } catch { /* non-blocking */ }
+      } catch (e) {
+        console.error(JSON.stringify({ level: "error", event: "auth.tenant_enrichment_failed", err: String(e) }));
+      }
     }
 
     // Throttle lastSeenAt refresh — only write to KV every 5 minutes
