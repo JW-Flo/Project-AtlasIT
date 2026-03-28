@@ -485,6 +485,162 @@ app.post("/api/deprovision", async (c) => {
   }
 });
 
+// ── NHI (Non-Human Identity) discovery ──────────────────────────────────────
+
+interface NhiIdentity {
+  externalId: string;
+  displayName: string;
+  identityType: "api_key" | "service";
+  credentialType: "api_key" | "oauth_app";
+  ownerEmail?: string;
+  scopes?: string[];
+  expiresAt?: string;
+  lastUsedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+async function fetchApiTokens(
+  orgUrl: string,
+  token: string,
+): Promise<Array<Record<string, unknown>> | null> {
+  try {
+    const res = await fetch(`${orgUrl}/api/v1/api-tokens`, {
+      headers: {
+        Authorization: `SSWS ${token}`,
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Array<Record<string, unknown>>;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchServiceApps(
+  orgUrl: string,
+  token: string,
+): Promise<Array<Record<string, unknown>> | null> {
+  try {
+    const res = await fetch(
+      `${orgUrl}/api/v1/apps?filter=status+eq+"ACTIVE"&limit=200`,
+      {
+        headers: {
+          Authorization: `SSWS ${token}`,
+          Accept: "application/json",
+        },
+      },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as Array<Record<string, unknown>>;
+  } catch {
+    return null;
+  }
+}
+
+app.post("/api/nhi/discovery", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const correlationId = c.get("correlationId");
+  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = c.env.OKTA_API_TOKEN;
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Starting NHI discovery",
+    }),
+  );
+
+  const [apiTokens, serviceApps] = await Promise.all([
+    fetchApiTokens(orgUrl, token),
+    fetchServiceApps(orgUrl, token),
+  ]);
+
+  const identities: NhiIdentity[] = [];
+
+  if (apiTokens !== null) {
+    for (const t of apiTokens) {
+      identities.push({
+        externalId: (t.id as string | undefined) ?? String(t.name),
+        displayName: (t.name as string | undefined) ?? "Unknown API Token",
+        identityType: "api_key",
+        credentialType: "api_key",
+        ownerEmail: (t.userId as string | undefined) ?? undefined,
+        expiresAt: (t.expiresAt as string | undefined) ?? undefined,
+        lastUsedAt: (t.lastUpdated as string | undefined) ?? undefined,
+        metadata: {
+          clientName: t.clientName,
+          created: t.created,
+          tokenWindow: t.tokenWindow,
+        },
+      });
+    }
+  }
+
+  if (serviceApps !== null) {
+    const serviceTypes = new Set(["SERVICE", "BROWSER_PLUGIN", "SAML_2_0", "WS_FEDERATION"]);
+    for (const app of serviceApps) {
+      const signOnMode = (app.signOnMode as string | undefined) ?? "";
+      const appName = (app.name as string | undefined) ?? "";
+      const label = (app.label as string | undefined) ?? appName;
+      const credentials = app.credentials as Record<string, unknown> | undefined;
+      const oauthClient = credentials?.oauthClient as Record<string, unknown> | undefined;
+
+      // Include service-type apps and OAuth client apps (M2M / service accounts)
+      const isService =
+        serviceTypes.has(signOnMode) ||
+        oauthClient !== undefined ||
+        signOnMode === "OPENID_CONNECT";
+
+      if (!isService) continue;
+
+      const settings = app.settings as Record<string, unknown> | undefined;
+      const oauthSettings = settings?.oauthClient as Record<string, unknown> | undefined;
+      const grantTypes = (oauthSettings?.grant_types as string[] | undefined) ?? [];
+
+      identities.push({
+        externalId: (app.id as string | undefined) ?? label,
+        displayName: label,
+        identityType: "service",
+        credentialType: "oauth_app",
+        scopes: (oauthSettings?.scopes as string[] | undefined) ?? undefined,
+        lastUsedAt: (app.lastUpdated as string | undefined) ?? undefined,
+        metadata: {
+          signOnMode,
+          status: app.status,
+          created: app.created,
+          grantTypes,
+          appName,
+        },
+      });
+    }
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "NHI discovery completed",
+      identityCount: identities.length,
+      apiTokensFound: apiTokens?.length ?? "error",
+      serviceAppsScanned: serviceApps?.length ?? "error",
+    }),
+  );
+
+  return c.json({
+    provider: "okta",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
 app.post("/api/evidence", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID");
   if (!tenantId) {

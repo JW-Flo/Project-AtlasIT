@@ -345,6 +345,96 @@ export async function updateCampaignStatus(
     .run();
 }
 
+/**
+ * Populate a campaign with NHI credential items for review.
+ * Used when campaign scope starts with 'nhi' (e.g., 'nhi', 'nhi:api_key', 'nhi:service_account').
+ */
+export async function populateNhiItems(
+  db: D1Database,
+  tenantId: string,
+  campaignId: string,
+  scope: string,
+): Promise<AccessReviewItem[]> {
+  // Parse scope: 'nhi' = all types, 'nhi:api_key' = specific credential type
+  const scopeParts = scope.split(":");
+  const credentialTypeFilter = scopeParts.length > 1 ? scopeParts[1] : null;
+
+  const conditions = ["nc.tenant_id = ?", "nc.status = 'active'"];
+  const binds: (string | number)[] = [tenantId];
+
+  if (credentialTypeFilter) {
+    conditions.push("nc.credential_type = ?");
+    binds.push(credentialTypeFilter);
+  }
+
+  const { results: nhis } = await db
+    .prepare(
+      `SELECT nc.id, nc.display_name, nc.credential_type, nc.provider,
+              nc.owner_email, nc.scopes, nc.risk_score
+       FROM nhi_credentials nc
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY nc.risk_score DESC
+       LIMIT 500`,
+    )
+    .bind(...binds)
+    .all<{
+      id: string;
+      display_name: string;
+      credential_type: string;
+      provider: string;
+      owner_email: string | null;
+      scopes: string | null;
+      risk_score: number;
+    }>();
+
+  if (!nhis || nhis.length === 0) return [];
+
+  const items: AccessReviewItem[] = [];
+  const now = new Date().toISOString();
+
+  for (const nhi of nhis) {
+    const id = crypto.randomUUID();
+    // NHI review: userId = credential ID, appId = provider, role = credential type
+    // reviewerEmail = owner (if assigned) for 'owner' reviewer policy
+    await db
+      .prepare(
+        `INSERT INTO access_review_items
+           (id, campaign_id, tenant_id, user_id, user_email, app_id, app_name, role, reviewer_email, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      )
+      .bind(
+        id,
+        campaignId,
+        tenantId,
+        nhi.id,
+        nhi.display_name,
+        nhi.provider,
+        `${nhi.provider} - ${nhi.credential_type}`,
+        nhi.credential_type,
+        nhi.owner_email ?? null,
+      )
+      .run();
+
+    items.push({
+      id,
+      campaignId,
+      tenantId,
+      userId: nhi.id,
+      userEmail: nhi.display_name,
+      appId: nhi.provider,
+      appName: `${nhi.provider} - ${nhi.credential_type}`,
+      role: nhi.credential_type,
+      reviewerEmail: nhi.owner_email ?? null,
+      status: "pending",
+      decidedAt: null,
+      decidedBy: null,
+      notes: null,
+    });
+  }
+
+  return items;
+}
+
 /** Expire overdue active campaigns (called by a cron or on-demand). */
 export async function expireOverdueCampaigns(
   db: D1Database,

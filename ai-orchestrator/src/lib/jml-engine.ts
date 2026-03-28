@@ -46,6 +46,13 @@ export interface DirectoryChange {
   source: string;
 }
 
+export interface NhiCredentialRef {
+  credentialId: string;
+  provider: string;
+  displayName: string;
+  credentialType: string;
+}
+
 export interface JmlClassification {
   action: JmlAction;
   userId: string;
@@ -55,6 +62,8 @@ export interface JmlClassification {
   appsToProvision: AppAccess[];
   /** Apps to revoke (leaver/mover) */
   appsToRevoke: AppAccess[];
+  /** NHI credentials owned by the user to revoke on offboarding */
+  nhiCredentialsToRevoke?: NhiCredentialRef[];
   profile: CanonicalUserProfile | null;
 }
 
@@ -137,6 +146,43 @@ export async function classifyAndExecute(
 
 // ── Classification ──────────────────────────────────────────────────────────
 
+/**
+ * Find active NHI credentials owned by a user (by email).
+ * Used during leaver flows to revoke/reassign owned service accounts and API keys.
+ */
+async function discoverOwnedNhiCredentials(
+  db: D1Database,
+  tenantId: string,
+  email?: string,
+): Promise<NhiCredentialRef[]> {
+  if (!email) return [];
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT id, provider, display_name, credential_type
+         FROM nhi_credentials
+         WHERE tenant_id = ? AND owner_email = ? AND status = 'active'
+         LIMIT 100`,
+      )
+      .bind(tenantId, email)
+      .all<{
+        id: string;
+        provider: string;
+        display_name: string;
+        credential_type: string;
+      }>();
+
+    return (results ?? []).map((r) => ({
+      credentialId: r.id,
+      provider: r.provider,
+      displayName: r.display_name,
+      credentialType: r.credential_type,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function classify(
   tenantId: string,
   change: DirectoryChange,
@@ -166,6 +212,12 @@ async function classify(
     case "deactivated":
     case "deleted": {
       const appsToRevoke = profile?.appAccess ?? [];
+      // Discover NHI credentials owned by this user for revocation
+      const nhiToRevoke = await discoverOwnedNhiCredentials(
+        db,
+        tenantId,
+        change.email,
+      );
       return {
         action: "leaver",
         userId: change.userId,
@@ -173,6 +225,7 @@ async function classify(
         reason: `User ${change.changeType} in directory`,
         appsToProvision: [],
         appsToRevoke,
+        nhiCredentialsToRevoke: nhiToRevoke,
         profile,
       };
     }
@@ -417,6 +470,25 @@ function buildJmlSteps(
       }
       main.push(step);
     }
+
+    // NHI offboarding: revoke owned NHI credentials
+    if (classification.nhiCredentialsToRevoke?.length) {
+      for (const nhi of classification.nhiCredentialsToRevoke) {
+        main.push({
+          id: `revoke_nhi_${nhi.credentialId}`,
+          name: `Revoke NHI: ${nhi.displayName} (${nhi.provider})`,
+          handler: "atlas.revoke_nhi_credential",
+          timeoutMs: 30_000,
+        });
+      }
+      // Emit NHI offboarding evidence
+      main.push({
+        id: "emit_nhi_offboarding_evidence",
+        name: "Emit NHI offboarding evidence",
+        handler: "atlas.emit_nhi_offboarding_evidence",
+        timeoutMs: 10_000,
+      });
+    }
   }
 
   if (classification.action === "mover") {
@@ -564,6 +636,11 @@ async function emitJmlEvidence(
     source: change.source,
     appsToProvision: classification.appsToProvision.map((a) => a.appId),
     appsToRevoke: classification.appsToRevoke.map((a) => a.appId),
+    nhiCredentialsRevoked: classification.nhiCredentialsToRevoke?.map((n) => ({
+      id: n.credentialId,
+      provider: n.provider,
+      type: n.credentialType,
+    })),
     profile: classification.profile
       ? {
           department: classification.profile.department,
