@@ -1306,7 +1306,7 @@ export function buildDefaultControls(frameworks: string[]): Control[] {
     if (!defs) continue;
     for (const def of defs) {
       controls.push({
-        id: `${fw.toLowerCase().replace(/\s+/g, "_")}_${def.name.toLowerCase().replace(/\s+/g, "_")}`,
+        id: `${fw.toLowerCase().replace(/\s+/g, "_")}_${def.name.toLowerCase().replace(/[\s.,()\-]+/g, "_")}`.replace(/_+/g, "_").replace(/^_|_$/g, ""),
         framework: fw,
         name: def.name,
         description: def.description,
