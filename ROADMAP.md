@@ -334,7 +334,7 @@ Directory Event / Schedule / Webhook
 - [ ] Compliance mapping — unapproved apps generate detrimental evidence for GDPR Art.5(1)(f), SOC2 CC6.6, ISO27001 A.9.1.2
 - [ ] Files: `ai-orchestrator/src/lib/discovery/`, `console-app/src/routes/console/discovery/`, adapter `/api/oauth-grants` endpoints
 
-## Phase 13 — AI-Driven Compliance Intelligence (Beyond Suggestions)
+## Phase 13 — AI-Driven Compliance Intelligence (Beyond Suggestions) ✅ (PR #282)
 
 > **Strategic context**: Vanta and Drata both have AI assistants but they're glorified chatbots.
 > ConductorOne calls itself "AI-native" but focuses on access decisions, not compliance intelligence.
@@ -344,29 +344,52 @@ Directory Event / Schedule / Webhook
 > CDT rule evaluations) that makes AI analysis actionable. Competitors' AI works on static snapshots;
 > ours works on live operational streams.
 
-- [ ] Compliance gap analyzer — continuously identify which controls have stale/missing evidence and recommend specific adapter connections or workflow changes to close gaps
-- [ ] Risk anomaly detection — surface unusual access patterns from automation execution history (bulk privilege escalation, off-hours provisioning, SoD violations)
-- [ ] AI policy generator — auto-generate security policies (access control, incident response, data handling) from control frameworks + tenant's actual configuration, with redline diff for review
-- [ ] NL automation builder — `/api/automation/nl` translates natural language to automation rule JSON (Workers AI), already partially built in `packages/shared/src/automation/nl-builder.ts`
-- [ ] Compliance drift alerting — detect when operational changes (new app connected, adapter disconnected, policy changed) create compliance regression, emit proactive notifications
-- [ ] Security questionnaire learning — improve questionnaire AI (Phase 9) by learning from tenant's previous responses and evidence patterns
-- [ ] Files: `packages/shared/src/automation/learner.ts`, `ai-orchestrator/src/lib/compliance-intelligence/`, `console-app/src/routes/console/insights/`
+- [x] Compliance gap analyzer — 83 analyzable controls across 5 frameworks, 28 control-specific recommendations covering audit logs, SoD, offboarding, HIPAA depth
+- [x] Risk anomaly detection — bulk privilege escalation (>5/hr), off-hours provisioning, unusual revocation volume (>10/hr) from automation execution history
+- [x] AI policy generator — 5 policy types (access control, incident response, data handling, password, acceptable use) with Groq AI + LCS-based redline diff
+- [x] NL automation builder — enhanced with compliance gap awareness, existing rules dedup, closesGaps/possibleDuplicate fields
+- [x] Compliance drift alerting — adapter disconnect, health failure, rule disable, score regression mapped to affected controls
+- [x] Security questionnaire learning — prior accepted/edited responses used for answer consistency
+- [x] Files: `packages/shared/src/compliance-intelligence/`, `console-app/src/routes/api/compliance-intelligence/`, `console-app/src/routes/console/insights/`, `ai-orchestrator Duty 6`
+- [x] 40 unit tests across 6 test files
 
-## Phase 14 — Workflow Trust & Evidence Integrity
+### Security Audit Remediation (included in PR #282)
 
-- [ ] Workflow execution reliability: idempotency, DLQ visibility in UI, confidence threshold surfacing
-- [ ] Evidence/policy integrity as first-class UX (ingest → verify → display pipeline)
-- [ ] Execution history UI with step-level status and compensation visibility
-- [ ] R2 evidence deletion protections and access scoping
-- [ ] Admin endpoint isolation: cron endpoints behind internal-only access
+- [x] Removed committed DISPATCH_ADMIN_TOKEN, purged from git history, rotated on workers
+- [x] Fail-closed admin auth (503 when ADMIN_BEARER/ADMIN_TOKEN unconfigured)
+- [x] Disabled workers_dev on 5 production workers
+- [x] SHA-pinned all CI actions + top-level permissions: contents: read
+- [x] Expanded secret scanner + Gitleaks CI workflow + .gitleaks.toml
+- [x] Terraform hardening: remote state stubs, sensitive vars, tflint + tfsec in CI
+- [x] Vite upgraded past CVE-2025-62522
 
-## Phase 15 — Continuous Validation
+### Workflow Redesign: Identity-Grounded Lifecycle Management (PR #283)
 
-- [ ] Scheduled synthetic crawl + a11y budgets (Playwright + axe, WCAG 2.2)
-- [ ] k6 smoke SLO gates for key endpoints (LCP ≤ 2.5s, INP ≤ 200ms at p75)
-- [ ] Security scanning: Snyk (pnpm monorepo) + ZAP baseline
-- [ ] Platform Status "truthfulness" SLO (functional checks, not just reachability)
-- [ ] Journey completion rate metrics: login → dashboard → connect → workflow → evidence
+- [x] Roles as first-class entity: `roles`, `role_app_entitlements`, `role_assignments` tables with hierarchy (org → department → team)
+- [x] Full CRUD API at `/api/roles/` with entitlement and assignment management
+- [x] JML engine updated: role-based provisioning (with inheritance) + legacy group_app_mappings fallback
+- [x] Workflows page redesigned: Lifecycle Policies tab (default), Users tab, Activity tab
+- [x] Production D1 seeded: 8 lifecycle roles, 15 entitlements, 3-level hierarchy
+- [x] 9 unit tests for role resolution
+
+## Phase 14 — Workflow Trust & Evidence Integrity ✅ (PR #284)
+
+- [x] Step-level idempotency: WorkflowDO generates idempotencyKey per attempt, step executor deduplicates before re-execution
+- [x] DLQ visibility in console UI: /console/admin/operations with Dead Letter Queue + Workflow Runs tabs, per-entry replay
+- [x] Evidence retention: enforceRetentionPolicy() soft-delete, isEvidenceDeletionAllowed() protects active control evidence
+- [x] R2 evidence remains immutable (write-once, content-addressed); retention only marks D1 rows
+- [x] DLQ read endpoints + workflow GET /:id protected with requireRole("member") + tenant scoping
+- [x] Admin endpoint isolation: cron handler inherently internal (CF Workers scheduled()), scheduler /internal/run requires DEBUG_KEY
+- [x] 6 unit tests for evidence retention
+
+## Phase 15 — Continuous Validation ✅ (PR #285)
+
+- [x] k6 smoke SLO scripts: smoke (5 VUs, 30s) + load baseline (10 VUs ramped), p95 < 2500ms threshold
+- [x] Security scanning CI: weekly Snyk + ZAP baseline (.github/workflows/security-scan.yml)
+- [x] Playwright smoke CI: deployment_status trigger, SHA-pinned actions, artifact upload
+- [x] Platform Status truthfulness: /api/platform/health-deep verifies D1/KV/R2 functional checks across all workers
+- [x] Journey completion rate metrics: /api/platform/journey-metrics tracks 5-step activation funnel per tenant
+- [x] Existing site crawl + axe a11y scanning (WCAG 2.2) already in tests/full/site-crawl.spec.ts
 
 ## Phase 16 — Market Readiness & PLG Entry
 
@@ -428,8 +451,7 @@ Competitors must stitch together:
 | Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
 | Config              | Environment gating via wrangler.toml [env.*] sections                     |
 | Performance         | Precompute aggregates into KV; Queues for heavy ops                       |
-| Testing             | Vitest + Miniflare; 719 tests (118 files)                                 |
+| Testing             | Vitest + Miniflare; 928 tests (103 files), k6 SLO smoke + load baseline   |
 | Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
 | IaC                 | Terraform + OPA policies + daily drift detection                          |
 | Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |
-

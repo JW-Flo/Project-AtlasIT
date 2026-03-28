@@ -4,26 +4,34 @@
 
 ## Current State
 
-- **Test suite:** 818 tests passing (89 files)
+- **Test suite:** 928 tests passing (103 files), zero failures
+- **D1 tables:** 67 tables, 35 migrations applied
 - **Package manager:** pnpm (workspace monorepo)
 - **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues
 
 ## Phase Completion
 
-| Phase                               | Status          | PR         | Key Deliverables                                                                                                                                                               |
-| ----------------------------------- | --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0 — Foundation                      | ✅ Complete     | —          | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                                                                   |
-| 1 — Workflow Durability + Auth      | ✅ Complete     | #139       | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                                                                   |
-| 2 — MCP Orchestration               | ✅ Complete     | #140       | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                                                                        |
-| 3 — Marketplace & Integrations      | ✅ Pre-existing | —          | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                                                              |
-| 4 — Hardening & Production          | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                                                  |
-| 5 — Adapter Scaffolding             | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                                             |
-| 6 — Contract Stability              | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                                                 |
-| 7 — Compliance-as-Automation        | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload                           |
-| 7.5 — Compliance Integration        | ✅ Complete     | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls), policy evaluation wired into scoring pipeline |
-| 8 — Access Reviews                  | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action                                              |
-| 9 — Trust Center & Questionnaire AI | ✅ Complete     | —          | Evidence provenance trail, per-control visibility (public/NDA/private), NDA access workflow, CSV/JSON export with tamper hash, questionnaire AI (Groq), SVG trust badge        |
+| Phase                               | Status          | PR         | Key Deliverables                                                                                                                                                                                                                             |
+| ----------------------------------- | --------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — Foundation                      | ✅ Complete     | —          | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                                                                                                                                 |
+| 1 — Workflow Durability + Auth      | ✅ Complete     | #139       | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                                                                                                                                 |
+| 2 — MCP Orchestration               | ✅ Complete     | #140       | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                                                                                                                                      |
+| 3 — Marketplace & Integrations      | ✅ Pre-existing | —          | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                                                                                                                            |
+| 4 — Hardening & Production          | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                                                                                                                |
+| 5 — Adapter Scaffolding             | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                                                                                                           |
+| 6 — Contract Stability              | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                                                                                                               |
+| 7 — Compliance-as-Automation        | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload                                                                                         |
+| 7.5 — Compliance Integration        | ✅ Complete     | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls), policy evaluation wired into scoring pipeline                                                               |
+| 8 — Access Reviews                  | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action                                                                                                            |
+| 9 — Trust Center & Questionnaire AI | ✅ Complete     | —          | Evidence provenance trail, per-control visibility (public/NDA/private), NDA access workflow, CSV/JSON export with tamper hash, questionnaire AI (Groq), SVG trust badge                                                                      |
 | 10 — Stabilization & JML Reality    | ✅ Complete     | #253–#275  | JML pipeline hardened, 139 controls (was 25), scoring pipeline fix (no more stale 100%), directory sync through orchestrator, group-app mapping persistence, OAuth failure UX, connector health indicators, credential encryption validation |
+| 11 — NHI Governance                 | ✅ Complete     | #276       | NHI discovery, inventory dashboard, token expiry tracking, NHI access reviews, leaver workflow NHI revocation                                                                                                                                |
+| 12 — Shadow AI & SaaS Discovery     | ✅ Complete     | #277       | OAuth grant analysis, shadow AI detection, discovered vs managed apps, governance playbooks                                                                                                                                                  |
+| 13 — AI Compliance Intelligence     | ✅ Complete     | #282       | Gap analyzer (83 controls), drift alerting, risk anomaly detection, AI policy generator (5 types + redline diff), NL builder gap awareness, questionnaire learning, Insights UI                                                              |
+| 13+ — Security Audit Remediation    | ✅ Complete     | #282       | Token purge + rotation, fail-closed auth, workers_dev=false, SHA-pinned CI, Gitleaks, Terraform hardening, Vite CVE patch                                                                                                                    |
+| 13+ — Workflow Redesign (Roles)     | ✅ Complete     | #283       | Roles as first-class entity (hierarchy), CRUD API, JML role-based provisioning, Lifecycle Policies tab, 8 seeded roles + 15 entitlements                                                                                                     |
+| 14 — Workflow Trust & Evidence      | ✅ Complete     | #284       | Step idempotency, DLQ console UI, evidence retention protections, auth hardening (DLQ reads + workflow GET), Operations admin page                                                                                                           |
+| 15 — Continuous Validation          | ✅ Complete     | #285       | k6 SLO scripts, Snyk + ZAP CI, Playwright smoke CI, deep health checks, journey completion metrics                                                                                                                                           |
 
 ## Deployed Workers
 
@@ -75,6 +83,18 @@
 - IaC drift detection (OPA/Conftest policies, GH Actions)
 - CF Workers-native observability (W3C traceparent tracer, Analytics Engine metrics)
 - Structured logging with SLO definitions and burn-rate alerting
+- Compliance intelligence: gap analyzer (83 controls), drift alerting, risk anomaly detection
+- AI policy generator (5 types: access control, incident response, data handling, password, acceptable use)
+- Roles system: hierarchical (org → dept → team), assignable to users/groups, inherited entitlements
+- Lifecycle Policies UI: identity-grounded workflow management (replaces app-centric view)
+- Step-level idempotency in WorkflowDO (prevents double-execution on lost responses)
+- DLQ admin console with per-entry replay, workflow runs detail view
+- Evidence retention: soft-delete with deletion protection for active controls
+- Deep health API: functional checks (D1/KV/R2) across all workers, not just reachability
+- Journey completion metrics: 5-step activation funnel per tenant
+- Gitleaks CI + expanded project secret scanner
+- k6 SLO smoke + load baseline scripts
+- Weekly Snyk + ZAP security scanning CI
 
 ## Marketplace Adapters (35 apps)
 
