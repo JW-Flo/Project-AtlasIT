@@ -115,6 +115,7 @@
         items: [
           ...navSections[navSections.length - 1].items,
           { href: "/console/admin", label: "Admin", icon: Shield },
+          { href: "/console/admin/operations", label: "Operations", icon: Activity },
         ],
       }]
     : navSections;

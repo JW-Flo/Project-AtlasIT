@@ -16,7 +16,8 @@ interface WorkflowStatusResponse {
   type: string;
   status: string;
   tenantId: string;
-  steps: Array<{ stepId: string; action: string; status: string }>;
+  steps: Array<{ stepId: string; action: string; status: string; attempts: number }>;
+  history: Array<{ stepId: string; status: string; attemptNumber: number; output?: unknown }>;
   context: Record<string, unknown>;
   createdAt: string;
 }
@@ -43,6 +44,7 @@ export async function executeStepTask(
     stepId: string;
     attempt: number;
     compensation?: boolean;
+    idempotencyKey?: string;
   },
   env: StepTaskEnv,
 ): Promise<void> {
@@ -62,6 +64,32 @@ export async function executeStepTask(
     // Step not found — silently ack, likely a duplicate delivery
     return;
   }
+
+  // Idempotency check: if this exact attempt already has a completion in
+  // history, skip re-execution and return the cached result to the DO.
+  if (msg.idempotencyKey && runState.history) {
+    const existingCompletion = runState.history.find(
+      (h) =>
+        h.stepId === msg.stepId &&
+        h.attemptNumber === msg.attempt &&
+        h.status === "completed",
+    );
+    if (existingCompletion) {
+      // Step handler already succeeded for this attempt — report cached result
+      await stub.fetch(
+        new Request(`http://workflow/step/${msg.stepId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            output: existingCompletion.output,
+            idempotencyKey: msg.idempotencyKey,
+          }),
+        }),
+      );
+      return;
+    }
+  }
+
   if (step.status !== "running") {
     // Step already completed or pending — skip
     return;
