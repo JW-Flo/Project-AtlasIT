@@ -13,10 +13,7 @@ export interface ActionContext {
   payload: Record<string, unknown>;
 }
 
-type ActionHandler = (
-  config: Record<string, unknown>,
-  ctx: ActionContext,
-) => Promise<ActionResult>;
+type ActionHandler = (config: Record<string, unknown>, ctx: ActionContext) => Promise<ActionResult>;
 
 // ---------------------------------------------------------------------------
 // Event helper — insert into the events table as event bus
@@ -45,13 +42,10 @@ async function emitEvent(
 // ---------------------------------------------------------------------------
 
 const handleSendNotification: ActionHandler = async (config, ctx) => {
-  const eventId = await emitEvent(
-    ctx.db,
-    ctx.tenantId,
-    "notification",
-    "automation-engine",
-    { ...config, triggerPayload: ctx.payload },
-  );
+  const eventId = await emitEvent(ctx.db, ctx.tenantId, "notification", "automation-engine", {
+    ...config,
+    triggerPayload: ctx.payload,
+  });
   return {
     actionType: "send_notification",
     status: "success",
@@ -77,14 +71,7 @@ const handleCreateIncident: ActionHandler = async (config, ctx) => {
         `INSERT INTO incidents (id, tenant_id, title, severity, status, source, source_id, description)
          VALUES (?, ?, ?, ?, 'open', 'automation', ?, ?)`,
       )
-      .bind(
-        id,
-        ctx.tenantId,
-        title,
-        severity,
-        (config.ruleId as string) || null,
-        description,
-      )
+      .bind(id, ctx.tenantId, title, severity, (config.ruleId as string) || null, description)
       .run();
   } catch (e: any) {
     return {
@@ -95,19 +82,18 @@ const handleCreateIncident: ActionHandler = async (config, ctx) => {
   }
 
   // Also emit event for downstream consumers (Slack notifications, etc.)
-  await emitEvent(
-    ctx.db,
-    ctx.tenantId,
-    "incident.created",
-    "automation-engine",
-    { incidentId: id, title, severity, triggerPayload: ctx.payload },
-  );
+  const eventId = await emitEvent(ctx.db, ctx.tenantId, "incident.created", "automation-engine", {
+    incidentId: id,
+    title,
+    severity,
+    triggerPayload: ctx.payload,
+  });
 
   return {
     actionType: "create_incident",
     status: "success",
     message: `Incident created`,
-    details: { incidentId: id, title, severity },
+    details: { incidentId: id, eventId, title, severity },
   };
 };
 
@@ -125,16 +111,12 @@ const handleAssignRole: ActionHandler = async (config, ctx) => {
 
   // Check if user already has a roles row
   const existing = await ctx.db
-    .prepare(
-      "SELECT id, roles FROM console_user_roles WHERE email = ? AND tenant_id = ?",
-    )
+    .prepare("SELECT id, roles FROM console_user_roles WHERE email = ? AND tenant_id = ?")
     .bind(email, ctx.tenantId)
     .first();
 
   if (existing) {
-    const currentRoles: string[] = JSON.parse(
-      (existing.roles as string) || '["viewer"]',
-    );
+    const currentRoles: string[] = JSON.parse((existing.roles as string) || '["viewer"]');
     if (currentRoles.includes(role)) {
       return {
         actionType: "assign_role",
@@ -145,17 +127,13 @@ const handleAssignRole: ActionHandler = async (config, ctx) => {
     }
     const updatedRoles = [...currentRoles, role];
     await ctx.db
-      .prepare(
-        "UPDATE console_user_roles SET roles = ?, updated_at = datetime('now') WHERE id = ?",
-      )
+      .prepare("UPDATE console_user_roles SET roles = ?, updated_at = datetime('now') WHERE id = ?")
       .bind(JSON.stringify(updatedRoles), existing.id)
       .run();
   } else {
     const id = crypto.randomUUID().replace(/-/g, "");
     await ctx.db
-      .prepare(
-        "INSERT INTO console_user_roles (id, email, tenant_id, roles) VALUES (?, ?, ?, ?)",
-      )
+      .prepare("INSERT INTO console_user_roles (id, email, tenant_id, roles) VALUES (?, ?, ?, ?)")
       .bind(id, email, ctx.tenantId, JSON.stringify([role]))
       .run();
   }
@@ -181,9 +159,7 @@ const handleRemoveRole: ActionHandler = async (config, ctx) => {
   }
 
   const existing = await ctx.db
-    .prepare(
-      "SELECT id, roles FROM console_user_roles WHERE email = ? AND tenant_id = ?",
-    )
+    .prepare("SELECT id, roles FROM console_user_roles WHERE email = ? AND tenant_id = ?")
     .bind(email, ctx.tenantId)
     .first();
 
@@ -209,15 +185,10 @@ const handleRemoveRole: ActionHandler = async (config, ctx) => {
   }
 
   if (updatedRoles.length === 0) {
-    await ctx.db
-      .prepare("DELETE FROM console_user_roles WHERE id = ?")
-      .bind(existing.id)
-      .run();
+    await ctx.db.prepare("DELETE FROM console_user_roles WHERE id = ?").bind(existing.id).run();
   } else {
     await ctx.db
-      .prepare(
-        "UPDATE console_user_roles SET roles = ?, updated_at = datetime('now') WHERE id = ?",
-      )
+      .prepare("UPDATE console_user_roles SET roles = ?, updated_at = datetime('now') WHERE id = ?")
       .bind(JSON.stringify(updatedRoles), existing.id)
       .run();
   }
@@ -258,9 +229,7 @@ const handleProvisionAppAccess: ActionHandler = async (config, ctx) => {
 
   // Verify the app is connected
   const credential = await ctx.db
-    .prepare(
-      "SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?",
-    )
+    .prepare("SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?")
     .bind(ctx.tenantId, appId)
     .first();
 
@@ -300,9 +269,7 @@ const handleRevokeAppAccess: ActionHandler = async (config, ctx) => {
   }
 
   const credential = await ctx.db
-    .prepare(
-      "SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?",
-    )
+    .prepare("SELECT id FROM app_credentials WHERE tenant_id = ? AND app_id = ?")
     .bind(ctx.tenantId, appId)
     .first();
 
@@ -332,13 +299,10 @@ const handleRevokeAppAccess: ActionHandler = async (config, ctx) => {
 };
 
 const handleRunWorkflow: ActionHandler = async (config, ctx) => {
-  const eventId = await emitEvent(
-    ctx.db,
-    ctx.tenantId,
-    "workflow.requested",
-    "automation-engine",
-    { ...config, triggerPayload: ctx.payload },
-  );
+  const eventId = await emitEvent(ctx.db, ctx.tenantId, "workflow.requested", "automation-engine", {
+    ...config,
+    triggerPayload: ctx.payload,
+  });
   return {
     actionType: "run_workflow",
     status: "success",
