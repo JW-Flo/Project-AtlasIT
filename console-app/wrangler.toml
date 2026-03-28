@@ -3,7 +3,7 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "src/worker-entry.ts"
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
 
 # Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
 # Removed deprecated/unsupported top-level zone_id to silence Wrangler warning.

@@ -50,6 +50,12 @@ __pycache__/
 *.bak
 *.tmp
 
+# Plaintext token/secret files — never commit
+.dispatch_admin_token
+*_admin_token
+*_secret_key
+credentials.json
+
 # infra/
 #   terraform/
 #     aws/

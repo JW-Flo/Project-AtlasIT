@@ -79,15 +79,19 @@ async function handleHealth(url, env, correlationId, baseHeaders) {
 function handleAdminLogs(url, request, env, correlationId, baseHeaders) {
   if (url.pathname !== "/api/v1/admin/logs/recent") return null;
   const adminToken = env.ADMIN_BEARER || env.ADMIN_TOKEN;
-  if (adminToken) {
-    const provided = request.headers.get("authorization") || "";
-    const token = provided.startsWith("Bearer ") ? provided.slice(7) : provided;
-    if (token !== adminToken) {
-      return new Response(JSON.stringify({ error: "unauthorized", correlationId }), {
-        status: 401,
-        headers: { "Content-Type": "application/json", ...baseHeaders },
-      });
-    }
+  if (!adminToken) {
+    return new Response(JSON.stringify({ error: "admin auth not configured", correlationId }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", ...baseHeaders },
+    });
+  }
+  const provided = request.headers.get("authorization") || "";
+  const token = provided.startsWith("Bearer ") ? provided.slice(7) : provided;
+  if (token !== adminToken) {
+    return new Response(JSON.stringify({ error: "unauthorized", correlationId }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...baseHeaders },
+    });
   }
   const limit = Math.min(200, parseInt(url.searchParams.get("limit") || "50", 10));
   const level = url.searchParams.get("level") || undefined;
