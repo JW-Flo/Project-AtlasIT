@@ -1026,7 +1026,7 @@
                   </thead>
                   <tbody>
                     {#each jmlRuns as run}
-                      <tr class="border-t hover:bg-muted/50 transition-colors">
+                      <tr class="border-t hover:bg-muted/50 transition-colors cursor-pointer" on:click={() => { window.location.href = `/console/workflows?run=${run.id}`; }} tabindex="0" on:keydown={(e) => { if (e.key === 'Enter') window.location.href = `/console/workflows?run=${run.id}`; }}>
                         <td class="px-4 py-3">
                           <Badge variant={run.type === "leaver" ? "destructive" : run.type === "mover" ? "warning" : "success"} class="capitalize">{run.type}</Badge>
                         </td>
