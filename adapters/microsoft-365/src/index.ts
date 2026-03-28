@@ -781,6 +781,184 @@ app.post("/api/deprovision", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// NHI discovery — app registrations + service principals
+// ---------------------------------------------------------------------------
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  type GraphApp = {
+    id: string;
+    appId: string;
+    displayName: string;
+    passwordCredentials?: Array<{ endDateTime?: string }>;
+    requiredResourceAccess?: Array<{
+      resourceAccess?: Array<{ id: string; type: string }>;
+    }>;
+    owners?: Array<{ mail?: string; userPrincipalName?: string }>;
+    signInAudience?: string;
+  };
+
+  type GraphSP = {
+    id: string;
+    appId: string;
+    displayName: string;
+    passwordCredentials?: Array<{ endDateTime?: string }>;
+    oauth2PermissionScopes?: Array<{ value: string }>;
+    owners?: Array<{ mail?: string; userPrincipalName?: string }>;
+    signInActivity?: { lastSignInDateTime?: string };
+    servicePrincipalType?: string;
+  };
+
+  const graphFetch = async <T>(path: string): Promise<T | null> => {
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            correlationId,
+            tenantId,
+            message: "Graph API request failed",
+            path,
+            status: res.status,
+          }),
+        );
+        return null;
+      }
+      return res.json() as Promise<T>;
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Graph API fetch threw",
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return null;
+    }
+  };
+
+  const [appsData, spData] = await Promise.all([
+    graphFetch<{ value: GraphApp[] }>(
+      "/applications?$select=id,appId,displayName,passwordCredentials,requiredResourceAccess,signInAudience&$expand=owners($select=mail,userPrincipalName)",
+    ),
+    graphFetch<{ value: GraphSP[] }>(
+      "/servicePrincipals?$select=id,appId,displayName,passwordCredentials,oauth2PermissionScopes,servicePrincipalType,signInActivity&$expand=owners($select=mail,userPrincipalName)",
+    ),
+  ]);
+
+  type NhiIdentity = {
+    externalId: string;
+    displayName: string;
+    identityType: "service" | "oauth_grant";
+    credentialType: "oauth_app" | "service_account";
+    ownerEmail?: string;
+    scopes?: string[];
+    expiresAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const identities: NhiIdentity[] = [];
+
+  for (const app of appsData?.value ?? []) {
+    const ownerEmail =
+      app.owners?.[0]?.mail ?? app.owners?.[0]?.userPrincipalName ?? undefined;
+
+    const soonest = (app.passwordCredentials ?? [])
+      .map((c) => c.endDateTime)
+      .filter(Boolean)
+      .sort()[0] as string | undefined;
+
+    const scopes = (app.requiredResourceAccess ?? []).flatMap(
+      (r) => (r.resourceAccess ?? []).filter((a) => a.type === "Scope").map((a) => a.id),
+    );
+
+    identities.push({
+      externalId: app.appId ?? app.id,
+      displayName: app.displayName ?? "",
+      identityType: "oauth_grant",
+      credentialType: "oauth_app",
+      ...(ownerEmail && { ownerEmail }),
+      ...(scopes.length > 0 && { scopes }),
+      ...(soonest && { expiresAt: soonest }),
+      metadata: {
+        objectId: app.id,
+        signInAudience: app.signInAudience,
+      },
+    });
+  }
+
+  for (const sp of spData?.value ?? []) {
+    const ownerEmail =
+      sp.owners?.[0]?.mail ?? sp.owners?.[0]?.userPrincipalName ?? undefined;
+
+    const soonest = (sp.passwordCredentials ?? [])
+      .map((c) => c.endDateTime)
+      .filter(Boolean)
+      .sort()[0] as string | undefined;
+
+    const scopes = (sp.oauth2PermissionScopes ?? []).map((s) => s.value).filter(Boolean);
+
+    identities.push({
+      externalId: sp.appId ?? sp.id,
+      displayName: sp.displayName ?? "",
+      identityType: "service",
+      credentialType: "service_account",
+      ...(ownerEmail && { ownerEmail }),
+      ...(scopes.length > 0 && { scopes }),
+      ...(soonest && { expiresAt: soonest }),
+      ...(sp.signInActivity?.lastSignInDateTime && {
+        lastUsedAt: sp.signInActivity.lastSignInDateTime,
+      }),
+      metadata: {
+        objectId: sp.id,
+        servicePrincipalType: sp.servicePrincipalType,
+      },
+    });
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "NHI discovery completed",
+      appRegistrations: appsData?.value?.length ?? 0,
+      servicePrincipals: spData?.value?.length ?? 0,
+    }),
+  );
+
+  return c.json({
+    provider: "microsoft_365",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {
