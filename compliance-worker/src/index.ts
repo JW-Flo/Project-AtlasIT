@@ -469,7 +469,17 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
         }));
         const nextCursor = hasNext ? String((sliced[sliced.length - 1] as any).created_at) : null;
 
-        return jsonResponse({ items, nextCursor, count: items.length }, 200, headers);
+        // Get total count for pagination display
+        let total = items.length;
+        try {
+          const countRow = await sharedDb
+            .prepare(`SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = ?`)
+            .bind(tenantId)
+            .first<{ cnt: number }>();
+          if (countRow) total = countRow.cnt;
+        } catch { /* count is best-effort */ }
+
+        return jsonResponse({ items, nextCursor, count: items.length, total }, 200, headers);
       }
 
       // Fallback: read from legacy evidence_index in D1_COMPLIANCE
