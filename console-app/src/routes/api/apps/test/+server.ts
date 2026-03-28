@@ -186,6 +186,49 @@ const PROVIDER_TESTS: Record<
     }
   },
 
+  "google-workspace": async (_creds, token) => {
+    if (!token)
+      return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://www.googleapis.com/oauth2/v1/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return { ok: true, message: `Google Workspace connected as ${data.email || data.name || "user"}` };
+    }
+    if (res.status === 401)
+      return { ok: false, message: "OAuth token expired. Reconnect Google Workspace." };
+    return { ok: false, message: `Google API error: ${res.status}` };
+  },
+
+  "microsoft-365": async (_creds, token) => {
+    if (!token)
+      return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://graph.microsoft.com/v1.0/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return { ok: true, message: `Microsoft 365 connected as ${data.displayName || data.userPrincipalName || "user"}` };
+    }
+    if (res.status === 401)
+      return { ok: false, message: "OAuth token expired. Reconnect Microsoft 365." };
+    return { ok: false, message: `Microsoft Graph error: ${res.status}` };
+  },
+
+  jira: async (_creds, token) => {
+    if (!token)
+      return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://api.atlassian.com/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return { ok: true, message: `Jira connected as ${data.name || data.email || "user"}` };
+    }
+    return { ok: false, message: `Atlassian API error: ${res.status}` };
+  },
+
   github: async (creds, token) => {
     const tok =
       token ||
