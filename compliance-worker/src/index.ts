@@ -2931,6 +2931,10 @@ async function handleEvidenceIngest(
   if (env.ATLAS_SHARED_DB) {
     try {
       const evidenceId = crypto.randomUUID();
+      // Extract control context from payload when available (e.g. verification attestations)
+      const payload = body.payload as Record<string, unknown>;
+      const controlId = typeof payload?.controlId === "string" ? payload.controlId : null;
+      const framework = typeof payload?.framework === "string" ? payload.framework : null;
       await env.ATLAS_SHARED_DB.prepare(
         `INSERT OR IGNORE INTO compliance_evidence
            (id, tenant_id, framework, control_id, evidence_type, source, source_id,
@@ -2940,8 +2944,8 @@ async function handleEvidenceIngest(
         .bind(
           evidenceId,
           tenantId,
-          null, // framework — unknown for manual uploads
-          "MANUAL", // control_id placeholder
+          framework,
+          controlId,
           pack, // evidence_type
           "manual", // source
           hash, // source_id = content hash
