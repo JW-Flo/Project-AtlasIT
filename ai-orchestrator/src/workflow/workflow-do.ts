@@ -191,7 +191,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       createdAt: now,
       steps,
       history: [],
-      context: body.context ?? {},
+      context: { ...body.context, _correlationId: body.correlationId },
       alarmCount: 0,
     };
 
@@ -247,6 +247,9 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       ? Date.now() - new Date(step.startedAt).getTime()
       : undefined;
 
+    // Update steps_done in D1 workflow_runs table
+    await this.updateRunProgress();
+
     // Record in history
     this.state.history.push({
       stepId: step.stepId,
@@ -277,6 +280,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         this.state.completedAt = new Date().toISOString();
         await this.ctx.storage.put("state", this.state);
         await this.ctx.storage.deleteAlarm();
+        await this.updateRunProgress("failed");
       }
       return this.jsonResponse({
         status: allCompensationDone ? "failed" : "compensating",
@@ -302,6 +306,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       this.state.completedAt = new Date().toISOString();
       await this.ctx.storage.put("state", this.state);
       await this.ctx.storage.deleteAlarm();
+      await this.updateRunProgress("completed");
       return this.jsonResponse({
         status: "completed",
         context: this.state.context,
@@ -585,6 +590,46 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       );
     }
     this.state.status = newStatus;
+  }
+
+  /** Write steps_done and status back to D1 workflow_runs table */
+  private async updateRunProgress(finalStatus?: string): Promise<void> {
+    if (!this.state) return;
+    const db = (this.env as any)?.DB;
+    if (!db) return;
+
+    // Use correlationId (the workflow_runs.id from jml-engine) if available
+    const runDbId =
+      (this.state.context?._correlationId as string) || this.state.id;
+    const stepsDone = this.state.steps.filter(
+      (s) => s.status === "completed" && !s.compensation,
+    ).length;
+
+    try {
+      if (finalStatus) {
+        await db
+          .prepare(
+            `UPDATE workflow_runs SET steps_done = ?, status = ?, completed_at = ?, duration_ms = ? WHERE id = ?`,
+          )
+          .bind(
+            stepsDone,
+            finalStatus,
+            new Date().toISOString(),
+            this.state.createdAt
+              ? Date.now() - new Date(this.state.createdAt).getTime()
+              : null,
+            runDbId,
+          )
+          .run();
+      } else {
+        await db
+          .prepare(`UPDATE workflow_runs SET steps_done = ? WHERE id = ?`)
+          .bind(stepsDone, runDbId)
+          .run();
+      }
+    } catch {
+      // Non-fatal: DO state is the source of truth
+    }
   }
 
   private async advanceToNextStep(): Promise<void> {
