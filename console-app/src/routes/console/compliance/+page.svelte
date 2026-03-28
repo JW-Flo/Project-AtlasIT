@@ -448,20 +448,12 @@
   let linkingEvidenceId: number | string | null = null;
   let linkControlKey = "";
 
-  const INTERNAL_CONTROLS = [
-    { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
-    { key: "SOC2_CC2.2", framework: "SOC2", title: "Communication and information" },
-    { key: "SOC2_CC6.1", framework: "SOC2", title: "Logical access" },
-    { key: "ISO27001_A.8", framework: "ISO27001", title: "Asset management" },
-    { key: "ISO27001_A.9", framework: "ISO27001", title: "Access control" },
-    { key: "ISO27001_A.10", framework: "ISO27001", title: "Cryptography" },
-    { key: "ISO27001_A.16", framework: "ISO27001", title: "Incident management" },
-    { key: "NIST_ID", framework: "NIST CSF", title: "Identify" },
-    { key: "NIST_PR", framework: "NIST CSF", title: "Protect" },
-    { key: "NIST_DE", framework: "NIST CSF", title: "Detect" },
-    { key: "NIST_RS", framework: "NIST CSF", title: "Respond" },
-    { key: "NIST_RC", framework: "NIST CSF", title: "Recover" },
-  ];
+  // Derive linkable controls from the tenant's actual loaded controls
+  $: INTERNAL_CONTROLS = controls.map((c) => ({
+    key: c.id,
+    framework: c.framework,
+    title: c.name,
+  }));
 
   function shortHash(hash: string): string {
     if (!hash || hash.length <= 16) return hash;
@@ -663,7 +655,7 @@
       const groupKey = `${item.subject ?? ""}||${item.pack ?? ""}`;
       if (map.has(groupKey)) {
         const existing = map.get(groupKey)!;
-        if (item.linkedControl) {
+        if (item.linkedControl && item.linkedControl !== "MANUAL") {
           const already = existing.controls.some((c) => c.key === item.linkedControl);
           if (!already) {
             existing.controls.push({
@@ -682,7 +674,7 @@
           subject: item.subject,
           createdAt: item.createdAt,
           source: item.source,
-          controls: item.linkedControl
+          controls: item.linkedControl && item.linkedControl !== "MANUAL"
             ? [{ key: item.linkedControl, framework: item.framework, controlName: item.controlName }]
             : [],
         });
