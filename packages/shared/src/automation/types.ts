@@ -9,7 +9,9 @@ export type TriggerType =
   | "app_disconnected"
   | "app_health_changed"
   | "schedule"
-  | "compliance_score_changed";
+  | "compliance_score_changed"
+  | "nhi_token_expiring"
+  | "nhi_token_expired";
 
 export type ActionType =
   | "provision_app_access"
@@ -21,7 +23,9 @@ export type ActionType =
   | "sync_directory"
   | "create_incident"
   | "update_compliance_status"
-  | "request_access_review";
+  | "request_access_review"
+  | "rotate_nhi_credential"
+  | "revoke_nhi_token";
 
 export type ConditionOperator =
   | "equals"
@@ -57,6 +61,10 @@ export interface TriggerConfig {
   framework?: string;
   threshold?: number;
   direction?: "above" | "below";
+  /** For NHI token triggers */
+  nhiCredentialId?: string;
+  expiresAt?: string;
+  gracePeriodDays?: number;
 }
 
 export interface AutomationRule {
