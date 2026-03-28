@@ -251,12 +251,12 @@ Directory Event / Schedule / Webhook
 - [x] D1 migration: `trust_access_requests`, `questionnaires`, `questionnaire_responses` tables
 - [x] Files: `console-app/src/routes/trust/`, `console-app/src/routes/api/trust/`, `console-app/src/lib/server/questionnaire-ai.ts`, `console-app/src/routes/api/questionnaires/`
 
-## Phase 10 — Platform Stabilization & JML Reality ⚠️ In Progress
+## Phase 10 — Platform Stabilization & JML Reality ✅ (PRs #253–#275)
 
 > **Why before NHI/Shadow AI**: Phases 0-9 built the feature surface. PRs #253-#274 exposed
 > significant integration gaps — controls not linking to evidence, scores not syncing, workflows
-> stuck at 0/2, incidents not persisting, UI rendering stale data. The platform needs a hardening
-> pass before adding new feature categories. Directory sync is still synthetic, which blocks
+> stuck at 0/2, incidents not persisting, UI rendering stale data. The platform needed a hardening
+> pass before adding new feature categories. Directory sync was still synthetic, which blocked
 > real-world JML workflows.
 
 ### JML Pipeline Hardening ✅
@@ -281,16 +281,16 @@ Directory Event / Schedule / Webhook
 - [x] Simulation history persistence and deduplication
 - [x] Automation execution detail view with step-level results
 
-### Remaining
+### Directory & Connector Reality ✅ (PR #275)
 
-- [ ] **Directory Reality** — replace synthetic/seeded directory with real provider sync (Okta, Google Workspace, M365)
-- [ ] Directory CRUD + detail pages (users / groups / memberships)
-- [ ] Group→app mapping based on real directory data (Engineering→GitHub/Jira etc.)
-- [ ] Surface "Coming Soon" for unimplemented sync rather than silent 501
-- [ ] OAuth failure UX: actionable error messages + retry paths (no raw redirect errors)
-- [ ] Connector health checks + "status honesty" UI (planned → disabled; functional → enabled)
-- [ ] Credential encryption enforcement: remove silent plaintext fallback in prod
-- [ ] Files: `console-app/src/routes/console/directory/`, adapter `/api/sync` endpoints, `packages/shared/src/directory/`
+- [x] **Directory sync through orchestrator** — new `/api/v1/directory/sync` route proxies to correct adapter worker via ADAPTER_URLS; falls back to synthetic data when orchestrator unavailable
+- [x] Group-app mapping persistence — DELETE/PATCH handlers on `/api/directory/mappings`; group detail page loads and persists app assignments through API
+- [x] App display names in mappings tab (was showing raw IDs like "github")
+- [x] OAuth failure UX — callback errors displayed as toast on marketplace page with URL cleanup
+- [x] Connector health indicators — green/red/gray dot on marketplace cards based on adapter health status
+- [x] Credential encryption validation — production startup check warns if CRED_ENCRYPTION_KEY missing
+- [x] **Scoring pipeline fix** — control ID normalization (`soc2_cc1.1_-_...` → `soc2_cc1_1_...`) so evidence correctly maps to all 139 controls; stale 5-per-framework controls auto-expand to 139; scores always computed fresh from controls (no more stale cached 100%)
+- [x] Files: `ai-orchestrator/src/routes/directory.ts`, `console-app/src/routes/api/directory/`, `console-app/src/routes/api/tenant-compliance/scores/+server.ts`, `console-app/src/hooks.server.ts`, `console-app/src/lib/server/credentials.ts`
 
 ## Phase 11 — Non-Human Identity Governance (Hottest IGA Category)
 
