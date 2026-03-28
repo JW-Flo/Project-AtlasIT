@@ -180,6 +180,7 @@
   let simHistory: SimulationRecord[] = [];
   let simHistoryTotal = 0;
   let simHistoryLoading = false;
+  let simSelectedRuleId = "";
 
   async function fetchSimHistory() {
     simHistoryLoading = true;
@@ -1361,7 +1362,23 @@
   {:else if activeTab === "simulations"}
     <div class="flex items-center justify-between mb-4">
       <p class="text-sm text-muted-foreground">Dry-run simulation history — every simulation is recorded for audit.</p>
-      <Button variant="outline" size="sm" on:click={fetchSimHistory}>Refresh</Button>
+      <div class="flex gap-2">
+        {#if rules.length > 0}
+          <select
+            bind:value={simSelectedRuleId}
+            class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
+          >
+            <option value="">Select a rule...</option>
+            {#each rules as rule}
+              <option value={rule.id}>{rule.name}</option>
+            {/each}
+          </select>
+          <Button size="sm" disabled={!simSelectedRuleId || simLoading} on:click={() => simSelectedRuleId && simulateDryRun(simSelectedRuleId)}>
+            {simLoading ? "Running..." : "Simulate"}
+          </Button>
+        {/if}
+        <Button variant="outline" size="sm" on:click={fetchSimHistory}>Refresh</Button>
+      </div>
     </div>
 
     {#if simHistoryLoading}

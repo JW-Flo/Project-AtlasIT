@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { refreshComplianceScore } from "$lib/stores/compliance";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -73,6 +74,8 @@
       });
       if (!res.ok) throw new Error("Failed to save settings");
       pushToast({ message: "Settings saved", variant: "success" });
+      // Refresh compliance scores so sidebar tooltip reflects updated frameworks
+      refreshComplianceScore();
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save settings", variant: "error" });
     } finally {

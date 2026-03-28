@@ -207,10 +207,14 @@
         const data: any = await res.json();
         testResult = { ok: data.healthy !== false, message: data.message || "Connection successful" };
       } else {
-        testResult = { ok: false, message: "Test request failed" };
+        const errData: any = await res.json().catch(() => null);
+        testResult = {
+          ok: false,
+          message: errData?.error || errData?.message || `Test failed (${res.status}). Verify your credentials are correct and the app's API is accessible.`,
+        };
       }
     } catch {
-      testResult = { ok: false, message: "Test unavailable" };
+      testResult = { ok: false, message: "Connection test unavailable. The adapter for this app may not be deployed yet." };
     }
     testLoading = false;
   }
