@@ -318,3 +318,14 @@ export async function getOAuthAccessToken(
   const encKey = resolveEncryptionKey(env, "read OAuth token");
   return encKey ? await decrypt(row.access_token, encKey) : row.access_token;
 }
+
+export function validateEncryptionConfig(env: Record<string, unknown>): void {
+  const isDevelopment =
+    typeof process !== "undefined" && process.env?.NODE_ENV === "development";
+  if (isDevelopment) return;
+  if (!env.CRED_ENCRYPTION_KEY) {
+    console.error(
+      "[SECURITY] CRED_ENCRYPTION_KEY is not set in production. OAuth tokens will fail to encrypt/decrypt.",
+    );
+  }
+}
