@@ -31,6 +31,12 @@
   let deleteModalOpen = false;
   let tenantToDelete: Tenant | null = null;
 
+  let disableModalOpen = false;
+  let tenantToToggle: Tenant | null = null;
+
+  let impersonateModalOpen = false;
+  let tenantToImpersonate: Tenant | null = null;
+
   async function loadTenants() {
     loading = true;
     error = "";
@@ -45,8 +51,21 @@
     }
   }
 
-  async function toggleStatus(tenant: Tenant) {
+  function confirmToggleStatus(tenant: Tenant) {
+    tenantToToggle = tenant;
+    disableModalOpen = true;
+  }
+
+  function closeDisableModal() {
+    disableModalOpen = false;
+    tenantToToggle = null;
+  }
+
+  async function toggleStatus() {
+    if (!tenantToToggle) return;
+    const tenant = tenantToToggle;
     const newStatus = tenant.status === "active" ? "disabled" : "active";
+    closeDisableModal();
     try {
       const res = await fetch(`/api/admin/tenants/${tenant.id}`, {
         method: "PATCH",
@@ -85,7 +104,20 @@
     }
   }
 
-  async function impersonate(tenant: Tenant) {
+  function confirmImpersonate(tenant: Tenant) {
+    tenantToImpersonate = tenant;
+    impersonateModalOpen = true;
+  }
+
+  function closeImpersonateModal() {
+    impersonateModalOpen = false;
+    tenantToImpersonate = null;
+  }
+
+  async function impersonate() {
+    if (!tenantToImpersonate) return;
+    const tenant = tenantToImpersonate;
+    closeImpersonateModal();
     try {
       const res = await fetch(`/api/admin/tenants/${tenant.id}/impersonate`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to impersonate tenant");
@@ -157,11 +189,11 @@
                       <Button
                         size="sm"
                         variant={tenant.status === 'active' ? 'outline' : 'success'}
-                        on:click={() => toggleStatus(tenant)}
+                        on:click={() => confirmToggleStatus(tenant)}
                       >
                         {tenant.status === "active" ? "Disable" : "Enable"}
                       </Button>
-                      <Button size="sm" variant="secondary" on:click={() => impersonate(tenant)}>
+                      <Button size="sm" variant="secondary" on:click={() => confirmImpersonate(tenant)}>
                         <Eye class="h-3 w-3 mr-1" />
                         Impersonate
                       </Button>
@@ -195,5 +227,45 @@
   <DialogFooter>
     <Button variant="outline" on:click={closeDeleteModal}>Cancel</Button>
     <Button variant="destructive" on:click={deleteTenant}>Delete</Button>
+  </DialogFooter>
+</Dialog>
+
+<Dialog open={disableModalOpen} onClose={closeDisableModal}>
+  <DialogHeader>
+    <DialogTitle>{tenantToToggle?.status === "active" ? "Disable" : "Enable"} Tenant</DialogTitle>
+  </DialogHeader>
+  <p class="text-sm text-muted-foreground">
+    Are you sure you want to {tenantToToggle?.status === "active" ? "disable" : "enable"} tenant
+    <strong class="text-foreground">{tenantToToggle?.name}</strong>?
+    {#if tenantToToggle?.status === "active"}
+      All users will lose access immediately.
+    {/if}
+  </p>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeDisableModal}>Cancel</Button>
+    <Button variant={tenantToToggle?.status === "active" ? "destructive" : "default"} on:click={toggleStatus}>
+      {tenantToToggle?.status === "active" ? "Disable" : "Enable"}
+    </Button>
+  </DialogFooter>
+</Dialog>
+
+<Dialog open={impersonateModalOpen} onClose={closeImpersonateModal}>
+  <DialogHeader>
+    <DialogTitle>Impersonate Tenant</DialogTitle>
+  </DialogHeader>
+  <div class="space-y-2">
+    <p class="text-sm text-muted-foreground">
+      You are about to impersonate <strong class="text-foreground">{tenantToImpersonate?.name}</strong>.
+    </p>
+    <p class="text-sm text-muted-foreground">
+      Your session will switch to this tenant's context and all actions you take will be performed as that tenant. This session change is logged in the audit trail.
+    </p>
+  </div>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeImpersonateModal}>Cancel</Button>
+    <Button variant="secondary" on:click={impersonate}>
+      <Eye class="h-3 w-3 mr-1" />
+      Impersonate
+    </Button>
   </DialogFooter>
 </Dialog>
