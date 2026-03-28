@@ -27,45 +27,46 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   if (!user) return json({ error: "unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
-  const status = url.searchParams.get("status") || "";
-  const type = url.searchParams.get("type") || "";
-  const provider = url.searchParams.get("provider") || "";
-  const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10), 500);
-  const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+  try {
+    const status = url.searchParams.get("status") || "";
+    const type = url.searchParams.get("type") || "";
+    const provider = url.searchParams.get("provider") || "";
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10), 500);
+    const offset = parseInt(url.searchParams.get("offset") || "0", 10);
 
-  const conditions: string[] = ["nc.tenant_id = ?"];
-  const binds: any[] = [tenantId];
+    const conditions: string[] = ["nc.tenant_id = ?"];
+    const binds: any[] = [tenantId];
 
-  if (status) {
-    conditions.push("nc.status = ?");
-    binds.push(status);
-  }
+    if (status) {
+      conditions.push("nc.status = ?");
+      binds.push(status);
+    }
 
-  if (type) {
-    conditions.push("nc.credential_type = ?");
-    binds.push(type);
-  }
+    if (type) {
+      conditions.push("nc.credential_type = ?");
+      binds.push(type);
+    }
 
-  if (provider) {
-    conditions.push("nc.provider = ?");
-    binds.push(provider);
-  }
+    if (provider) {
+      conditions.push("nc.provider = ?");
+      binds.push(provider);
+    }
 
-  const where = conditions.join(" AND ");
+    const where = conditions.join(" AND ");
 
-  const countRow = await db
-    .prepare(`SELECT COUNT(*) as total FROM nhi_credentials nc WHERE ${where}`)
-    .bind(...binds)
-    .first();
+    const countRow = await db
+      .prepare(`SELECT COUNT(*) as total FROM nhi_credentials nc WHERE ${where}`)
+      .bind(...binds)
+      .first();
 
-  const rows = await db
-    .prepare(
-      `SELECT nc.id, nc.tenant_id, nc.directory_user_id, nc.credential_type, nc.provider,
+    const rows = await db
+      .prepare(
+        `SELECT nc.id, nc.tenant_id, nc.directory_user_id, nc.credential_type, nc.provider,
               nc.external_id, nc.display_name, nc.owner_email, nc.scopes, nc.permissions,
               nc.expires_at, nc.last_used_at, nc.last_rotated_at, nc.risk_score, nc.risk_factors,
               nc.status, nc.metadata, nc.created_at, nc.updated_at,
@@ -75,14 +76,23 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
        WHERE ${where}
        ORDER BY nc.risk_score DESC, nc.updated_at DESC
        LIMIT ? OFFSET ?`,
-    )
-    .bind(...binds, limit, offset)
-    .all()
-    .then((r: any) => r.results || []);
+      )
+      .bind(...binds, limit, offset)
+      .all()
+      .then((r: any) => r.results || []);
 
-  const mapped = rows.map(mapNhiRow);
+    const mapped = rows.map(mapNhiRow);
 
-  return json({ credentials: toCamel(mapped), total: countRow?.total ?? 0 });
+    return json({ credentials: toCamel(mapped), total: countRow?.total ?? 0 });
+  } catch (err: any) {
+    console.error(
+      JSON.stringify({ level: "error", message: "NHI query failed", error: String(err) }),
+    );
+    return json(
+      { error: "Failed to query NHI credentials", credentials: [], total: 0 },
+      { status: 500 },
+    );
+  }
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {

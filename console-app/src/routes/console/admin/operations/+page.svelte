@@ -362,8 +362,8 @@
                     </td>
                     <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{run.email || run.userId || "—"}</td>
                     <td class="px-3 sm:px-4 py-3">
-                      <Badge variant={runStatusVariant(run.status)}>
-                        <span class={runStatusColor(run.status)}>{run.status}</span>
+                      <Badge variant={runStatusVariant(run.status)} class="capitalize">
+                        {run.status}
                       </Badge>
                     </td>
                     <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
