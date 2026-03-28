@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { session } from "$lib/stores/session";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -371,6 +372,7 @@
     if (verifyingControlId === control.id) {
       // Already showing form — submit it
       verifyingControlId = null;
+      const attestedBy = $session?.email || "unknown";
       try {
         const res = await fetch("/api/tenant-compliance/evidence", {
           method: "POST",
@@ -379,7 +381,7 @@
             payload: {
               controlId: control.id,
               framework: control.framework,
-              attestedBy: "current_user",
+              attestedBy,
               notes: verifyNotes,
               type: "verification_attestation",
             },
@@ -392,6 +394,7 @@
         pushToast({ message: `${control.id} verified. Score updated.`, variant: "success" });
         verifyNotes = "";
         await saveControls();
+        await loadScores(true);
       } catch (e: any) {
         pushToast({ message: e?.message || "Verification failed", variant: "error" });
       }
@@ -1119,6 +1122,11 @@
       </Alert>
     {/if}
 
+    <!-- Evidence coverage count -->
+    <p class="text-sm text-muted-foreground mb-3">
+      {controlsWithEvidence} of {controls.length} controls have evidence
+    </p>
+
     <!-- Controls tab -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
       <div class="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -1164,6 +1172,14 @@
             </tr>
           </thead>
           <tbody>
+            {#if statusFilteredControls.length === 0}
+              <tr>
+                <td colspan="7" class="px-4 py-10 text-center">
+                  <p class="text-sm text-muted-foreground mb-3">No controls match the selected filters.</p>
+                  <Button size="sm" variant="outline" on:click={() => { filterFramework = "all"; filterStatus = "all"; }}>Clear filters</Button>
+                </td>
+              </tr>
+            {/if}
             {#each statusFilteredControls as control (control.id)}
               <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => toggleControlEvidence(control.id, control.framework)}>
                 <td class="px-3 sm:px-4 py-3">

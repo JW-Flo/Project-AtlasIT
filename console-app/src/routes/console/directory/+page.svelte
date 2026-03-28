@@ -14,7 +14,7 @@
   import Dialog from "$lib/components/ui/dialog.svelte";
   import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2 } from "lucide-svelte";
+  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2, ExternalLink } from "lucide-svelte";
 
   // --- Types ---
   interface SyncStatus {
@@ -442,7 +442,6 @@
                   <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Department</th>
                   <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Title</th>
                   <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Console Access</th>
                   <th class="px-3 sm:px-4 py-3 font-medium text-right"></th>
                 </tr>
               </thead>
@@ -462,13 +461,6 @@
                     <td class="px-3 sm:px-4 py-3">
                       <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
                     </td>
-                    <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
-                      {#if user.console_user_id}
-                        <Badge variant="secondary">Console Access</Badge>
-                      {:else}
-                        <span class="text-muted-foreground">-</span>
-                      {/if}
-                    </td>
                     <td class="px-3 sm:px-4 py-3 text-right">
                       <!-- svelte-ignore a11y_click_events_have_key_events -->
                       <button
@@ -483,7 +475,7 @@
                   </tr>
                 {:else}
                   <tr>
-                    <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
+                    <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
                   </tr>
                 {/each}
               </tbody>

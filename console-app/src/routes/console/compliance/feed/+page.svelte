@@ -8,7 +8,7 @@
   import Label from "$lib/components/ui/label.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle } from "lucide-svelte";
+  import { AlertTriangle, Copy } from "lucide-svelte";
 
   type Impact = "positive" | "detrimental" | "neutral";
 
@@ -83,8 +83,8 @@
     return `${Math.round(value * 100)}%`;
   }
 
-  function shortHash(hash: string): string {
-    if (!hash) return "--";
+  function shortHash(hash: string | null | undefined): string {
+    if (!hash) return "pending";
     if (hash.length <= 16) return hash;
     return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
   }
@@ -284,7 +284,20 @@
               <div class="text-right shrink-0">
                 <div class="text-xs text-muted-foreground">Confidence</div>
                 <div class="text-sm font-semibold">{confidencePct(item.confidence)}</div>
-                <div class="text-[11px] text-muted-foreground mt-1" title={item.contentHash}>hash: {shortHash(item.contentHash)}</div>
+                <div class="flex items-center justify-end gap-1 mt-1">
+                  <span class="text-[11px] text-muted-foreground" title={item.contentHash}>hash: {shortHash(item.contentHash)}</span>
+                  {#if item.contentHash}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center rounded h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                      on:click|stopPropagation={() => copyHash(item.contentHash)}
+                      title="Copy hash"
+                    >
+                      <Copy class="h-3 w-3" />
+                    </button>
+                  {/if}
+                </div>
               </div>
             </div>
             {#if expandedId === item.id}

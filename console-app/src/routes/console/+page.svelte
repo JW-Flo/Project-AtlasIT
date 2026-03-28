@@ -75,6 +75,7 @@
   let error: string | null = null;
   let session: any = null;
   let isPlatformOwner = false;
+  let showPlatformView = false;
 
   let connectedAppsCount = 0;
   let complianceScores: ComplianceScore[] = [];
@@ -196,11 +197,19 @@
         session.superAdmin === true &&
         !session.impersonating;
 
+      // If platform owner but no tenant context, force the platform view
+      if (isPlatformOwner && !session.tenantId) {
+        showPlatformView = true;
+      }
+
+      // Always load platform data for platform owners (used in toggle view)
       if (isPlatformOwner) {
         const res = await fetch("/api/platform/dashboard");
-        if (!res.ok) throw new Error(`Dashboard fetch failed (${res.status})`);
-        platformData = await res.json();
-        return;
+        if (res.ok) {
+          platformData = await res.json();
+        }
+        // If no tenant context, stop here
+        if (!session.tenantId) return;
       }
 
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -315,7 +324,7 @@
       <p class="pl-7">{error}</p>
     </Alert>
 
-  {:else if isPlatformOwner && platformData}
+  {:else if showPlatformView && platformData}
     <!-- Platform Owner Dashboard -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
       <div>
@@ -323,6 +332,11 @@
         <p class="text-sm text-muted-foreground">AtlasIT platform administration</p>
       </div>
       <div class="flex items-center gap-2">
+        {#if session?.tenantId}
+          <Button on:click={() => { showPlatformView = false; }} variant="outline" size="sm">
+            My Dashboard
+          </Button>
+        {/if}
         <Button href="/console/admin" variant="outline" size="sm">Admin</Button>
         <Button href="/console/settings" variant="outline" size="sm">Settings</Button>
         <Button on:click={load} variant="secondary" size="sm">
@@ -404,9 +418,9 @@
               </thead>
               <tbody>
                 {#each platformData.recentTenants as tenant}
-                  <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => window.location.href = '/console/admin'}>
+                  <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => window.location.href = `/console/admin?tenant=${tenant.id}`}>
                     <td class="px-5 py-3 font-medium">
-                      <a href="/console/admin" class="hover:text-primary transition-colors">{tenant.name}</a>
+                      <a href={`/console/admin?tenant=${tenant.id}`} class="hover:text-primary transition-colors">{tenant.name}</a>
                     </td>
                     <td class="px-5 py-3 text-muted-foreground">{tenant.owner || '-'}</td>
                     <td class="px-5 py-3 text-muted-foreground">{tenant.users ?? '-'}</td>
@@ -465,6 +479,11 @@
         <p class="text-sm text-muted-foreground">Your organization overview</p>
       </div>
       <div class="flex items-center gap-2">
+        {#if isPlatformOwner && platformData}
+          <Button on:click={() => { showPlatformView = true; }} variant="outline" size="sm">
+            Platform Overview
+          </Button>
+        {/if}
         <Button on:click={copyInviteLink} size="sm" title="Copy team invite link">
           <Copy class="h-3.5 w-3.5 mr-1.5" />
           {inviteCopied ? "Invite Link Copied" : "Invite Team"}
