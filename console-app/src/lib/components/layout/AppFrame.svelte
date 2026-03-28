@@ -35,6 +35,7 @@
     Menu,
     X,
     Search,
+    Lightbulb,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -71,6 +72,7 @@
         { href: "/console/compliance", label: "Controls", icon: ShieldCheck },
         { href: "/console/compliance/feed", label: "Evidence", icon: Activity },
         { href: "/console/policies", label: "Policies", icon: FileText },
+        { href: "/console/insights", label: "Insights", icon: Lightbulb },
       ],
     },
     {

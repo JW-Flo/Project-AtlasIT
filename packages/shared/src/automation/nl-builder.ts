@@ -22,10 +22,8 @@ import type {
   TriggerConfig,
   CreateRuleInput,
 } from "./types";
-import {
-  ACTION_COMPLIANCE_MAP,
-  type ComplianceControlRef,
-} from "./compliance-mapping";
+import { ACTION_COMPLIANCE_MAP, type ComplianceControlRef } from "./compliance-mapping";
+import type { ComplianceGap } from "../compliance-intelligence/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +33,10 @@ export interface NLBuildRequest {
   connectedApps?: string[];
   /** Optional: tenant's directory groups for context */
   directoryGroups?: string[];
+  /** Optional: existing automation rules summary for dedup detection */
+  existingRulesSummary?: string[];
+  /** Optional: compliance gaps to bias toward gap-closing rules */
+  complianceGaps?: ComplianceGap[];
 }
 
 export interface NLBuildResult {
@@ -44,6 +46,10 @@ export interface NLBuildResult {
   reasoning: string;
   /** Original prompt echoed back */
   prompt: string;
+  /** Controls this rule would close gaps for (if gap context was provided) */
+  closesGaps?: string[];
+  /** Whether this rule may duplicate an existing rule */
+  possibleDuplicate?: boolean;
 }
 
 export interface CompliancePreview {
@@ -120,6 +126,16 @@ function buildUserPrompt(req: NLBuildRequest): string {
   }
   if (req.directoryGroups?.length) {
     prompt += `\n\nDirectory groups in this tenant: ${req.directoryGroups.join(", ")}`;
+  }
+  if (req.existingRulesSummary?.length) {
+    prompt += `\n\nExisting automation rules (avoid duplicating these):\n${req.existingRulesSummary.slice(0, 10).join("\n")}`;
+  }
+  if (req.complianceGaps?.length) {
+    const gapSummary = req.complianceGaps
+      .slice(0, 5)
+      .map((g) => `- ${g.framework} ${g.controlId} (${g.controlName}): ${g.gapType}`)
+      .join("\n");
+    prompt += `\n\nCompliance gaps that need closing (prioritize rules that address these):\n${gapSummary}`;
   }
 
   return prompt;
@@ -219,8 +235,7 @@ function buildCompliancePreview(actions: RuleAction[]): CompliancePreview[] {
   const seen = new Set<string>();
 
   for (const action of actions) {
-    const controls: ComplianceControlRef[] =
-      ACTION_COMPLIANCE_MAP[action.type] ?? [];
+    const controls: ComplianceControlRef[] = ACTION_COMPLIANCE_MAP[action.type] ?? [];
     for (const ctrl of controls) {
       const key = `${ctrl.framework}:${ctrl.controlId}:${action.type}`;
       if (seen.has(key)) continue;
@@ -276,11 +291,34 @@ export async function buildAutomationFromNL(
   const { rule, confidence, reasoning } = validateAndNormalize(parsed);
   const compliancePreview = buildCompliancePreview(rule.actions);
 
+  // Determine which compliance gaps this rule would close
+  let closesGaps: string[] | undefined;
+  if (req.complianceGaps?.length) {
+    const gapControlIds = new Set(req.complianceGaps.map((g) => `${g.framework}:${g.controlId}`));
+    const coveredControls = compliancePreview.map((cp) => `${cp.framework}:${cp.controlId}`);
+    closesGaps = coveredControls.filter((c) => gapControlIds.has(c));
+    if (closesGaps.length === 0) closesGaps = undefined;
+  }
+
+  // Check for possible duplicate against existing rules
+  let possibleDuplicate: boolean | undefined;
+  if (req.existingRulesSummary?.length) {
+    const ruleKey = `${rule.triggerType}:${JSON.stringify(rule.triggerConfig)}`.toLowerCase();
+    possibleDuplicate = req.existingRulesSummary.some(
+      (summary) =>
+        summary.toLowerCase().includes(rule.triggerType) &&
+        rule.actions.some((a) => summary.toLowerCase().includes(a.type)),
+    );
+    if (!possibleDuplicate) possibleDuplicate = undefined;
+  }
+
   return {
     rule,
     compliancePreview,
     confidence,
     reasoning,
     prompt: req.prompt,
+    closesGaps,
+    possibleDuplicate,
   };
 }

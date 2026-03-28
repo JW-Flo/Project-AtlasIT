@@ -23,7 +23,11 @@ import {
   collectAllAdapterEvidence,
   parseControlRef,
   collectPlatformStateEvidence,
+  analyzeComplianceGaps,
+  detectComplianceDrift,
+  detectRiskAnomalies,
 } from "@atlasit/shared";
+import type { DriftEvent } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
 registerBuiltinHandlers();
@@ -430,10 +434,7 @@ const worker = {
           const frameworkTotals = new Map<string, number>();
           const controlIdCounts = new Map<string, number>();
           for (const ev of evidenceRows ?? []) {
-            frameworkTotals.set(
-              ev.framework,
-              (frameworkTotals.get(ev.framework) ?? 0) + ev.cnt,
-            );
+            frameworkTotals.set(ev.framework, (frameworkTotals.get(ev.framework) ?? 0) + ev.cnt);
             controlIdCounts.set(ev.control_id, (controlIdCounts.get(ev.control_id) ?? 0) + ev.cnt);
           }
 
@@ -491,14 +492,156 @@ const worker = {
           controlsPromoted += r.value;
         } else {
           const tenantId = (promotionTenants ?? [])[i]?.id ?? "unknown";
-          console.error(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: "error",
-            event: "duty4b.promotion_failed",
-            tenantId,
-            error: r.reason?.message ?? String(r.reason),
-          }));
+          console.error(
+            JSON.stringify({
+              ts: new Date().toISOString(),
+              level: "error",
+              event: "duty4b.promotion_failed",
+              tenantId,
+              error: r.reason?.message ?? String(r.reason),
+            }),
+          );
         }
+      }
+    }
+
+    // ── Duty 6: Compliance intelligence scan ────────────────────────────
+    //    Analyze gaps, detect drift, and surface risk anomalies per tenant.
+    //    Runs on daily cron or when fresh evidence was collected.
+    let insightsWritten = 0;
+    if (isDaily || evidenceCollected > 0) {
+      const { results: insightTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const scoringFrameworks = ["SOC2", "ISO27001", "NIST_CSF", "HIPAA", "GDPR"];
+
+      const insightSettled = await Promise.allSettled(
+        (insightTenants ?? []).map(async (row) => {
+          let written = 0;
+
+          // Gap analysis
+          try {
+            const gapResult = await analyzeComplianceGaps(sharedDb, row.id, scoringFrameworks);
+            const highPriorityGaps = gapResult.gaps.filter(
+              (g) => g.priority === "critical" || g.priority === "high",
+            );
+            for (const gap of highPriorityGaps) {
+              try {
+                await sharedDb
+                  .prepare(
+                    `INSERT OR IGNORE INTO compliance_insights
+                     (id, tenant_id, insight_type, severity, category, data, created_at)
+                     VALUES (?, ?, 'gap', ?, ?, ?, ?)`,
+                  )
+                  .bind(
+                    crypto.randomUUID(),
+                    row.id,
+                    gap.priority,
+                    gap.framework,
+                    JSON.stringify(gap),
+                    new Date().toISOString(),
+                  )
+                  .run();
+                written++;
+              } catch {
+                // table may not exist yet — skip
+              }
+            }
+          } catch {
+            // gap analysis failed — continue
+          }
+
+          // Drift detection
+          try {
+            const { results: recentEvents } = await sharedDb
+              .prepare(
+                `SELECT event_type AS type, source, created_at AS timestamp, metadata
+                 FROM audit_log
+                 WHERE tenant_id = ? AND created_at > datetime('now', '-24 hours')
+                   AND event_type IN ('app_disconnected', 'app_health_changed', 'rule_disabled', 'compliance_score_changed')
+                 ORDER BY created_at DESC LIMIT 50`,
+              )
+              .bind(row.id)
+              .all<{ type: string; source: string; timestamp: string; metadata: string }>();
+
+            const driftEvents: DriftEvent[] = (recentEvents ?? []).map((e) => ({
+              type: e.type,
+              source: e.source ?? "",
+              timestamp: e.timestamp,
+              metadata: (() => {
+                try {
+                  return JSON.parse(e.metadata ?? "{}");
+                } catch {
+                  return {};
+                }
+              })(),
+            }));
+
+            if (driftEvents.length > 0) {
+              const driftResult = await detectComplianceDrift(sharedDb, row.id, driftEvents);
+              for (const alert of driftResult.alerts) {
+                try {
+                  await sharedDb
+                    .prepare(
+                      `INSERT OR IGNORE INTO compliance_insights
+                       (id, tenant_id, insight_type, severity, category, data, created_at)
+                       VALUES (?, ?, 'drift', ?, ?, ?, ?)`,
+                    )
+                    .bind(
+                      alert.id,
+                      row.id,
+                      alert.severity,
+                      alert.alertType,
+                      JSON.stringify(alert),
+                      new Date().toISOString(),
+                    )
+                    .run();
+                  written++;
+                } catch {
+                  // skip
+                }
+              }
+            }
+          } catch {
+            // drift detection failed — continue
+          }
+
+          // Risk anomaly detection
+          try {
+            const anomalies = await detectRiskAnomalies(sharedDb, row.id);
+            for (const anomaly of anomalies) {
+              try {
+                await sharedDb
+                  .prepare(
+                    `INSERT OR IGNORE INTO compliance_insights
+                     (id, tenant_id, insight_type, severity, category, data, created_at)
+                     VALUES (?, ?, 'anomaly', ?, ?, ?, ?)`,
+                  )
+                  .bind(
+                    crypto.randomUUID(),
+                    row.id,
+                    anomaly.severity,
+                    anomaly.anomalyType,
+                    JSON.stringify(anomaly),
+                    new Date().toISOString(),
+                  )
+                  .run();
+                written++;
+              } catch {
+                // skip
+              }
+            }
+          } catch {
+            // anomaly detection failed — continue
+          }
+
+          return written;
+        }),
+      );
+
+      for (const r of insightSettled) {
+        if (r.status === "fulfilled") insightsWritten += r.value;
       }
     }
 
@@ -512,12 +655,14 @@ const worker = {
       nhiExpirySoon = nhiResult.expiringSoon;
       nhiExpired = nhiResult.expired;
     } catch (err) {
-      console.error(JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "error",
-        event: "duty5.nhi_expiry_failed",
-        error: err instanceof Error ? err.message : String(err),
-      }));
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty5.nhi_expiry_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
     }
 
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
@@ -536,6 +681,7 @@ const worker = {
         controlsPromoted,
         nhiExpirySoon,
         nhiExpired,
+        insightsWritten,
         checks,
       }),
     );

@@ -6,6 +6,15 @@ terraform {
       version = ">= 5.0"
     }
   }
+
+  # Remote state — encrypted at rest, locking via DynamoDB
+  # backend "s3" {
+  #   bucket         = "atlasit-terraform-state"
+  #   key            = "aws/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "atlasit-terraform-locks"
+  # }
 }
 
 provider "aws" {
