@@ -365,6 +365,9 @@
   let evaluating = false;
   let lastEvaluation: { tenantState: Record<string, unknown>; evaluations: any[] } | null = null;
 
+  // Evidence locker expand
+  let expandedEvidenceId: string | null = null;
+
   // Control → Evidence drill-down
   let expandedControlId: string | null = null;
   let controlEvidence: EvidenceFeedPreviewItem[] = [];
@@ -1483,8 +1486,10 @@
             </thead>
             <tbody>
               {#each groupedEvidenceItems as item (item.id)}
-                <tr class="border-t hover:bg-muted/50">
+                <tr class="border-t hover:bg-muted/50 cursor-pointer transition-colors"
+                    on:click={() => expandedEvidenceId = expandedEvidenceId === String(item.id) ? null : String(item.id)}>
                   <td class="px-4 py-3">
+                    <span class="text-[10px] text-muted-foreground mr-1">{expandedEvidenceId === String(item.id) ? '▼' : '▶'}</span>
                     <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash || String(item.id))}</span>
                   </td>
                   <td class="px-4 py-3">
@@ -1555,6 +1560,58 @@
                     {/if}
                   </td>
                 </tr>
+                {#if expandedEvidenceId === String(item.id)}
+                  <tr class="bg-muted/20 border-l-4 border-l-primary/40">
+                    <td colspan="6" class="px-4 py-4" on:click|stopPropagation>
+                      <div class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Full Hash</span>
+                            <div class="font-mono mt-1 break-all bg-muted rounded px-2 py-1">{item.hash || "—"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Source</span>
+                            <div class="mt-1">{item.source || "manual upload"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Evidence Pack</span>
+                            <div class="mt-1">{item.pack || "manual"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Subject</span>
+                            <div class="mt-1">{item.subject || "—"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Created</span>
+                            <div class="mt-1">{new Date(item.createdAt).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Tenant</span>
+                            <div class="mt-1 font-mono">{item.tenantId}</div>
+                          </div>
+                        </div>
+                        {#if item.controls.length > 0}
+                          <div>
+                            <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Linked Controls</span>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                              {#each item.controls as ctrl}
+                                <div class="flex items-center gap-1 rounded border px-2 py-1 text-xs bg-background">
+                                  <Badge variant="success" class="text-[10px]">{ctrl.key}</Badge>
+                                  {#if ctrl.framework}
+                                    <span class="text-muted-foreground">{ctrl.framework}</span>
+                                  {/if}
+                                  {#if ctrl.controlName}
+                                    <span class="text-muted-foreground">— {ctrl.controlName}</span>
+                                  {/if}
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      </div>
+                    </td>
+                  </tr>
+                {/if}
               {/each}
             </tbody>
           </table>

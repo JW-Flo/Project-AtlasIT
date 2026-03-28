@@ -90,10 +90,10 @@
     return "Replay Failed";
   }
 
-  function runStatusVariant(status: string): "success" | "default" | "destructive" | "warning" {
+  function runStatusVariant(status: string): "success" | "default" | "destructive" | "warning" | "info" {
     switch (status) {
       case "completed": return "success";
-      case "running": return "default";
+      case "running": return "info";
       case "failed": return "destructive";
       case "compensating": return "warning";
       default: return "default";

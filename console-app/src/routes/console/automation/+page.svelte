@@ -37,6 +37,13 @@
     startedAt: string;
     completedAt?: string;
     durationMs?: number;
+    triggerEvent?: Record<string, any>;
+  }
+
+  function extractAffectedUser(exec: Execution): string {
+    const te = exec.triggerEvent;
+    if (!te) return "—";
+    return te.email || te.userEmail || te.payload?.email || te.payload?.userEmail || te.displayName || "—";
   }
 
   interface ExecutionDetail extends Execution {
@@ -155,6 +162,7 @@
   // Dry-run simulation
   let showSimDialog = false;
   let simLoading = false;
+  let simTargetEmail = "";
   let simResult: {
     ruleId: string;
     ruleName: string;
@@ -492,10 +500,18 @@
     simShowCustom = false;
     showSimDialog = true;
     try {
+      const reqBody: Record<string, unknown> = { ruleId };
+      if (simTargetEmail.trim()) {
+        const rule = rules.find((r) => r.id === ruleId);
+        reqBody.testEvent = {
+          type: rule?.triggerType || "user_created",
+          payload: { email: simTargetEmail.trim(), displayName: simTargetEmail.trim().split("@")[0] },
+        };
+      }
       const res = await fetch("/api/automation/simulate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ruleId }),
+        body: JSON.stringify(reqBody),
       });
       if (res.ok) {
         simResult = await res.json();
@@ -1309,6 +1325,7 @@
               <thead>
                 <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
                   <th class="px-4 py-3 font-medium">Rule</th>
+                  <th class="px-4 py-3 font-medium">Affected User</th>
                   <th class="px-4 py-3 font-medium">Status</th>
                   <th class="px-4 py-3 font-medium">Actions</th>
                   <th class="px-4 py-3 font-medium">Duration</th>
@@ -1325,6 +1342,7 @@
                     on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); viewExecution(exec); } }}
                   >
                     <td class="px-4 py-3">{rule?.name ?? "Unknown rule"}</td>
+                    <td class="px-4 py-3 text-muted-foreground text-xs truncate max-w-[200px]" title={extractAffectedUser(exec)}>{extractAffectedUser(exec)}</td>
                     <td class="px-4 py-3">
                       <Badge variant={statusVariant(exec.status)} class="capitalize">{exec.status}</Badge>
                     </td>
@@ -1373,6 +1391,7 @@
               <option value={rule.id}>{rule.name}</option>
             {/each}
           </select>
+          <Input type="email" bind:value={simTargetEmail} placeholder="Target user email (optional)" class="h-9 w-56 text-sm" />
           <Button size="sm" disabled={!simSelectedRuleId || simLoading} on:click={() => simSelectedRuleId && simulateDryRun(simSelectedRuleId)}>
             {simLoading ? "Running..." : "Simulate"}
           </Button>
@@ -1609,6 +1628,17 @@
             {#if simResult.enabled === false}
               <div class="text-[10px] text-muted-foreground mt-0.5">Note: This rule is currently disabled</div>
             {/if}
+          </div>
+        </div>
+
+        <!-- Target Email -->
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Target User</div>
+          <div class="flex items-center gap-2">
+            <Input type="email" bind:value={simTargetEmail} placeholder="user@company.com" class="h-8 text-xs flex-1" />
+            <Button size="sm" variant="outline" on:click={() => rerunSimulation()} disabled={simLoading} class="text-xs h-8">
+              Re-run
+            </Button>
           </div>
         </div>
 

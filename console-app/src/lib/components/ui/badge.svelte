@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cn } from "$lib/utils";
 
-  type Variant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
+  type Variant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info";
 
   export let variant: Variant = "default";
   let className: string = "";
@@ -14,6 +14,7 @@
     outline: "text-foreground",
     success: "border-transparent bg-success/15 text-success",
     warning: "border-transparent bg-warning/15 text-warning",
+    info: "border-transparent bg-blue-600 text-white",
   };
 </script>
 
