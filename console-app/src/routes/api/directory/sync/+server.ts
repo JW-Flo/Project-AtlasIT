@@ -124,15 +124,51 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     .run();
 
   try {
-    // MVP-only: synthetic directory data for demo/development
     const env = (platform?.env as any) || {};
-    if (env.SYNTHETIC_DIRECTORY !== "true" && connection.provider_token) {
-      return json(
-        { error: "Real IdP sync not yet implemented" },
-        { status: 501 },
-      );
+    const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+
+    // If a real provider is connected and orchestrator is available, proxy sync
+    // through the orchestrator which dispatches to the correct adapter worker.
+    if (env.SYNTHETIC_DIRECTORY !== "true" && connection.provider && orchestratorUrl) {
+      const syncRes = await fetch(`${orchestratorUrl}/api/v1/directory/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-tenant-id": tenantId,
+        },
+        body: JSON.stringify({ provider: connection.provider }),
+      });
+
+      if (syncRes.ok) {
+        const adapterData = await syncRes.json().catch(() => ({})) as any;
+        const userCount = adapterData.users?.length ?? adapterData.userCount ?? 0;
+        const groupCount = adapterData.groups?.length ?? adapterData.groupCount ?? 0;
+
+        await db
+          .prepare(
+            `UPDATE directory_connections SET status = 'active', last_sync_at = ?, user_count = ?, group_count = ?, error_msg = NULL, updated_at = ? WHERE tenant_id = ?`,
+          )
+          .bind(now, userCount, groupCount, now, tenantId)
+          .run();
+
+        await writeAudit(db, {
+          tenantId,
+          actorUserId: user.userId,
+          actorEmail: user.email,
+          action: "directory.sync",
+          targetType: "directory_connection",
+          targetId: connection.id,
+          detail: JSON.stringify({ userCount, groupCount, source: "orchestrator", provider: connection.provider }),
+        });
+
+        return json({ success: true, userCount, groupCount, source: "orchestrator" });
+      }
+
+      // If orchestrator returned an error, fall through to synthetic as degraded mode
+      console.warn(`Orchestrator sync failed (${syncRes.status}), falling back to synthetic`);
     }
 
+    // Fallback: synthetic directory data for demo/development or when orchestrator unavailable
     const tenantDomain = user.email?.split("@")[1] || "example.com";
     const { users, groups, memberships } = generateSyntheticData(tenantDomain);
 

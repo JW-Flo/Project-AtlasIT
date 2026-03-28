@@ -40,7 +40,19 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
     .all()
     .then((r: any) => r.results || []);
 
-  return json({ group: toCamel(group), members: toCamel(members) });
+  const { results: appMappingRows } = await db
+    .prepare("SELECT id, app_id, role, suggested FROM group_app_mappings WHERE tenant_id = ? AND group_id = ?")
+    .bind(tenantId, id)
+    .all();
+
+  const appMappings = (appMappingRows || []).map((row: any) => ({
+    id: row.id,
+    appId: row.app_id,
+    role: row.role,
+    suggested: row.suggested,
+  }));
+
+  return json({ group: toCamel(group), members: toCamel(members), appMappings });
 };
 
 export const PATCH: RequestHandler = async ({
