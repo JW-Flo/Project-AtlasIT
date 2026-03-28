@@ -67,7 +67,7 @@ const NHI_CAPABLE_ADAPTERS = [
 
 // ── Discovery ────────────────────────────────────────────────────────────────
 
-async function discoverFromAdapters(
+export async function discoverFromAdapters(
   adapterUrls: Record<string, string>,
   tenantId: string,
   correlationId: string,
@@ -170,7 +170,7 @@ async function upsertNhi(
   const now = new Date().toISOString();
 
   // 1. Upsert directory_users entry for NHI
-  const dirUserId = `nhi:${provider}:${nhi.externalId}`;
+  const dirUserId = `nhi:${tenantId}:${provider}:${nhi.externalId}`;
   const email = nhi.ownerEmail ?? `${nhi.externalId}@nhi.${provider}`;
 
   await db

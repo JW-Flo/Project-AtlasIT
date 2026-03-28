@@ -8,7 +8,11 @@
 
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
-import { syncNhiFromAdapters, listNhiCredentials } from "../lib/nhi-sync";
+import {
+  syncNhiFromAdapters,
+  listNhiCredentials,
+  discoverFromAdapters,
+} from "../lib/nhi-sync";
 
 export const nhiRoutes = new Hono<AppEnv>();
 
@@ -74,73 +78,13 @@ nhiRoutes.get("/credentials", async (c) => {
   const limit = Math.min(parseInt(c.req.query("limit") ?? "100"), 500);
   const offset = parseInt(c.req.query("offset") ?? "0");
 
-  const result = await listNhiCredentials(db, tenantId, { status, credentialType, provider, limit, offset });
+  const result = await listNhiCredentials(db, tenantId, {
+    status,
+    credentialType,
+    provider,
+    limit,
+    offset,
+  });
 
   return c.json({ ...result, correlationId });
 });
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-interface DiscoveryResult {
-  provider: string;
-  identities: Array<Record<string, unknown>>;
-  discoveredAt: string;
-  error?: string;
-}
-
-const NHI_CAPABLE_ADAPTERS = [
-  "github",
-  "aws",
-  "google_workspace",
-  "microsoft_365",
-  "okta",
-];
-
-async function discoverFromAdapters(
-  adapterUrls: Record<string, string>,
-  tenantId: string,
-  correlationId: string,
-): Promise<DiscoveryResult[]> {
-  const results: DiscoveryResult[] = [];
-
-  const settled = await Promise.allSettled(
-    NHI_CAPABLE_ADAPTERS.filter((slug) => adapterUrls[slug]).map(async (slug) => {
-      const url = adapterUrls[slug];
-      const res = await fetch(`${url}/api/nhi/discovery`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Tenant-ID": tenantId,
-          "X-Correlation-ID": correlationId,
-        },
-        body: JSON.stringify({ tenantId }),
-      });
-
-      if (!res.ok) {
-        return {
-          provider: slug,
-          identities: [],
-          discoveredAt: new Date().toISOString(),
-          error: `HTTP ${res.status}`,
-        };
-      }
-
-      return (await res.json()) as DiscoveryResult;
-    }),
-  );
-
-  for (const r of settled) {
-    if (r.status === "fulfilled") {
-      results.push(r.value);
-    } else {
-      results.push({
-        provider: "unknown",
-        identities: [],
-        discoveredAt: new Date().toISOString(),
-        error: r.reason?.message ?? "Discovery failed",
-      });
-    }
-  }
-
-  return results;
-}
