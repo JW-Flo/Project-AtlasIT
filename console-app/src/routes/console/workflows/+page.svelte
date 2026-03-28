@@ -126,6 +126,17 @@
   let idpSource = "okta";
   let searchQuery = "";
 
+  // Collapsed sections on Lifecycle Policies tab
+  let collapsedSections: Set<string> = new Set();
+  function toggleSection(level: string) {
+    if (collapsedSections.has(level)) {
+      collapsedSections.delete(level);
+    } else {
+      collapsedSections.add(level);
+    }
+    collapsedSections = collapsedSections;
+  }
+
   // Roles state
   let roles: RoleRow[] = [];
   let expandedRole: string | null = null;
@@ -568,7 +579,23 @@
     executing = false;
   }
 
-  onMount(loadAll);
+  // Selected run for deep link
+  let selectedRunId: string | null = null;
+
+  onMount(() => {
+    // Parse URL params for tab and run deep linking
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam && ["policies", "pipeline", "apps", "activity"].includes(tabParam)) {
+      activeTab = tabParam;
+    }
+    const runParam = params.get("run");
+    if (runParam) {
+      selectedRunId = runParam;
+      activeTab = "activity";
+    }
+    loadAll();
+  });
 </script>
 
 <div class="space-y-6">
@@ -718,7 +745,15 @@
           {#each [{ label: "Org-wide", level: "org", items: orgRoles }, { label: "Department", level: "department", items: deptRoles }, { label: "Team", level: "team", items: teamRoles }] as section}
             {#if section.items.length > 0}
               <div>
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{section.label}</h3>
+                <button type="button" class="flex items-center gap-2 mb-2 hover:text-foreground transition-colors" on:click={() => toggleSection(section.level)}>
+                  {#if collapsedSections.has(section.level)}
+                    <ChevronRight class="w-3.5 h-3.5 text-muted-foreground" />
+                  {:else}
+                    <ChevronDown class="w-3.5 h-3.5 text-muted-foreground" />
+                  {/if}
+                  <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{section.label} ({section.items.length})</h3>
+                </button>
+                {#if !collapsedSections.has(section.level)}
                 <div class="space-y-2">
                   {#each section.items as role}
                     <Card class="cursor-pointer hover:border-primary/30 transition-colors" on:click={() => toggleRoleExpand(role.id)}>
@@ -773,6 +808,7 @@
                     </Card>
                   {/each}
                 </div>
+                {/if}
               </div>
             {/if}
           {/each}
@@ -986,40 +1022,69 @@
       </div>
 
     {:else if activeTab === "activity"}
-      <!-- Activity feed -->
-      <div class="grid gap-6 lg:grid-cols-2">
-        <!-- Recent Runs -->
+      <!-- Unified activity: Workflow Runs + Changelog -->
+      <div class="space-y-6">
+        <!-- Workflow Runs Table -->
         <Card>
           <CardHeader>
-            <CardTitle class="text-base">Recent Workflow Runs</CardTitle>
+            <CardTitle class="text-base">Workflow Runs</CardTitle>
           </CardHeader>
-          <CardContent>
-            {#if recentRuns.length === 0}
+          <CardContent class="p-0">
+            {#if runs.length === 0}
               <p class="text-sm text-muted-foreground text-center py-6">No workflow runs yet</p>
             {:else}
-              <div class="space-y-2">
-                {#each recentRuns as run}
-                  <div class="flex items-center gap-3 px-3 py-2.5 rounded-md bg-muted/50">
-                    {#if run.status === "completed" || run.status === "success"}
-                      <CheckCircle class="w-4 h-4 text-green-500 shrink-0" />
-                    {:else if run.status === "failed"}
-                      <XCircle class="w-4 h-4 text-destructive shrink-0" />
-                    {:else}
-                      <Clock class="w-4 h-4 text-amber-500 shrink-0 animate-pulse" />
-                    {/if}
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <Badge variant={run.type === "joiner" ? "success" : run.type === "leaver" ? "destructive" : "default"} class="text-[10px]">
-                          {run.type}
-                        </Badge>
-                        <span class="text-xs truncate">{run.subjectEmail || "—"}</span>
-                      </div>
-                      <div class="text-[11px] text-muted-foreground mt-0.5">
-                        {appName(run.appId)} • {timeAgo(run.startedAt)}
-                      </div>
-                    </div>
-                  </div>
-                {/each}
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                      <th class="px-4 py-3 font-medium">Type</th>
+                      <th class="px-4 py-3 font-medium">User</th>
+                      <th class="px-4 py-3 font-medium">Status</th>
+                      <th class="px-4 py-3 font-medium hidden md:table-cell">Steps</th>
+                      <th class="px-4 py-3 font-medium text-right">When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each runs as run}
+                      <tr
+                        class="border-t hover:bg-muted/50 transition-colors cursor-pointer {selectedRunId === run.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
+                        on:click={() => selectedRunId = selectedRunId === run.id ? null : run.id}
+                      >
+                        <td class="px-4 py-3">
+                          <Badge variant={run.type === "joiner" ? "success" : run.type === "leaver" ? "destructive" : "default"} class="capitalize">{run.type}</Badge>
+                        </td>
+                        <td class="px-4 py-3">{run.subjectEmail || run.email || "—"}</td>
+                        <td class="px-4 py-3">
+                          <Badge variant={run.status === "completed" || run.status === "success" ? "success" : run.status === "failed" ? "destructive" : "info"} class="capitalize">{run.status}</Badge>
+                        </td>
+                        <td class="px-4 py-3 text-muted-foreground hidden md:table-cell">{run.stepsCompleted ?? run.stepsDone ?? 0}/{run.stepsTotal ?? 0}</td>
+                        <td class="px-4 py-3 text-right">
+                          <span class="text-muted-foreground" title={run.startedAt ? new Date(run.startedAt).toLocaleString() : ''}>{run.startedAt ? timeAgo(run.startedAt) : '—'}</span>
+                        </td>
+                      </tr>
+                      {#if selectedRunId === run.id}
+                        <tr class="bg-muted/20 border-l-4 border-l-primary/40">
+                          <td colspan="5" class="px-4 py-4">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                              <div>
+                                <span class="font-semibold text-muted-foreground">Run ID</span>
+                                <div class="font-mono mt-0.5 break-all">{run.id}</div>
+                              </div>
+                              <div>
+                                <span class="font-semibold text-muted-foreground">Started</span>
+                                <div class="mt-0.5">{run.startedAt ? new Date(run.startedAt).toLocaleString() : '—'}</div>
+                              </div>
+                              <div>
+                                <span class="font-semibold text-muted-foreground">Completed</span>
+                                <div class="mt-0.5">{run.completedAt ? new Date(run.completedAt).toLocaleString() : '—'}</div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      {/if}
+                    {/each}
+                  </tbody>
+                </table>
               </div>
             {/if}
           </CardContent>
