@@ -98,11 +98,45 @@
     return integrations.find((i) => i.id === appId)?.name || humanize(appId);
   }
 
+  // Role types
+  interface RoleRow {
+    id: string;
+    name: string;
+    description: string | null;
+    parentId: string | null;
+    level: string;
+    entitlementCount: number;
+    assignmentCount: number;
+    createdAt: string;
+  }
+
+  interface RoleDetail {
+    id: string;
+    name: string;
+    description: string | null;
+    parentId: string | null;
+    level: string;
+    entitlements: { id: string; appId: string; appRole: string }[];
+    assignments: { id: string; targetType: string; targetId: string }[];
+  }
+
   // State
   let loading = true;
-  let activeTab = "pipeline";
+  let activeTab = "policies";
   let idpSource = "okta";
   let searchQuery = "";
+
+  // Roles state
+  let roles: RoleRow[] = [];
+  let expandedRole: string | null = null;
+  let roleDetail: RoleDetail | null = null;
+  let loadingRoleDetail = false;
+  let showCreateRole = false;
+  let newRoleName = "";
+  let newRoleDescription = "";
+  let newRoleLevel: "org" | "department" | "team" = "team";
+  let newRoleParentId = "";
+  let creatingRole = false;
 
   // Data
   let workflows: AppWorkflow[] = [];
@@ -184,10 +218,77 @@
     { id: "entra_id", label: "Entra ID" },
   ];
 
+  // Roles computed
+  $: orgRoles = roles.filter((r) => r.level === "org");
+  $: deptRoles = roles.filter((r) => r.level === "department");
+  $: teamRoles = roles.filter((r) => r.level === "team");
+
   async function loadAll() {
     loading = true;
-    await Promise.all([fetchWorkflows(), fetchUsers(), fetchRuns(), fetchChangelog(), fetchIdpSource()]);
+    await Promise.all([fetchRoles(), fetchWorkflows(), fetchUsers(), fetchRuns(), fetchChangelog(), fetchIdpSource()]);
     loading = false;
+  }
+
+  async function fetchRoles() {
+    try {
+      const res = await fetch("/api/roles");
+      if (res.ok) {
+        const data = await res.json();
+        roles = data.roles || [];
+      }
+    } catch { roles = []; }
+  }
+
+  async function toggleRoleExpand(roleId: string) {
+    if (expandedRole === roleId) {
+      expandedRole = null;
+      roleDetail = null;
+      return;
+    }
+    expandedRole = roleId;
+    loadingRoleDetail = true;
+    try {
+      const res = await fetch(`/api/roles/${roleId}`);
+      if (res.ok) {
+        const data = await res.json();
+        roleDetail = data.role;
+      }
+    } catch {
+      roleDetail = null;
+    }
+    loadingRoleDetail = false;
+  }
+
+  async function createRole() {
+    if (!newRoleName.trim()) return;
+    creatingRole = true;
+    try {
+      const res = await fetch("/api/roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newRoleName.trim(),
+          description: newRoleDescription.trim() || null,
+          level: newRoleLevel,
+          parentId: newRoleParentId || null,
+        }),
+      });
+      if (res.ok) {
+        pushToast({ type: "success", message: `Role "${newRoleName}" created` });
+        showCreateRole = false;
+        newRoleName = "";
+        newRoleDescription = "";
+        newRoleLevel = "team";
+        newRoleParentId = "";
+        await fetchRoles();
+      } else {
+        const data = await res.json();
+        pushToast({ type: "error", message: data.error || "Failed to create role" });
+      }
+    } catch {
+      pushToast({ type: "error", message: "Failed to create role" });
+    }
+    creatingRole = false;
   }
 
   async function fetchWorkflows() {
@@ -583,14 +684,101 @@
       </CardContent>
     </Card>
 
-    <!-- Tabs: Users / Apps / Activity -->
+    <!-- Tabs: Lifecycle Policies / Users / Activity -->
     <Tabs bind:value={activeTab}>
       <TabsList>
+        <TabsTrigger value="policies" active={activeTab === "policies"} on:click={() => activeTab = "policies"}>Lifecycle Policies</TabsTrigger>
         <TabsTrigger value="pipeline" active={activeTab === "pipeline"} on:click={() => activeTab = "pipeline"}>Users</TabsTrigger>
-        <TabsTrigger value="apps" active={activeTab === "apps"} on:click={() => activeTab = "apps"}>App Workflows</TabsTrigger>
         <TabsTrigger value="activity" active={activeTab === "activity"} on:click={() => activeTab = "activity"}>Activity</TabsTrigger>
       </TabsList>
     </Tabs>
+
+    {#if activeTab === "policies"}
+      <!-- Role-based lifecycle policies -->
+      <div class="space-y-4">
+        <div class="flex items-center justify-between">
+          <p class="text-sm text-muted-foreground">
+            Define which apps each role gets. When users join or leave, access is provisioned automatically.
+          </p>
+          <Button size="sm" on:click={() => showCreateRole = true}>
+            <UserPlus class="w-4 h-4 mr-1" /> Create Role
+          </Button>
+        </div>
+
+        {#if roles.length === 0}
+          <Card class="border-dashed">
+            <CardContent class="py-12 text-center text-muted-foreground">
+              <Users class="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p class="text-lg font-medium">No lifecycle policies configured</p>
+              <p class="text-sm mt-1">Create your first role to define which apps each team gets.</p>
+              <Button class="mt-4" on:click={() => showCreateRole = true}>Create Role</Button>
+            </CardContent>
+          </Card>
+        {:else}
+          {#each [{ label: "Org-wide", level: "org", items: orgRoles }, { label: "Department", level: "department", items: deptRoles }, { label: "Team", level: "team", items: teamRoles }] as section}
+            {#if section.items.length > 0}
+              <div>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{section.label}</h3>
+                <div class="space-y-2">
+                  {#each section.items as role}
+                    <Card class="cursor-pointer hover:border-primary/30 transition-colors" on:click={() => toggleRoleExpand(role.id)}>
+                      <CardContent class="p-4">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center gap-3">
+                            {#if expandedRole === role.id}
+                              <ChevronDown class="w-4 h-4 text-muted-foreground" />
+                            {:else}
+                              <ChevronRight class="w-4 h-4 text-muted-foreground" />
+                            {/if}
+                            <div>
+                              <span class="font-medium">{role.name}</span>
+                              {#if role.description}
+                                <span class="text-sm text-muted-foreground ml-2">— {role.description}</span>
+                              {/if}
+                            </div>
+                          </div>
+                          <div class="flex items-center gap-3 text-sm text-muted-foreground">
+                            <span>{role.entitlementCount} app{role.entitlementCount !== 1 ? "s" : ""}</span>
+                            <span class="text-xs">|</span>
+                            <span>{role.assignmentCount} assigned</span>
+                          </div>
+                        </div>
+
+                        {#if expandedRole === role.id}
+                          <div class="mt-4 pt-3 border-t space-y-2">
+                            {#if loadingRoleDetail}
+                              <Skeleton class="h-8 w-full" />
+                            {:else if roleDetail}
+                              {#if roleDetail.entitlements.length === 0}
+                                <p class="text-sm text-muted-foreground">No app entitlements configured. Add apps to this role.</p>
+                              {:else}
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                  {#each roleDetail.entitlements as ent}
+                                    <div class="flex items-center gap-2 p-2 rounded bg-muted/50">
+                                      <span class="text-sm font-medium">{appName(ent.appId)}</span>
+                                      <Badge variant="secondary" class="text-xs">{ent.appRole}</Badge>
+                                    </div>
+                                  {/each}
+                                </div>
+                              {/if}
+                              <div class="flex gap-2 mt-2">
+                                <Button size="sm" variant="outline" href={`/console/directory?tab=mappings&role=${role.id}`}>
+                                  Manage Entitlements
+                                </Button>
+                              </div>
+                            {/if}
+                          </div>
+                        {/if}
+                      </CardContent>
+                    </Card>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          {/each}
+        {/if}
+      </div>
+    {/if}
 
     {#if activeTab === "pipeline"}
       <!-- User-centric pipeline view -->
@@ -1014,6 +1202,49 @@
     <DialogFooter>
       <Button variant="outline" on:click={() => { showLeaverConfirm = false; leaverConfirmCallback = null; }}>Cancel</Button>
       <Button variant="destructive" on:click={() => { showLeaverConfirm = false; if (leaverConfirmCallback) leaverConfirmCallback(); leaverConfirmCallback = null; }}>Continue</Button>
+    </DialogFooter>
+  </div>
+</Dialog>
+
+<!-- Create Role Modal -->
+<Dialog open={showCreateRole} onClose={() => showCreateRole = false}>
+  <div class="space-y-4">
+    <h3 class="text-lg font-semibold">Create Lifecycle Role</h3>
+    <p class="text-sm text-muted-foreground">Roles define which apps users get when they join, move, or leave.</p>
+    <div class="space-y-3">
+      <div>
+        <Label>Role Name</Label>
+        <Input bind:value={newRoleName} placeholder="e.g., Engineer, Sales Rep, Manager" />
+      </div>
+      <div>
+        <Label>Description</Label>
+        <Input bind:value={newRoleDescription} placeholder="Optional description" />
+      </div>
+      <div>
+        <Label>Level</Label>
+        <select bind:value={newRoleLevel} class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+          <option value="org">Org-wide (applies to all employees)</option>
+          <option value="department">Department</option>
+          <option value="team">Team</option>
+        </select>
+      </div>
+      {#if roles.length > 0}
+        <div>
+          <Label>Inherits From (optional)</Label>
+          <select bind:value={newRoleParentId} class="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="">None</option>
+            {#each roles as r}
+              <option value={r.id}>{r.name} ({r.level})</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+    </div>
+    <DialogFooter>
+      <Button variant="outline" on:click={() => showCreateRole = false}>Cancel</Button>
+      <Button on:click={createRole} disabled={creatingRole || !newRoleName.trim()}>
+        {creatingRole ? "Creating..." : "Create Role"}
+      </Button>
     </DialogFooter>
   </div>
 </Dialog>
