@@ -707,8 +707,125 @@
   $: if (activeTab === "live") { startActivityPoll(); } else { stopActivityPoll(); }
   $: if (activeTab === "simulations" && simHistory.length === 0 && !simHistoryLoading) { fetchSimHistory(); }
 
+  // ---- Compliance gap → rule wiring ----------------------------------------
+  // Reverse-lookup: controlId + framework → action types that address the gap.
+  // Mirrors ACTION_COMPLIANCE_MAP from packages/shared without a client-side import.
+  const CONTROL_ACTION_MAP: Record<string, Record<string, string[]>> = {
+    SOC2: {
+      "CC6.1": ["provision_app_access", "revoke_app_access", "assign_role", "remove_role", "sync_directory", "rotate_nhi_credential", "revoke_nhi_token", "request_access_review"],
+      "CC6.2": ["provision_app_access"],
+      "CC6.3": ["revoke_app_access", "run_workflow", "revoke_nhi_token", "request_access_review"],
+      "CC6.6": ["rotate_nhi_credential", "revoke_nhi_token"],
+      "CC7.3": ["create_incident"],
+      "CC7.4": ["create_incident"],
+      "CC8.1": ["run_workflow"],
+      "CC4.1": ["update_compliance_status"],
+      "CC4.2": ["update_compliance_status"],
+      "CC2.1": ["send_notification"],
+    },
+    ISO27001: {
+      "A.9.2.1": ["sync_directory"],
+      "A.9.2.2": ["provision_app_access"],
+      "A.9.2.3": ["provision_app_access", "assign_role", "remove_role", "rotate_nhi_credential"],
+      "A.9.2.5": ["request_access_review"],
+      "A.9.2.6": ["revoke_app_access", "rotate_nhi_credential", "revoke_nhi_token"],
+      "A.9.4.1": ["assign_role"],
+      "A.7.3.1": ["run_workflow"],
+      "A.16.1.2": ["create_incident", "send_notification"],
+      "A.16.1.4": ["create_incident"],
+      "A.18.2.1": ["update_compliance_status"],
+    },
+    NIST_CSF: {
+      "PR.AC-1": ["provision_app_access", "revoke_app_access", "sync_directory", "rotate_nhi_credential", "revoke_nhi_token"],
+      "PR.AC-3": ["revoke_nhi_token"],
+      "PR.AC-4": ["assign_role", "remove_role"],
+      "PR.IP-3": ["run_workflow"],
+      "RS.CO-2": ["create_incident"],
+    },
+    HIPAA: {
+      "164.312(a)(1)": ["provision_app_access", "request_access_review"],
+      "164.312(a)(2)(i)": ["revoke_app_access"],
+      "164.312(b)": ["create_incident"],
+      "164.312(d)": ["rotate_nhi_credential", "revoke_nhi_token"],
+    },
+    GDPR: {
+      "Art.5(1)(f)": ["revoke_app_access", "revoke_nhi_token"],
+    },
+  };
+
+  function lookupActionsForControl(framework: string, controlId: string): string[] {
+    return CONTROL_ACTION_MAP[framework]?.[controlId] ?? [];
+  }
+
+  async function autoCreateComplianceRule(framework: string, controlId: string) {
+    const actionTypes = lookupActionsForControl(framework, controlId);
+    if (actionTypes.length === 0) {
+      // Fall back to NL dialog pre-seeded with the gap context
+      nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
+      showNlDialog = true;
+      nlResult = null;
+      nlError = null;
+      return;
+    }
+
+    const primaryAction = actionTypes[0];
+    const ruleInput = {
+      name: `Auto: ${framework} ${controlId} compliance monitoring`,
+      description: `Automatically created from compliance gap for ${framework} control ${controlId}`,
+      enabled: true,
+      triggerType: "compliance_score_changed",
+      triggerConfig: { framework, controlId },
+      conditions: [],
+      actions: [
+        {
+          type: primaryAction,
+          order: 1,
+          config: {},
+        },
+      ],
+    };
+
+    try {
+      const res = await fetch("/api/automation/rules", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(ruleInput),
+      });
+      if (res.ok) {
+        await fetchRules();
+        pushToast({ message: `Rule created for ${framework} ${controlId}`, variant: "success" });
+      } else {
+        // On failure, fall back to NL dialog
+        nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
+        showNlDialog = true;
+        nlResult = null;
+        nlError = null;
+      }
+    } catch {
+      nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
+      showNlDialog = true;
+      nlResult = null;
+      nlError = null;
+    }
+  }
+
   onMount(() => {
-    fetchAll();
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    const controlId = params.get("controlId");
+    const framework = params.get("framework");
+
+    if (tabParam === "rules") {
+      activeTab = "rules";
+    }
+
+    // Kick off data fetch first so rules list and UI are ready
+    fetchAll().then(() => {
+      if (controlId && framework) {
+        autoCreateComplianceRule(framework, controlId);
+      }
+    });
+
     return () => stopActivityPoll();
   });
 </script>

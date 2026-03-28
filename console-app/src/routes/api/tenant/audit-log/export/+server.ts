@@ -57,7 +57,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       .catch(() => ({ total: 0 })),
     db
       .prepare(
-        `SELECT id, tenant_id, actor_email, action, target_type, target_id, detail, created_at
+        `SELECT id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at
          FROM audit_log ${where}
          ORDER BY created_at DESC LIMIT ?`,
       )
@@ -66,13 +66,22 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       .catch(() => ({ results: [] })),
   ]);
 
-  const entries = (rowsResult.results ?? []).map((row: any) => ({
-    date: row.created_at,
-    actor: row.actor_email,
-    action: row.action,
-    target: row.target_type + (row.target_id ? `:${row.target_id}` : ""),
-    details: row.detail || "",
-  }));
+  const entries = (rowsResult.results ?? []).map((row: any) => {
+    let actorEmail = row.actor_id ?? "";
+    let detail = "";
+    try {
+      const parsed = JSON.parse(row.details ?? "{}");
+      if (parsed.actorEmail) actorEmail = parsed.actorEmail;
+      if (parsed.detail) detail = parsed.detail;
+    } catch {}
+    return {
+      date: row.created_at,
+      actor: actorEmail,
+      action: row.action,
+      target: (row.resource_type ?? "") + (row.resource_id ? `:${row.resource_id}` : ""),
+      details: detail,
+    };
+  });
 
   const total = (countResult as any)?.total ?? 0;
 

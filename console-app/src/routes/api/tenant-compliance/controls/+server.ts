@@ -169,12 +169,33 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
     }
   }
 
+  // Merge incoming controls with the full stored set so that controls belonging
+  // to frameworks outside the current selection are not wiped.
+  let existingControls: any[] = [];
+  try {
+    const row = await db
+      .prepare(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
+      )
+      .bind(user.tenantId)
+      .first();
+    if (row?.value) {
+      existingControls = JSON.parse(row.value as string);
+    }
+  } catch {
+    // no existing controls — save as-is
+  }
+
+  const incomingIds = new Set(controls.map((c: any) => c.id));
+  const preserved = existingControls.filter((c: any) => !incomingIds.has(c.id));
+  const merged = [...preserved, ...controls];
+
   await db
     .prepare(
       `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
        VALUES (?, 'compliance_controls', ?)`,
     )
-    .bind(user.tenantId, JSON.stringify(controls))
+    .bind(user.tenantId, JSON.stringify(merged))
     .run();
 
   return json({ success: true });

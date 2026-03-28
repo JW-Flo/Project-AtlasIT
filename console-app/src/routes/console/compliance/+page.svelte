@@ -473,16 +473,21 @@
   let linkControlKey = "";
   let connectedApps: Array<{ id: string; connected: boolean }> = [];
 
-  // Build evidence control dropdown from FRAMEWORK_CONTROLS — all 139 controls
+  // Build evidence control dropdown scoped to the tenant's selected frameworks.
   // Keys use the CDT control ID prefix (e.g. CC1.1, A.9.2.2, ID.AM, 164.308(a)(1), Art.5)
-  const INTERNAL_CONTROLS: { key: string; framework: string; title: string }[] = [];
-  for (const [fw, defs] of Object.entries(FRAMEWORK_CONTROLS)) {
-    for (const def of defs) {
-      // Extract the CDT ID from the control name (everything before " - ")
-      const cdtId = def.name.split(" - ")[0].trim();
-      INTERNAL_CONTROLS.push({ key: cdtId, framework: fw, title: def.name });
+  $: INTERNAL_CONTROLS = (() => {
+    const result: { key: string; framework: string; title: string }[] = [];
+    const selectedFws = frameworks.length > 0 ? frameworks : Object.keys(FRAMEWORK_CONTROLS);
+    for (const fw of selectedFws) {
+      const defs = FRAMEWORK_CONTROLS[fw];
+      if (!defs) continue;
+      for (const def of defs) {
+        const cdtId = def.name.split(" - ")[0].trim();
+        result.push({ key: cdtId, framework: fw, title: def.name });
+      }
     }
-  }
+    return result;
+  })();
 
   function shortHash(hash: string): string {
     if (!hash || hash.length <= 16) return hash;
@@ -1211,7 +1216,7 @@
               <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell w-[80px]">Evidence</th>
               <th class="px-3 sm:px-4 py-3 font-medium w-[120px] sm:w-[140px]">Status</th>
               <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Notes</th>
-              <th class="px-3 sm:px-4 py-3 font-medium w-[70px] sm:w-[80px]">Verify</th>
+              <th class="px-3 sm:px-4 py-3 font-medium w-[100px] sm:w-[120px]">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1274,7 +1279,14 @@
                       {verifyingControlId === control.id ? "Confirm" : "Verify"}
                     </Button>
                   {:else}
-                    <span class="text-xs text-muted-foreground">—</span>
+                    <a
+                      href="/console/automation?tab=rules&controlId={encodeURIComponent(control.id)}&framework={encodeURIComponent(control.framework)}"
+                      class="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                      title="Auto-create a compliance rule for {control.id}"
+                    >
+                      <Play size={11} />
+                      Create Rule
+                    </a>
                   {/if}
                 </td>
               </tr>

@@ -51,10 +51,28 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
-  await db
-    .prepare(`DELETE FROM console_users WHERE tenant_id = ?`)
-    .bind(params.id)
-    .run();
+  // Delete all tenant-scoped data before removing the tenant row
+  const tenantScoped = [
+    "audit_log",
+    "automation_executions",
+    "automation_rules",
+    "compliance_evidence",
+    "compliance_scores",
+    "console_user_roles",
+    "console_users",
+    "directory_groups",
+    "directory_memberships",
+    "directory_users",
+    "group_app_mappings",
+    "integrations",
+    "tenant_preferences",
+  ];
+  for (const table of tenantScoped) {
+    await db
+      .prepare(`DELETE FROM ${table} WHERE tenant_id = ?`)
+      .bind(params.id)
+      .run();
+  }
 
   await db.prepare(`DELETE FROM tenants WHERE id = ?`).bind(params.id).run();
 
