@@ -86,6 +86,7 @@
   let controls: Control[] = [];
   let scores: FrameworkScore[] = [];
   let evidenceCounts: Record<string, number> = {};
+  let rawCdtCounts: Record<string, number> = {};
   let activeTab: "overview" | "controls" | "evidence" = "overview";
   let filterFramework = "all";
   let filterStatus = "all";
@@ -129,14 +130,13 @@
   $: controlsWithEvidence = Object.keys(evidenceCounts).length;
   $: evidenceByFramework = (() => {
     const byFw: Record<string, number> = {};
-    for (const [controlId, count] of Object.entries(evidenceCounts)) {
-      // Derive framework from the control ID prefix pattern (CDT IDs)
+    for (const [controlId, count] of Object.entries(rawCdtCounts)) {
       let fw = "Other";
-      if (controlId.startsWith("CC") || controlId.startsWith("cc") || controlId.startsWith("soc2")) fw = "SOC2";
-      else if (controlId.startsWith("A.") || controlId.startsWith("iso27001")) fw = "ISO27001";
-      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.") || controlId.startsWith("nist")) fw = "NIST CSF";
-      else if (controlId.startsWith("164.") || controlId.startsWith("hipaa")) fw = "HIPAA";
-      else if (controlId.startsWith("Art.") || controlId.startsWith("gdpr")) fw = "GDPR";
+      if (controlId.startsWith("CC") || controlId.startsWith("cc")) fw = "SOC2";
+      else if (controlId.startsWith("A.")) fw = "ISO27001";
+      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.") || controlId.startsWith("ID.")) fw = "NIST CSF";
+      else if (controlId.startsWith("164.")) fw = "HIPAA";
+      else if (controlId.startsWith("Art.")) fw = "GDPR";
       byFw[fw] = (byFw[fw] || 0) + count;
     }
     return byFw;
@@ -307,6 +307,7 @@
       frameworks = data.frameworks || [];
       controls = data.controls || [];
       evidenceCounts = data.evidenceCounts || {};
+      rawCdtCounts = data.rawCdtCounts || {};
       totalEvidenceFromDb = data.totalEvidenceCount || 0;
       frameworksConfigured = data.frameworksConfigured !== false;
     } catch (e: any) {
