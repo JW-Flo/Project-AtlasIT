@@ -14,20 +14,22 @@ export async function writeAudit(db: any, entry: AuditEntry): Promise<void> {
   const now = new Date().toISOString();
   try {
     const id = crypto.randomUUID();
+    // Column names must match migrations/0006_audit_log.sql schema:
+    // actor_id, actor_type, resource_type, resource_id, details (with 's')
     await db
       .prepare(
-        `INSERT INTO audit_log (id, tenant_id, actor_user_id, actor_email, action, target_type, target_id, detail, created_at)
+        `INSERT INTO audit_log (id, tenant_id, actor_id, actor_type, action, resource_type, resource_id, details, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         entry.tenantId,
         entry.actorUserId,
-        entry.actorEmail,
+        "user",
         entry.action,
         entry.targetType,
         entry.targetId ?? null,
-        entry.detail ?? null,
+        JSON.stringify({ actorEmail: entry.actorEmail, detail: entry.detail }),
         now,
       )
       .run();
