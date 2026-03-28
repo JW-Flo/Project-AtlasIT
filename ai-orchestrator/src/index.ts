@@ -25,6 +25,7 @@ import {
   collectPlatformStateEvidence,
   analyzeComplianceGaps,
   detectComplianceDrift,
+  detectRiskAnomalies,
 } from "@atlasit/shared";
 import type { DriftEvent } from "@atlasit/shared";
 
@@ -608,6 +609,30 @@ const worker = {
               } catch {
                 // duplicate or schema not ready
               }
+            }
+          }
+
+          // Run anomaly detection
+          const anomalies = await detectRiskAnomalies(sharedDb, row.id);
+          for (const anomaly of anomalies) {
+            try {
+              await sharedDb
+                .prepare(
+                  `INSERT OR IGNORE INTO compliance_insights (id, tenant_id, insight_type, severity, category, data, created_at)
+                   VALUES (?, ?, 'anomaly', ?, ?, ?, ?)`,
+                )
+                .bind(
+                  crypto.randomUUID(),
+                  row.id,
+                  anomaly.severity,
+                  anomaly.anomalyType,
+                  JSON.stringify(anomaly),
+                  anomaly.detectedAt,
+                )
+                .run();
+              written++;
+            } catch {
+              // duplicate or schema not ready
             }
           }
 
