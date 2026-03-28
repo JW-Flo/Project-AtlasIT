@@ -50,9 +50,14 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controls = buildDefaultControls(frameworks);
   }
 
-  // Fetch evidence counts per control for coverage indicators
+  // Filter controls to only include those for the tenant's selected frameworks
+  const frameworkSet = new Set(frameworks);
+  const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
+
+  // Fetch evidence counts per control, filtered to only the tenant's selected controls
   const evidenceCounts: Record<string, number> = {};
   try {
+    const scopedControlIds = new Set(scopedControls.map((c) => c.id));
     const { results: rows } = await db
       .prepare(
         `SELECT control_id, COUNT(*) as count
@@ -63,15 +68,13 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .bind(user.tenantId)
       .all<{ control_id: string; count: number }>();
     for (const row of rows ?? []) {
-      evidenceCounts[row.control_id] = row.count;
+      if (scopedControlIds.has(row.control_id)) {
+        evidenceCounts[row.control_id] = row.count;
+      }
     }
   } catch {
     // compliance_evidence table may not exist yet — return empty counts
   }
-
-  // Filter controls to only include those for the tenant's selected frameworks
-  const frameworkSet = new Set(frameworks);
-  const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
 
   return json({ frameworks, controls: scopedControls, evidenceCounts, frameworksConfigured });
 };

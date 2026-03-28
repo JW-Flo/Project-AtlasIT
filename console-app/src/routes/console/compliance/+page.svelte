@@ -445,8 +445,12 @@
   let recordingEvidence = false;
   let newEvidenceDescription = "";
   let newEvidencePack = "manual";
+  let newEvidenceFile: File | null = null;
+  let newEvidenceControlId = "";
+  let newEvidenceAppId = "";
   let linkingEvidenceId: number | string | null = null;
   let linkControlKey = "";
+  let connectedApps: Array<{ id: string; connected: boolean }> = [];
 
   // Derive linkable controls from the tenant's actual loaded controls
   $: INTERNAL_CONTROLS = controls.map((c) => ({
@@ -475,28 +479,66 @@
     }
   }
 
+  function handleFileSelect(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    newEvidenceFile = input.files?.[0] ?? null;
+  }
+
   async function recordEvidence() {
-    if (!newEvidenceDescription.trim()) return;
+    if (!newEvidenceDescription.trim() && !newEvidenceFile) return;
     recordingEvidence = true;
     try {
+      let fileData: string | null = null;
+      let fileName: string | null = null;
+      let fileSize: number | null = null;
+      let fileType: string | null = null;
+
+      if (newEvidenceFile) {
+        const buf = await newEvidenceFile.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        fileData = btoa(binary);
+        fileName = newEvidenceFile.name;
+        fileSize = newEvidenceFile.size;
+        fileType = newEvidenceFile.type || "application/octet-stream";
+      }
+
+      const payloadObj: Record<string, unknown> = { description: newEvidenceDescription };
+      if (fileData) {
+        payloadObj.file = { name: fileName, size: fileSize, type: fileType, data: fileData };
+      }
+      if (newEvidenceControlId) {
+        const ctrl = INTERNAL_CONTROLS.find((c) => c.key === newEvidenceControlId);
+        payloadObj.controlId = newEvidenceControlId;
+        if (ctrl) payloadObj.framework = ctrl.framework;
+      }
+      if (newEvidenceAppId) {
+        payloadObj.appId = newEvidenceAppId;
+      }
+
       const encoder = new TextEncoder();
-      const data = encoder.encode(newEvidenceDescription);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashInput = encoder.encode(newEvidenceDescription + (fileName || ""));
+      const hashBuffer = await crypto.subtle.digest("SHA-256", hashInput);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      payloadObj.hash = hashHex;
 
       const res = await fetch("/api/tenant-compliance/evidence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          payload: { description: newEvidenceDescription, hash: hashHex },
+          payload: payloadObj,
           pack: newEvidencePack,
-          subject: "manual-upload",
+          subject: newEvidenceAppId || "manual-upload",
         }),
       });
       if (!res.ok) throw new Error(`Failed to record evidence (${res.status})`);
-      pushToast({ message: "Evidence recorded", variant: "success" });
+      pushToast({ message: "Evidence recorded" + (fileName ? ` (${fileName})` : ""), variant: "success" });
       newEvidenceDescription = "";
+      newEvidenceFile = null;
+      newEvidenceControlId = "";
+      newEvidenceAppId = "";
       showRecordForm = false;
       await loadEvidence();
     } catch (e: any) {
@@ -687,10 +729,21 @@
     loadEvidence();
   }
 
+  async function loadConnectedApps() {
+    try {
+      const res = await fetch("/api/apps/status");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.applications || []).filter((a: any) => a.connected);
+      }
+    } catch {}
+  }
+
   onMount(() => {
     loadData();
     loadEvidence();
     loadTenantTags();
+    loadConnectedApps();
     // Auto-evaluate configuration on page load (non-blocking, silent)
     runEvaluation().catch(() => {});
   });
@@ -1177,38 +1230,59 @@
                 </tr>
               {/if}
               {#if expandedControlId === control.id}
-                <tr class="bg-muted/20">
-                  <td colspan="7" class="px-4 py-3">
+                <tr class="bg-muted/20 border-l-4 border-l-primary/40">
+                  <td colspan="7" class="px-4 py-4">
+                    <div class="flex items-center justify-between mb-3">
+                      <h4 class="text-sm font-semibold flex items-center gap-2">
+                        <FileText class="h-4 w-4 text-primary" />
+                        Evidence for {control.id}
+                      </h4>
+                      <div class="flex items-center gap-2">
+                        <button
+                          class="text-xs text-primary hover:underline font-medium"
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; activeTab = "evidence"; }}
+                        >
+                          + Add evidence
+                        </button>
+                        <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline">View full feed →</a>
+                      </div>
+                    </div>
                     {#if controlEvidenceLoading}
-                      <div class="text-xs text-muted-foreground py-2">Loading evidence...</div>
+                      <div class="space-y-2">
+                        <Skeleton class="h-10 rounded" />
+                        <Skeleton class="h-10 rounded" />
+                      </div>
                     {:else if controlEvidence.length === 0}
-                      <div class="text-xs text-muted-foreground py-2">No evidence found for this control. Evidence is collected automatically from lifecycle events.</div>
+                      <div class="rounded-lg border border-dashed bg-background px-4 py-6 text-center">
+                        <Upload class="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                        <p class="text-xs text-muted-foreground">No evidence found for this control.</p>
+                        <button
+                          class="text-xs text-primary hover:underline mt-1 font-medium"
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; activeTab = "evidence"; }}
+                        >
+                          Upload evidence now
+                        </button>
+                      </div>
                     {:else}
-                      <div class="text-xs font-medium text-muted-foreground mb-2">{controlEvidence.length} evidence item{controlEvidence.length !== 1 ? 's' : ''} for {control.id}</div>
-                      <div class="space-y-1.5">
+                      <div class="rounded-lg border bg-background divide-y">
                         {#each controlEvidence as ev}
-                          <div class="flex items-center justify-between gap-3 rounded border bg-background px-3 py-2">
-                            <div>
-                              <span class="text-xs font-medium">{ev.eventType || ev.source}</span>
-                              <span class="text-[11px] text-muted-foreground ml-2">{ev.actor || "system"}</span>
+                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                            <div class="min-w-0">
+                              <div class="flex items-center gap-2">
+                                <span class="text-xs font-medium">{ev.eventType || ev.source}</span>
+                                <span class="text-[11px] text-muted-foreground">{ev.actor || "system"}</span>
+                              </div>
                               {#if ev.reasoning}
-                                <div class="text-[11px] text-muted-foreground mt-0.5">{ev.reasoning}</div>
+                                <p class="text-[11px] text-muted-foreground mt-0.5 truncate">{ev.reasoning}</p>
                               {/if}
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
                               <Badge variant={evidenceImpactVariant(ev.impact)}>{ev.impact}</Badge>
-                              <span class="text-[10px] text-muted-foreground">{new Date(ev.createdAt).toLocaleDateString()}</span>
+                              <span class="text-[10px] text-muted-foreground whitespace-nowrap">{new Date(ev.createdAt).toLocaleDateString()}</span>
                             </div>
                           </div>
                         {/each}
                       </div>
-                      <button
-                        class="text-xs text-primary hover:underline mt-2 inline-block mr-4"
-                        on:click|stopPropagation={() => { showRecordForm = true; activeTab = "evidence"; }}
-                      >
-                        + Add evidence for this control
-                      </button>
-                      <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline mt-2 inline-block">View all evidence for this control →</a>
                     {/if}
                   </td>
                 </tr>
@@ -1237,6 +1311,19 @@
         </CardHeader>
         <CardContent class="space-y-3">
           <div class="space-y-1.5">
+            <Label htmlFor="ev-file">File Attachment</Label>
+            <input
+              id="ev-file"
+              type="file"
+              on:change={handleFileSelect}
+              accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.doc,.docx,.txt,.json,.xml,.zip"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
+            />
+            {#if newEvidenceFile}
+              <p class="text-xs text-muted-foreground">{newEvidenceFile.name} ({(newEvidenceFile.size / 1024).toFixed(1)} KB)</p>
+            {/if}
+          </div>
+          <div class="space-y-1.5">
             <Label htmlFor="ev-desc">Description</Label>
             <textarea
               id="ev-desc"
@@ -1246,21 +1333,49 @@
               class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
             ></textarea>
           </div>
-          <div class="space-y-1.5">
-            <Label htmlFor="ev-pack">Evidence Pack</Label>
-            <select
-              id="ev-pack"
-              bind:value={newEvidencePack}
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="manual">Manual Upload</option>
-              <option value="access-review">Access Review</option>
-              <option value="config-snapshot">Configuration Snapshot</option>
-              <option value="audit-log">Audit Log</option>
-              <option value="policy-doc">Policy Document</option>
-            </select>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-pack">Evidence Pack</Label>
+              <select
+                id="ev-pack"
+                bind:value={newEvidencePack}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="manual">Manual Upload</option>
+                <option value="access-review">Access Review</option>
+                <option value="config-snapshot">Configuration Snapshot</option>
+                <option value="audit-log">Audit Log</option>
+                <option value="policy-doc">Policy Document</option>
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-control">Link to Control</Label>
+              <select
+                id="ev-control"
+                bind:value={newEvidenceControlId}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">None</option>
+                {#each INTERNAL_CONTROLS as ctrl}
+                  <option value={ctrl.key}>{ctrl.key} — {ctrl.title}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-app">Link to Application</Label>
+              <select
+                id="ev-app"
+                bind:value={newEvidenceAppId}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">None</option>
+                {#each connectedApps as app}
+                  <option value={app.id}>{app.id}</option>
+                {/each}
+              </select>
+            </div>
           </div>
-          <Button variant="success" size="sm" on:click={recordEvidence} disabled={recordingEvidence || !newEvidenceDescription.trim()}>
+          <Button variant="success" size="sm" on:click={recordEvidence} disabled={recordingEvidence || (!newEvidenceDescription.trim() && !newEvidenceFile)}>
             {recordingEvidence ? "Recording..." : "Submit Evidence"}
           </Button>
         </CardContent>
@@ -1326,10 +1441,19 @@
                           bind:value={linkControlKey}
                           class="h-7 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                         >
-                          <option value="">Select control...</option>
-                          {#each INTERNAL_CONTROLS as ctrl}
-                            <option value={ctrl.key}>{ctrl.key} - {ctrl.title}</option>
-                          {/each}
+                          <option value="">Select control or app...</option>
+                          <optgroup label="Controls">
+                            {#each INTERNAL_CONTROLS as ctrl}
+                              <option value={ctrl.key}>{ctrl.key} — {ctrl.title}</option>
+                            {/each}
+                          </optgroup>
+                          {#if connectedApps.length > 0}
+                            <optgroup label="Connected Applications">
+                              {#each connectedApps as app}
+                                <option value="app:{app.id}">{app.id}</option>
+                              {/each}
+                            </optgroup>
+                          {/if}
                         </select>
                         <Button size="sm" variant="default" on:click={() => linkEvidence(item.id)} disabled={!linkControlKey}>Link</Button>
                         <Button size="sm" variant="ghost" on:click={() => { linkingEvidenceId = null; linkControlKey = ""; }}>Cancel</Button>
