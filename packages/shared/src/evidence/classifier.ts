@@ -35,6 +35,7 @@ export type EvidenceCategory =
   | "compliance_check"
   | "workflow_execution"
   | "nhi_lifecycle"
+  | "shadow_discovery"
   | "audit_log";
 
 export interface ControlClassification {
@@ -1184,6 +1185,150 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
         confidence: 0.9,
         category: "nhi_lifecycle",
         reasoning: "Entity authentication credentials cleaned up during offboarding",
+      },
+    ],
+  },
+
+  // ── Shadow AI & SaaS Discovery ─────────────────────────────────────────
+  {
+    eventPattern: "discovery.app.found",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.6",
+        controlName: "Unapproved app detected",
+        impact: "detrimental",
+        confidence: 0.8,
+        category: "shadow_discovery",
+        reasoning: "Unapproved application discovered via OAuth grant analysis",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.1.2",
+        controlName: "Unauthorized network service access",
+        impact: "detrimental",
+        confidence: 0.8,
+        category: "shadow_discovery",
+        reasoning: "Unauthorized service access detected — not in approved catalog",
+      },
+    ],
+  },
+  {
+    eventPattern: "discovery.ai_tool.found",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.6",
+        controlName: "Unapproved AI tool detected",
+        impact: "detrimental",
+        confidence: 0.9,
+        category: "shadow_discovery",
+        reasoning: "Unapproved AI/LLM tool detected — potential data exfiltration risk",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.1.2",
+        controlName: "Unauthorized AI service access",
+        impact: "detrimental",
+        confidence: 0.9,
+        category: "shadow_discovery",
+        reasoning: "Unauthorized AI service access — corporate data may flow to external LLM",
+      },
+      {
+        framework: "GDPR",
+        controlId: "Art.5(1)(f)",
+        controlName: "Data confidentiality — AI tool risk",
+        impact: "detrimental",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "Corporate data may be processed by unapproved AI — confidentiality risk",
+      },
+      {
+        framework: "NIST_CSF",
+        controlId: "PR.DS-5",
+        controlName: "Data leak prevention — AI tools",
+        impact: "detrimental",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "Data flow to unapproved AI tool violates data leak prevention controls",
+      },
+    ],
+  },
+  {
+    eventPattern: "discovery.high_risk_grant",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.1",
+        controlName: "Overprivileged OAuth grant",
+        impact: "detrimental",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "OAuth grant with high-risk scopes (mail, drive, admin) to unapproved app",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.2.3",
+        controlName: "Excessive privilege via OAuth",
+        impact: "detrimental",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "OAuth grant provides excessive privileges to third-party application",
+      },
+      {
+        framework: "HIPAA",
+        controlId: "164.312(a)(1)",
+        controlName: "Access control — broad OAuth grant",
+        impact: "detrimental",
+        confidence: 0.8,
+        category: "shadow_discovery",
+        reasoning: "Broad OAuth grant may expose PHI to unauthorized third-party service",
+      },
+    ],
+  },
+  {
+    eventPattern: "discovery.app.approved",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.6",
+        controlName: "App approved after review",
+        impact: "positive",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "Previously unknown app reviewed and approved — boundary protection maintained",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.1.2",
+        controlName: "Service access authorized",
+        impact: "positive",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "Network service access formally authorized after discovery review",
+      },
+    ],
+  },
+  {
+    eventPattern: "discovery.app.blocked",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.6",
+        controlName: "Unapproved app blocked",
+        impact: "positive",
+        confidence: 0.9,
+        category: "shadow_discovery",
+        reasoning: "Unapproved application blocked — system boundary protection enforced",
+      },
+      {
+        framework: "GDPR",
+        controlId: "Art.5(1)(f)",
+        controlName: "Data protection — app blocked",
+        impact: "positive",
+        confidence: 0.85,
+        category: "shadow_discovery",
+        reasoning: "Unauthorized data processor blocked — integrity and confidentiality maintained",
       },
     ],
   },
