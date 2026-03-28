@@ -54,10 +54,11 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const frameworkSet = new Set(frameworks);
   const scopedControls = controls!.filter((c) => frameworkSet.has(c.framework));
 
-  // Fetch evidence counts per control, filtered to only the tenant's selected controls
+  // Fetch evidence counts per control — include ALL control IDs from compliance_evidence
+  // (CDT uses granular IDs like CC6.1, A.9.2.2 while simplified controls use soc2_access_control)
   const evidenceCounts: Record<string, number> = {};
+  let totalEvidenceCount = 0;
   try {
-    const scopedControlIds = new Set(scopedControls.map((c) => c.id));
     const { results: rows } = await db
       .prepare(
         `SELECT control_id, COUNT(*) as count
@@ -68,15 +69,14 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       .bind(user.tenantId)
       .all<{ control_id: string; count: number }>();
     for (const row of rows ?? []) {
-      if (scopedControlIds.has(row.control_id)) {
-        evidenceCounts[row.control_id] = row.count;
-      }
+      evidenceCounts[row.control_id] = row.count;
+      totalEvidenceCount += row.count;
     }
   } catch {
     // compliance_evidence table may not exist yet — return empty counts
   }
 
-  return json({ frameworks, controls: scopedControls, evidenceCounts, frameworksConfigured });
+  return json({ frameworks, controls: scopedControls, evidenceCounts, totalEvidenceCount, frameworksConfigured });
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {

@@ -90,6 +90,7 @@
   let filterFramework = "all";
   let filterStatus = "all";
   let frameworksConfigured = true;
+  let totalEvidenceFromDb = 0;
   let history: FrameworkHistory[] = [];
   let historyError: string | null = null;
   let evidenceFeedSummary: EvidenceFeedSummary = {
@@ -129,13 +130,13 @@
   $: evidenceByFramework = (() => {
     const byFw: Record<string, number> = {};
     for (const [controlId, count] of Object.entries(evidenceCounts)) {
-      // Derive framework from the control ID prefix pattern
+      // Derive framework from the control ID prefix pattern (CDT IDs)
       let fw = "Other";
-      if (controlId.startsWith("CC") || controlId.startsWith("cc")) fw = "SOC2";
-      else if (controlId.startsWith("A.")) fw = "ISO27001";
-      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.")) fw = "NIST CSF";
-      else if (controlId.startsWith("164.")) fw = "HIPAA";
-      else if (controlId.startsWith("Art.")) fw = "GDPR";
+      if (controlId.startsWith("CC") || controlId.startsWith("cc") || controlId.startsWith("soc2")) fw = "SOC2";
+      else if (controlId.startsWith("A.") || controlId.startsWith("iso27001")) fw = "ISO27001";
+      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.") || controlId.startsWith("nist")) fw = "NIST CSF";
+      else if (controlId.startsWith("164.") || controlId.startsWith("hipaa")) fw = "HIPAA";
+      else if (controlId.startsWith("Art.") || controlId.startsWith("gdpr")) fw = "GDPR";
       byFw[fw] = (byFw[fw] || 0) + count;
     }
     return byFw;
@@ -306,6 +307,7 @@
       frameworks = data.frameworks || [];
       controls = data.controls || [];
       evidenceCounts = data.evidenceCounts || {};
+      totalEvidenceFromDb = data.totalEvidenceCount || 0;
       frameworksConfigured = data.frameworksConfigured !== false;
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
@@ -444,6 +446,11 @@
   let evidenceItems: EvidenceItem[] = [];
   let evidenceLoading = false;
   let evidenceError: string | null = null;
+  let evidencePageSize = 20;
+  let evidenceCursor: string | null = null;
+  let evidenceNextCursor: string | null = null;
+  let evidencePrevCursors: string[] = [];
+  let evidenceTotalCount = 0;
   let showRecordForm = false;
   let recordingEvidence = false;
   let newEvidenceDescription = "";
@@ -475,19 +482,46 @@
     return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
   }
 
-  async function loadEvidence() {
+  async function loadEvidence(cursor?: string | null) {
     evidenceLoading = true;
     evidenceError = null;
     try {
-      const res = await fetch("/api/tenant-compliance/evidence");
+      const params = new URLSearchParams({ limit: String(evidencePageSize) });
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`/api/tenant-compliance/evidence?${params}`);
       if (!res.ok) throw new Error(`Failed to load evidence (${res.status})`);
       const data = await res.json();
       evidenceItems = data.items || [];
+      evidenceNextCursor = data.nextCursor || data.cursor || null;
+      evidenceTotalCount = data.total ?? evidenceItems.length;
     } catch (e: any) {
       evidenceError = e?.message || "Failed to load evidence";
     } finally {
       evidenceLoading = false;
     }
+  }
+
+  function evidenceNextPage() {
+    if (!evidenceNextCursor) return;
+    evidencePrevCursors = [...evidencePrevCursors, evidenceCursor || ""];
+    evidenceCursor = evidenceNextCursor;
+    loadEvidence(evidenceCursor);
+  }
+
+  function evidencePrevPage() {
+    if (evidencePrevCursors.length === 0) return;
+    const prev = evidencePrevCursors[evidencePrevCursors.length - 1];
+    evidencePrevCursors = evidencePrevCursors.slice(0, -1);
+    evidenceCursor = prev || null;
+    loadEvidence(evidenceCursor);
+  }
+
+  function changeEvidencePageSize(size: number) {
+    evidencePageSize = size;
+    evidenceCursor = null;
+    evidenceNextCursor = null;
+    evidencePrevCursors = [];
+    loadEvidence();
   }
 
   function handleFileSelect(e: Event) {
@@ -1100,15 +1134,15 @@
 
   {:else if activeTab === "controls"}
     <!-- Evidence coverage summary -->
-    {#if totalEvidenceItems > 0}
+    {#if totalEvidenceFromDb > 0}
       <div class="mb-4 rounded-lg border bg-card p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-6">
             <div class="flex items-center gap-2">
               <ShieldCheck class="h-4 w-4 text-green-500" />
-              <span class="text-sm font-medium">{controlsWithEvidence} controls with evidence</span>
+              <span class="text-sm font-medium">{Object.keys(evidenceCounts).length} controls with evidence</span>
             </div>
-            <span class="text-sm text-muted-foreground">{totalEvidenceItems} total evidence items</span>
+            <span class="text-sm text-muted-foreground">{totalEvidenceFromDb} total evidence items</span>
             {#each Object.entries(evidenceByFramework) as [fw, count]}
               <Badge variant="outline">{fw}: {count}</Badge>
             {/each}
@@ -1124,7 +1158,7 @@
 
     <!-- Evidence coverage count -->
     <p class="text-sm text-muted-foreground mb-3">
-      {controlsWithEvidence} of {controls.length} controls have evidence
+      {Object.keys(evidenceCounts).length} of {controls.length} controls have evidence
     </p>
 
     <!-- Controls tab -->
@@ -1520,6 +1554,31 @@
           </table>
         </CardContent>
       </Card>
+
+      <!-- Pagination controls -->
+      <div class="flex items-center justify-between mt-4">
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted-foreground">Rows per page:</span>
+          {#each [20, 50, 100] as size}
+            <button
+              type="button"
+              class="px-2 py-1 text-sm rounded-md border {evidencePageSize === size ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background hover:bg-muted'}"
+              on:click={() => changeEvidencePageSize(size)}
+            >{size}</button>
+          {/each}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted-foreground">
+            Showing {groupedEvidenceItems.length} items{evidenceTotalCount > 0 ? ` of ${evidenceTotalCount}` : ""}
+          </span>
+          <Button size="sm" variant="outline" disabled={evidencePrevCursors.length === 0} on:click={evidencePrevPage}>
+            Previous
+          </Button>
+          <Button size="sm" variant="outline" disabled={!evidenceNextCursor} on:click={evidenceNextPage}>
+            Next
+          </Button>
+        </div>
+      </div>
     {/if}
   {/if}
 </div>
