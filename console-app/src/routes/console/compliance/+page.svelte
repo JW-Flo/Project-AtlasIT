@@ -409,6 +409,23 @@
     verifyNotes = "";
   }
 
+  // CDT prefix mapping — imported logic for evidence drill-down
+  const CDT_PREFIXES: Record<string, string[]> = {
+    soc2_access_control: ["CC6"], soc2_change_management: ["CC8"],
+    soc2_incident_response: ["CC7"], soc2_risk_assessment: ["CC3", "CC4"],
+    soc2_vendor_management: ["CC9"],
+    iso27001_information_security_policy: ["A.5", "A.6"],
+    iso27001_asset_management: ["A.7", "A.8"], iso27001_access_control: ["A.9"],
+    iso27001_cryptography: ["A.10"], iso27001_physical_security: ["A.11"],
+    "nist_csf_identify": ["ID"], "nist_csf_protect": ["PR"],
+    "nist_csf_detect": ["DE"], "nist_csf_respond": ["RS"], "nist_csf_recover": ["RC"],
+    hipaa_privacy_rule: ["164.502", "164.514"], hipaa_security_rule: ["164.312"],
+    hipaa_breach_notification: ["164.404", "164.408"], hipaa_administrative_safeguards: ["164.308"],
+    gdpr_data_mapping: ["Art.30"], gdpr_consent_management: ["Art.7"],
+    gdpr_data_subject_rights: ["Art.15", "Art.17"], gdpr_dpo_appointment: ["Art.37"],
+    gdpr_breach_notification: ["Art.33", "Art.34"],
+  };
+
   async function toggleControlEvidence(controlId: string, framework: string) {
     if (expandedControlId === controlId) {
       expandedControlId = null;
@@ -418,7 +435,11 @@
     expandedControlId = controlId;
     controlEvidenceLoading = true;
     try {
-      const params = new URLSearchParams({ controlId, framework, limit: "10" });
+      const prefixes = CDT_PREFIXES[controlId];
+      const params = new URLSearchParams({ controlId, framework, limit: "20" });
+      if (prefixes) {
+        params.set("controlPrefixes", prefixes.join(","));
+      }
       const res = await fetch(`/api/evidence-feed?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -1296,7 +1317,7 @@
                     <div class="flex items-center justify-between mb-3">
                       <h4 class="text-sm font-semibold flex items-center gap-2">
                         <FileText class="h-4 w-4 text-primary" />
-                        Evidence for {control.id}
+                        Evidence for {control.name} ({control.framework})
                       </h4>
                       <div class="flex items-center gap-2">
                         <button

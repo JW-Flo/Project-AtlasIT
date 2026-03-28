@@ -111,8 +111,20 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     params.push(...tenantFrameworks);
   }
   if (controlId) {
-    conditions.push("ce.control_id = ?");
-    params.push(controlId);
+    // Support comma-separated CDT prefixes (e.g. "CC6,CC7") for prefix matching,
+    // or exact control ID match for direct CDT IDs (e.g. "CC6.1")
+    const prefixes = url.searchParams.get("controlPrefixes");
+    if (prefixes) {
+      const prefixList = prefixes.split(",").map((p) => p.trim()).filter(Boolean);
+      if (prefixList.length > 0) {
+        const likeClauses = prefixList.map(() => "ce.control_id LIKE ?");
+        conditions.push(`(${likeClauses.join(" OR ")})`);
+        params.push(...prefixList.map((p) => `${p}%`));
+      }
+    } else {
+      conditions.push("ce.control_id = ?");
+      params.push(controlId);
+    }
   }
   if (category) {
     conditions.push("ce.evidence_type = ?");
