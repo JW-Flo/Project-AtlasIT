@@ -1473,6 +1473,59 @@
         {/if}
       </div>
 
+      <!-- Trigger Context — who was affected and why -->
+      {#if selectedExecution.triggerEvent && Object.keys(selectedExecution.triggerEvent).length > 0}
+        {@const te = selectedExecution.triggerEvent}
+        <div class="mb-4 rounded-md border bg-muted/30 p-3 space-y-1.5">
+          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Trigger Context</div>
+          {#if te.email || te.userEmail}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">User:</span>
+              <span class="font-medium">{te.displayName || te.userName || te.email || te.userEmail}</span>
+              {#if te.email || te.userEmail}
+                <span class="text-xs text-muted-foreground">({te.email || te.userEmail})</span>
+              {/if}
+            </div>
+          {/if}
+          {#if te.department}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">Department:</span>
+              <span>{te.department}</span>
+            </div>
+          {/if}
+          {#if te.groupName || te.group}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">Group:</span>
+              <span>{te.groupName || te.group}</span>
+            </div>
+          {/if}
+          {#if te.appId || te.appName}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">App:</span>
+              <span>{te.appName || te.appId}</span>
+            </div>
+          {/if}
+          {#if te.reason || te.source}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">{te.reason ? "Reason:" : "Source:"}</span>
+              <span>{te.reason || te.source}</span>
+            </div>
+          {/if}
+          {#if te.initiatedBy || te.actor || te.actorEmail}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">Initiated by:</span>
+              <span>{te.initiatedBy || te.actor || te.actorEmail}</span>
+            </div>
+          {/if}
+          {#if te.eventType}
+            <div class="flex items-center gap-2 text-sm">
+              <span class="text-muted-foreground">Event:</span>
+              <span>{triggerLabel(te.eventType)}</span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
       <!-- Status + Timing -->
       <div class="grid grid-cols-2 gap-3 mb-4">
         <div>
@@ -1507,6 +1560,16 @@
                   </div>
                   {#if result.message}
                     <div class="text-xs text-muted-foreground mt-1">{result.message}</div>
+                  {/if}
+                  {#if result.details && Object.keys(result.details).length > 0}
+                    <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                      {#each Object.entries(result.details).filter(([k]) => k !== 'triggerPayload') as [key, val]}
+                        <span class="text-[11px]">
+                          <span class="text-muted-foreground">{key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}:</span>
+                          <span class="font-medium">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span>
+                        </span>
+                      {/each}
+                    </div>
                   {/if}
                 </CardContent>
               </Card>
