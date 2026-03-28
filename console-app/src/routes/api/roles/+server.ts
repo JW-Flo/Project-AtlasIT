@@ -74,7 +74,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       id,
       tenantId,
       name,
-      description ?? null,
+      description ?? "",
       parentId ?? null,
       level ?? 0,
       metadata ? JSON.stringify(metadata) : null,

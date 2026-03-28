@@ -285,7 +285,7 @@
         }),
       });
       if (res.ok) {
-        pushToast({ type: "success", message: `Role "${newRoleName}" created` });
+        pushToast({ variant: "success", message: `Role "${newRoleName}" created` });
         showCreateRole = false;
         newRoleName = "";
         newRoleDescription = "";
@@ -294,10 +294,10 @@
         await fetchRoles();
       } else {
         const data = await res.json();
-        pushToast({ type: "error", message: data.error || "Failed to create role" });
+        pushToast({ variant: "error", message: data.error || "Failed to create role" });
       }
     } catch {
-      pushToast({ type: "error", message: "Failed to create role" });
+      pushToast({ variant: "error", message: "Failed to create role" });
     }
     creatingRole = false;
   }
