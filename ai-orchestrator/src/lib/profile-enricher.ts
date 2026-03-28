@@ -61,8 +61,30 @@ export async function enrichUserProfile(
   const groups = (memberRows ?? []).map((r) => r.groupName);
   const groupIds = (memberRows ?? []).map((r) => r.groupId);
 
-  // 4. Load app access from group_app_mappings
+  // 4. Load app access from group_app_mappings (legacy) + role_app_entitlements (new)
   let appAccess: CanonicalUserProfile["appAccess"] = [];
+  const seenApps = new Set<string>();
+
+  // 4a. Role-based entitlements (primary — if roles are configured)
+  try {
+    const { getUserRoleIds, resolveRoleEntitlements } = await import("@atlasit/shared");
+    const roleIds = await getUserRoleIds(db, tenantId, row.id as string, groupIds);
+    if (roleIds.length > 0) {
+      const entitlements = await resolveRoleEntitlements(db, tenantId, roleIds);
+      for (const ent of entitlements) {
+        seenApps.add(ent.appId);
+        appAccess.push({
+          appId: ent.appId,
+          role: ent.appRole,
+          groupId: ent.fromRoleId,
+        });
+      }
+    }
+  } catch {
+    // roles tables may not exist yet — fall through to legacy
+  }
+
+  // 4b. Legacy group_app_mappings (backward compat — fills gaps not covered by roles)
   if (groupIds.length > 0) {
     const placeholders = groupIds.map(() => "?").join(",");
     const { results: mappingRows } = await db
@@ -73,7 +95,13 @@ export async function enrichUserProfile(
       )
       .bind(tenantId, ...groupIds)
       .all<{ appId: string; role: string; groupId: string }>();
-    appAccess = mappingRows ?? [];
+
+    for (const mapping of mappingRows ?? []) {
+      if (!seenApps.has(mapping.appId)) {
+        seenApps.add(mapping.appId);
+        appAccess.push(mapping);
+      }
+    }
   }
 
   return {
