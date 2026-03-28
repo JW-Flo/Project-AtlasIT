@@ -43,6 +43,8 @@ routes = [
 	"www.atlasit.pro/api/trust/*",
 	"www.atlasit.pro/api/marketplace*",
 	"www.atlasit.pro/api/questionnaires*",
+	"www.atlasit.pro/api/compliance-intelligence/*",
+	"www.atlasit.pro/api/roles*",
 	"www.atlasit.pro/api/user/*",
 	"www.atlasit.pro/_app/*",
 	"www.atlasit.pro/favicon.png",
