@@ -18,12 +18,12 @@ ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 
 [[d1_databases]]
 binding = "ATLAS_SHARED_DB"
-database_name = "atlas-shared-db"
-database_id = "" # Set per environment
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 [[kv_namespaces]]
 binding = "KV_CACHE"
-id = "" # Set per environment
+id = "4f08086308004796bfd7cab01c34b006"
 
 [observability.logs]
 enabled = true

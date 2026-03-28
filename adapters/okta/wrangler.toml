@@ -10,8 +10,8 @@ ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "atlas_core_db"
-database_id = "placeholder-replace-with-actual-id"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 # Secrets (set via wrangler secret put):
 # OKTA_API_TOKEN - Okta API token (SSWS)

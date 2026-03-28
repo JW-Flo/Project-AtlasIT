@@ -10,8 +10,8 @@ ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "atlas_core_db"
-database_id = "4fb2e312-3ba5-4fa2-a91f-7275c71bea64"
+database_name = "atlasit-shared"
+database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 
 # Secrets (set via wrangler secret put):
 # GOOGLE_CLIENT_ID — Google OAuth2 client ID
