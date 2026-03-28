@@ -30,15 +30,12 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ credentials: [], total: 0 });
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   const status = url.searchParams.get("status") || "";
   const type = url.searchParams.get("type") || "";
   const provider = url.searchParams.get("provider") || "";
-  const limit = Math.min(
-    parseInt(url.searchParams.get("limit") || "100", 10),
-    500,
-  );
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10), 500);
   const offset = parseInt(url.searchParams.get("offset") || "0", 10);
 
   const conditions: string[] = ["nc.tenant_id = ?"];
@@ -62,9 +59,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const where = conditions.join(" AND ");
 
   const countRow = await db
-    .prepare(
-      `SELECT COUNT(*) as total FROM nhi_credentials nc WHERE ${where}`,
-    )
+    .prepare(`SELECT COUNT(*) as total FROM nhi_credentials nc WHERE ${where}`)
     .bind(...binds)
     .first();
 
@@ -98,9 +93,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
 
-  const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as
-    | string
-    | undefined;
+  const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
 
   if (!orchestratorUrl) {
     return json(

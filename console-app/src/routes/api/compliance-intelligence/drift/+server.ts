@@ -34,30 +34,36 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   query += " ORDER BY created_at DESC LIMIT ?";
   bindings.push(limit);
 
-  let stmt = db.prepare(query);
-  for (const b of bindings) {
-    stmt = stmt.bind(b);
-  }
+  const { results } = await db
+    .prepare(query)
+    .bind(...bindings)
+    .all<{
+      id: string;
+      tenant_id: string;
+      insight_type: string;
+      severity: string;
+      category: string | null;
+      data: string;
+      resolved_at: string | null;
+      created_at: string;
+    }>();
 
-  const { results } = await stmt.all<{
-    id: string;
-    tenant_id: string;
-    insight_type: string;
-    severity: string;
-    category: string | null;
-    data: string;
-    resolved_at: string | null;
-    created_at: string;
-  }>();
-
-  const alerts = (results ?? []).map((row) => ({
-    id: row.id,
-    severity: row.severity,
-    category: row.category,
-    data: JSON.parse(row.data),
-    resolvedAt: row.resolved_at,
-    createdAt: row.created_at,
-  }));
+  const alerts = (results ?? []).map((row) => {
+    let data: unknown = {};
+    try {
+      data = JSON.parse(row.data);
+    } catch {
+      /* malformed JSON */
+    }
+    return {
+      id: row.id,
+      severity: row.severity,
+      category: row.category,
+      data,
+      resolvedAt: row.resolved_at,
+      createdAt: row.created_at,
+    };
+  });
 
   return json({ tenantId, alerts, total: alerts.length });
 };

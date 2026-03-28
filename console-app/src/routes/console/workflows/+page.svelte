@@ -778,9 +778,7 @@
           {/each}
         {/if}
       </div>
-    {/if}
-
-    {#if activeTab === "pipeline"}
+    {:else if activeTab === "pipeline"}
       <!-- User-centric pipeline view -->
       <div class="space-y-4">
         <div class="flex flex-wrap items-end gap-3">

@@ -51,11 +51,98 @@
   let driftAlerts: DriftAlert[] = [];
   let anomalies: RiskAnomaly[] = [];
   let activeTab: "gaps" | "drift" | "anomalies" = "gaps";
+  let connectedAdapters: Set<string> = new Set();
+  let collectingGap: string | null = null;
+
+  // Map control IDs to adapter slugs that can provide evidence
+  const CONTROL_TO_ADAPTER: Record<string, { slug: string; name: string; type: string }[]> = {
+    "CC6.1": [
+      { slug: "okta", name: "Okta", type: "MFA policy" },
+      { slug: "google-workspace", name: "Google Workspace", type: "2-Step Verification" },
+      { slug: "microsoft-365", name: "Microsoft 365", type: "MFA enforcement" },
+      { slug: "aws", name: "AWS", type: "IAM MFA" },
+    ],
+    "CC6.6": [
+      { slug: "google-workspace", name: "Google Workspace", type: "sharing settings" },
+      { slug: "slack", name: "Slack", type: "retention policy" },
+    ],
+    "CC6.7": [
+      { slug: "microsoft-365", name: "Microsoft 365", type: "encryption status" },
+      { slug: "aws", name: "AWS", type: "encryption at rest" },
+    ],
+    "CC7.1": [{ slug: "aws", name: "AWS", type: "CloudTrail" }],
+    "CC8.1": [{ slug: "github", name: "GitHub", type: "branch protection" }],
+    "A.9.2.1": [
+      { slug: "okta", name: "Okta", type: "password policy" },
+      { slug: "google-workspace", name: "Google Workspace", type: "SSO enforcement" },
+      { slug: "slack", name: "Slack", type: "SSO enforcement" },
+    ],
+    "A.9.4.2": [
+      { slug: "okta", name: "Okta", type: "MFA policy" },
+      { slug: "microsoft-365", name: "Microsoft 365", type: "Conditional Access" },
+    ],
+    "A.12.6.1": [{ slug: "github", name: "GitHub", type: "branch protection" }],
+  };
+
+  function getConnectedAdaptersForGap(gap: ComplianceGap): { slug: string; name: string; type: string }[] {
+    const adapters = CONTROL_TO_ADAPTER[gap.controlId] ?? [];
+    return adapters.filter((a) => connectedAdapters.has(a.slug));
+  }
+
+  async function collectEvidenceForGap(gap: ComplianceGap) {
+    const adapters = getConnectedAdaptersForGap(gap);
+    if (adapters.length === 0) return;
+    collectingGap = gap.controlId;
+    try {
+      const res = await fetch("/api/evidence-collection/collect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ controlId: gap.controlId, framework: gap.framework, adapters: adapters.map((a) => a.slug) }),
+      });
+      if (res.ok) {
+        pushToast({ type: "success", message: `Evidence collection triggered for ${gap.controlId}` });
+        await loadGaps();
+      } else {
+        pushToast({ type: "error", message: "Evidence collection failed" });
+      }
+    } catch {
+      pushToast({ type: "error", message: "Evidence collection request failed" });
+    }
+    collectingGap = null;
+  }
+
+  function enrichRecommendation(gap: ComplianceGap): string {
+    const adapters = getConnectedAdaptersForGap(gap);
+    if (adapters.length > 0) {
+      const adapterList = adapters.map((a) => `${a.name} (${a.type})`).join(", ");
+      if (gap.gapType === "missing") {
+        return `Collect ${gap.controlName} evidence from your connected ${adapterList}`;
+      }
+      if (gap.gapType === "stale") {
+        return `Re-collect ${gap.controlName} evidence from ${adapterList} — last collected ${gap.staleDays}d ago`;
+      }
+      return `Review ${gap.controlName} configuration in ${adapterList} — evidence is failing`;
+    }
+    return gap.recommendation;
+  }
 
   onMount(async () => {
-    await Promise.allSettled([loadGaps(), loadDrift(), loadAnomalies()]);
+    await Promise.allSettled([loadGaps(), loadDrift(), loadAnomalies(), loadConnectedAdapters()]);
     loading = false;
   });
+
+  async function loadConnectedAdapters() {
+    try {
+      const res = await fetch("/api/apps/status");
+      if (res.ok) {
+        const data = await res.json();
+        for (const app of data.applications ?? []) {
+          if (app.connected) connectedAdapters.add(app.id);
+        }
+        connectedAdapters = connectedAdapters; // trigger reactivity
+      }
+    } catch {}
+  }
 
   async function loadGaps() {
     try {
@@ -233,13 +320,26 @@
                         <span class="text-xs text-muted-foreground">{gap.staleDays}d since last evidence</span>
                       {/if}
                     </div>
-                    <p class="text-sm text-muted-foreground">{gap.recommendation}</p>
+                    <p class="text-sm text-muted-foreground">{enrichRecommendation(gap)}</p>
                   </div>
-                  {#if gap.suggestedAction}
-                    <Button variant="outline" size="sm" href="/console/automation">
-                      Create Rule
-                    </Button>
-                  {/if}
+                  <div class="flex flex-col gap-1 shrink-0">
+                    {#if getConnectedAdaptersForGap(gap).length > 0}
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={collectingGap === gap.controlId}
+                        on:click={() => collectEvidenceForGap(gap)}
+                      >
+                        <Zap class="h-3 w-3 mr-1" />
+                        {collectingGap === gap.controlId ? "Collecting..." : "Collect Now"}
+                      </Button>
+                    {/if}
+                    {#if gap.suggestedAction}
+                      <Button variant="outline" size="sm" href="/console/automation">
+                        Create Rule
+                      </Button>
+                    {/if}
+                  </div>
                 </div>
               </CardContent>
             </Card>

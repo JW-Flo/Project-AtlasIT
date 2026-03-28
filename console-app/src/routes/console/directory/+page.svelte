@@ -203,15 +203,25 @@
     } catch {}
   }
 
+  let nhiFetchError = "";
+
   async function fetchNhi() {
+    nhiFetchError = "";
     try {
       const res = await fetch("/api/nhi?limit=200");
       if (res.ok) {
         const data = await res.json();
-        const rawList = data.credentials || data.items || data || [];
+        const rawList = data.credentials || [];
         nhiCredentials = rawList.map(mapNhiFromApi);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        nhiFetchError = data.error || `Failed to load NHI credentials (${res.status})`;
+        pushToast({ message: nhiFetchError, variant: "error" });
       }
-    } catch {}
+    } catch (e: any) {
+      nhiFetchError = e?.message || "Failed to connect to NHI service";
+      pushToast({ message: nhiFetchError, variant: "error" });
+    }
   }
 
   async function discoverNhi() {
@@ -219,10 +229,12 @@
     try {
       const res = await fetch("/api/nhi", { method: "POST" });
       if (res.ok) {
-        pushToast({ message: "NHI discovery started", variant: "success" });
+        const data = await res.json();
+        pushToast({ message: data.message || "NHI discovery started", variant: "success" });
         await fetchNhi();
       } else {
-        pushToast({ message: "Discovery failed", variant: "error" });
+        const data = await res.json().catch(() => ({}));
+        pushToast({ message: data.error || data.message || "Discovery failed", variant: "error" });
       }
     } catch {
       pushToast({ message: "Discovery request failed", variant: "error" });

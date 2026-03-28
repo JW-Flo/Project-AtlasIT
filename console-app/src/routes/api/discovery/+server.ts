@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ apps: [], total: 0 });
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   const riskTier = url.searchParams.get("risk_tier") || "";
   const isAiTool = url.searchParams.get("is_ai_tool") || "";

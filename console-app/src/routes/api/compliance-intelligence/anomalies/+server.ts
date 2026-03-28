@@ -16,7 +16,20 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
-  const anomalies = await detectRiskAnomalies(db, tenantId);
+  let anomalies: unknown[] = [];
+  try {
+    anomalies = await detectRiskAnomalies(db, tenantId);
+  } catch (err) {
+    console.error(
+      JSON.stringify({ level: "error", message: "Anomaly detection failed", error: String(err) }),
+    );
+    return json({
+      tenantId,
+      anomalies: [],
+      detectedAt: new Date().toISOString(),
+      error: "Detection failed",
+    });
+  }
 
   return json({ tenantId, anomalies, detectedAt: new Date().toISOString() });
 };

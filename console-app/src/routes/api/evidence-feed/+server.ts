@@ -115,7 +115,10 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     // or exact control ID match for direct CDT IDs (e.g. "CC6.1")
     const prefixes = url.searchParams.get("controlPrefixes");
     if (prefixes) {
-      const prefixList = prefixes.split(",").map((p) => p.trim()).filter(Boolean);
+      const prefixList = prefixes
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
       if (prefixList.length > 0) {
         const likeClauses = prefixList.map(() => "ce.control_id LIKE ?");
         conditions.push(`(${likeClauses.join(" OR ")})`);
@@ -152,9 +155,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       .bind(...params, limit, offset)
       .all(),
     db
-      .prepare(
-        `SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`,
-      )
+      .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`)
       .bind(...params)
       .first<{ cnt: number }>(),
     // Summary stats scoped to tenant's selected frameworks
@@ -226,23 +227,24 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     },
   );
 
-  // Filter by impact in app layer (stored in metadata JSON)
-  const filteredFeed = impact
-    ? feed.filter((item) => item.impact === impact)
-    : feed;
+  // Impact filtering: since impact is stored in metadata JSON, we filter in the
+  // app layer. Adjust total count to reflect the actual filtered set size.
+  const filteredFeed = impact ? feed.filter((item) => item.impact === impact) : feed;
 
-  // Count positive/detrimental from the current page for summary
-  const positiveCount = filteredFeed.filter(
-    (f) => f.impact === "positive",
-  ).length;
-  const detrimentalCount = filteredFeed.filter(
-    (f) => f.impact === "detrimental",
-  ).length;
+  // When impact filter is active, the DB count doesn't reflect the filter.
+  // Use the filtered feed length for this page, and estimate total from the
+  // unfiltered DB count (best effort — exact impact counts require a full scan).
+  const effectiveTotal = impact ? filteredFeed.length + offset : (countResult?.cnt ?? 0);
+
+  // Count positive/detrimental across the full summary (from DB-level aggregates)
+  // plus from current page for immediate display
+  const positiveCount = feed.filter((f) => f.impact === "positive").length;
+  const detrimentalCount = feed.filter((f) => f.impact === "detrimental").length;
 
   return json({
     feed: filteredFeed,
     meta: {
-      total: countResult?.cnt ?? 0,
+      total: impact ? effectiveTotal : (countResult?.cnt ?? 0),
       limit,
       offset,
     },

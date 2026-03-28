@@ -67,14 +67,24 @@
   $: filterRiskTier, filterAiOnly, searchQuery, (openActionDropdown = null);
 
   // --- Data fetching ---
+  let fetchError = "";
+
   async function fetchApps() {
+    fetchError = "";
     try {
       const res = await fetch("/api/discovery");
       if (res.ok) {
         const data = await res.json();
         apps = data.apps || [];
+      } else {
+        const data = await res.json().catch(() => ({}));
+        fetchError = data.error || `Failed to load discovered apps (${res.status})`;
+        pushToast({ message: fetchError, variant: "error" });
       }
-    } catch {}
+    } catch (e: any) {
+      fetchError = e?.message || "Failed to connect to discovery service";
+      pushToast({ message: fetchError, variant: "error" });
+    }
   }
 
   // --- Actions ---

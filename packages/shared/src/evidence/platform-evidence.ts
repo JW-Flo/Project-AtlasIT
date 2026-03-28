@@ -392,4 +392,47 @@ export const PLATFORM_STATE_PROBES: PlatformStateProbe[] = [
     category: "credential_mgmt",
     query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action = 'user.password_changed' AND created_at >= datetime('now', '-90 days')`,
   },
+  // ── P1-4 expanded probes ────────────────────────────────────────────
+  {
+    id: "rbac_role_entitlements_configured",
+    controlRefs: ["SOC2-CC5.2", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    description: "RBAC roles with app entitlements configured (enforces segregation of duties)",
+    category: "access_control",
+    query: `SELECT COUNT(*) AS result FROM role_entitlements WHERE tenant_id = ?`,
+  },
+  {
+    id: "encryption_evidence_present",
+    controlRefs: ["SOC2-CC6.7", "HIPAA-164.312(a)(2)(iv)", "GDPR-Art.5(1)(f)"],
+    description: "Encryption-related evidence collected from adapters",
+    category: "data_protection",
+    query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND (control_id LIKE 'CC6.7%' OR evidence_type = 'encryption_status' OR evidence_type = 'encryption_at_rest') AND created_at >= datetime('now', '-30 days')`,
+  },
+  {
+    id: "directory_sync_recent",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    description: "Directory sync has run recently (within 24 hours)",
+    category: "identity_mgmt",
+    query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action IN ('directory.synced', 'directory_sync.completed') AND created_at >= datetime('now', '-24 hours')`,
+  },
+  {
+    id: "automation_rules_active",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC8.1", "ISO-27001-A.12.6.1", "NIST-CSF-PR.IP-3"],
+    description: "Active automation rules configured for lifecycle management",
+    category: "config_mgmt",
+    query: `SELECT COUNT(*) AS result FROM automation_rules WHERE tenant_id = ? AND enabled = 1`,
+  },
+  {
+    id: "nhi_credentials_managed",
+    controlRefs: ["SOC2-CC6.1", "SOC2-CC6.7", "ISO-27001-A.9.4.2"],
+    description: "Non-human identity credentials tracked and managed",
+    category: "credential_mgmt",
+    query: `SELECT COUNT(*) AS result FROM nhi_credentials WHERE tenant_id = ? AND status = 'active'`,
+  },
+  {
+    id: "policies_uploaded",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    description: "Security policies uploaded to evidence locker",
+    category: "policy_mgmt",
+    query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND evidence_type = 'policy' AND created_at >= datetime('now', '-365 days')`,
+  },
 ];
