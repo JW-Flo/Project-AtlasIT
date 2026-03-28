@@ -950,6 +950,216 @@ app.post("/api/deprovision", async (c) => {
   }
 });
 
+// ── NHI Discovery ────────────────────────────────────────────────────────────
+// POST /api/nhi/discovery — discover non-human identities (deploy keys, app
+// installations, bot users) for the tenant's GitHub org.
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
+  }
+
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+  const org = config.orgName;
+
+  const apiHeaders = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  type NhiIdentity = {
+    externalId: string;
+    displayName: string;
+    identityType: "api_key" | "bot" | "service";
+    credentialType: "deploy_key" | "bot_token" | "oauth_app";
+    ownerEmail?: string;
+    scopes?: string[];
+    expiresAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const identities: NhiIdentity[] = [];
+
+  // 1. Deploy keys — one API call per repo (first page of repos only)
+  try {
+    const reposRes = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
+      { headers: apiHeaders },
+    );
+    if (reposRes.ok) {
+      const repos = (await reposRes.json()) as Array<{ name: string; full_name: string }>;
+      for (const repo of repos) {
+        try {
+          const keysRes = await fetch(
+            `https://api.github.com/repos/${org}/${repo.name}/keys`,
+            { headers: apiHeaders },
+          );
+          if (!keysRes.ok) continue;
+          const keys = (await keysRes.json()) as Array<{
+            id: number;
+            key: string;
+            title: string;
+            read_only: boolean;
+            created_at: string;
+            last_used?: string;
+          }>;
+          for (const key of keys) {
+            identities.push({
+              externalId: `deploy_key:${repo.full_name}:${key.id}`,
+              displayName: key.title || `Deploy key ${key.id} (${repo.name})`,
+              identityType: "api_key",
+              credentialType: "deploy_key",
+              lastUsedAt: key.last_used ?? undefined,
+              metadata: {
+                repo: repo.full_name,
+                keyId: key.id,
+                readOnly: key.read_only,
+                createdAt: key.created_at,
+                keyFingerprint: key.key.slice(0, 40),
+              },
+            });
+          }
+        } catch {
+          // skip individual repo key failures
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: deploy keys fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // 2. App installations
+  try {
+    const installationsRes = await fetch(
+      `https://api.github.com/orgs/${org}/installations`,
+      { headers: apiHeaders },
+    );
+    if (installationsRes.ok) {
+      const data = (await installationsRes.json()) as {
+        total_count: number;
+        installations: Array<{
+          id: number;
+          app_id: number;
+          app_slug: string;
+          created_at: string;
+          updated_at: string;
+          permissions: Record<string, string>;
+          events: string[];
+          repository_selection: string;
+        }>;
+      };
+      for (const installation of data.installations ?? []) {
+        identities.push({
+          externalId: `app_installation:${org}:${installation.id}`,
+          displayName: installation.app_slug ?? `App installation ${installation.id}`,
+          identityType: "service",
+          credentialType: "oauth_app",
+          scopes: installation.events,
+          lastUsedAt: installation.updated_at,
+          metadata: {
+            appId: installation.app_id,
+            installationId: installation.id,
+            repositorySelection: installation.repository_selection,
+            permissions: installation.permissions,
+            createdAt: installation.created_at,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: app installations fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // 3. Bot users — org members whose type is "Bot"
+  try {
+    const membersRes = await fetch(
+      `https://api.github.com/orgs/${org}/members?per_page=100`,
+      { headers: apiHeaders },
+    );
+    if (membersRes.ok) {
+      const members = (await membersRes.json()) as Array<{
+        id: number;
+        login: string;
+        type: string;
+        avatar_url: string;
+      }>;
+      for (const member of members) {
+        if (member.type !== "Bot") continue;
+        identities.push({
+          externalId: `bot:${org}:${member.id}`,
+          displayName: member.login,
+          identityType: "bot",
+          credentialType: "bot_token",
+          metadata: {
+            githubId: member.id,
+            login: member.login,
+            org,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: bot users fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  return c.json({
+    provider: "github",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
 export default app;
 
 // -- Internal helpers --

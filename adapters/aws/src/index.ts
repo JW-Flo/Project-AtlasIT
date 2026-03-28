@@ -629,6 +629,305 @@ app.post("/api/deprovision", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// NHI Discovery — IAM roles, access keys, and service account users
+// ---------------------------------------------------------------------------
+
+type NHIIdentity = {
+  externalId: string;
+  displayName: string;
+  identityType: "service";
+  credentialType: "service_account" | "access_key";
+  ownerEmail?: string;
+  scopes?: string[];
+  expiresAt?: string;
+  lastUsedAt?: string;
+  metadata?: Record<string, unknown>;
+};
+
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const config = buildAwsConfig(c.env);
+  const identities: NHIIdentity[] = [];
+
+  // --- 1. IAM Roles (service-linked or service account roles) ---
+  try {
+    let marker: string | undefined;
+    do {
+      const params: Record<string, string> = { Action: "ListRoles", MaxItems: "1000" };
+      if (marker) params.Marker = marker;
+      const res = await iamPost(params, config);
+
+      if (res.ok) {
+        const roleBlocks = [...res.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map((m) => m[1]);
+        for (const roleXml of roleBlocks) {
+          const arn = roleXml.match(/<Arn>([^<]+)<\/Arn>/)?.[1] ?? "";
+          const roleName = roleXml.match(/<RoleName>([^<]+)<\/RoleName>/)?.[1] ?? "";
+          const path = roleXml.match(/<Path>([^<]+)<\/Path>/)?.[1] ?? "/";
+          const createDate = roleXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+          const description = roleXml.match(/<Description>([^<]+)<\/Description>/)?.[1];
+
+          // Include service-linked roles and roles with service-indicative paths
+          const isServiceLinked = path.startsWith("/aws-service-role/");
+          const isServicePath =
+            path.includes("/service/") ||
+            path.includes("/system/") ||
+            path.includes("/application/") ||
+            roleName.toLowerCase().includes("service") ||
+            roleName.toLowerCase().includes("automation") ||
+            roleName.toLowerCase().includes("lambda") ||
+            roleName.toLowerCase().includes("ec2") ||
+            roleName.toLowerCase().includes("ecs");
+
+          if (!isServiceLinked && !isServicePath) continue;
+
+          // Fetch attached policies for scopes
+          const policiesRes = await iamPost(
+            { Action: "ListAttachedRolePolicies", RoleName: roleName, MaxItems: "100" },
+            config,
+          ).catch(() => null);
+          const scopes = policiesRes?.ok
+            ? [...policiesRes.xml.matchAll(/<PolicyName>([^<]+)<\/PolicyName>/g)].map((m) => m[1])
+            : undefined;
+
+          // Extract owner tag if present
+          const tagsRes = await iamPost(
+            { Action: "ListRoleTags", RoleName: roleName },
+            config,
+          ).catch(() => null);
+          let ownerEmail: string | undefined;
+          if (tagsRes?.ok) {
+            const tagBlocks = [...tagsRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+              (m) => m[1],
+            );
+            for (const tag of tagBlocks) {
+              const key = tag.match(/<Key>([^<]+)<\/Key>/)?.[1] ?? "";
+              const value = tag.match(/<Value>([^<]+)<\/Value>/)?.[1] ?? "";
+              if (key.toLowerCase() === "owner" || key.toLowerCase() === "email") {
+                ownerEmail = value;
+                break;
+              }
+            }
+          }
+
+          identities.push({
+            externalId: arn,
+            displayName: roleName,
+            identityType: "service",
+            credentialType: "service_account",
+            ownerEmail,
+            scopes: scopes && scopes.length > 0 ? scopes : undefined,
+            metadata: {
+              path,
+              createDate,
+              description,
+              serviceLinked: isServiceLinked,
+            },
+          });
+        }
+
+        const isTruncated = res.xml.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1] === "true";
+        marker = isTruncated ? (res.xml.match(/<Marker>([^<]+)<\/Marker>/)?.[1]) : undefined;
+      } else {
+        marker = undefined;
+      }
+    } while (marker);
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: IAM roles fetch failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  // --- 2. Access Keys — list all IAM users, then keys per user ---
+  try {
+    const usersRes = await iamPost({ Action: "ListUsers", MaxItems: "1000" }, config);
+    if (usersRes.ok) {
+      const userBlocks = [...usersRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+        (m) => m[1],
+      );
+
+      for (const userXml of userBlocks) {
+        const userName = userXml.match(/<UserName>([^<]+)<\/UserName>/)?.[1] ?? "";
+        if (!userName) continue;
+
+        try {
+          const keysRes = await iamPost(
+            { Action: "ListAccessKeys", UserName: userName },
+            config,
+          );
+          if (!keysRes.ok) continue;
+
+          const keyBlocks = [...keysRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+            (m) => m[1],
+          );
+
+          for (const keyXml of keyBlocks) {
+            const accessKeyId = keyXml.match(/<AccessKeyId>([^<]+)<\/AccessKeyId>/)?.[1] ?? "";
+            const status = keyXml.match(/<Status>([^<]+)<\/Status>/)?.[1] ?? "";
+            const createDate = keyXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+
+            if (!accessKeyId) continue;
+
+            // Fetch last used time
+            let lastUsedAt: string | undefined;
+            try {
+              const lastUsedRes = await iamPost(
+                { Action: "GetAccessKeyLastUsed", AccessKeyId: accessKeyId },
+                config,
+              );
+              if (lastUsedRes.ok) {
+                lastUsedAt = lastUsedRes.xml.match(/<LastUsedDate>([^<]+)<\/LastUsedDate>/)?.[1];
+              }
+            } catch {
+              // non-fatal
+            }
+
+            identities.push({
+              externalId: accessKeyId,
+              displayName: `AccessKey:${accessKeyId} for ${userName}`,
+              identityType: "service",
+              credentialType: "access_key",
+              lastUsedAt,
+              metadata: {
+                userName,
+                status,
+                createDate,
+              },
+            });
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({
+              level: "warn",
+              correlationId,
+              tenantId,
+              message: "NHI discovery: access key fetch failed for user",
+              userName,
+              error: err instanceof Error ? err.message : "Unknown",
+            }),
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: access keys discovery failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  // --- 3. Service account IAM users (path-based heuristic) ---
+  try {
+    const usersRes = await iamPost({ Action: "ListUsers", MaxItems: "1000" }, config);
+    if (usersRes.ok) {
+      const userBlocks = [...usersRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+        (m) => m[1],
+      );
+
+      for (const userXml of userBlocks) {
+        const userName = userXml.match(/<UserName>([^<]+)<\/UserName>/)?.[1] ?? "";
+        const arn = userXml.match(/<Arn>([^<]+)<\/Arn>/)?.[1] ?? "";
+        const path = userXml.match(/<Path>([^<]+)<\/Path>/)?.[1] ?? "/";
+        const createDate = userXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+
+        // Only include users with service-indicative paths
+        const isServiceUser =
+          path.includes("/service/") ||
+          path.includes("/system/") ||
+          path.includes("/bot/") ||
+          path.includes("/automation/") ||
+          path.includes("/application/");
+
+        if (!isServiceUser) continue;
+
+        // Fetch attached policies for scopes
+        const policiesRes = await iamPost(
+          { Action: "ListAttachedUserPolicies", UserName: userName, MaxItems: "100" },
+          config,
+        ).catch(() => null);
+        const scopes = policiesRes?.ok
+          ? [...policiesRes.xml.matchAll(/<PolicyName>([^<]+)<\/PolicyName>/g)].map((m) => m[1])
+          : undefined;
+
+        // Fetch tags for owner email
+        const tagsRes = await iamPost(
+          { Action: "ListUserTags", UserName: userName },
+          config,
+        ).catch(() => null);
+        let ownerEmail: string | undefined;
+        if (tagsRes?.ok) {
+          const tagBlocks = [...tagsRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+            (m) => m[1],
+          );
+          for (const tag of tagBlocks) {
+            const key = tag.match(/<Key>([^<]+)<\/Key>/)?.[1] ?? "";
+            const value = tag.match(/<Value>([^<]+)<\/Value>/)?.[1] ?? "";
+            if (key.toLowerCase() === "owner" || key.toLowerCase() === "email") {
+              ownerEmail = value;
+              break;
+            }
+          }
+        }
+
+        identities.push({
+          externalId: arn,
+          displayName: userName,
+          identityType: "service",
+          credentialType: "service_account",
+          ownerEmail,
+          scopes: scopes && scopes.length > 0 ? scopes : undefined,
+          metadata: {
+            path,
+            createDate,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: service account users fetch failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "NHI discovery completed",
+      identityCount: identities.length,
+    }),
+  );
+
+  return c.json({
+    provider: "aws",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {

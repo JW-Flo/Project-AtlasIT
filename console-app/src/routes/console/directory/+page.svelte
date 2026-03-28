@@ -15,7 +15,7 @@
   import Dialog from "$lib/components/ui/dialog.svelte";
   import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2, ExternalLink } from "lucide-svelte";
+  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2, ExternalLink, ScanSearch } from "lucide-svelte";
 
   // --- Types ---
   interface SyncStatus {
@@ -53,6 +53,18 @@
     suggested: boolean;
   }
 
+  interface NhiCredential {
+    id: string;
+    name: string;
+    type: string;
+    provider: string;
+    owner?: string;
+    lastUsed?: string;
+    expiry?: string;
+    riskScore: number;
+    status: "active" | "expired" | "revoked" | "rotation_pending";
+  }
+
   // --- State ---
   let syncStatus: SyncStatus = { connected: false };
   let users: DirectoryUser[] = [];
@@ -60,10 +72,43 @@
   let groups: DirectoryGroup[] = [];
   let mappings: Mapping[] = [];
 
+  let nhiCredentials: NhiCredential[] = [];
+  let discoveringNhi = false;
+
+  // NHI search, filters, pagination
+  let nhiSearch = "";
+  let nhiFilterType = "";
+  let nhiFilterProvider = "";
+  let nhiFilterStatus = "";
+  let nhiPage = 0;
+
+  $: filteredNhi = nhiCredentials.filter((n) => {
+    if (nhiSearch) {
+      const q = nhiSearch.toLowerCase();
+      if (
+        !n.name.toLowerCase().includes(q) &&
+        !n.provider.toLowerCase().includes(q) &&
+        !(n.owner || "").toLowerCase().includes(q)
+      ) return false;
+    }
+    if (nhiFilterType && n.type !== nhiFilterType) return false;
+    if (nhiFilterProvider && n.provider !== nhiFilterProvider) return false;
+    if (nhiFilterStatus && n.status !== nhiFilterStatus) return false;
+    return true;
+  });
+
+  $: nhiSearch, nhiFilterType, nhiFilterProvider, nhiFilterStatus, (nhiPage = 0);
+
+  $: pagedNhi = filteredNhi.slice(nhiPage * pageSize, (nhiPage + 1) * pageSize);
+  $: nhiTotalPages = Math.ceil(filteredNhi.length / pageSize);
+
+  $: nhiTypes = [...new Set(nhiCredentials.map((n) => n.type))].sort();
+  $: nhiProviders = [...new Set(nhiCredentials.map((n) => n.provider))].sort();
+
   let loading = true;
   let syncing = false;
   let suggesting = false;
-  let activeTab: "users" | "groups" | "mappings" = "users";
+  let activeTab: "users" | "groups" | "mappings" | "nhi" = "users";
 
   // Users pagination & search
   let userSearch = "";
@@ -144,10 +189,36 @@
     } catch {}
   }
 
+  async function fetchNhi() {
+    try {
+      const res = await fetch("/api/nhi?limit=200");
+      if (res.ok) {
+        const data = await res.json();
+        nhiCredentials = data.credentials || data.items || data || [];
+      }
+    } catch {}
+  }
+
+  async function discoverNhi() {
+    discoveringNhi = true;
+    try {
+      const res = await fetch("/api/nhi", { method: "POST" });
+      if (res.ok) {
+        pushToast({ message: "NHI discovery started", variant: "success" });
+        await fetchNhi();
+      } else {
+        pushToast({ message: "Discovery failed", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Discovery request failed", variant: "error" });
+    }
+    discoveringNhi = false;
+  }
+
   async function loadAll() {
     loading = true;
     syncStatus = await fetchStatus();
-    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings()];
+    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings(), fetchNhi()];
     await Promise.all(promises);
     loading = false;
 
@@ -338,10 +409,35 @@
     }
   }
 
+  function nhiRiskClass(score: number): string {
+    if (score <= 30) return "bg-green-100 text-green-800";
+    if (score <= 60) return "bg-yellow-100 text-yellow-800";
+    return "bg-red-100 text-red-800";
+  }
+
+  function nhiStatusClass(status: NhiCredential["status"]): string {
+    switch (status) {
+      case "active": return "bg-green-100 text-green-800";
+      case "expired": return "bg-red-100 text-red-800";
+      case "revoked": return "bg-gray-100 text-gray-800";
+      case "rotation_pending": return "bg-yellow-100 text-yellow-800";
+    }
+  }
+
+  function nhiStatusLabel(status: NhiCredential["status"]): string {
+    switch (status) {
+      case "active": return "Active";
+      case "expired": return "Expired";
+      case "revoked": return "Revoked";
+      case "rotation_pending": return "Rotation Pending";
+    }
+  }
+
   $: tabs = [
     { id: "users" as const, label: "Users" },
     { id: "groups" as const, label: "Groups" },
     { id: "mappings" as const, label: "Mappings" },
+    { id: "nhi" as const, label: "Non-Human" },
   ];
 
   const providerIcons: Record<string, string> = {
@@ -353,7 +449,7 @@
 
   onMount(() => {
     const tabParam = $page.url.searchParams.get("tab");
-    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users") {
+    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users" || tabParam === "nhi") {
       activeTab = tabParam;
     }
     loadAll();
@@ -391,7 +487,12 @@
         {/if}
       </div>
       <div class="flex items-center gap-2">
-        {#if !syncStatus.connected}
+        {#if activeTab === "nhi"}
+          <Button variant="outline" on:click={discoverNhi} disabled={discoveringNhi}>
+            <ScanSearch class="h-4 w-4 mr-1.5" />
+            {discoveringNhi ? "Discovering..." : "Discover NHIs"}
+          </Button>
+        {:else if !syncStatus.connected}
           <a href="/console/marketplace">
             <Button variant="outline">
               <Link class="h-4 w-4 mr-1.5" />
@@ -564,6 +665,126 @@
           </div>
         </CardContent>
       </Card>
+    {/if}
+
+    <!-- NHI tab -->
+    {#if activeTab === "nhi"}
+      <!-- Filters -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4 flex-wrap">
+        <Input
+          type="text"
+          bind:value={nhiSearch}
+          placeholder="Search by name, provider, owner..."
+          class="sm:max-w-xs"
+        />
+        <select
+          bind:value={nhiFilterType}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Types</option>
+          {#each nhiTypes as t}
+            <option value={t}>{t}</option>
+          {/each}
+        </select>
+        <select
+          bind:value={nhiFilterProvider}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Providers</option>
+          {#each nhiProviders as p}
+            <option value={p}>{p}</option>
+          {/each}
+        </select>
+        <select
+          bind:value={nhiFilterStatus}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+          <option value="revoked">Revoked</option>
+          <option value="rotation_pending">Rotation Pending</option>
+        </select>
+      </div>
+
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Type</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Provider</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Owner</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Last Used</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Expiry</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Risk Score</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each pagedNhi as nhi}
+                  <tr
+                    class="border-t hover:bg-muted/50 cursor-pointer"
+                    on:click={() => goto(`/console/directory/nhi/${nhi.id}`)}
+                  >
+                    <td class="px-3 sm:px-4 py-3 font-medium">
+                      <div>{nhi.name}</div>
+                      <div class="text-xs text-muted-foreground sm:hidden">{nhi.type}</div>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 hidden sm:table-cell">
+                      <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium">
+                        {nhi.type}
+                      </span>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{nhi.provider}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{nhi.owner || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{formatTime(nhi.lastUsed)}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden xl:table-cell">{formatTime(nhi.expiry)}</td>
+                    <td class="px-3 sm:px-4 py-3">
+                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiRiskClass(nhi.riskScore)}">
+                        {nhi.riskScore}
+                      </span>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3">
+                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiStatusClass(nhi.status)}">
+                        {nhiStatusLabel(nhi.status)}
+                      </span>
+                    </td>
+                  </tr>
+                {:else}
+                  <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">
+                      <p>No non-human identities found</p>
+                      <p class="text-xs mt-1">Click "Discover NHIs" to scan for service accounts, API keys, and machine credentials</p>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- NHI Pagination -->
+      {#if nhiTotalPages > 1}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+          <span class="text-muted-foreground text-center sm:text-left">
+            Showing {nhiPage * pageSize + 1}–{Math.min((nhiPage + 1) * pageSize, filteredNhi.length)} of {filteredNhi.length}
+          </span>
+          <div class="flex gap-2">
+            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.max(0, nhiPage - 1)} disabled={nhiPage === 0}>
+              <ChevronLeft class="h-4 w-4 mr-1" />
+              Prev
+            </Button>
+            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.min(nhiTotalPages - 1, nhiPage + 1)} disabled={nhiPage >= nhiTotalPages - 1}>
+              Next
+              <ChevronRight class="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      {/if}
     {/if}
 
     <!-- Mappings tab -->
