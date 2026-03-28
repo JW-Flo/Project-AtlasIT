@@ -1210,6 +1210,12 @@
                           </div>
                         {/each}
                       </div>
+                      <button
+                        class="text-xs text-primary hover:underline mt-2 inline-block mr-4"
+                        on:click|stopPropagation={() => { showRecordForm = true; activeTab = "evidence"; }}
+                      >
+                        + Add evidence for this control
+                      </button>
                       <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline mt-2 inline-block">View all evidence for this control →</a>
                     {/if}
                   </td>
