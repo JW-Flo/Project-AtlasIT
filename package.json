@@ -136,7 +136,7 @@
     "sonarqube-scanner": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2",
-    "vite": "^7.1.7",
+    "vite": "^7.1.11",
     "vitest": "^3.2.4",
     "wrangler": "^4.74.0",
     "yaml": "^2.8.2"

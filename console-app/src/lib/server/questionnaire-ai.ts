@@ -120,19 +120,68 @@ export function mapQuestionsToControls(
 }
 
 /**
+ * Build learning context from tenant's previous questionnaire responses.
+ * Queries the questionnaire_responses table for accepted/edited answers
+ * to use as consistency examples in future AI generation.
+ */
+export async function buildLearningContext(
+  db: any,
+  tenantId: string,
+): Promise<Map<string, string>> {
+  const priorAnswers = new Map<string, string>();
+
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT qr.question_text, qr.response_text, qr.mapped_controls, qr.feedback
+         FROM questionnaire_responses qr
+         WHERE qr.tenant_id = ?
+           AND qr.feedback IN ('accepted', 'edited')
+         ORDER BY qr.created_at DESC
+         LIMIT 100`,
+      )
+      .bind(tenantId)
+      .all<{
+        question_text: string;
+        response_text: string;
+        mapped_controls: string;
+        feedback: string;
+      }>();
+
+    for (const row of results ?? []) {
+      // Index by control ID for easy lookup
+      const controls = row.mapped_controls?.split(",") ?? [];
+      for (const ctrl of controls) {
+        const trimmed = ctrl.trim();
+        if (trimmed && !priorAnswers.has(trimmed)) {
+          priorAnswers.set(trimmed, row.response_text);
+        }
+      }
+    }
+  } catch {
+    // questionnaire_responses table may not exist yet
+  }
+
+  return priorAnswers;
+}
+
+/**
  * Generate AI-backed responses for mapped questions.
- * Uses evidence summaries from the compliance_evidence table.
+ * Uses evidence summaries from the compliance_evidence table
+ * and learns from tenant's previous accepted/edited responses.
  */
 export async function generateResponses(
   mappings: QuestionMapping[],
   evidenceSummaries: Map<string, string>,
   groqApiKey?: string,
+  priorAnswers?: Map<string, string>,
 ): Promise<GeneratedResponse[]> {
   const responses: GeneratedResponse[] = [];
 
   for (const mapping of mappings) {
     const evidenceContext: string[] = [];
     const evidenceRefs: string[] = [];
+    const priorContext: string[] = [];
 
     for (const controlId of mapping.mappedControls) {
       const summary = evidenceSummaries.get(controlId);
@@ -142,13 +191,21 @@ export async function generateResponses(
         );
         evidenceRefs.push(controlId);
       }
+
+      // Include prior accepted answers for consistency
+      const priorAnswer = priorAnswers?.get(controlId);
+      if (priorAnswer) {
+        priorContext.push(
+          `Previously accepted answer for ${controlId}: "${priorAnswer.slice(0, 200)}"`,
+        );
+      }
     }
 
     let response: string;
 
     if (groqApiKey && evidenceContext.length > 0) {
       try {
-        response = await callGroq(groqApiKey, mapping.questionText, evidenceContext);
+        response = await callGroq(groqApiKey, mapping.questionText, evidenceContext, priorContext);
       } catch {
         response = generateFallbackResponse(mapping, evidenceContext);
       }
@@ -179,16 +236,22 @@ async function callGroq(
   apiKey: string,
   question: string,
   evidenceContext: string[],
+  priorContext: string[] = [],
 ): Promise<string> {
+  let contextBlock = `Available evidence:\n${evidenceContext.join("\n")}`;
+  if (priorContext.length > 0) {
+    contextBlock += `\n\nPreviously accepted responses (maintain consistency with these):\n${priorContext.join("\n")}`;
+  }
+
   const systemPrompt = `You are a compliance analyst helping respond to a security questionnaire.
 Your responses must be:
 1. Grounded in the evidence provided — never fabricate or assume controls exist
 2. Concise (2-4 sentences)
 3. Professional and factual
 4. Reference specific controls when applicable
+5. Consistent with previously accepted answers where available
 
-Available evidence:
-${evidenceContext.join("\n")}`;
+${contextBlock}`;
 
   const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",

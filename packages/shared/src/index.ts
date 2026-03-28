@@ -19,3 +19,4 @@ export * from "./automation/index";
 export * from "./evidence/index";
 export * from "./directory/index";
 export * from "./discovery/index";
+export * from "./compliance-intelligence/index";

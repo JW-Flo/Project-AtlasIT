@@ -1,0 +1,44 @@
+title = "AtlasIT Gitleaks Configuration"
+
+# Extend the default ruleset
+[extend]
+useDefault = true
+
+# Project-specific rules
+[[rules]]
+id = "atlasit-admin-token"
+description = "AtlasIT admin token"
+regex = '''(?i)(DISPATCH_ADMIN_TOKEN|ADMIN_BEARER|ADMIN_TOKEN)\s*[:=]\s*["']?[A-Fa-f0-9]{32,}["']?'''
+tags = ["secret", "atlasit"]
+
+[[rules]]
+id = "atlasit-debug-key"
+description = "AtlasIT debug/scheduler key with value"
+regex = '''(?i)(SCHEDULER_DEBUG_KEY|DEBUG_KEY)\s*[:=]\s*["']?[A-Za-z0-9_-]{8,}["']?'''
+tags = ["secret", "atlasit"]
+
+[[rules]]
+id = "plaintext-hex-secret-file"
+description = "Standalone file containing only a hex secret"
+regex = '''^[0-9a-f]{32,}$'''
+path = '''(?i)\.(token|secret|key|password)$'''
+tags = ["secret"]
+
+[[rules]]
+id = "cloudflare-api-token"
+description = "Cloudflare API token"
+regex = '''(?i)CLOUDFLARE_API_TOKEN\s*[:=]\s*["']?[A-Za-z0-9_-]{40,}["']?'''
+tags = ["secret", "cloudflare"]
+
+# Allowlist paths that are known to contain example/fake tokens
+[allowlist]
+paths = [
+  '''\.test\.(ts|js)$''',
+  '''\.spec\.(ts|js)$''',
+  '''\.env\.example$''',
+  '''docs/servers-main/''',
+  '''documentation-worker/''',
+  '''pnpm-lock\.yaml$''',
+  '''package-lock\.json$''',
+  '''artifacts/schema\.hash$''',
+]
