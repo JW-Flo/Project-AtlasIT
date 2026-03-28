@@ -4,7 +4,7 @@
 
 ## Current State
 
-- **Test suite:** 719 tests passing (118 files)
+- **Test suite:** 818 tests passing (89 files)
 - **Package manager:** pnpm (workspace monorepo)
 - **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues
 
@@ -23,7 +23,7 @@
 | 7.5 — Compliance Integration        | ✅ Complete     | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls), policy evaluation wired into scoring pipeline |
 | 8 — Access Reviews                  | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action                                              |
 | 9 — Trust Center & Questionnaire AI | ✅ Complete     | —          | Evidence provenance trail, per-control visibility (public/NDA/private), NDA access workflow, CSV/JSON export with tamper hash, questionnaire AI (Groq), SVG trust badge        |
-| 10 — Stabilization & JML Reality    | ⚠️ In Progress | #253–#274  | JML pipeline hardened (WorkflowDO correlationId, activity stream), 139 controls (was 25), evidence drill-down, incidents DB fix, mover workflow context, UI polish              |
+| 10 — Stabilization & JML Reality    | ✅ Complete     | #253–#275  | JML pipeline hardened, 139 controls (was 25), scoring pipeline fix (no more stale 100%), directory sync through orchestrator, group-app mapping persistence, OAuth failure UX, connector health indicators, credential encryption validation |
 
 ## Deployed Workers
 
@@ -66,7 +66,7 @@
 - Event router with fan-out, agent registry, HMAC signature verification
 - MCP agent SDK (`packages/mcp-sdk`)
 - Evidence locker (R2-backed, SHA-256 content addressing)
-- Policy evaluation engine (stub — hashes input, no Boolean logic yet)
+- Policy evaluation engine (Boolean allow/deny, wired into compliance scoring)
 - Rate limiting + security headers middleware
 - Credential vault (AES-GCM envelope encryption)
 - Feature flag system (KV-backed, rollout %, tenant overrides)
