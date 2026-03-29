@@ -447,6 +447,76 @@ Directory Event / Schedule / Webhook
 - `packages/shared/src/evidence/platform-state-collector.ts` — 6 new probes
 - `packages/shared/src/compliance-intelligence/gap-analyzer.ts` — adapter-aware recommendations
 
+## Codex Review Integration (March 28, 2026)
+
+> **Source**: `Codex_Review_3_28_26` — full-system QA evaluation covering `/console` and all navigable modules.
+> **Method**: Functional + structural + compliance + product integrity validation against a single-tenant demo state.
+>
+> The review assessed the platform at **2.5/10 (pre-MVP, UI prototype stage)**. The sections below map each
+> finding to the current roadmap state, confirming which items are resolved and which remain open.
+
+### Cross-Cutting P0 Findings — Resolution Status
+
+| Codex Finding | Codex Severity | Status | Resolution |
+|---|---|---|---|
+| Auth bypass flag still implied | P0 | ✅ **Resolved** (Phase 1, 6) | CF Access JWT validation + D1-backed RBAC (27 guarded routes) + startup-failing assertions for missing secrets |
+| Majority of metrics appear static/demo | P0 | ✅ **Resolved** (Phase 10, 15.5) | Live Feed rewired to `automation_executions`, KPIs from D1 queries, platform health endpoint with functional checks |
+| No immutable evidence chain | P0 | ✅ **Resolved** (Phase 7/7.5) | R2 write-once content-addressed storage + SHA-256 hashing per workflow step + D1 index + evidence retention policy |
+| UI renders features not backed by APIs | P0 | ✅ **Resolved** (Phase 6, 10) | DTO normalization (`safeProxyFetch`), incidents wired to shared DB, directory sync through orchestrator |
+| No visible tenant isolation | P0 | ✅ **Resolved** (Phase 1+) | `tenant_id` enforced in every query + `locals.user` auth guard on all API routes + policy guard |
+| No visible observability | P0 | ✅ **Resolved** (Phase 4, 15) | Structured JSON logging with correlation IDs, W3C traceparent tracing, Analytics Engine metrics, SLO burn-rate alerting, deep health endpoint |
+
+### Page-by-Page Findings — Resolution Status
+
+| Page | Codex Issues | Status | Phase(s) |
+|---|---|---|---|
+| Dashboard (`/console`) | Static KPIs, no health indicators, no tenant context | ✅ Resolved | 10, 15.5 |
+| Compliance (`/console/compliance`) | No scoring engine, no framework mapping, fake trends | ✅ Resolved | 7, 7.5 |
+| Controls tab | No execution engine, no evidence linkage | ✅ Resolved | 7.5 P4 |
+| Evidence Feed (`/console/compliance/feed`) | No real ingestion, no hash verification | ✅ Resolved | 7, 7.5, 15.5 |
+| Policies (`/console/policies`) | No generation backend, no versioning | ✅ Resolved | 7.5 P3, 13 |
+| Directory (`/console/directory`) | No IdP integration, no RBAC | ✅ Resolved | 5, 6, 10 |
+| Access Reviews | No decision logging, no evidence | ✅ Resolved | 8 |
+| Incidents | Stub list, no severity classification | ⚠️ **Partial** | 10 (API wired); missing: severity classification, SLA tracking, SOAR |
+| Automation (Workflows/Rules/Runs) | Execution engine unverified, no retry/DLQ | ✅ Resolved | 1, 2, 10, 14 |
+| Connected Apps / Adapters | No health checks, no token validation | ✅ Resolved | 10 |
+
+### Compliance-Specific Gaps — Resolution Status
+
+| Gap Area | Codex Assessment | Status | Resolution |
+|---|---|---|---|
+| RBAC enforcement | Missing | ✅ Resolved | D1-backed RBAC, 27 mutation guards, role hierarchy (Phase 6, PR #283) |
+| Immutable audit logs | Missing | ✅ Resolved | R2 write-once + SHA-256 content addressing (Phase 7) |
+| Automated deprovisioning | Missing | ✅ Resolved | Provision/deprovision on 5 core adapters, JML leaver workflows (Phase 10) |
+| Evidence hashing + timestamping | Missing | ✅ Resolved | SHA-256 per evidence item, content-addressed R2 (Phase 7) |
+| Chain-of-custody | Missing | ✅ Resolved | Evidence retention policy, deletion protection for active controls (Phase 14) |
+
+### Updated Platform Maturity Score (Post-Remediation)
+
+| Category | Codex Score (3/28) | Current Estimate | Key Improvements |
+|---|---|---|---|
+| UI/UX | 6/10 | 8/10 | Evidence drill-down, deep links, grouped tables, collapsible sections |
+| Backend Functionality | 2/10 | 7/10 | WorkflowDO, queue dispatch, DLQ, 20 adapter URLs, directory sync |
+| Compliance Readiness | 1/10 | 7/10 | 60 CDT rules, evidence pipeline E2E, 139 controls, scoring unified |
+| Security Posture | 3/10 | 7/10 | RBAC, secret rotation, OIDC hardening, Gitleaks CI, SHA-pinned actions |
+| Observability | 1/10 | 6/10 | Structured logs, W3C traces, Analytics Engine, deep health, k6 SLOs |
+| Automation Depth | 3/10 | 7/10 | AutomationDO, 9 trigger types, 8 action types, JML auto-evidence |
+
+**Updated Overall: ~7/10 (Functional MVP, pilot-ready with caveats)**
+
+### Remaining Open Items (Codex-Informed Priorities)
+
+These items from the Codex Review are not yet fully addressed and should be prioritized:
+
+1. **Incident lifecycle maturity** (Codex §2.8) — severity classification engine, response SLA tracking, SOAR integration. *Maps to: new work item, pre-Phase 16.*
+2. **Policy approval workflow** (Codex §2.5) — policies generate and evaluate but lack formal approval chains with reviewer assignment and sign-off tracking. *Maps to: enhancement within Phase 13 scope.*
+3. **NHI governance** (Codex §2.6, §3) — non-human identity discovery, token expiry tracking, NHI access reviews. *Maps to: Phase 11 (future).*
+4. **Shadow AI/SaaS discovery** (Codex §3) — OAuth grant analysis, unapproved app detection. *Maps to: Phase 12 (future).*
+5. **OpenAPI parity enforcement** (Codex §1) — CI check that verifies all UI-rendered features have backing API routes. *Maps to: new CI work item.*
+6. **Onboarding empty-state UX** (Codex §2.1) — guided setup for new tenants with no data. *Maps to: Phase 16 self-serve onboarding.*
+
+---
+
 ## Phase 16 — Market Readiness & PLG Entry
 
 > **Strategic context**: The compliance market is overwhelmingly sales-led with opaque pricing.
