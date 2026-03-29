@@ -62,6 +62,7 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
 
     return json({ id, status: "archived" });
   } catch (e: any) {
-    return json({ error: `Failed to archive policy: ${e?.message}` }, { status: 500 });
+    console.error("Failed to archive policy:", e);
+    return json({ error: "Failed to archive policy" }, { status: 500 });
   }
 };

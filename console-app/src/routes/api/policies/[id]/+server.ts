@@ -177,6 +177,7 @@ export const PUT: RequestHandler = async ({ params, request, platform, locals })
 
     return json({ id, version: newVersion, status: "draft" });
   } catch (e: any) {
-    return json({ error: `Failed to update policy: ${e?.message}` }, { status: 500 });
+    console.error("Failed to update policy:", e);
+    return json({ error: "Failed to update policy" }, { status: 500 });
   }
 };

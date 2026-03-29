@@ -715,7 +715,8 @@ const worker = {
           `SELECT id, tenant_id, title, severity FROM incidents
            WHERE sla_breach_at <= datetime('now')
              AND status IN ('open', 'investigating')
-             AND sla_breach_notified = 0`,
+             AND sla_breach_notified = 0
+           LIMIT 500`,
         )
         .all();
 
@@ -763,7 +764,8 @@ const worker = {
         .prepare(
           `SELECT id, tenant_id FROM incidents
            WHERE auto_resolve = 1 AND status = 'open'
-             AND source = 'automation'`,
+             AND source = 'automation'
+           LIMIT 500`,
         )
         .all();
 

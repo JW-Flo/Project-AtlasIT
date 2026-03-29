@@ -744,6 +744,30 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
   },
 
   {
+    eventPattern: "nhi.credential.offboarded",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.1",
+        controlName: "NHI credential revoked during offboarding",
+        impact: "positive",
+        confidence: 0.9,
+        category: "access_revocation",
+        reasoning: "Non-human identity credential revoked as part of offboarding workflow",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.2.6",
+        controlName: "Removal of access rights — NHI",
+        impact: "positive",
+        confidence: 0.9,
+        category: "access_revocation",
+        reasoning: "Service account / API key revoked upon user deactivation",
+      },
+    ],
+  },
+
+  {
     eventPattern: "policy.approved",
     controls: [
       {

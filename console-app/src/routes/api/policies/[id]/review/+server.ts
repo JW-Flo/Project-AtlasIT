@@ -141,6 +141,7 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
 
     return json({ id, status: newStatus, decision });
   } catch (e: any) {
-    return json({ error: `Failed to record review decision: ${e?.message}` }, { status: 500 });
+    console.error("Failed to record review decision:", e);
+    return json({ error: "Failed to record review decision" }, { status: 500 });
   }
 };

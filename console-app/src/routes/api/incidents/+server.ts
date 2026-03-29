@@ -108,7 +108,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   }
 
   const id = crypto.randomUUID().replace(/-/g, "");
-  const severity = body.severity || "medium";
+  const validSeverities = ["low", "medium", "high", "critical"];
+  const severity = validSeverities.includes(body.severity) ? body.severity : "medium";
   const description = body.description || "";
   const now = new Date().toISOString();
 
@@ -125,7 +126,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       .bind(id, tenantId, body.title, severity, description, now, slaBreachAt)
       .run();
   } catch (e: any) {
-    return json({ error: `Failed to create incident: ${e?.message}` }, { status: 500 });
+    console.error("Failed to create incident:", e);
+    return json({ error: "Failed to create incident" }, { status: 500 });
   }
 
   // Write initial timeline entry

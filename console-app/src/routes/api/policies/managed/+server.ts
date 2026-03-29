@@ -80,6 +80,10 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   if (!title?.trim() || !type?.trim() || !content?.trim()) {
     return json({ error: "Missing required fields: title, type, content" }, { status: 400 });
   }
+  const validTypes = ["access_control", "incident_response", "data_handling", "password", "acceptable_use"];
+  if (!validTypes.includes(type)) {
+    return json({ error: `Invalid policy type. Must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+  }
 
   const id = crypto.randomUUID().replace(/-/g, "");
   const versionId = crypto.randomUUID().replace(/-/g, "");
@@ -101,7 +105,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
         .bind(versionId, id, content.trim(), createdBy),
     ]);
   } catch (e: any) {
-    return json({ error: `Failed to create policy: ${e?.message}` }, { status: 500 });
+    console.error("Failed to create policy:", e);
+    return json({ error: "Failed to create policy" }, { status: 500 });
   }
 
   try {

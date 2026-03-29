@@ -58,13 +58,13 @@ export const PUT: RequestHandler = async ({ params, request, platform, locals })
   // Build UPDATE query based on target status
   if (newStatus === "investigating") {
     await db
-      .prepare("UPDATE incidents SET status = 'investigating', investigating_at = ? WHERE id = ?")
-      .bind(now, id)
+      .prepare("UPDATE incidents SET status = 'investigating', investigating_at = ? WHERE id = ? AND tenant_id = ?")
+      .bind(now, id, tenantId)
       .run();
   } else if (newStatus === "resolved") {
     await db
-      .prepare("UPDATE incidents SET status = 'resolved', resolved_at = ? WHERE id = ?")
-      .bind(now, id)
+      .prepare("UPDATE incidents SET status = 'resolved', resolved_at = ? WHERE id = ? AND tenant_id = ?")
+      .bind(now, id, tenantId)
       .run();
   }
 

@@ -65,9 +65,9 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
       await db
         .prepare(
           `INSERT INTO policy_approvals (id, policy_id, version, reviewer_email, decision, created_at)
-           VALUES (?, ?, (SELECT version FROM policies WHERE id = ?), ?, 'pending', ?)`,
+           VALUES (?, ?, (SELECT version FROM policies WHERE id = ? AND tenant_id = ?), ?, 'pending', ?)`,
         )
-        .bind(approvalId, id, id, email.trim(), now)
+        .bind(approvalId, id, id, tenantId, email.trim(), now)
         .run();
     }
 
@@ -87,6 +87,7 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
 
     return json({ id, status: "pending_review" }, { status: 200 });
   } catch (e: any) {
-    return json({ error: `Failed to submit policy for review: ${e?.message}` }, { status: 500 });
+    console.error("Failed to submit policy for review:", e);
+    return json({ error: "Failed to submit policy for review" }, { status: 500 });
   }
 };

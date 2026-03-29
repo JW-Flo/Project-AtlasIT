@@ -57,8 +57,8 @@ export const PUT: RequestHandler = async ({ params, request, platform, locals })
 
   // Update incident owner
   await db
-    .prepare("UPDATE incidents SET owner_email = ?, owner_id = ? WHERE id = ?")
-    .bind(ownerEmail, ownerEmail, id)
+    .prepare("UPDATE incidents SET owner_email = ? WHERE id = ? AND tenant_id = ?")
+    .bind(ownerEmail, id, tenantId)
     .run();
 
   // Write timeline entry
