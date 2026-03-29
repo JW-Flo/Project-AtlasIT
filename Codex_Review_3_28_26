@@ -1,0 +1,435 @@
+## AtlasIT Platform QA — Full System Evaluation (End-to-End)
+
+Scope: `/console` + all navigable modules from current session
+Method: Functional + structural + compliance + product integrity validation
+Assumption: Single-tenant demo state with partial backend wiring
+
+---
+
+# 1. Global Platform Findings (Cross-Cutting)
+
+### Critical Systemic Issues (P0)
+
+| Area           | Issue                                           | Impact                                 | Fix Strategy                                          |
+| -------------- | ----------------------------------------------- | -------------------------------------- | ----------------------------------------------------- |
+| Auth           | Console auth bypass flag still implied          | Full platform exposure risk            | Enforce Cloudflare Access + JWT validation middleware |
+| Data Integrity | Majority of metrics appear static/demo          | Breaks trust + unusable for compliance | Wire D1 → UI with strict schema validation            |
+| Evidence Chain | No immutable linkage between actions → evidence | Fails SOC2/HIPAA auditability          | Enforce R2 write + hash per workflow step             |
+| API Parity     | UI renders features not backed by APIs          | Silent failure risk                    | CI check: OpenAPI vs route handlers                   |
+| Multi-Tenancy  | No visible tenant isolation guarantees          | Data leakage risk                      | Enforce tenant_id in every query + policy guard       |
+| Observability  | No visible logs, traces, or failure states      | No debugging or SLO enforcement        | Add OpenTelemetry + structured logs                   |
+
+---
+
+# 2. Page-by-Page QA Breakdown
+
+---
+
+## 2.1 Dashboard (`/console`)
+
+### Findings
+
+| Component        | Status  | Issues                     |
+| ---------------- | ------- | -------------------------- |
+| KPI Cards        | Partial | Likely static values       |
+| Activity Feed    | Weak    | No verifiable event source |
+| Navigation Links | OK      | Routes exist               |
+| Onboarding State | Missing | No empty-state UX          |
+
+### Gaps
+
+* No real-time data bindings
+* No system health indicators
+* No tenant context display
+
+### Priority Fixes
+
+* P0: Replace all KPI sources with live queries
+* P1: Add system health + worker status
+* P2: Add onboarding state + guided setup
+
+---
+
+## 2.2 Compliance Overview (`/console/compliance`)
+
+### Findings
+
+| Component       | Status      | Issues                        |
+| --------------- | ----------- | ----------------------------- |
+| Score (34%, F)  | Static      | No scoring logic transparency |
+| Framework Cards | Placeholder | No control mapping            |
+| Trends          | Fake        | No historical dataset         |
+| Quick Actions   | UI only     | No backend execution          |
+
+### Critical Gaps
+
+* No scoring engine
+* No control-to-framework mapping
+* No evidence correlation
+
+### Required Architecture
+
+```text
+[Control Results] → [Scoring Engine] → [Framework Mapping] → [Score Output]
+                          ↓
+                   [Evidence Links]
+```
+
+### Priority Fixes
+
+* P0: Build scoring engine (weighted controls)
+* P0: Map controls → frameworks (SOC2, ISO, NIST)
+* P1: Store score history in D1
+
+---
+
+## 2.3 Controls Tab
+
+### Findings
+
+| Area              | Status  | Issues                 |
+| ----------------- | ------- | ---------------------- |
+| Control List      | Partial | Likely static          |
+| Status Indicators | Weak    | No execution engine    |
+| Drill-down        | Missing | No control detail view |
+
+### Missing Core Capabilities
+
+* Control execution engine
+* Evidence linkage per control
+* Control ownership / accountability
+
+### Required Model
+
+```json
+{
+  "control_id": "AC-01",
+  "status": "pass|fail|unknown",
+  "last_evaluated": "...",
+  "evidence_ids": [],
+  "owner": "user_id"
+}
+```
+
+### Priority Fixes
+
+* P0: Implement control evaluation engine
+* P0: Attach evidence per control
+* P1: Add control detail page
+
+---
+
+## 2.4 Evidence Feed (`/console/compliance/feed`)
+
+### Findings
+
+| Area             | Status  | Issues                |
+| ---------------- | ------- | --------------------- |
+| Feed UI          | Exists  | No real ingestion     |
+| Filtering        | Unknown | Likely non-functional |
+| Evidence Objects | Missing | No schema             |
+
+### Critical Compliance Failure
+
+* No immutable evidence storage
+* No hash verification
+* No audit trail
+
+### Required Architecture
+
+```text
+Workflow Step → Evidence Generator → R2 (immutable)
+                               ↓
+                         D1 Index (searchable)
+                               ↓
+                        Feed UI Rendering
+```
+
+### Priority Fixes
+
+* P0: Enforce evidence generation per workflow step
+* P0: Hash + timestamp all evidence
+* P1: Add filtering/search
+
+---
+
+## 2.5 Policies Page (`/console/policies`)
+
+### Findings (Current Page Context)
+
+| Component        | Status  | Issues                |
+| ---------------- | ------- | --------------------- |
+| Policy Generator | UI-only | No generation backend |
+| Templates        | Static  | No versioning         |
+| Email Field      | Works   | No validation/use     |
+| Context Input    | Dead    | Not used in output    |
+
+### Critical Gaps
+
+* No policy storage
+* No version control
+* No mapping to controls
+* No approval workflow
+
+### Required Architecture
+
+```text
+Template → Context Injection → LLM Generation → Versioned Policy Store
+                                              ↓
+                                      Approval Workflow
+                                              ↓
+                                   Control Mapping + Evidence
+```
+
+### Priority Fixes
+
+* P0: Persist generated policies (D1 + R2 snapshot)
+* P0: Add versioning + diffing
+* P1: Map policies → controls
+* P1: Add approval workflow
+
+---
+
+## 2.6 Directory (`/console/directory`)
+
+### Likely Findings
+
+| Area            | Risk                    |
+| --------------- | ----------------------- |
+| User List       | Static or partial       |
+| Roles           | No RBAC enforcement     |
+| Identity Source | No real IdP integration |
+
+### Critical Gaps
+
+* No SCIM ingestion
+* No RBAC model
+* No lifecycle tracking
+
+### Fixes
+
+* P0: Implement RBAC + least privilege model
+* P0: Add IdP integration (Okta, Google)
+* P1: Track JML lifecycle events
+
+---
+
+## 2.7 Access Reviews
+
+### Findings
+
+| Area             | Status  |
+| ---------------- | ------- |
+| Review UI        | Exists  |
+| Decision Logging | Missing |
+| Evidence         | Missing |
+
+### Compliance Failure
+
+Fails SOC2 CC6 + ISO A.9
+
+### Fixes
+
+* P0: Log reviewer decisions as evidence
+* P0: Enforce review cadence
+* P1: Auto-generate review campaigns
+
+---
+
+## 2.8 Incidents
+
+### Findings
+
+| Area              | Status            |
+| ----------------- | ----------------- |
+| Incident List     | Likely stub       |
+| Severity          | No classification |
+| Response Tracking | Missing           |
+
+### Fixes
+
+* P0: Add incident lifecycle (open → investigate → resolve)
+* P0: Log all actions as audit events
+* P1: Integrate with SOAR
+
+---
+
+## 2.9 Automation (Workflows / Rules / Runs)
+
+### Findings
+
+| Area             | Status       |
+| ---------------- | ------------ |
+| Workflow UI      | Present      |
+| Execution Engine | Not verified |
+| Retry/DLQ        | Missing      |
+| Observability    | Missing      |
+
+### Required (Non-Negotiable)
+
+```text
+Durable Object Orchestrator:
+- Step state persistence
+- Retry logic
+- Dead letter queue
+- Replay capability
+```
+
+### Fixes
+
+* P0: Implement Durable Object workflow engine
+* P0: Add retry + DLQ
+* P1: Add execution logs UI
+
+---
+
+## 2.10 Connected Apps / Adapters
+
+### Findings
+
+| Area              | Status  |
+| ----------------- | ------- |
+| Adapter List      | Exists  |
+| Real Integrations | Unknown |
+| Health Checks     | Missing |
+
+### Risks
+
+* Fake integrations
+* No token validation
+* No sync status
+
+### Fixes
+
+* P0: Add adapter health endpoint checks
+* P0: Validate tokens via secure vault
+* P1: Add sync logs
+
+---
+
+# 3. Compliance-Specific Gap Analysis
+
+## Access Control (SOC2 / HIPAA 164.312(a))
+
+**Missing:**
+
+* RBAC enforcement
+* Least privilege validation
+* Access change tracking
+
+---
+
+## Audit Logging (HIPAA 164.312(b))
+
+**Missing:**
+
+* Immutable audit logs
+* Actor attribution
+* Tamper-proof storage
+
+---
+
+## Offboarding (SOC2 CC6.3)
+
+**Missing:**
+
+* Automated deprovisioning
+* Evidence of revocation
+* SLA tracking
+
+---
+
+## Evidence Integrity
+
+**Missing:**
+
+* Hashing
+* Timestamping
+* Chain-of-custody
+
+---
+
+# 4. Platform Maturity Score
+
+| Category              | Score |
+| --------------------- | ----- |
+| UI/UX                 | 6/10  |
+| Backend Functionality | 2/10  |
+| Compliance Readiness  | 1/10  |
+| Security Posture      | 3/10  |
+| Observability         | 1/10  |
+| Automation Depth      | 3/10  |
+
+**Overall: 2.5 / 10 (Pre-MVP, UI Prototype Stage)**
+
+---
+
+# 5. Required Path to Controlled MVP (Condensed)
+
+## P0 (Must Exist Before Any Pilot)
+
+* Auth enforcement (Cloudflare Access)
+* Real JML workflow engine (Durable Objects)
+* Evidence generation + immutable storage (R2 + hash)
+* Control evaluation engine
+* RBAC + tenant isolation
+* OpenAPI parity enforcement
+* Vault-based secret management
+
+---
+
+## P1 (Pilot-Ready)
+
+* Policy generation + versioning
+* Access reviews with evidence
+* Adapter health + real integrations (Okta, Slack)
+* Audit log viewer
+* Compliance scoring engine
+
+---
+
+## P2 (Post-Pilot Differentiation)
+
+* AI compliance insights
+* Auto-remediation workflows
+* Risk scoring + forecasting
+* Continuous control monitoring
+
+---
+
+# 6. Strategic Reality Check
+
+Current state:
+
+* Strong conceptual architecture
+* UI ahead of backend
+* Compliance engine is **non-functional**
+* Evidence system is **missing (critical failure)**
+
+If positioned today as a compliance platform:
+
+* **Fails audit immediately**
+* **Cannot produce defensible evidence**
+* **High legal/credibility risk**
+
+---
+
+# 7. Immediate Next Actions (Execution Order)
+
+```text
+1. Kill all demo/static data paths
+2. Implement evidence pipeline (R2 + hashing)
+3. Build Durable Object orchestrator
+4. Enforce tenant isolation at query layer
+5. Add RBAC + auth enforcement
+6. Wire controls → evidence → scoring
+7. Enable observability (logs + traces)
+```
+
+---
+
+If needed, next step can be:
+
+* Full **control-to-evidence schema design**
+* Or **Durable Object JML orchestrator implementation spec**
+* Or **end-to-end compliance data model (D1 + R2 + KV)**
