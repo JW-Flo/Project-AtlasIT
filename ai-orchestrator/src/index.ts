@@ -665,6 +665,105 @@ const worker = {
       );
     }
 
+    // ── Duty 7: Incident SLA breach detection + auto-resolve ────────────
+    //    Check for incidents past their SLA deadline and emit breach events.
+    //    Also resolve incidents flagged for auto-resolution.
+    let slaBreach = 0;
+    let autoResolved = 0;
+    try {
+      // Detect SLA breaches
+      const breachedRows = await sharedDb
+        .prepare(
+          `SELECT id, tenant_id, title, severity FROM incidents
+           WHERE sla_breach_at <= datetime('now')
+             AND status IN ('open', 'investigating')
+             AND sla_breach_notified = 0`,
+        )
+        .all();
+
+      for (const row of breachedRows.results ?? []) {
+        const r = row as any;
+        try {
+          // Mark as notified
+          await sharedDb
+            .prepare("UPDATE incidents SET sla_breach_notified = 1 WHERE id = ?")
+            .bind(r.id)
+            .run();
+
+          // Write timeline entry
+          const tlId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+               VALUES (?, ?, ?, 'sla_warning', 'system', 'SLA deadline breached')`,
+            )
+            .bind(tlId, r.id, r.tenant_id)
+            .run();
+
+          // Emit event for automation rules to pick up
+          const evId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+               VALUES (?, ?, 'incident_sla_breached', 'orchestrator', ?, 'pending', datetime('now'))`,
+            )
+            .bind(
+              evId,
+              r.tenant_id,
+              JSON.stringify({ incidentId: r.id, title: r.title, severity: r.severity }),
+            )
+            .run();
+
+          slaBreach++;
+        } catch {
+          // Continue processing other incidents
+        }
+      }
+
+      // Auto-resolve flagged incidents
+      const autoResolveRows = await sharedDb
+        .prepare(
+          `SELECT id, tenant_id FROM incidents
+           WHERE auto_resolve = 1 AND status = 'open'
+             AND source = 'automation'`,
+        )
+        .all();
+
+      for (const row of autoResolveRows.results ?? []) {
+        const r = row as any;
+        try {
+          await sharedDb
+            .prepare(
+              "UPDATE incidents SET status = 'resolved', resolved_at = datetime('now') WHERE id = ?",
+            )
+            .bind(r.id)
+            .run();
+
+          const tlId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+               VALUES (?, ?, ?, 'auto_action', 'system', 'Incident auto-resolved')`,
+            )
+            .bind(tlId, r.id, r.tenant_id)
+            .run();
+
+          autoResolved++;
+        } catch {
+          // Continue
+        }
+      }
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty7.sla_check_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -682,6 +781,8 @@ const worker = {
         nhiExpirySoon,
         nhiExpired,
         insightsWritten,
+        slaBreach,
+        autoResolved,
         checks,
       }),
     );

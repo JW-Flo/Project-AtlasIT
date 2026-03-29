@@ -743,6 +743,30 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
     ],
   },
 
+  {
+    eventPattern: "incident_sla_breached",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC7.4",
+        controlName: "Incident response timeliness",
+        impact: "detrimental",
+        confidence: 0.95,
+        category: "incident_response",
+        reasoning: "Incident SLA deadline breached — response timeliness failure",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.16.1.4",
+        controlName: "Assessment and decision on events",
+        impact: "detrimental",
+        confidence: 0.9,
+        category: "incident_response",
+        reasoning: "Incident not assessed within SLA timeframe",
+      },
+    ],
+  },
+
   // ── Access Reviews ──────────────────────────────────────────────────────
   {
     eventPattern: "access_review.completed",
