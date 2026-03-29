@@ -68,10 +68,15 @@ async function evaluateTenantState(db: any, tenantId: string): Promise<TenantSta
     // Check connected apps (with IDs)
     db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
 
-    // Check incidents
+    // Check incidents — configured means incidents exist OR automation rules create them
     db
-      .prepare("SELECT COUNT(*) as count FROM incidents WHERE tenant_id = ?")
-      .bind(tenantId)
+      .prepare(
+        `SELECT (
+           (SELECT COUNT(*) FROM incidents WHERE tenant_id = ?) +
+           (SELECT COUNT(*) FROM automation_rules WHERE tenant_id = ? AND actions LIKE '%create_incident%')
+         ) as count`,
+      )
+      .bind(tenantId, tenantId)
       .first(),
 
     // Check policies
