@@ -35,14 +35,16 @@
 
 ## Checkpoint SOP
 
-Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), pause to checkpoint before continuing:
+Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), execute the full checkpoint **end-to-end without pausing or asking the user between steps**:
 
 1. **Review** — Diff branch against main, verify all changes are intentional and tests pass
 2. **Rebase** — `git fetch origin main && git rebase origin/main` to resolve conflicts early
-3. **PR** — Open a PR with a summary and test plan (`gh pr create`)
-4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --merge`)
-5. **Validate** — Smoke-test deployed endpoints (health checks, key routes) to confirm deployment
+3. **PR** — Open a PR with a summary and test plan (`gh pr create` or MCP `create_pull_request`)
+4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --squash` or MCP `merge_pull_request`)
+5. **Validate** — Check CI status (`gh run list --branch main --limit 1`), then smoke-test deployed endpoints (`bash scripts/smoke-test.sh <worker> <url>` for console-app, orchestrator, compliance-worker)
 6. **Continue** — Create a new branch for the next batch of work
+
+**Execute all 6 steps autonomously.** Do not stop after step 3 to ask "want me to merge?" — the SOP is the instruction. Only pause if a step fails (CI red, smoke test failure, merge conflict).
 
 Do not accumulate unbounded work on a branch without checkpointing. This prevents painful rebases, ensures incremental review, and catches deployment issues early.
 
@@ -55,6 +57,14 @@ Do not accumulate unbounded work on a branch without checkpointing. This prevent
 - GH_PAT: 1Password item "GH_PAT" or "GitHub PAT - Atlas IT"
 
 ## GitHub & PR Workflow
+
+### Tool Priority for GitHub Operations
+
+1. **MCP GitHub tools** (`mcp__github__*`) — Use for PRs, issues, file operations, comments, merges
+2. **`gh` CLI** — Use for anything MCP tools don't cover: workflow runs (`gh run list`, `gh run view`), CI status checks, repo settings, release management
+3. **`curl` + GitHub API** — Last resort only; requires `GH_PAT` from 1Password which is not exported to shell
+
+When MCP tools are insufficient (e.g., checking GitHub Actions workflow status), fall back to `gh` CLI immediately — do not skip the step or ask the user.
 
 Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
 Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
