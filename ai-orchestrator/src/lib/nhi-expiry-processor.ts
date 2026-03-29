@@ -134,6 +134,44 @@ export async function processExpiringNhiCredentials(
           }
         }
 
+        // Emit auto-rotation event if enabled for this tenant
+        try {
+          const prefRow = await sharedDb
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'nhi_rotation_config' LIMIT 1",
+            )
+            .bind(row.tenant_id)
+            .first<{ value: string }>();
+
+          if (prefRow) {
+            const rotationConfig = JSON.parse(prefRow.value) as { enabled?: boolean };
+            if (rotationConfig.enabled === true) {
+              await sharedDb
+                .prepare(
+                  `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+                   VALUES (?, ?, 'nhi.token.rotation_requested', ?, ?, 'pending', ?)`,
+                )
+                .bind(
+                  crypto.randomUUID(),
+                  row.tenant_id,
+                  `nhi:${row.provider}`,
+                  JSON.stringify({
+                    credentialId: row.id,
+                    credentialType: row.credential_type,
+                    provider: row.provider,
+                    externalId: row.external_id,
+                    ownerEmail: row.owner_email,
+                    expiresAt: row.expires_at,
+                  }),
+                  now.toISOString(),
+                )
+                .run();
+            }
+          }
+        } catch {
+          // Auto-rotation check is best-effort
+        }
+
         expiringSoon++;
       } catch {
         errors++;

@@ -177,6 +177,76 @@ export function registerBuiltinHandlers(): void {
     "Update workflow run status in D1",
   );
 
+  // Atlas internal: revoke an NHI credential (called by leaver workflow)
+  registerHandler(
+    "atlas.revoke_nhi_credential",
+    async (ctx) => {
+      const credentialId = ctx.context.credentialId as string | undefined;
+      if (!credentialId) throw new Error("atlas.revoke_nhi_credential: missing credentialId in context");
+      if (!ctx.db) return { credentialId, status: "revoked", skipped: true, reason: "no_db" };
+
+      await ctx.db
+        .prepare(
+          "UPDATE nhi_credentials SET status = 'revoked', updated_at = datetime('now') WHERE id = ? AND tenant_id = ?",
+        )
+        .bind(credentialId, ctx.tenantId)
+        .run();
+
+      await ctx.db
+        .prepare(
+          `INSERT INTO nhi_audit_log (id, tenant_id, credential_id, action, actor, details, created_at)
+           VALUES (?, ?, ?, 'revoked', 'system', ?, datetime('now'))`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          ctx.tenantId,
+          credentialId,
+          JSON.stringify({ workflowRunId: ctx.workflowRunId, stepId: ctx.stepId }),
+        )
+        .run();
+
+      return { credentialId, status: "revoked" };
+    },
+    "Revoke an NHI credential and write audit log entry",
+  );
+
+  // Atlas internal: emit NHI offboarding evidence via evidence pipeline
+  registerHandler(
+    "atlas.emit_nhi_offboarding_evidence",
+    async (ctx) => {
+      if (!ctx.db) return { evidenceId: null, skipped: true, reason: "no_db" };
+
+      const source = (ctx.context.source as string) ?? "orchestrator";
+      const actor = (ctx.context.actor as string) ?? "system";
+      const subject = (ctx.context.subject as string) ?? null;
+
+      const classified = classifyEvent(
+        ctx.tenantId,
+        "nhi.credential.offboarded",
+        source,
+        actor,
+        subject,
+        ctx.context,
+      );
+
+      if (!classified) {
+        return { evidenceId: null, skipped: true, reason: "no_controls_matched" };
+      }
+
+      const result = await storeEvidence({ db: ctx.db, bucket: ctx.evidence }, classified);
+
+      return {
+        evidenceId: result.id,
+        contentHash: result.contentHash,
+        r2Key: result.r2Key,
+        controlsTagged: result.controlsTagged,
+        d1RowsWritten: result.d1RowsWritten,
+        alreadyExists: result.alreadyExists,
+      };
+    },
+    "Emit NHI offboarding evidence via evidence pipeline",
+  );
+
   // Generic adapter provision (matches any app.provision)
   registerHandler(
     "*.provision",

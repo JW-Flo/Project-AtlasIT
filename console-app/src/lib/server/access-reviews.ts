@@ -138,6 +138,8 @@ export async function createCampaign(
 ): Promise<AccessReviewCampaign> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const scope = input.scope ?? "all";
+
   await db
     .prepare(
       `INSERT INTO access_review_campaigns
@@ -148,7 +150,7 @@ export async function createCampaign(
       id,
       tenantId,
       input.name,
-      input.scope ?? "all",
+      scope,
       input.reviewerPolicy ?? "manager",
       input.dueDate ?? null,
       input.gracePeriodDays ?? 7,
@@ -157,11 +159,18 @@ export async function createCampaign(
     )
     .run();
 
+  // Populate NHI items immediately for NHI-scoped campaigns
+  let totalItems = 0;
+  if (scope.startsWith("nhi")) {
+    const nhiItems = await populateNhiItems(db, tenantId, id, scope);
+    totalItems = nhiItems.length;
+  }
+
   return {
     id,
     tenantId,
     name: input.name,
-    scope: input.scope ?? "all",
+    scope,
     status: "draft",
     reviewerPolicy: input.reviewerPolicy ?? "manager",
     dueDate: input.dueDate ?? null,
@@ -169,10 +178,10 @@ export async function createCampaign(
     createdBy: input.createdBy ?? null,
     createdAt: now,
     completedAt: null,
-    totalItems: 0,
+    totalItems,
     approvedItems: 0,
     revokedItems: 0,
-    pendingItems: 0,
+    pendingItems: totalItems,
   };
 }
 
