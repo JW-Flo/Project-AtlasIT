@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import EvidenceDetail from "$lib/components/EvidenceDetail.svelte";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -65,19 +66,6 @@
     detrimentalCount: number;
   }
 
-  interface EvidenceFeedPreviewItem {
-    id: string;
-    framework: string;
-    controlId: string;
-    impact: "positive" | "detrimental" | "neutral";
-    eventType: string;
-    source: string;
-    actor: string;
-    subject: string;
-    reasoning: string;
-    createdAt: string;
-  }
-
   let loading = true;
   let saving = false;
   let error: string | null = null;
@@ -95,8 +83,15 @@
     positiveCount: 0,
     detrimentalCount: 0,
   };
-  let evidenceFeedPreview: EvidenceFeedPreviewItem[] = [];
+  let evidenceFeedPreview: EvidenceItem[] = [];
   let evidenceFeedError: string | null = null;
+
+  // Live ticker
+  let tickerItems: EvidenceItem[] = [];
+  let tickerError: string | null = null;
+  let tickerLastFetch: number | null = null;
+  let tickerInterval: ReturnType<typeof setInterval> | null = null;
+  let selectedEvidence: EvidenceItem | null = null;
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -187,11 +182,52 @@
       .join(" ");
   }
 
-  function evidenceImpactVariant(impact: "positive" | "detrimental" | "neutral"): "success" | "destructive" | "secondary" {
-    if (impact === "positive") return "success";
-    if (impact === "detrimental") return "destructive";
-    return "secondary";
+  function impactScoreVariant(score: number): "success" | "warning" | "destructive" {
+    if (score >= 70) return "success";
+    if (score >= 40) return "warning";
+    return "destructive";
   }
+
+  function relativeTime(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  function truncateEmail(email: string): string {
+    if (email.length <= 24) return email;
+    const [local, domain] = email.split("@");
+    if (!domain) return email.slice(0, 22) + "…";
+    return `${local.slice(0, 10)}…@${domain}`;
+  }
+
+  async function loadTicker() {
+    try {
+      const res = await fetch("/api/compliance/evidence-feed?limit=5");
+      if (!res.ok) {
+        tickerError = `Evidence feed unavailable`;
+        return;
+      }
+      const data = await res.json();
+      const items: unknown[] = Array.isArray(data?.feed)
+        ? data.feed
+        : Array.isArray(data?.items)
+          ? data.items
+          : [];
+      tickerItems = items as EvidenceItem[];
+      tickerError = null;
+      tickerLastFetch = Date.now();
+    } catch {
+      tickerError = "Evidence feed unavailable";
+    }
+  }
+
+  $: tickerFresh = tickerLastFetch !== null && Date.now() - tickerLastFetch < 60000;
+
   async function loadScores() {
     try {
       const res = await fetch("/api/tenant-compliance/scores");
@@ -240,7 +276,7 @@
         positiveCount: Number(data?.summary?.positiveCount ?? 0),
         detrimentalCount: Number(data?.summary?.detrimentalCount ?? 0),
       };
-      evidenceFeedPreview = Array.isArray(data?.feed) ? data.feed : [];
+      evidenceFeedPreview = Array.isArray(data?.feed) ? (data.feed as EvidenceItem[]) : [];
     } catch {
       evidenceFeedPreview = [];
       evidenceFeedError = "Failed to load evidence feed";
@@ -313,7 +349,7 @@
   let evaluating = false;
   let lastEvaluation: { tenantState: Record<string, boolean>; evaluations: any[] } | null = null;
 
-  interface EvidenceItem {
+  interface EvidenceLockerItem {
     id: number;
     hash: string;
     tenantId: string;
@@ -323,7 +359,21 @@
     linkedControl?: string;
   }
 
-  let evidenceItems: EvidenceItem[] = [];
+  interface EvidenceItem {
+    id: string;
+    controlTags: string[];
+    source: string;
+    actorEmail?: string;
+    subjectEmail?: string;
+    impactScore: number;
+    r2Hash?: string;
+    createdAt: string;
+    framework?: string;
+    eventType?: string;
+    metadata?: Record<string, unknown>;
+  }
+
+  let evidenceItems: EvidenceLockerItem[] = [];
   let evidenceLoading = false;
   let evidenceError: string | null = null;
   let showRecordForm = false;
@@ -449,6 +499,12 @@
   onMount(() => {
     loadData();
     loadEvidence();
+    loadTicker();
+    tickerInterval = setInterval(loadTicker, 30000);
+  });
+
+  onDestroy(() => {
+    if (tickerInterval !== null) clearInterval(tickerInterval);
   });
 </script>
 
@@ -559,16 +615,64 @@
         {:else if evidenceFeedPreview.length > 0}
           <div class="rounded-md border bg-background divide-y">
             {#each evidenceFeedPreview as item}
-              <div class="px-3 py-2 flex items-center justify-between gap-3">
+              <button
+                class="w-full px-3 py-2 flex items-center justify-between gap-3 text-left hover:bg-muted/50 transition-colors"
+                on:click={() => (selectedEvidence = item)}
+              >
                 <div>
-                  <div class="text-sm font-medium">{item.framework} · {item.controlId}</div>
-                  <div class="text-xs text-muted-foreground">{item.eventType} • {item.source} • {item.actor || "system"}</div>
+                  <div class="text-sm font-medium">{item.framework} · {item.controlTags?.[0] ?? ""}</div>
+                  <div class="text-xs text-muted-foreground">{item.eventType} • {item.source} • {item.actorEmail ?? "system"}</div>
                 </div>
-                <div class="text-right">
-                  <Badge variant={evidenceImpactVariant(item.impact)}>{item.impact}</Badge>
+                <div class="text-right shrink-0">
+                  <Badge variant={impactScoreVariant(item.impactScore ?? 0)}>{item.impactScore ?? "—"}</Badge>
                   <div class="text-[11px] text-muted-foreground mt-1">{new Date(item.createdAt).toLocaleString()}</div>
                 </div>
-              </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </CardContent>
+    </Card>
+
+    <!-- Live Evidence Ticker -->
+    <Card class="mb-6">
+      <CardContent class="pt-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-semibold">Live Evidence Ticker</h2>
+            {#if tickerFresh}
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+              </span>
+            {/if}
+          </div>
+          <span class="text-xs text-muted-foreground">Updates every 30s</span>
+        </div>
+
+        {#if tickerError}
+          <p class="text-sm text-muted-foreground">Evidence feed unavailable</p>
+        {:else if tickerItems.length === 0}
+          <p class="text-sm text-muted-foreground">No recent evidence events</p>
+        {:else}
+          <div class="divide-y rounded-md border bg-background">
+            {#each tickerItems as item (item.id)}
+              <button
+                class="w-full px-3 py-2.5 flex items-center gap-3 text-left hover:bg-muted/50 transition-colors"
+                on:click={() => (selectedEvidence = item)}
+              >
+                {#if item.controlTags?.[0]}
+                  <Badge variant="outline" class="font-mono text-xs shrink-0">{item.controlTags[0]}</Badge>
+                {/if}
+                <span class="text-xs text-muted-foreground shrink-0">{item.source}</span>
+                {#if item.actorEmail}
+                  <span class="text-xs truncate flex-1 min-w-0">{truncateEmail(item.actorEmail)}</span>
+                {:else}
+                  <span class="flex-1"></span>
+                {/if}
+                <span class="text-xs text-muted-foreground shrink-0">{relativeTime(item.createdAt)}</span>
+                <Badge variant={impactScoreVariant(item.impactScore)} class="shrink-0">{item.impactScore}</Badge>
+              </button>
             {/each}
           </div>
         {/if}
@@ -969,6 +1073,8 @@
     {/if}
   {/if}
 </div>
+
+<EvidenceDetail evidence={selectedEvidence} on:close={() => (selectedEvidence = null)} />
 
 <style>
   select option {
