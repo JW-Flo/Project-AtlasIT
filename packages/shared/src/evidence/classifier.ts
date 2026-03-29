@@ -744,6 +744,30 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
   },
 
   {
+    eventPattern: "policy.approved",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC1.1",
+        controlName: "Control environment — policy governance",
+        impact: "positive",
+        confidence: 0.95,
+        category: "policy_change",
+        reasoning: "Security policy formally reviewed and approved",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.5.1",
+        controlName: "Information security policies",
+        impact: "positive",
+        confidence: 0.95,
+        category: "policy_change",
+        reasoning: "Policy approved through formal review workflow",
+      },
+    ],
+  },
+
+  {
     eventPattern: "incident_sla_breached",
     controls: [
       {
