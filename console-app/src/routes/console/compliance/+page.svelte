@@ -800,7 +800,13 @@
 
   onMount(() => {
     loadData();
-    loadEvidence();
+    loadEvidence().then(() => {
+      // Deep-link: auto-expand evidence item from URL hash
+      const hash = window.location.hash;
+      if (hash.startsWith("#evidence=")) {
+        expandedEvidenceId = hash.slice("#evidence=".length);
+      }
+    });
     loadTenantTags();
     loadConnectedApps();
     // Auto-evaluate configuration on page load (non-blocking, silent)
@@ -1499,7 +1505,13 @@
             <tbody>
               {#each groupedEvidenceItems as item (item.id)}
                 <tr class="border-t hover:bg-muted/50 cursor-pointer transition-colors"
-                    on:click={() => expandedEvidenceId = expandedEvidenceId === String(item.id) ? null : String(item.id)}>
+                    on:click={() => {
+                      const id = String(item.id);
+                      expandedEvidenceId = expandedEvidenceId === id ? null : id;
+                      if (typeof window !== "undefined") {
+                        window.location.hash = expandedEvidenceId ? `evidence=${expandedEvidenceId}` : "";
+                      }
+                    }}>
                   <td class="px-4 py-3">
                     <span class="text-[10px] text-muted-foreground mr-1">{expandedEvidenceId === String(item.id) ? '▼' : '▶'}</span>
                     <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash || String(item.id))}</span>

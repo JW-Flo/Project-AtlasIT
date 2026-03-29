@@ -40,18 +40,21 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ history: [] });
 
-  const days = Math.min(Number(url.searchParams.get("days") ?? "30"), 90);
-  const since = new Date(Date.now() - days * 86400_000).toISOString();
+  const days = Math.min(Number(url.searchParams.get("days") ?? "30"), 365);
+  const sinceParam = url.searchParams.get("since");
+  const untilParam = url.searchParams.get("until");
+  const since = sinceParam || new Date(Date.now() - days * 86400_000).toISOString();
+  const until = untilParam || new Date().toISOString();
 
   const { results } = await db
     .prepare(
       `SELECT framework, score, grade,
               date(recorded_at) AS date
        FROM compliance_history
-       WHERE tenant_id = ? AND recorded_at >= ?
+       WHERE tenant_id = ? AND recorded_at >= ? AND recorded_at <= ?
        ORDER BY framework, recorded_at ASC`,
     )
-    .bind(tenantId, since)
+    .bind(tenantId, since, until)
     .all<{ framework: string; score: number; grade: string; date: string }>();
 
   // Group by framework, de-duplicate by keeping last score per day
@@ -70,9 +73,7 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
   const history: FrameworkHistory[] = [];
   for (const [framework, pointMap] of byFramework) {
-    const points = Array.from(pointMap.values()).sort((a, b) =>
-      a.date.localeCompare(b.date),
-    );
+    const points = Array.from(pointMap.values()).sort((a, b) => a.date.localeCompare(b.date));
     const latestScore = points[points.length - 1]?.score ?? 0;
     history.push({
       framework,

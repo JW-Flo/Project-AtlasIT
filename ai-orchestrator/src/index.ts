@@ -230,6 +230,7 @@ const worker = {
     //    Collect compliance evidence from connected adapters for all tenants
     //    and write to compliance_evidence in D1.
     let evidenceCollected = 0;
+    const adapterErrorList: { adapter: string; controlRef: string; error: string }[] = [];
     if (Object.keys(adapterUrls).length > 0) {
       // Get distinct tenant IDs from tenants table
       const { results: tenantRows } = await sharedDb
@@ -272,8 +273,22 @@ const worker = {
                     )
                     .run();
                   rowsWritten++;
-                } catch {
-                  // duplicate or schema not ready — skip
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  if (!msg.includes("UNIQUE constraint")) {
+                    console.error(
+                      JSON.stringify({
+                        ts: new Date().toISOString(),
+                        level: "warn",
+                        event: "duty2.evidence_write_failed",
+                        tenantId: row.id,
+                        adapter: result.slug,
+                        controlRef,
+                        error: msg,
+                      }),
+                    );
+                    adapterErrorList.push({ adapter: result.slug, controlRef, error: msg });
+                  }
                 }
               }
             }
@@ -284,6 +299,29 @@ const worker = {
 
       for (const r of collectSettled) {
         if (r.status === "fulfilled") evidenceCollected += r.value;
+      }
+
+      // Store error summary for UI visibility
+      if (adapterErrorList.length > 0) {
+        for (const row of tenantRows ?? []) {
+          try {
+            const errSummary = JSON.stringify({
+              errors: adapterErrorList.slice(0, 20),
+              timestamp: new Date().toISOString(),
+              total: adapterErrorList.length,
+            });
+            await sharedDb
+              .prepare(
+                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+                 VALUES (?, 'last_evidence_errors', ?, datetime('now'))
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+              )
+              .bind(row.id, errSummary, errSummary)
+              .run();
+          } catch {
+            /* best-effort */
+          }
+        }
       }
     }
 

@@ -26,14 +26,32 @@ interface ExpiryResult {
   errors: number;
 }
 
-const GRACE_PERIOD_DAYS = 30;
+const DEFAULT_GRACE_PERIOD_DAYS = 30;
+
+async function loadGracePeriodDays(db: D1Database): Promise<number> {
+  try {
+    const row = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE key = 'nhi_rotation_config' LIMIT 1")
+      .first<{ value: string }>();
+    if (row?.value) {
+      const config = JSON.parse(row.value);
+      if (typeof config.gracePeriodDays === "number" && config.gracePeriodDays > 0) {
+        return config.gracePeriodDays;
+      }
+    }
+  } catch {
+    /* use default */
+  }
+  return DEFAULT_GRACE_PERIOD_DAYS;
+}
 
 export async function processExpiringNhiCredentials(
   deps: ExpiryProcessorDeps,
 ): Promise<ExpiryResult> {
   const { sharedDb } = deps;
   const now = new Date();
-  const graceDate = new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  const gracePeriodDays = await loadGracePeriodDays(sharedDb);
+  const graceDate = new Date(now.getTime() + gracePeriodDays * 24 * 60 * 60 * 1000);
   let expiringSoon = 0;
   let expired = 0;
   let errors = 0;
