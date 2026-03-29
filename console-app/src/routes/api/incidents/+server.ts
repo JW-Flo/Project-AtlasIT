@@ -1,6 +1,26 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
+import {
+  computeSlaBreachAt,
+  DEFAULT_SLA_SECONDS,
+  type SlaConfig,
+} from "@atlasit/shared/incidents/lifecycle";
+
+async function loadSlaConfig(db: D1Database, tenantId: string): Promise<SlaConfig> {
+  try {
+    const row = await db
+      .prepare(
+        "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'incident_sla_config'",
+      )
+      .bind(tenantId)
+      .first<{ value: string }>();
+    if (row?.value) return JSON.parse(row.value);
+  } catch {
+    /* use defaults */
+  }
+  return DEFAULT_SLA_SECONDS;
+}
 
 function getDb(platform: any): D1Database | null {
   const env = (platform?.env as any) || {};
@@ -37,7 +57,10 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
   params.push(limit);
 
   try {
-    const { results } = await db.prepare(query).bind(...params).all();
+    const { results } = await db
+      .prepare(query)
+      .bind(...params)
+      .all();
     const items = (results ?? []).map((row: any) => ({
       id: row.id,
       tenantId: row.tenant_id,
@@ -47,6 +70,10 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
       source: row.source ?? null,
       sourceId: row.source_id ?? null,
       description: row.description ?? null,
+      ownerEmail: row.owner_email ?? null,
+      ownerId: row.owner_id ?? null,
+      investigatingAt: row.investigating_at ?? null,
+      slaBreachAt: row.sla_breach_at ?? null,
       createdAt: row.created_at,
       resolvedAt: row.resolved_at ?? null,
     }));
@@ -83,17 +110,36 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const id = crypto.randomUUID().replace(/-/g, "");
   const severity = body.severity || "medium";
   const description = body.description || "";
+  const now = new Date().toISOString();
+
+  // Compute SLA breach deadline from tenant config
+  const slaConfig = await loadSlaConfig(db, tenantId);
+  const slaBreachAt = computeSlaBreachAt(now, severity, slaConfig);
 
   try {
     await db
       .prepare(
-        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, description)
-         VALUES (?, ?, ?, ?, 'open', 'manual', ?)`,
+        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, description, created_at, sla_breach_at)
+         VALUES (?, ?, ?, ?, 'open', 'manual', ?, ?, ?)`,
       )
-      .bind(id, tenantId, body.title, severity, description)
+      .bind(id, tenantId, body.title, severity, description, now, slaBreachAt)
       .run();
   } catch (e: any) {
     return json({ error: `Failed to create incident: ${e?.message}` }, { status: 500 });
+  }
+
+  // Write initial timeline entry
+  try {
+    const timelineId = crypto.randomUUID().replace(/-/g, "");
+    await db
+      .prepare(
+        `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+         VALUES (?, ?, ?, 'auto_action', ?, 'Incident created')`,
+      )
+      .bind(timelineId, id, tenantId, user.email ?? "unknown")
+      .run();
+  } catch {
+    // Non-blocking
   }
 
   try {

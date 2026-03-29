@@ -21,3 +21,4 @@ export * from "./directory/index";
 export * from "./discovery/index";
 export * from "./compliance-intelligence/index";
 export * from "./roles/index";
+export * from "./incidents/index";
