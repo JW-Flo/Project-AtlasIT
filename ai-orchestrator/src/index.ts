@@ -230,6 +230,7 @@ const worker = {
     //    Collect compliance evidence from connected adapters for all tenants
     //    and write to compliance_evidence in D1.
     let evidenceCollected = 0;
+    const adapterErrorList: { adapter: string; controlRef: string; error: string }[] = [];
     if (Object.keys(adapterUrls).length > 0) {
       // Get distinct tenant IDs from tenants table
       const { results: tenantRows } = await sharedDb
@@ -272,8 +273,22 @@ const worker = {
                     )
                     .run();
                   rowsWritten++;
-                } catch {
-                  // duplicate or schema not ready — skip
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  if (!msg.includes("UNIQUE constraint")) {
+                    console.error(
+                      JSON.stringify({
+                        ts: new Date().toISOString(),
+                        level: "warn",
+                        event: "duty2.evidence_write_failed",
+                        tenantId: row.id,
+                        adapter: result.slug,
+                        controlRef,
+                        error: msg,
+                      }),
+                    );
+                    adapterErrorList.push({ adapter: result.slug, controlRef, error: msg });
+                  }
                 }
               }
             }
@@ -284,6 +299,29 @@ const worker = {
 
       for (const r of collectSettled) {
         if (r.status === "fulfilled") evidenceCollected += r.value;
+      }
+
+      // Store error summary for UI visibility
+      if (adapterErrorList.length > 0) {
+        for (const row of tenantRows ?? []) {
+          try {
+            const errSummary = JSON.stringify({
+              errors: adapterErrorList.slice(0, 20),
+              timestamp: new Date().toISOString(),
+              total: adapterErrorList.length,
+            });
+            await sharedDb
+              .prepare(
+                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+                 VALUES (?, 'last_evidence_errors', ?, datetime('now'))
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+              )
+              .bind(row.id, errSummary, errSummary)
+              .run();
+          } catch {
+            /* best-effort */
+          }
+        }
       }
     }
 
@@ -665,6 +703,107 @@ const worker = {
       );
     }
 
+    // ── Duty 7: Incident SLA breach detection + auto-resolve ────────────
+    //    Check for incidents past their SLA deadline and emit breach events.
+    //    Also resolve incidents flagged for auto-resolution.
+    let slaBreach = 0;
+    let autoResolved = 0;
+    try {
+      // Detect SLA breaches
+      const breachedRows = await sharedDb
+        .prepare(
+          `SELECT id, tenant_id, title, severity FROM incidents
+           WHERE sla_breach_at <= datetime('now')
+             AND status IN ('open', 'investigating')
+             AND sla_breach_notified = 0
+           LIMIT 500`,
+        )
+        .all();
+
+      for (const row of breachedRows.results ?? []) {
+        const r = row as any;
+        try {
+          // Mark as notified
+          await sharedDb
+            .prepare("UPDATE incidents SET sla_breach_notified = 1 WHERE id = ?")
+            .bind(r.id)
+            .run();
+
+          // Write timeline entry
+          const tlId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+               VALUES (?, ?, ?, 'sla_warning', 'system', 'SLA deadline breached')`,
+            )
+            .bind(tlId, r.id, r.tenant_id)
+            .run();
+
+          // Emit event for automation rules to pick up
+          const evId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+               VALUES (?, ?, 'incident_sla_breached', 'orchestrator', ?, 'pending', datetime('now'))`,
+            )
+            .bind(
+              evId,
+              r.tenant_id,
+              JSON.stringify({ incidentId: r.id, title: r.title, severity: r.severity }),
+            )
+            .run();
+
+          slaBreach++;
+        } catch {
+          // Continue processing other incidents
+        }
+      }
+
+      // Auto-resolve flagged incidents
+      const autoResolveRows = await sharedDb
+        .prepare(
+          `SELECT id, tenant_id FROM incidents
+           WHERE auto_resolve = 1 AND status = 'open'
+             AND source = 'automation'
+           LIMIT 500`,
+        )
+        .all();
+
+      for (const row of autoResolveRows.results ?? []) {
+        const r = row as any;
+        try {
+          await sharedDb
+            .prepare(
+              "UPDATE incidents SET status = 'resolved', resolved_at = datetime('now') WHERE id = ?",
+            )
+            .bind(r.id)
+            .run();
+
+          const tlId = crypto.randomUUID().replace(/-/g, "");
+          await sharedDb
+            .prepare(
+              `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+               VALUES (?, ?, ?, 'auto_action', 'system', 'Incident auto-resolved')`,
+            )
+            .bind(tlId, r.id, r.tenant_id)
+            .run();
+
+          autoResolved++;
+        } catch {
+          // Continue
+        }
+      }
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty7.sla_check_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -682,6 +821,8 @@ const worker = {
         nhiExpirySoon,
         nhiExpired,
         insightsWritten,
+        slaBreach,
+        autoResolved,
         checks,
       }),
     );

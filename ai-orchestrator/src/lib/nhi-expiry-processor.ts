@@ -26,14 +26,34 @@ interface ExpiryResult {
   errors: number;
 }
 
-const GRACE_PERIOD_DAYS = 30;
+const DEFAULT_GRACE_PERIOD_DAYS = 30;
+
+async function loadGracePeriodDays(db: D1Database, tenantId: string): Promise<number> {
+  try {
+    const row = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'nhi_rotation_config'")
+      .bind(tenantId)
+      .first<{ value: string }>();
+    if (row?.value) {
+      const config = JSON.parse(row.value);
+      if (typeof config.gracePeriodDays === "number" && config.gracePeriodDays > 0) {
+        return config.gracePeriodDays;
+      }
+    }
+  } catch {
+    /* use default */
+  }
+  return DEFAULT_GRACE_PERIOD_DAYS;
+}
 
 export async function processExpiringNhiCredentials(
   deps: ExpiryProcessorDeps,
 ): Promise<ExpiryResult> {
   const { sharedDb } = deps;
   const now = new Date();
-  const graceDate = new Date(now.getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+  // Use default grace period for the initial scan; per-tenant config is applied
+  // in the auto-rotation event emission inside the per-credential loop
+  const graceDate = new Date(now.getTime() + DEFAULT_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
   let expiringSoon = 0;
   let expired = 0;
   let errors = 0;
@@ -114,6 +134,44 @@ export async function processExpiringNhiCredentials(
               )
               .run();
           }
+        }
+
+        // Emit auto-rotation event if enabled for this tenant
+        try {
+          const prefRow = await sharedDb
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'nhi_rotation_config' LIMIT 1",
+            )
+            .bind(row.tenant_id)
+            .first<{ value: string }>();
+
+          if (prefRow) {
+            const rotationConfig = JSON.parse(prefRow.value) as { enabled?: boolean };
+            if (rotationConfig.enabled === true) {
+              await sharedDb
+                .prepare(
+                  `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+                   VALUES (?, ?, 'nhi.token.rotation_requested', ?, ?, 'pending', ?)`,
+                )
+                .bind(
+                  crypto.randomUUID(),
+                  row.tenant_id,
+                  `nhi:${row.provider}`,
+                  JSON.stringify({
+                    credentialId: row.id,
+                    credentialType: row.credential_type,
+                    provider: row.provider,
+                    externalId: row.external_id,
+                    ownerEmail: row.owner_email,
+                    expiresAt: row.expires_at,
+                  }),
+                  now.toISOString(),
+                )
+                .run();
+            }
+          }
+        } catch {
+          // Auto-rotation check is best-effort
         }
 
         expiringSoon++;

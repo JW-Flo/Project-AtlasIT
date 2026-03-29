@@ -743,6 +743,78 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
     ],
   },
 
+  {
+    eventPattern: "nhi.credential.offboarded",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC6.1",
+        controlName: "NHI credential revoked during offboarding",
+        impact: "positive",
+        confidence: 0.9,
+        category: "access_revocation",
+        reasoning: "Non-human identity credential revoked as part of offboarding workflow",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.9.2.6",
+        controlName: "Removal of access rights — NHI",
+        impact: "positive",
+        confidence: 0.9,
+        category: "access_revocation",
+        reasoning: "Service account / API key revoked upon user deactivation",
+      },
+    ],
+  },
+
+  {
+    eventPattern: "policy.approved",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC1.1",
+        controlName: "Control environment — policy governance",
+        impact: "positive",
+        confidence: 0.95,
+        category: "policy_change",
+        reasoning: "Security policy formally reviewed and approved",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.5.1",
+        controlName: "Information security policies",
+        impact: "positive",
+        confidence: 0.95,
+        category: "policy_change",
+        reasoning: "Policy approved through formal review workflow",
+      },
+    ],
+  },
+
+  {
+    eventPattern: "incident_sla_breached",
+    controls: [
+      {
+        framework: "SOC2",
+        controlId: "CC7.4",
+        controlName: "Incident response timeliness",
+        impact: "detrimental",
+        confidence: 0.95,
+        category: "incident_response",
+        reasoning: "Incident SLA deadline breached — response timeliness failure",
+      },
+      {
+        framework: "ISO27001",
+        controlId: "A.16.1.4",
+        controlName: "Assessment and decision on events",
+        impact: "detrimental",
+        confidence: 0.9,
+        category: "incident_response",
+        reasoning: "Incident not assessed within SLA timeframe",
+      },
+    ],
+  },
+
   // ── Access Reviews ──────────────────────────────────────────────────────
   {
     eventPattern: "access_review.completed",

@@ -11,7 +11,8 @@ export type TriggerType =
   | "schedule"
   | "compliance_score_changed"
   | "nhi_token_expiring"
-  | "nhi_token_expired";
+  | "nhi_token_expired"
+  | "incident_sla_breached";
 
 export type ActionType =
   | "provision_app_access"

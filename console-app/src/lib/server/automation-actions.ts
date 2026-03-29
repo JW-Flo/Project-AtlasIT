@@ -6,6 +6,11 @@
  */
 
 import type { ActionResult } from "@atlasit/shared/automation/types";
+import {
+  computeSlaBreachAt,
+  DEFAULT_SLA_SECONDS,
+  type SlaConfig,
+} from "@atlasit/shared/incidents/lifecycle";
 
 export interface ActionContext {
   db: D1Database;
@@ -65,13 +70,38 @@ const handleCreateIncident: ActionHandler = async (config, ctx) => {
     (config.description as string) ||
     `Created by automation rule. Trigger: ${JSON.stringify(ctx.payload).slice(0, 500)}`;
 
+  // Compute SLA breach deadline
+  const now = new Date().toISOString();
+  let slaConfig: SlaConfig = DEFAULT_SLA_SECONDS;
+  try {
+    const row = await ctx.db
+      .prepare(
+        "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'incident_sla_config'",
+      )
+      .bind(ctx.tenantId)
+      .first<{ value: string }>();
+    if (row?.value) slaConfig = JSON.parse(row.value);
+  } catch {
+    /* use defaults */
+  }
+  const slaBreachAt = computeSlaBreachAt(now, severity, slaConfig);
+
   try {
     await ctx.db
       .prepare(
-        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, source_id, description)
-         VALUES (?, ?, ?, ?, 'open', 'automation', ?, ?)`,
+        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, source_id, description, created_at, sla_breach_at)
+         VALUES (?, ?, ?, ?, 'open', 'automation', ?, ?, ?, ?)`,
       )
-      .bind(id, ctx.tenantId, title, severity, (config.ruleId as string) || null, description)
+      .bind(
+        id,
+        ctx.tenantId,
+        title,
+        severity,
+        (config.ruleId as string) || null,
+        description,
+        now,
+        slaBreachAt,
+      )
       .run();
   } catch (e: any) {
     return {
@@ -79,6 +109,20 @@ const handleCreateIncident: ActionHandler = async (config, ctx) => {
       status: "failed",
       message: `Failed to create incident: ${e?.message || "DB error"}`,
     };
+  }
+
+  // Write initial timeline entry
+  try {
+    const timelineId = crypto.randomUUID().replace(/-/g, "");
+    await ctx.db
+      .prepare(
+        `INSERT INTO incident_timeline (id, incident_id, tenant_id, entry_type, actor_email, content)
+         VALUES (?, ?, ?, 'auto_action', 'system', 'Incident auto-created by automation rule')`,
+      )
+      .bind(timelineId, id, ctx.tenantId)
+      .run();
+  } catch {
+    // Non-blocking
   }
 
   // Also emit event for downstream consumers (Slack notifications, etc.)
