@@ -391,6 +391,9 @@ export async function evaluateControls(
   const placeholders = controlIds.map(() => "?").join(",");
 
   // Fetch evidence stats, verification attestations, adapter pass/fail, and policy eval in parallel
+  // Each query is individually wrapped to prevent a single D1 transient failure from crashing the
+  // entire evaluation — a failed query simply returns empty results for that dimension.
+  const emptyAll = { results: [] as any[] };
   const [evidenceResult, verifiedResult, adapterResult, policyEvalResult] = await Promise.all([
     db
       .prepare(
@@ -402,9 +405,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<EvidenceRow>(),
-    // Verification attestations — explicit manual sign-off stored as evidence
-    // with evidence_type = 'verification_attestation'
+      .all<EvidenceRow>()
+      .catch(() => emptyAll as D1Result<EvidenceRow>),
     db
       .prepare(
         `SELECT control_id, MAX(created_at) AS verified_at
@@ -414,8 +416,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<VerifiedRow>(),
-    // Latest adapter evidence per control — carries pass/fail status from real config checks
+      .all<VerifiedRow>()
+      .catch(() => emptyAll as D1Result<VerifiedRow>),
     db
       .prepare(
         `SELECT control_id, metadata, MAX(created_at) AS created_at
@@ -425,8 +427,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<AdapterEvidenceRow>(),
-    // Latest policy evaluation per control — CDT rule pass/fail from bulk evaluation
+      .all<AdapterEvidenceRow>()
+      .catch(() => emptyAll as D1Result<AdapterEvidenceRow>),
     db
       .prepare(
         `SELECT control_id, metadata, MAX(created_at) AS created_at
@@ -436,7 +438,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<PolicyEvalRow>(),
+      .all<PolicyEvalRow>()
+      .catch(() => emptyAll as D1Result<PolicyEvalRow>),
   ]);
 
   // Index evidence by control_id for O(1) lookup

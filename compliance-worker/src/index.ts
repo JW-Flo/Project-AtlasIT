@@ -477,7 +477,9 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
             .bind(tenantId)
             .first<{ cnt: number }>();
           if (countRow) total = countRow.cnt;
-        } catch { /* count is best-effort */ }
+        } catch {
+          /* count is best-effort */
+        }
 
         return jsonResponse({ items, nextCursor, count: items.length, total }, 200, headers);
       }
@@ -862,7 +864,18 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
     if (!sharedDb) return errorResponse(503, requestId, headers, "Database unavailable");
 
     const framework = url.searchParams.get("framework") ?? undefined;
-    const evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    let evaluations: Awaited<ReturnType<typeof evaluateControls>>;
+    try {
+      evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    } catch (evalErr) {
+      log("error", "controls.evaluate_failed", { requestId, err: String(evalErr) });
+      return errorResponse(
+        503,
+        requestId,
+        headers,
+        "Compliance evaluation temporarily unavailable",
+      );
+    }
     const scores = scoreFromEvaluations(evaluations);
 
     return jsonResponse({ controls: evaluations, scores, requestId }, 200, headers);
@@ -2760,8 +2773,19 @@ async function handleSnapshot(
       });
     }
 
-    const fresh = await buildSnapshot(env, tenantId);
-    await persistSnapshot(env, tenantId, fresh);
+    let fresh: ComplianceSnapshot;
+    try {
+      fresh = await buildSnapshot(env, tenantId);
+    } catch (buildErr) {
+      log("error", "snapshot.build_failed", { requestId, tenantId, err: String(buildErr) });
+      return new Response(JSON.stringify({ error: "Snapshot build failed", requestId }), {
+        status: 503,
+        headers: mergeHeaders(headers, { "content-type": "application/json" }),
+      });
+    }
+    await persistSnapshot(env, tenantId, fresh).catch((e) =>
+      log("warn", "snapshot.persist_failed", { requestId, tenantId, err: String(e) }),
+    );
     const enriched: ComplianceSnapshot = { ...fresh, ageSeconds: 0 };
     log("info", "snapshot.fresh", {
       requestId,
