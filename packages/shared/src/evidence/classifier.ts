@@ -752,7 +752,7 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
         controlName: "NHI credential revoked during offboarding",
         impact: "positive",
         confidence: 0.9,
-        category: "access_revocation",
+        category: "access_revoke",
         reasoning: "Non-human identity credential revoked as part of offboarding workflow",
       },
       {
@@ -761,7 +761,7 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
         controlName: "Removal of access rights — NHI",
         impact: "positive",
         confidence: 0.9,
-        category: "access_revocation",
+        category: "access_revoke",
         reasoning: "Service account / API key revoked upon user deactivation",
       },
     ],

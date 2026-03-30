@@ -405,14 +405,14 @@
                               <span class="text-xs font-medium text-muted-foreground uppercase">Actions</span>
                               <div class="flex gap-2 mt-1">
                                 {#if incident.status === "open"}
-                                  <Button size="sm" variant="outline" on:click|stopPropagation={() => updateStatus(incident.id, "investigating")}>
+                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "investigating"); }}>
                                     Investigate
                                   </Button>
-                                  <Button size="sm" variant="outline" on:click|stopPropagation={() => updateStatus(incident.id, "resolved")}>
+                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "resolved"); }}>
                                     Resolve
                                   </Button>
                                 {:else if incident.status === "investigating"}
-                                  <Button size="sm" variant="outline" on:click|stopPropagation={() => updateStatus(incident.id, "resolved")}>
+                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "resolved"); }}>
                                     Resolve
                                   </Button>
                                 {:else}
@@ -493,7 +493,7 @@
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                on:click|stopPropagation={() => addComment(incident.id)}
+                                on:click={(e) => { e.stopPropagation(); addComment(incident.id); }}
                                 disabled={submittingComment.has(incident.id) || !commentInputs[incident.id]?.trim()}
                               >
                                 <Send class="h-3 w-3" />

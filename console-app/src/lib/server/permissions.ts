@@ -127,6 +127,32 @@ const PERMISSIONS: RoutePermission[] = [
     methods: { POST: ["owner", "admin"] },
   },
 
+  // ── Lifecycle ────────────────────────────────────────────────────
+  {
+    pattern: /^\/api\/apps\/lifecycle\/movement$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/apps\/lifecycle\/workflows$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Evidence ────────────────────────────────────────────────────
+  {
+    pattern: /^\/api\/tenant-compliance\/evidence$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/tenant-compliance\/evidence\/[^/]+\/link$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Tenant preferences ─────────────────────────────────────────
+  {
+    pattern: /^\/api\/tenants\/preferences$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
   // ── Platform (super-admin only — uses "super-admin" role) ───────
   {
     pattern: /^\/api\/platform\/dashboard$/,

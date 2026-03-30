@@ -602,7 +602,7 @@
                               <div class="flex gap-2" on:click|stopPropagation>
                                 <Button
                                   size="sm"
-                                  on:click|stopPropagation={() => saveEdit(policy)}
+                                  on:click={(e) => { e.stopPropagation(); saveEdit(policy); }}
                                   disabled={savingEdit.has(policy.id)}
                                 >
                                   <Check class="h-3 w-3 mr-1" />
@@ -611,10 +611,7 @@
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  on:click|stopPropagation={() => {
-                                    editingOpen.delete(policy.id);
-                                    editingOpen = new Set(editingOpen);
-                                  }}
+                                  on:click={(e) => { e.stopPropagation(); editingOpen.delete(policy.id); editingOpen = new Set(editingOpen); }}
                                 >
                                   <X class="h-3 w-3 mr-1" />
                                   Cancel
