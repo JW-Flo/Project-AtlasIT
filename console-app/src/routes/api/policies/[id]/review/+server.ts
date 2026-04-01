@@ -91,37 +91,60 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
     let approvedAt: string | null = null;
 
     if (decision === "approved") {
-      newStatus = "approved";
-      approvedBy = reviewerEmail;
-      approvedAt = now;
-      await db
+      // Check if all reviewers have now approved
+      const remaining = await db
         .prepare(
-          `UPDATE policies SET status = 'approved', approved_by = ?, approved_at = ?, updated_at = ?
-           WHERE id = ? AND tenant_id = ?`,
+          `SELECT COUNT(*) as cnt FROM policy_approvals WHERE policy_id = ? AND decision = 'pending'`,
         )
-        .bind(approvedBy, approvedAt, now, id, tenantId)
-        .run();
+        .bind(id)
+        .first<{ cnt: number }>();
 
-      // Write compliance evidence for policy approval (CC1.1, A.5.1)
-      try {
-        const evidenceId = crypto.randomUUID().replace(/-/g, "");
+      if ((remaining?.cnt ?? 0) === 0) {
+        // All reviewers approved — transition to approved
+        newStatus = "approved";
+        approvedBy = reviewerEmail;
+        approvedAt = now;
         await db
           .prepare(
-            `INSERT OR IGNORE INTO compliance_evidence
-             (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
-             VALUES (?, ?, 'SOC2', 'CC1.1', 'Control environment — policy approved', 'policy_approval', 'console', ?, ?, ?, ?, ?)`,
+            `UPDATE policies SET status = 'approved', approved_by = ?, approved_at = ?, updated_at = ?
+             WHERE id = ? AND tenant_id = ?`,
           )
-          .bind(evidenceId, tenantId, id, reviewerEmail, `policy:${id}`, JSON.stringify({ policyId: id, decision, approvedBy }), now)
+          .bind(approvedBy, approvedAt, now, id, tenantId)
           .run();
-      } catch { /* best-effort evidence write */ }
+
+        // Write compliance evidence for policy approval (CC1.1, A.5.1)
+        try {
+          const evidenceId = crypto.randomUUID().replace(/-/g, "");
+          await db
+            .prepare(
+              `INSERT OR IGNORE INTO compliance_evidence
+               (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+               VALUES (?, ?, 'SOC2', 'CC1.1', 'Control environment — policy approved', 'policy_approval', 'console', ?, ?, ?, ?, ?)`,
+            )
+            .bind(evidenceId, tenantId, id, reviewerEmail, `policy:${id}`, JSON.stringify({ policyId: id, decision, approvedBy }), now)
+            .run();
+        } catch { /* best-effort evidence write */ }
+      } else {
+        // Waiting for other reviewers
+        newStatus = "pending_review";
+      }
     } else {
-      // rejected or changes_requested — revert to draft
+      // rejected or changes_requested — revert to draft and supersede remaining reviews
       newStatus = "draft";
       await db
         .prepare(
           `UPDATE policies SET status = 'draft', updated_at = ? WHERE id = ? AND tenant_id = ?`,
         )
         .bind(now, id, tenantId)
+        .run();
+
+      // Mark remaining pending approvals as superseded
+      await db
+        .prepare(
+          `UPDATE policy_approvals SET decision = 'superseded', decided_at = ?
+           WHERE policy_id = ? AND decision = 'pending'`,
+        )
+        .bind(now, id)
         .run();
     }
 
