@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
+import { requireTenantRole } from "$lib/server/guards";
 
 /**
  * Group name → app mapping patterns.
@@ -55,8 +56,9 @@ const DEPARTMENT_APP_MAP: Record<string, string[]> = {
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });

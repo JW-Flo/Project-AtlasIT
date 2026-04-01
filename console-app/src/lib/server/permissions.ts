@@ -153,6 +153,72 @@ const PERMISSIONS: RoutePermission[] = [
     methods: { POST: ["owner", "admin"] },
   },
 
+  // ── Roles ───────────────────────────────────────────────────────
+  {
+    pattern: /^\/api\/roles\/[^/]+\/assignments$/,
+    methods: { POST: ["owner", "admin"], DELETE: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/roles\/[^/]+\/entitlements$/,
+    methods: { POST: ["owner", "admin"], DELETE: ["owner", "admin"] },
+  },
+
+  // ── Evidence collection ─────────────────────────────────────────
+  {
+    pattern: /^\/api\/evidence-collection\/collect$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Access reviews ──────────────────────────────────────────────
+  {
+    pattern: /^\/api\/access-reviews\/[^/]+\/items$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/access-reviews\/[^/]+\/decisions$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Questionnaires ──────────────────────────────────────────────
+  {
+    pattern: /^\/api\/questionnaires$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── App testing ─────────────────────────────────────────────────
+  {
+    pattern: /^\/api\/apps\/test$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Directory mapping suggestions ───────────────────────────────
+  {
+    pattern: /^\/api\/directory\/mappings\/suggest$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+
+  // ── Self-service (any authenticated user) ───────────────────────
+  {
+    pattern: /^\/api\/incidents\/[^/]+\/timeline$/,
+    methods: { POST: null },
+  },
+  {
+    pattern: /^\/api\/notifications\/read$/,
+    methods: { POST: null },
+  },
+  {
+    pattern: /^\/api\/notifications\/read-all$/,
+    methods: { POST: null },
+  },
+  {
+    pattern: /^\/api\/automation\/simulate$/,
+    methods: { POST: null },
+  },
+  {
+    pattern: /^\/api\/user\/password$/,
+    methods: { PATCH: null },
+  },
+
   // ── Platform (super-admin only — uses "super-admin" role) ───────
   {
     pattern: /^\/api\/platform\/dashboard$/,
