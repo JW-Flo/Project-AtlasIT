@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 
 /**
  * POST /api/evidence-collection/collect
@@ -7,8 +8,9 @@ import { json } from "@sveltejs/kit";
  * Called from the Insights "Collect Now" button.
  */
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });

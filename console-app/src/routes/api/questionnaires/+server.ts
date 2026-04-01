@@ -7,6 +7,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { parseQuestionnaireText, mapQuestionsToControls } from "$lib/server/questionnaire-ai";
+import { requireTenantRole } from "$lib/server/guards";
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user as any;
@@ -42,8 +43,9 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 };
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
