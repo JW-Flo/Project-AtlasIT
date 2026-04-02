@@ -7,7 +7,7 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Input from "$lib/components/ui/input.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Search, ScanSearch, ChevronDown, ChevronRight, Shield, ShieldOff, Eye, X } from "lucide-svelte";
+  import { Search, ScanSearch, ChevronDown, ChevronRight, Shield, ShieldOff, Eye, X, Package, AlertTriangle, ArrowRight } from "lucide-svelte";
 
   // --- Types ---
   interface DiscoveredApp {
@@ -269,6 +269,49 @@
     };
   }
 
+  // --- Data flow categorization ---
+  interface DataFlowCategory {
+    label: string;
+    icon: string;
+    risk: "high" | "medium" | "low";
+    scopes: string[];
+  }
+
+  const SCOPE_CATEGORIES: { pattern: RegExp; label: string; icon: string; risk: "high" | "medium" | "low" }[] = [
+    { pattern: /mail|gmail|email|messages/i, label: "Email", icon: "mail", risk: "high" },
+    { pattern: /drive|files|storage|documents|onedrive|sharepoint/i, label: "Files & Docs", icon: "file", risk: "high" },
+    { pattern: /contacts|people|directory/i, label: "Contacts", icon: "users", risk: "medium" },
+    { pattern: /calendar|schedule|events/i, label: "Calendar", icon: "calendar", risk: "low" },
+    { pattern: /admin|management|org|tenant/i, label: "Admin", icon: "settings", risk: "high" },
+    { pattern: /profile|userinfo|openid|user\.read/i, label: "Profile", icon: "user", risk: "low" },
+  ];
+
+  function categorizeDataFlows(grants: OAuthGrant[]): DataFlowCategory[] {
+    const allScopes = grants.flatMap(g => g.scopesList || (g.scopes ? g.scopes.split(",").map(s => s.trim()) : []));
+    const categories: DataFlowCategory[] = [];
+
+    for (const cat of SCOPE_CATEGORIES) {
+      const matched = allScopes.filter(s => cat.pattern.test(s));
+      if (matched.length > 0) {
+        categories.push({
+          label: cat.label,
+          icon: cat.icon,
+          risk: cat.risk,
+          scopes: [...new Set(matched)],
+        });
+      }
+    }
+    return categories;
+  }
+
+  function isScopeHighRisk(scope: string): boolean {
+    return /mail|drive|admin|full[_\-]?access|\.all|\.write|manage|files/i.test(scope);
+  }
+
+  function formatMarketplaceId(id: string): string {
+    return id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  }
+
   onMount(() => {
     fetchApps().finally(() => (loading = false));
   });
@@ -405,6 +448,12 @@
                           AI
                         </span>
                       {/if}
+                      {#if app.marketplaceMatch}
+                        <span class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400" title="Available in marketplace as {formatMarketplaceId(app.marketplaceMatch)}">
+                          <Package class="h-2.5 w-2.5" />
+                          Catalog
+                        </span>
+                      {/if}
                     </div>
                     <div class="text-xs text-muted-foreground md:hidden">{app.category || "—"}</div>
                   </td>
@@ -485,7 +534,7 @@
                   </td>
                 </tr>
 
-                <!-- Expand row: OAuth grants detail -->
+                <!-- Expand row: OAuth grants detail + data flow mapping -->
                 {#if expandedAppId === app.id}
                   <tr class="bg-muted/30">
                     <td colspan="8" class="px-4 py-4">
@@ -494,16 +543,10 @@
                           <div class="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                           Loading OAuth grants...
                         </div>
-                      {:else if expandedGrants.length === 0}
-                        <div class="text-sm text-muted-foreground py-4">
-                          No individual OAuth grants recorded for this app.
-                        </div>
                       {:else}
-                        <div class="space-y-3">
+                        <div class="space-y-4">
                           <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold">
-                              OAuth Grants ({expandedGrants.length})
-                            </h3>
+                            <h3 class="text-sm font-semibold">{app.appName} — Details</h3>
                             <button
                               type="button"
                               class="text-muted-foreground hover:text-foreground"
@@ -513,66 +556,127 @@
                             </button>
                           </div>
 
-                          <div class="overflow-x-auto rounded-md border bg-card">
-                            <table class="w-full text-sm">
-                              <thead>
-                                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                                  <th class="px-3 py-2 font-medium">User</th>
-                                  <th class="px-3 py-2 font-medium">Scopes</th>
-                                  <th class="px-3 py-2 font-medium hidden sm:table-cell">Granted</th>
-                                  <th class="px-3 py-2 font-medium hidden md:table-cell">Last Used</th>
-                                  <th class="px-3 py-2 font-medium">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {#each expandedGrants as grant (grant.id)}
-                                  {@const scopes = grant.scopesList || (grant.scopes ? grant.scopes.split(",").map(s => s.trim()) : [])}
-                                  {@const scopeInfo = truncateScopes(scopes)}
-                                  <tr class="border-t">
-                                    <td class="px-3 py-2 font-medium">{grant.userEmail}</td>
-                                    <td class="px-3 py-2">
-                                      <div class="flex flex-wrap gap-1">
-                                        {#each scopeInfo.visible as scope}
-                                          <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 font-mono">
-                                            {scope}
-                                          </span>
-                                        {/each}
-                                        {#if scopeInfo.remaining > 0}
-                                          <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                            +{scopeInfo.remaining} more
-                                          </span>
-                                        {/if}
-                                        {#if scopes.length === 0}
-                                          <span class="text-xs text-muted-foreground">—</span>
-                                        {/if}
-                                      </div>
-                                    </td>
-                                    <td class="px-3 py-2 text-muted-foreground hidden sm:table-cell text-xs">
-                                      {formatDate(grant.grantedAt)}
-                                    </td>
-                                    <td class="px-3 py-2 text-muted-foreground hidden md:table-cell text-xs">
-                                      {formatDate(grant.lastUsedAt)}
-                                    </td>
-                                    <td class="px-3 py-2">
-                                      {#if grant.status === "active"}
-                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                                          Active
-                                        </span>
-                                      {:else if grant.status === "revoked"}
-                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                                          Revoked
-                                        </span>
-                                      {:else}
-                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                          {grant.status}
-                                        </span>
+                          <!-- Marketplace install suggestion -->
+                          {#if app.marketplaceMatch}
+                            <div class="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30 px-4 py-3">
+                              <Package class="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                              <div class="flex-1 text-sm">
+                                <span class="font-medium">Available in marketplace</span> as
+                                <span class="font-semibold">{formatMarketplaceId(app.marketplaceMatch)}</span>.
+                                Install to enable managed provisioning, compliance tracking, and automated offboarding.
+                              </div>
+                              <a
+                                href="/console/marketplace?install={app.marketplaceMatch}"
+                                class="shrink-0 inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                                on:click|stopPropagation
+                              >
+                                Install
+                                <ArrowRight class="h-3 w-3" />
+                              </a>
+                            </div>
+                          {/if}
+
+                          <!-- Data flow mapping -->
+                          {@const dataFlows = categorizeDataFlows(expandedGrants)}
+                          {#if dataFlows.length > 0}
+                            <div class="space-y-2">
+                              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Data Flow Analysis
+                              </h4>
+                              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                                {#each dataFlows as flow}
+                                  <div class="rounded-lg border px-3 py-2 {flow.risk === 'high' ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20' : flow.risk === 'medium' ? 'border-yellow-200 bg-yellow-50/50 dark:border-yellow-900 dark:bg-yellow-950/20' : 'border-border bg-card'}">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                      {#if flow.risk === "high"}
+                                        <AlertTriangle class="h-3 w-3 text-red-500" />
                                       {/if}
-                                    </td>
-                                  </tr>
+                                      <span class="text-xs font-semibold">{flow.label}</span>
+                                    </div>
+                                    <div class="text-[10px] text-muted-foreground">
+                                      {flow.scopes.length} scope{flow.scopes.length !== 1 ? "s" : ""}
+                                      {#if flow.risk === "high"}
+                                        <span class="text-red-500 font-medium"> — High risk</span>
+                                      {/if}
+                                    </div>
+                                  </div>
                                 {/each}
-                              </tbody>
-                            </table>
-                          </div>
+                              </div>
+                            </div>
+                          {/if}
+
+                          <!-- OAuth grants table -->
+                          {#if expandedGrants.length === 0}
+                            <div class="text-sm text-muted-foreground py-2">
+                              No individual OAuth grants recorded for this app.
+                            </div>
+                          {:else}
+                            <div class="space-y-2">
+                              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                OAuth Grants ({expandedGrants.length})
+                              </h4>
+                              <div class="overflow-x-auto rounded-md border bg-card">
+                                <table class="w-full text-sm">
+                                  <thead>
+                                    <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                                      <th class="px-3 py-2 font-medium">User</th>
+                                      <th class="px-3 py-2 font-medium">Scopes</th>
+                                      <th class="px-3 py-2 font-medium hidden sm:table-cell">Granted</th>
+                                      <th class="px-3 py-2 font-medium hidden md:table-cell">Last Used</th>
+                                      <th class="px-3 py-2 font-medium">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {#each expandedGrants as grant (grant.id)}
+                                      {@const scopes = grant.scopesList || (grant.scopes ? grant.scopes.split(",").map(s => s.trim()) : [])}
+                                      {@const scopeInfo = truncateScopes(scopes, 4)}
+                                      <tr class="border-t">
+                                        <td class="px-3 py-2 font-medium">{grant.userEmail}</td>
+                                        <td class="px-3 py-2">
+                                          <div class="flex flex-wrap gap-1">
+                                            {#each scopeInfo.visible as scope}
+                                              <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono {isScopeHighRisk(scope) ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400' : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'}">
+                                                {#if isScopeHighRisk(scope)}<AlertTriangle class="h-2.5 w-2.5 mr-0.5 inline" />{/if}
+                                                {scope}
+                                              </span>
+                                            {/each}
+                                            {#if scopeInfo.remaining > 0}
+                                              <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                                +{scopeInfo.remaining} more
+                                              </span>
+                                            {/if}
+                                            {#if scopes.length === 0}
+                                              <span class="text-xs text-muted-foreground">—</span>
+                                            {/if}
+                                          </div>
+                                        </td>
+                                        <td class="px-3 py-2 text-muted-foreground hidden sm:table-cell text-xs">
+                                          {formatDate(grant.grantedAt)}
+                                        </td>
+                                        <td class="px-3 py-2 text-muted-foreground hidden md:table-cell text-xs">
+                                          {formatDate(grant.lastUsedAt)}
+                                        </td>
+                                        <td class="px-3 py-2">
+                                          {#if grant.status === "active"}
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                              Active
+                                            </span>
+                                          {:else if grant.status === "revoked"}
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                                              Revoked
+                                            </span>
+                                          {:else}
+                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                              {grant.status}
+                                            </span>
+                                          {/if}
+                                        </td>
+                                      </tr>
+                                    {/each}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          {/if}
                         </div>
                       {/if}
                     </td>
