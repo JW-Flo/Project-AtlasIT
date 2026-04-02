@@ -7,7 +7,7 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Input from "$lib/components/ui/input.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Search, ScanSearch, ChevronDown } from "lucide-svelte";
+  import { Search, ScanSearch, ChevronDown, ChevronRight, Shield, ShieldOff, Eye, X } from "lucide-svelte";
 
   // --- Types ---
   interface DiscoveredApp {
@@ -25,6 +25,18 @@
     metadata?: Record<string, unknown>;
   }
 
+  interface OAuthGrant {
+    id: string;
+    userEmail: string;
+    scopes?: string;
+    scopesList?: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    clientId?: string;
+    status: string;
+    metadata?: Record<string, unknown>;
+  }
+
   // --- State ---
   let apps: DiscoveredApp[] = [];
   let loading = true;
@@ -37,6 +49,15 @@
 
   // Actions dropdown state
   let openActionDropdown: string | null = null;
+
+  // Expand/detail state
+  let expandedAppId: string | null = null;
+  let expandedGrants: OAuthGrant[] = [];
+  let expandLoading = false;
+  let expandedApp: DiscoveredApp | null = null;
+
+  // Governance action in-progress
+  let governanceLoading: string | null = null;
 
   // --- Derived stats ---
   $: totalDiscovered = apps.length;
@@ -87,6 +108,34 @@
     }
   }
 
+  // --- Expand / Detail ---
+  async function toggleExpand(app: DiscoveredApp) {
+    if (expandedAppId === app.id) {
+      expandedAppId = null;
+      expandedGrants = [];
+      expandedApp = null;
+      return;
+    }
+
+    expandedAppId = app.id;
+    expandedApp = app;
+    expandLoading = true;
+    expandedGrants = [];
+
+    try {
+      const res = await fetch(`/api/discovery/${app.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        expandedGrants = data.grants || [];
+      } else {
+        pushToast({ message: "Failed to load OAuth grants", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to fetch grant details", variant: "error" });
+    }
+    expandLoading = false;
+  }
+
   // --- Actions ---
   async function triggerScan() {
     scanning = true;
@@ -128,6 +177,52 @@
     }
   }
 
+  // --- Governance Playbook Actions ---
+  async function executeGovernanceAction(app: DiscoveredApp, action: "approve" | "block" | "review") {
+    openActionDropdown = null;
+    governanceLoading = `${app.id}:${action}`;
+
+    try {
+      const res = await fetch(`/api/discovery/${app.id}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        const newTier = data.riskTier as DiscoveredApp["riskTier"];
+        apps = apps.map((a) => (a.id === app.id ? { ...a, riskTier: newTier } : a));
+
+        if (action === "approve") {
+          pushToast({ message: `${app.appName} approved`, variant: "success" });
+        } else if (action === "block") {
+          pushToast({
+            message: `${app.appName} blocked — ${data.grantsRevoked ?? 0} grant(s) revoked`,
+            variant: "success",
+          });
+        } else if (action === "review") {
+          pushToast({
+            message: `Access review campaign created for ${app.appName}`,
+            variant: "success",
+          });
+        }
+
+        // Refresh grants if the expanded app was acted on
+        if (expandedAppId === app.id) {
+          await toggleExpand(app);
+          await toggleExpand({ ...app, riskTier: newTier });
+        }
+      } else {
+        pushToast({ message: data.error || `${action} failed`, variant: "error" });
+      }
+    } catch {
+      pushToast({ message: `${action} request failed`, variant: "error" });
+    }
+
+    governanceLoading = null;
+  }
+
   // --- Helpers ---
   function riskTierClass(tier: string): string {
     switch (tier) {
@@ -165,6 +260,13 @@
     if (!target.closest(".action-dropdown-container")) {
       openActionDropdown = null;
     }
+  }
+
+  function truncateScopes(scopes: string[], max: number = 3): { visible: string[]; remaining: number } {
+    return {
+      visible: scopes.slice(0, max),
+      remaining: Math.max(0, scopes.length - max),
+    };
   }
 
   onMount(() => {
@@ -271,6 +373,7 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                <th class="px-2 py-3 font-medium w-8"></th>
                 <th class="px-3 sm:px-4 py-3 font-medium">App Name</th>
                 <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Category</th>
                 <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Provider</th>
@@ -282,7 +385,18 @@
             </thead>
             <tbody>
               {#each filteredApps as app (app.id)}
-                <tr class="border-t hover:bg-muted/50 transition-colors">
+                <!-- Main row -->
+                <tr
+                  class="border-t hover:bg-muted/50 transition-colors cursor-pointer"
+                  on:click={() => toggleExpand(app)}
+                >
+                  <td class="px-2 py-3 text-muted-foreground">
+                    {#if expandedAppId === app.id}
+                      <ChevronDown class="h-4 w-4" />
+                    {:else}
+                      <ChevronRight class="h-4 w-4" />
+                    {/if}
+                  </td>
                   <td class="px-3 sm:px-4 py-3">
                     <div class="flex items-center gap-2">
                       <span class="font-medium">{app.appName}</span>
@@ -311,7 +425,7 @@
                   <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">
                     {formatDate(app.firstSeenAt)}
                   </td>
-                  <td class="px-3 sm:px-4 py-3 text-right">
+                  <td class="px-3 sm:px-4 py-3 text-right" on:click|stopPropagation>
                     <div class="action-dropdown-container relative inline-block">
                       <button
                         type="button"
@@ -320,41 +434,153 @@
                           openActionDropdown = openActionDropdown === app.id ? null : app.id}
                         aria-label="Actions for {app.appName}"
                       >
-                        Actions
+                        Governance
                         <ChevronDown class="h-3 w-3" />
                       </button>
 
                       {#if openActionDropdown === app.id}
-                        <div class="absolute right-0 top-full mt-1 w-36 rounded-lg border bg-card shadow-lg z-20 overflow-hidden">
+                        <div class="absolute right-0 top-full mt-1 w-52 rounded-lg border bg-card shadow-lg z-20 overflow-hidden">
+                          <div class="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b">
+                            Governance Playbook
+                          </div>
                           <button
                             type="button"
-                            class="flex w-full items-center px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            on:click={() => updateRiskTier(app.id, "approved")}
+                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                            disabled={governanceLoading === `${app.id}:approve`}
+                            on:click|stopPropagation={() => executeGovernanceAction(app, "approve")}
                           >
-                            Approve
+                            <Shield class="h-3.5 w-3.5 text-green-600" />
+                            <div>
+                              <div class="font-medium">Approve</div>
+                              <div class="text-xs text-muted-foreground">Add to managed catalog</div>
+                            </div>
                           </button>
                           <button
                             type="button"
-                            class="flex w-full items-center px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            on:click={() => updateRiskTier(app.id, "under_review")}
+                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                            disabled={governanceLoading === `${app.id}:review`}
+                            on:click|stopPropagation={() => executeGovernanceAction(app, "review")}
                           >
-                            Review
+                            <Eye class="h-3.5 w-3.5 text-yellow-600" />
+                            <div>
+                              <div class="font-medium">Review</div>
+                              <div class="text-xs text-muted-foreground">Create access review campaign</div>
+                            </div>
                           </button>
                           <button
                             type="button"
-                            class="flex w-full items-center px-3 py-2 text-sm hover:bg-accent transition-colors text-left text-destructive"
-                            on:click={() => updateRiskTier(app.id, "blocked")}
+                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left text-destructive"
+                            disabled={governanceLoading === `${app.id}:block`}
+                            on:click|stopPropagation={() => executeGovernanceAction(app, "block")}
                           >
-                            Block
+                            <ShieldOff class="h-3.5 w-3.5" />
+                            <div>
+                              <div class="font-medium">Block</div>
+                              <div class="text-xs text-muted-foreground">Revoke all OAuth grants</div>
+                            </div>
                           </button>
                         </div>
                       {/if}
                     </div>
                   </td>
                 </tr>
+
+                <!-- Expand row: OAuth grants detail -->
+                {#if expandedAppId === app.id}
+                  <tr class="bg-muted/30">
+                    <td colspan="8" class="px-4 py-4">
+                      {#if expandLoading}
+                        <div class="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                          <div class="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                          Loading OAuth grants...
+                        </div>
+                      {:else if expandedGrants.length === 0}
+                        <div class="text-sm text-muted-foreground py-4">
+                          No individual OAuth grants recorded for this app.
+                        </div>
+                      {:else}
+                        <div class="space-y-3">
+                          <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold">
+                              OAuth Grants ({expandedGrants.length})
+                            </h3>
+                            <button
+                              type="button"
+                              class="text-muted-foreground hover:text-foreground"
+                              on:click|stopPropagation={() => { expandedAppId = null; expandedGrants = []; expandedApp = null; }}
+                            >
+                              <X class="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div class="overflow-x-auto rounded-md border bg-card">
+                            <table class="w-full text-sm">
+                              <thead>
+                                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                                  <th class="px-3 py-2 font-medium">User</th>
+                                  <th class="px-3 py-2 font-medium">Scopes</th>
+                                  <th class="px-3 py-2 font-medium hidden sm:table-cell">Granted</th>
+                                  <th class="px-3 py-2 font-medium hidden md:table-cell">Last Used</th>
+                                  <th class="px-3 py-2 font-medium">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {#each expandedGrants as grant (grant.id)}
+                                  {@const scopes = grant.scopesList || (grant.scopes ? grant.scopes.split(",").map(s => s.trim()) : [])}
+                                  {@const scopeInfo = truncateScopes(scopes)}
+                                  <tr class="border-t">
+                                    <td class="px-3 py-2 font-medium">{grant.userEmail}</td>
+                                    <td class="px-3 py-2">
+                                      <div class="flex flex-wrap gap-1">
+                                        {#each scopeInfo.visible as scope}
+                                          <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 font-mono">
+                                            {scope}
+                                          </span>
+                                        {/each}
+                                        {#if scopeInfo.remaining > 0}
+                                          <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                            +{scopeInfo.remaining} more
+                                          </span>
+                                        {/if}
+                                        {#if scopes.length === 0}
+                                          <span class="text-xs text-muted-foreground">—</span>
+                                        {/if}
+                                      </div>
+                                    </td>
+                                    <td class="px-3 py-2 text-muted-foreground hidden sm:table-cell text-xs">
+                                      {formatDate(grant.grantedAt)}
+                                    </td>
+                                    <td class="px-3 py-2 text-muted-foreground hidden md:table-cell text-xs">
+                                      {formatDate(grant.lastUsedAt)}
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      {#if grant.status === "active"}
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                          Active
+                                        </span>
+                                      {:else if grant.status === "revoked"}
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                                          Revoked
+                                        </span>
+                                      {:else}
+                                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                          {grant.status}
+                                        </span>
+                                      {/if}
+                                    </td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      {/if}
+                    </td>
+                  </tr>
+                {/if}
               {:else}
                 <tr>
-                  <td colspan="7" class="px-4 py-12 text-center text-muted-foreground">
+                  <td colspan="8" class="px-4 py-12 text-center text-muted-foreground">
                     {apps.length === 0
                       ? "No apps discovered yet. Run a scan to detect OAuth grants."
                       : "No apps match your filters."}
