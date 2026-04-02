@@ -66,6 +66,8 @@ export interface SyncSummary {
   totalGrants: number;
   aiToolsFound: number;
   highRiskGrants: number;
+  incidentsCreated: number;
+  evidenceEmitted: number;
   providers: string[];
   syncedAt: string;
   errors: number;
@@ -150,6 +152,8 @@ export async function syncDiscoveredApps(
   let totalGrants = 0;
   let aiToolsFound = 0;
   let highRiskGrants = 0;
+  let incidentsCreated = 0;
+  let evidenceEmitted = 0;
   let errors = 0;
   const providers: string[] = [];
 
@@ -180,6 +184,70 @@ export async function syncDiscoveredApps(
         if (appOutcome.outcome === "created") {
           newApps++;
           if (isAiTool) aiToolsFound++;
+
+          // ── Auto-incident + evidence for newly discovered high-risk apps ──
+          const evidenceDetails = {
+            appName: grant.appName,
+            provider: result.provider,
+            isAiTool,
+            isHighRisk,
+            scopes: grant.scopes,
+            category,
+            marketplaceMatch,
+            userEmail: grant.userEmail,
+          };
+
+          if (isAiTool && !marketplaceMatch) {
+            // Unapproved AI tool — high severity
+            const created = await createDiscoveryIncident(
+              db,
+              tenantId,
+              appOutcome.appId,
+              grant.appName,
+              "ai_tool",
+              evidenceDetails,
+            );
+            if (created) incidentsCreated++;
+
+            evidenceEmitted += await emitDiscoveryEvidence(
+              db,
+              tenantId,
+              appOutcome.appId,
+              grant.appName,
+              "shadow_ai_detected",
+              evidenceDetails,
+            );
+          } else if (isHighRisk && !marketplaceMatch) {
+            // High-risk scopes on unknown app
+            const created = await createDiscoveryIncident(
+              db,
+              tenantId,
+              appOutcome.appId,
+              grant.appName,
+              "high_risk_scopes",
+              evidenceDetails,
+            );
+            if (created) incidentsCreated++;
+
+            evidenceEmitted += await emitDiscoveryEvidence(
+              db,
+              tenantId,
+              appOutcome.appId,
+              grant.appName,
+              "high_risk_oauth_grant",
+              evidenceDetails,
+            );
+          } else if (!marketplaceMatch) {
+            // Unapproved but not high-risk — still emit evidence
+            evidenceEmitted += await emitDiscoveryEvidence(
+              db,
+              tenantId,
+              appOutcome.appId,
+              grant.appName,
+              "unapproved_app_discovered",
+              evidenceDetails,
+            );
+          }
         } else {
           updatedApps++;
         }
@@ -208,10 +276,119 @@ export async function syncDiscoveredApps(
     totalGrants,
     aiToolsFound,
     highRiskGrants,
+    incidentsCreated,
+    evidenceEmitted,
     providers: [...new Set(providers)],
     syncedAt: new Date().toISOString(),
     errors,
   };
+}
+
+// ── Compliance evidence + incident creation for high-risk discoveries ────
+
+/** Control mappings for shadow IT / unapproved app evidence */
+const SHADOW_IT_CONTROLS = [
+  { framework: "SOC2", controlId: "CC6.6", controlName: "Shadow IT Risk Management" },
+  {
+    framework: "ISO27001",
+    controlId: "A.9.1.2",
+    controlName: "Access to Networks and Network Services",
+  },
+  { framework: "GDPR", controlId: "Art.5(1)(f)", controlName: "Integrity and Confidentiality" },
+] as const;
+
+async function emitDiscoveryEvidence(
+  db: D1Database,
+  tenantId: string,
+  appId: string,
+  appName: string,
+  evidenceType: string,
+  details: Record<string, unknown>,
+): Promise<number> {
+  let written = 0;
+  const now = new Date().toISOString();
+
+  for (const ctrl of SHADOW_IT_CONTROLS) {
+    try {
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO compliance_evidence
+           (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id,
+            actor, subject, metadata, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'shadow_discovery', ?, 'system', ?, ?, ?)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          tenantId,
+          ctrl.framework,
+          ctrl.controlId,
+          ctrl.controlName,
+          evidenceType,
+          `discovery:${appId}`,
+          appName,
+          JSON.stringify(details),
+          now,
+        )
+        .run();
+      written++;
+    } catch {
+      // UNIQUE constraint or missing table — skip
+    }
+  }
+  return written;
+}
+
+async function createDiscoveryIncident(
+  db: D1Database,
+  tenantId: string,
+  appId: string,
+  appName: string,
+  reason: "ai_tool" | "high_risk_scopes",
+  details: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    // Deduplicate: don't create if open incident already exists
+    const existing = await db
+      .prepare(
+        `SELECT id FROM incidents
+         WHERE tenant_id = ? AND source = 'shadow_discovery' AND source_id = ?
+           AND status IN ('open', 'investigating')
+         LIMIT 1`,
+      )
+      .bind(tenantId, appId)
+      .first();
+
+    if (existing) return false;
+
+    const severity = reason === "ai_tool" ? "high" : "medium";
+    const title =
+      reason === "ai_tool"
+        ? `Unapproved AI tool discovered: ${appName}`
+        : `High-risk OAuth grant detected: ${appName}`;
+    const description =
+      reason === "ai_tool"
+        ? `The AI tool "${appName}" was detected via OAuth grant scanning. This app is not in the approved catalog and may pose data exfiltration risks. Review and classify via the Discovery console.`
+        : `The app "${appName}" has OAuth grants with high-risk scopes (e.g., full mailbox, drive, or admin access). Review scope permissions and classify via the Discovery console.`;
+
+    await db
+      .prepare(
+        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, source_id, description, created_at)
+         VALUES (?, ?, ?, ?, 'open', 'shadow_discovery', ?, ?, datetime('now'))`,
+      )
+      .bind(
+        crypto.randomUUID().replace(/-/g, ""),
+        tenantId,
+        title,
+        severity,
+        appId,
+        JSON.stringify({ ...details, description }),
+      )
+      .run();
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Upsert helpers ───────────────────────────────────────────────────────────
@@ -235,9 +412,7 @@ async function upsertDiscoveredApp(
 
   // Check for existing app by tenant + name + provider (natural dedup key)
   const existing = await db
-    .prepare(
-      "SELECT id FROM discovered_apps WHERE tenant_id = ? AND app_name = ? AND provider = ?",
-    )
+    .prepare("SELECT id FROM discovered_apps WHERE tenant_id = ? AND app_name = ? AND provider = ?")
     .bind(tenantId, input.appName, provider)
     .first<{ id: string }>();
 
@@ -255,7 +430,15 @@ async function upsertDiscoveredApp(
            updated_at = ?
          WHERE id = ?`,
       )
-      .bind(now, tenantId, existing.id, input.isAiTool ? 1 : 0, input.marketplaceMatch, now, existing.id)
+      .bind(
+        now,
+        tenantId,
+        existing.id,
+        input.isAiTool ? 1 : 0,
+        input.marketplaceMatch,
+        now,
+        existing.id,
+      )
       .run();
 
     return { outcome: "updated", appId: existing.id };
@@ -318,13 +501,7 @@ async function upsertDiscoveredGrant(
            scopes = ?, last_used_at = ?, metadata = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .bind(
-        JSON.stringify(grant.scopes),
-        grant.lastUsedAt ?? null,
-        metadata,
-        now,
-        existing.id,
-      )
+      .bind(JSON.stringify(grant.scopes), grant.lastUsedAt ?? null, metadata, now, existing.id)
       .run();
     return;
   }
