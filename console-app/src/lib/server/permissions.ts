@@ -177,6 +177,16 @@ const PERMISSIONS: RoutePermission[] = [
     methods: { POST: ["owner", "admin"] },
   },
 
+  // ── NHI governance ──────────────────────────────────────────────
+  {
+    pattern: /^\/api\/nhi$/,
+    methods: { POST: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/nhi\/[^/]+$/,
+    methods: { PATCH: ["owner", "admin"], DELETE: ["owner", "admin"] },
+  },
+
   // ── Access reviews ──────────────────────────────────────────────
   {
     pattern: /^\/api\/access-reviews\/[^/]+\/items$/,
