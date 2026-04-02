@@ -116,7 +116,6 @@ export async function processExpiringNhiCredentials(
   // Use default grace period for the initial scan; per-tenant config is applied
   // in the auto-rotation event emission inside the per-credential loop
   const graceDate = new Date(now.getTime() + DEFAULT_GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
-  const rotationDate = new Date(now.getTime() + ROTATION_THRESHOLD_DAYS * 24 * 60 * 60 * 1000);
   let expiringSoon = 0;
   let expired = 0;
   let rotationPending = 0;

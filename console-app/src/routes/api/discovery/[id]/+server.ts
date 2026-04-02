@@ -133,6 +133,11 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
 
   const body = await request.json().catch(() => ({}));
   const action = body.action as string;
+  const VALID_ACTIONS = ["approve", "block", "review"] as const;
+
+  if (!action || !VALID_ACTIONS.includes(action as any)) {
+    return json({ error: "action must be one of: approve, block, review" }, { status: 400 });
+  }
 
   const app = await db
     .prepare("SELECT * FROM discovered_apps WHERE id = ? AND tenant_id = ?")
@@ -290,9 +295,7 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
     }
 
     default:
-      return json(
-        { error: `Unknown action: ${action}. Expected: approve, block, review` },
-        { status: 400 },
-      );
+      // Unreachable — validated above, but satisfies exhaustiveness
+      return json({ error: "invalid action" }, { status: 400 });
   }
 };
