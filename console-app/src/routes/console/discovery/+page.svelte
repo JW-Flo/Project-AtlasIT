@@ -577,8 +577,8 @@
                           {/if}
 
                           <!-- Data flow mapping -->
+                          {#if categorizeDataFlows(expandedGrants).length > 0}
                           {@const dataFlows = categorizeDataFlows(expandedGrants)}
-                          {#if dataFlows.length > 0}
                             <div class="space-y-2">
                               <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                 Data Flow Analysis
