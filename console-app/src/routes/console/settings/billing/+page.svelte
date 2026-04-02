@@ -13,6 +13,7 @@
     { href: "/console/settings/audit-log", label: "Audit Log" },
     { href: "/console/settings/billing", label: "Billing" },
     { href: "/console/settings/trust", label: "Trust Center" },
+    { href: "/console/settings/incidents", label: "Incidents" },
   ];
   $: current = $page.url.pathname;
 </script>

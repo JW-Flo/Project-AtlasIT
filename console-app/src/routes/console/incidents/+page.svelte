@@ -50,6 +50,7 @@
   // Comment form per incident
   let commentInputs: Record<string, string> = {};
   let submittingComment = new Set<string>();
+  let changingSeverity = new Set<string>();
 
   // Tenant team members for assignment
   let teamMembers: string[] = [];
@@ -213,6 +214,36 @@
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to assign", variant: "error" });
     }
+  }
+
+  async function changeSeverity(incidentId: string, newSeverity: string) {
+    changingSeverity.add(incidentId);
+    changingSeverity = new Set(changingSeverity);
+    try {
+      const res = await fetch(`/api/incidents/${incidentId}/severity`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ severity: newSeverity }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to change severity");
+      }
+      const result = await res.json();
+      pushToast({ message: `Severity changed to ${newSeverity}`, variant: "success" });
+      const idx = incidents.findIndex((i) => i.id === incidentId);
+      if (idx >= 0) {
+        incidents[idx] = { ...incidents[idx], severity: newSeverity, slaBreachAt: result.slaBreachAt };
+        incidents = [...incidents];
+      }
+      delete timelineCache[incidentId];
+      timelineCache = { ...timelineCache };
+      loadTimeline(incidentId);
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Failed to change severity", variant: "error" });
+    }
+    changingSeverity.delete(incidentId);
+    changingSeverity = new Set(changingSeverity);
   }
 
   async function addComment(incidentId: string) {
@@ -420,6 +451,29 @@
                                 {/if}
                               </div>
                             </div>
+
+                            <!-- Severity change -->
+                            {#if incident.status !== "resolved"}
+                              <div>
+                                <span class="text-xs font-medium text-muted-foreground uppercase">Severity</span>
+                                <div class="mt-1">
+                                  <select
+                                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full max-w-xs"
+                                    value={incident.severity}
+                                    disabled={changingSeverity.has(incident.id)}
+                                    on:change|stopPropagation={(e) => {
+                                      const val = e.currentTarget.value;
+                                      if (val && val !== incident.severity) changeSeverity(incident.id, val);
+                                    }}
+                                  >
+                                    <option value="critical">Critical</option>
+                                    <option value="high">High</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="low">Low</option>
+                                  </select>
+                                </div>
+                              </div>
+                            {/if}
 
                             <!-- Assignment -->
                             <div>

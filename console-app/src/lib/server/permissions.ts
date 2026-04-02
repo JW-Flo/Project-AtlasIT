@@ -118,6 +118,14 @@ const PERMISSIONS: RoutePermission[] = [
     pattern: /^\/api\/incidents\/[^/]+\/resolve$/,
     methods: { POST: ["owner", "admin"] },
   },
+  {
+    pattern: /^\/api\/incidents\/[^/]+\/severity$/,
+    methods: { PUT: ["owner", "admin", "member"] },
+  },
+  {
+    pattern: /^\/api\/incidents\/sla-config$/,
+    methods: { GET: ["owner", "admin"], PUT: ["owner", "admin"] },
+  },
 
   // ── Access requests ──────────────────────────────────────────────
   // Any authenticated user can create a request

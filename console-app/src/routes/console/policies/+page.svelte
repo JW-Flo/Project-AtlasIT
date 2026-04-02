@@ -14,7 +14,7 @@
   import { session } from "$lib/stores/session";
   import {
     Plus, FileText, Check, X, Archive, Send, Edit3, History,
-    ChevronDown, ChevronUp, AlertTriangle
+    ChevronDown, ChevronUp, AlertTriangle, Clock, MessageSquare
   } from "lucide-svelte";
 
   // ── Types ────────────────────────────────────────────────────────────────
@@ -28,7 +28,7 @@
 
   interface PolicyApproval {
     reviewerEmail: string;
-    decision: "approved" | "rejected";
+    decision: "approved" | "rejected" | "changes_requested" | "pending" | "superseded";
     comment?: string | null;
     decidedAt: string;
   }
@@ -283,7 +283,7 @@
     submitting = new Set(submitting);
   }
 
-  async function reviewDecision(policy: Policy, decision: "approved" | "rejected") {
+  async function reviewDecision(policy: Policy, decision: "approved" | "rejected" | "changes_requested") {
     processingReview.add(policy.id);
     processingReview = new Set(processingReview);
     try {
@@ -293,12 +293,17 @@
         body: JSON.stringify({ decision, comment: reviewComment[policy.id] || undefined }),
       });
       if (!res.ok) throw new Error("Failed to record decision");
-      pushToast({ message: decision === "approved" ? "Policy approved" : "Policy rejected", variant: "success" });
+      const result = await res.json();
+      const labels: Record<string, string> = {
+        approved: result.status === "approved" ? "Policy approved" : "Approval recorded — waiting for other reviewers",
+        rejected: "Policy rejected — returned to draft",
+        changes_requested: "Changes requested — returned to draft",
+      };
+      pushToast({ message: labels[decision] ?? "Decision recorded", variant: decision === "rejected" || decision === "changes_requested" ? "warning" : "success" });
       reviewComment[policy.id] = "";
-      const newStatus = decision === "approved" ? "approved" : "draft";
       const idx = policies.findIndex((p) => p.id === policy.id);
       if (idx >= 0) {
-        policies[idx] = { ...policies[idx], status: newStatus as Policy["status"] };
+        policies[idx] = { ...policies[idx], status: result.status as Policy["status"] };
         policies = [...policies];
       }
       delete detailCache[policy.id];
@@ -651,24 +656,36 @@
 
                           <!-- Approvals -->
                           {#if detail.approvals?.length > 0}
+                            {@const approvedCount = detail.approvals.filter(a => a.decision === "approved").length}
+                            {@const pendingCount = detail.approvals.filter(a => a.decision === "pending").length}
+                            {@const totalCount = detail.approvals.length}
                             <div class="space-y-1">
-                              <span class="text-xs font-medium text-muted-foreground uppercase">Approvals</span>
+                              <div class="flex items-center gap-2">
+                                <span class="text-xs font-medium text-muted-foreground uppercase">Approvals</span>
+                                {#if policy.status === "pending_review" && totalCount > 1}
+                                  <Badge variant="secondary" class="text-xs">{approvedCount}/{totalCount - (detail.approvals.filter(a => a.decision === "superseded").length)} approved</Badge>
+                                {/if}
+                              </div>
                               <div class="space-y-1.5">
                                 {#each detail.approvals as approval}
                                   <div class="flex items-center gap-3 text-xs">
                                     {#if approval.decision === "approved"}
                                       <Check class="h-3 w-3 text-green-500 shrink-0" />
+                                    {:else if approval.decision === "pending"}
+                                      <Clock class="h-3 w-3 text-muted-foreground shrink-0" />
                                     {:else}
                                       <X class="h-3 w-3 text-destructive shrink-0" />
                                     {/if}
                                     <span class="font-medium">{approval.reviewerEmail}</span>
-                                    <Badge variant={approval.decision === "approved" ? "success" : "destructive"}>
-                                      {approval.decision}
+                                    <Badge variant={approval.decision === "approved" ? "success" : approval.decision === "pending" ? "secondary" : "destructive"}>
+                                      {approval.decision === "changes_requested" ? "changes requested" : approval.decision}
                                     </Badge>
                                     {#if approval.comment}
                                       <span class="text-muted-foreground">{approval.comment}</span>
                                     {/if}
-                                    <span class="text-muted-foreground ml-auto shrink-0">{fmtDate(approval.decidedAt)}</span>
+                                    {#if approval.decidedAt}
+                                      <span class="text-muted-foreground ml-auto shrink-0">{fmtDate(approval.decidedAt)}</span>
+                                    {/if}
                                   </div>
                                 {/each}
                               </div>
@@ -750,6 +767,15 @@
                                 >
                                   <Check class="h-3 w-3 mr-1" />
                                   Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  on:click={() => reviewDecision(policy, "changes_requested")}
+                                  disabled={processingReview.has(policy.id)}
+                                >
+                                  <MessageSquare class="h-3 w-3 mr-1" />
+                                  Request Changes
                                 </Button>
                                 <Button
                                   size="sm"
