@@ -37,10 +37,16 @@ export const GET: RequestHandler = async ({ platform }) => {
           headers["CF-Access-Client-Id"] = cfAccessId;
           headers["CF-Access-Client-Secret"] = cfAccessSecret;
         }
-        const res = await fetch(`${baseUrl}/health`, {
-          headers,
-          signal: AbortSignal.timeout(5000),
-        });
+        // Use service binding for compliance worker to bypass CF Access
+        let res: Response;
+        if (name === "compliance" && env.COMPLIANCE_WORKER) {
+          res = await env.COMPLIANCE_WORKER.fetch(new Request(`${baseUrl}/health`, { headers }));
+        } else {
+          res = await fetch(`${baseUrl}/health`, {
+            headers,
+            signal: AbortSignal.timeout(5000),
+          });
+        }
         const latencyMs = Date.now() - start;
         const data = (await res.json()) as any;
 
