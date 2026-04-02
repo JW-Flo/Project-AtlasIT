@@ -688,10 +688,14 @@ const worker = {
     //    already expired. Emit compliance evidence and update statuses.
     let nhiExpirySoon = 0;
     let nhiExpired = 0;
+    let nhiRotationPending = 0;
+    let nhiIncidentsCreated = 0;
     try {
       const nhiResult = await processExpiringNhiCredentials({ sharedDb });
       nhiExpirySoon = nhiResult.expiringSoon;
       nhiExpired = nhiResult.expired;
+      nhiRotationPending = nhiResult.rotationPending;
+      nhiIncidentsCreated = nhiResult.incidentsCreated;
     } catch (err) {
       console.error(
         JSON.stringify({
@@ -820,6 +824,8 @@ const worker = {
         controlsPromoted,
         nhiExpirySoon,
         nhiExpired,
+        nhiRotationPending,
+        nhiIncidentsCreated,
         insightsWritten,
         slaBreach,
         autoResolved,
