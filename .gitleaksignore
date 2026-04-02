@@ -1,0 +1,9 @@
+# Gitleaks false positive suppressions
+#
+# Format: one fingerprint per line (SHA256 of the finding).
+# These are pre-existing findings in the repo history that GitGuardian
+# has confirmed as false positives. Suppressing here prevents gitleaks
+# from failing CI on every PR due to historical commits.
+#
+# To find a fingerprint: run `gitleaks detect --report-format json`
+# and copy the "Fingerprint" field from the finding.
