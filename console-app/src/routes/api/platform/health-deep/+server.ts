@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { proxyFetch, getWorkerBase } from "../../_proxy-helpers";
 
 interface ServiceDeepCheck {
   name: string;
@@ -16,11 +17,8 @@ interface ServiceDeepCheck {
  */
 export const GET: RequestHandler = async ({ platform }) => {
   const env = (platform?.env as any) || {};
-
-  const services: Record<string, string> = {
-    orchestrator: env.ORCHESTRATOR_URL ?? "https://orchestrator.atlasit.pro",
-    compliance: env.COMPLIANCE_BASE ?? "https://compliance.atlasit.pro",
-  };
+  const orchestratorUrl = env.ORCHESTRATOR_URL ?? "https://orchestrator.atlasit.pro";
+  const complianceBase = getWorkerBase(platform);
 
   const results: ServiceDeepCheck[] = [];
 
@@ -28,44 +26,33 @@ export const GET: RequestHandler = async ({ platform }) => {
   const cfAccessId = env.CF_ACCESS_CLIENT_ID as string | undefined;
   const cfAccessSecret = env.CF_ACCESS_CLIENT_SECRET as string | undefined;
 
-  await Promise.allSettled(
-    Object.entries(services).map(async ([name, baseUrl]) => {
+  const accessHeaders: Record<string, string> = {};
+  if (cfAccessId && cfAccessSecret) {
+    accessHeaders["CF-Access-Client-Id"] = cfAccessId;
+    accessHeaders["CF-Access-Client-Secret"] = cfAccessSecret;
+  }
+
+  // Probe services in parallel
+  await Promise.allSettled([
+    // Orchestrator — direct fetch (not behind CF Access)
+    (async () => {
       const start = Date.now();
       try {
-        const headers: Record<string, string> = {};
-        if (cfAccessId && cfAccessSecret) {
-          headers["CF-Access-Client-Id"] = cfAccessId;
-          headers["CF-Access-Client-Secret"] = cfAccessSecret;
-        }
-        // Use service binding for compliance worker to bypass CF Access
-        let res: Response;
-        if (name === "compliance" && env.COMPLIANCE_WORKER) {
-          res = await env.COMPLIANCE_WORKER.fetch(new Request(`${baseUrl}/health`, { headers }));
-        } else {
-          res = await fetch(`${baseUrl}/health`, {
-            headers,
-            signal: AbortSignal.timeout(5000),
-          });
-        }
+        const res = await fetch(`${orchestratorUrl}/health`, {
+          headers: accessHeaders,
+          signal: AbortSignal.timeout(5000),
+        });
         const latencyMs = Date.now() - start;
         const data = (await res.json()) as any;
-
         const functionalChecks: Record<string, "pass" | "fail" | "unknown"> = {};
-
-        // Parse functional checks from the health response
         if (data.checks) {
           for (const [key, val] of Object.entries(data.checks)) {
             const check = val as any;
             functionalChecks[key] = check?.status === "pass" ? "pass" : "fail";
           }
         }
-
-        // Compliance worker has different structure
-        if (data.d1 !== undefined) functionalChecks.d1 = data.d1 ? "pass" : "fail";
-        if (data.r2 !== undefined) functionalChecks.r2 = data.r2 ? "pass" : "fail";
-
         results.push({
-          name,
+          name: "orchestrator",
           reachable: res.ok,
           latencyMs,
           functionalChecks,
@@ -73,14 +60,47 @@ export const GET: RequestHandler = async ({ platform }) => {
         });
       } catch {
         results.push({
-          name,
+          name: "orchestrator",
           reachable: false,
           latencyMs: Date.now() - start,
           functionalChecks: {},
         });
       }
-    }),
-  );
+    })(),
+
+    // Compliance — use proxyFetch (service binding) to bypass CF Access
+    (async () => {
+      const start = Date.now();
+      try {
+        const res = await proxyFetch(platform, `${complianceBase}/health`);
+        const latencyMs = Date.now() - start;
+        const data = (await res.json()) as any;
+        const functionalChecks: Record<string, "pass" | "fail" | "unknown"> = {};
+        if (data.checks) {
+          for (const [key, val] of Object.entries(data.checks)) {
+            const check = val as any;
+            functionalChecks[key] = check?.status === "pass" ? "pass" : "fail";
+          }
+        }
+        if (data.d1 !== undefined) functionalChecks.d1 = data.d1 ? "pass" : "fail";
+        if (data.r2 !== undefined) functionalChecks.r2 = data.r2 ? "pass" : "fail";
+        results.push({
+          name: "compliance",
+          reachable: res.ok,
+          latencyMs,
+          functionalChecks,
+          version: data.version,
+        });
+      } catch {
+        results.push({
+          name: "compliance",
+          reachable: false,
+          latencyMs: Date.now() - start,
+          functionalChecks: {},
+        });
+      }
+    })(),
+  ]);
 
   // Console-app self-check: D1
   const db = env.ATLAS_SHARED_DB;
