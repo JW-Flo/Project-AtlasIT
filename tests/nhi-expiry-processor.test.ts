@@ -36,12 +36,12 @@ describe("processExpiringNhiCredentials", () => {
 
     const expiringQuery = prepare.mock.calls[0][0] as string;
     expect(expiringQuery).toContain("nhi_credentials");
-    expect(expiringQuery).toContain("status = 'active'");
+    expect(expiringQuery).toMatch(/status.*IN.*'active'/);
     expect(expiringQuery).toContain("expires_at");
 
     const expiredQuery = prepare.mock.calls[1][0] as string;
     expect(expiredQuery).toContain("nhi_credentials");
-    expect(expiredQuery).toContain("status = 'active'");
+    expect(expiredQuery).toMatch(/status.*IN.*'active'/);
   });
 
   it("processes expiring tokens and emits evidence", async () => {
