@@ -3388,6 +3388,59 @@ function validateEnv(env: Env): void {
   }
 }
 
+async function refreshAllTenantSnapshots(env: Env): Promise<void> {
+  const runId = crypto.randomUUID().slice(0, 8);
+  log("info", "cron.snapshot.start", { runId });
+
+  await ensureSchema(env);
+
+  // Fetch active tenants from shared DB; fall back to compliance DB
+  const db = env.ATLAS_SHARED_DB ?? resolveD1(env);
+  if (!db) {
+    log("warn", "cron.snapshot.no_db", { runId });
+    return;
+  }
+
+  let tenantIds: string[];
+  try {
+    const { results } = await db
+      .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+      .all<{ id: string }>();
+    tenantIds = (results ?? []).map((r) => r.id);
+  } catch {
+    // tenants table may not exist in compliance DB — use default
+    tenantIds = [DEFAULT_TENANT];
+  }
+
+  if (tenantIds.length === 0) {
+    tenantIds = [DEFAULT_TENANT];
+  }
+
+  const settled = await Promise.allSettled(
+    tenantIds.map(async (tenantId) => {
+      const snapshot = await buildSnapshot(env, tenantId);
+      await persistSnapshot(env, tenantId, snapshot);
+      return tenantId;
+    }),
+  );
+
+  let ok = 0;
+  let fail = 0;
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      ok++;
+    } else {
+      fail++;
+      log("error", "cron.snapshot.tenant_error", {
+        runId,
+        error: String(result.reason),
+      });
+    }
+  }
+
+  log("info", "cron.snapshot.done", { runId, tenants: tenantIds.length, ok, fail });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -3435,5 +3488,9 @@ export default {
     }
 
     return errorResponse(404, requestId, headers, "Not Found");
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(refreshAllTenantSnapshots(env));
   },
 };
