@@ -34,46 +34,54 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
 
   const { id } = params;
 
-  const row = await db
-    .prepare(
-      `SELECT nc.id, nc.tenant_id, nc.directory_user_id, nc.credential_type, nc.provider,
-              nc.external_id, nc.display_name, nc.owner_email, nc.scopes, nc.permissions,
-              nc.expires_at, nc.last_used_at, nc.last_rotated_at, nc.risk_score, nc.risk_factors,
-              nc.status, nc.metadata, nc.created_at, nc.updated_at,
-              du.email as linked_user_email, du.display_name as linked_user_name
-       FROM nhi_credentials nc
-       LEFT JOIN directory_users du ON du.id = nc.directory_user_id
-       WHERE nc.id = ? AND nc.tenant_id = ?`,
-    )
-    .bind(id, tenantId)
-    .first();
+  try {
+    const row = await db
+      .prepare(
+        `SELECT nc.id, nc.tenant_id, nc.directory_user_id, nc.credential_type, nc.provider,
+                nc.external_id, nc.display_name, nc.owner_email, nc.scopes, nc.permissions,
+                nc.expires_at, nc.last_used_at, nc.last_rotated_at, nc.risk_score, nc.risk_factors,
+                nc.status, nc.metadata, nc.created_at, nc.updated_at,
+                du.email as linked_user_email, du.display_name as linked_user_name
+         FROM nhi_credentials nc
+         LEFT JOIN directory_users du ON du.id = nc.directory_user_id
+         WHERE nc.id = ? AND nc.tenant_id = ?`,
+      )
+      .bind(id, tenantId)
+      .first();
 
-  if (!row) return json({ error: "not found" }, { status: 404 });
+    if (!row) return json({ error: "not found" }, { status: 404 });
 
-  const auditRows = await db
-    .prepare(
-      `SELECT id, credential_id, action, actor, details, created_at
-       FROM nhi_audit_log
-       WHERE credential_id = ? AND tenant_id = ?
-       ORDER BY created_at DESC
-       LIMIT 100`,
-    )
-    .bind(id, tenantId)
-    .all()
-    .then((r: any) => r.results || []);
+    const auditRows = await db
+      .prepare(
+        `SELECT id, credential_id, action, actor, details, created_at
+         FROM nhi_audit_log
+         WHERE credential_id = ? AND tenant_id = ?
+         ORDER BY created_at DESC
+         LIMIT 100`,
+      )
+      .bind(id, tenantId)
+      .all()
+      .then((r: any) => r.results || []);
 
-  const auditMapped = auditRows.map((entry: Record<string, unknown>) => {
-    const e = { ...entry };
-    e.details = parseJsonField(e.details);
-    return e;
-  });
+    const auditMapped = auditRows.map((entry: Record<string, unknown>) => {
+      const e = { ...entry };
+      e.details = parseJsonField(e.details);
+      return e;
+    });
 
-  const credential = mapNhiRow(row as Record<string, unknown>);
+    const credential = mapNhiRow(row as Record<string, unknown>);
 
-  return json({
-    credential: toCamel(credential),
-    auditLog: toCamel(auditMapped),
-  });
+    return json({
+      credential: toCamel(credential),
+      auditLog: toCamel(auditMapped),
+    });
+  } catch (err: any) {
+    const msg = String(err);
+    if (msg.includes("no such table")) {
+      return json({ error: "not found" }, { status: 404 });
+    }
+    return json({ error: "Failed to load credential" }, { status: 500 });
+  }
 };
 
 export const PATCH: RequestHandler = async ({ params, request, locals, platform }) => {

@@ -20,59 +20,67 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "database not available" }, { status: 503 });
 
-  const app = await db
-    .prepare(
-      `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
-              is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
-              created_at, updated_at
-       FROM discovered_apps
-       WHERE id = ? AND tenant_id = ?`,
-    )
-    .bind(id, tenantId)
-    .first();
+  try {
+    const app = await db
+      .prepare(
+        `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
+                is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
+                created_at, updated_at
+         FROM discovered_apps
+         WHERE id = ? AND tenant_id = ?`,
+      )
+      .bind(id, tenantId)
+      .first();
 
-  if (!app) return json({ error: "app not found" }, { status: 404 });
+    if (!app) return json({ error: "app not found" }, { status: 404 });
 
-  // Fetch OAuth grants for this app
-  const grantsResult = await db
-    .prepare(
-      `SELECT id, user_email, scopes, granted_at, last_used_at, client_id, status, metadata, created_at
-       FROM discovered_oauth_grants
-       WHERE discovered_app_id = ? AND tenant_id = ?
-       ORDER BY granted_at DESC`,
-    )
-    .bind(id, tenantId)
-    .all();
+    // Fetch OAuth grants for this app
+    const grantsResult = await db
+      .prepare(
+        `SELECT id, user_email, scopes, granted_at, last_used_at, client_id, status, metadata, created_at
+         FROM discovered_oauth_grants
+         WHERE discovered_app_id = ? AND tenant_id = ?
+         ORDER BY granted_at DESC`,
+      )
+      .bind(id, tenantId)
+      .all();
 
-  const grants = (grantsResult.results || []).map((g: any) => {
-    const mapped = { ...g };
-    if (typeof mapped.metadata === "string") {
+    const grants = (grantsResult.results || []).map((g: any) => {
+      const mapped = { ...g };
+      if (typeof mapped.metadata === "string") {
+        try {
+          mapped.metadata = JSON.parse(mapped.metadata);
+        } catch {
+          /* keep as string */
+        }
+      }
+      if (typeof mapped.scopes === "string") {
+        try {
+          mapped.scopesList = JSON.parse(mapped.scopes);
+        } catch {
+          mapped.scopesList = mapped.scopes.split(",").map((s: string) => s.trim());
+        }
+      }
+      return mapped;
+    });
+
+    const appMapped = { ...app } as any;
+    if (typeof appMapped.metadata === "string") {
       try {
-        mapped.metadata = JSON.parse(mapped.metadata);
+        appMapped.metadata = JSON.parse(appMapped.metadata);
       } catch {
-        /* keep as string */
+        /* keep */
       }
     }
-    if (typeof mapped.scopes === "string") {
-      try {
-        mapped.scopesList = JSON.parse(mapped.scopes);
-      } catch {
-        mapped.scopesList = mapped.scopes.split(",").map((s: string) => s.trim());
-      }
-    }
-    return mapped;
-  });
 
-  const appMapped = { ...app } as any;
-  if (typeof appMapped.metadata === "string") {
-    try {
-      appMapped.metadata = JSON.parse(appMapped.metadata);
-    } catch {
-      /* keep */
+    return json({ app: toCamel([appMapped])[0], grants: toCamel(grants) });
+  } catch (err: any) {
+    const msg = String(err);
+    if (msg.includes("no such table")) {
+      return json({ error: "app not found" }, { status: 404 });
     }
+    return json({ error: "Failed to load app details" }, { status: 500 });
   }
-
-  return json({ app: toCamel([appMapped])[0], grants: toCamel(grants) });
 };
 
 /** PATCH /api/discovery/:id — update risk tier */
