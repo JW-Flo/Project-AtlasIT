@@ -25,7 +25,7 @@
     lastUsedAt: string | null;
     lastRotatedAt: string | null;
     riskScore: number;
-    riskFactors: Record<string, unknown> | null;
+    riskFactors: string[] | Record<string, unknown> | null;
     status: string;
     linkedUserEmail: string | null;
     linkedUserName: string | null;
@@ -66,7 +66,8 @@
     oauth_app: "OAuth App",
     access_key: "Access Key",
     api_key: "API Key",
-    bot: "Bot",
+    bot_token: "Bot Token",
+    deploy_key: "Deploy Key",
     oauth_grant: "OAuth Grant",
   };
 
@@ -317,7 +318,9 @@
       <option value="oauth_app">OAuth App</option>
       <option value="access_key">Access Key</option>
       <option value="api_key">API Key</option>
-      <option value="bot">Bot</option>
+      <option value="bot_token">Bot Token</option>
+      <option value="deploy_key">Deploy Key</option>
+      <option value="oauth_grant">OAuth Grant</option>
     </select>
     <select
       bind:value={filterProvider}
@@ -330,6 +333,7 @@
       <option value="aws">AWS</option>
       <option value="github">GitHub</option>
       <option value="okta">Okta</option>
+      <option value="slack">Slack</option>
     </select>
   </div>
 
@@ -389,7 +393,7 @@
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex items-center gap-2">
-                      {#if cred.credentialType === "bot"}
+                      {#if cred.credentialType === "bot_token"}
                         <Bot class="h-4 w-4 text-muted-foreground shrink-0" />
                       {:else if cred.credentialType === "access_key" || cred.credentialType === "api_key"}
                         <Key class="h-4 w-4 text-muted-foreground shrink-0" />
@@ -452,13 +456,19 @@
                                 </div>
                               </div>
                             {/if}
-                            {#if cred.riskFactors && Object.keys(cred.riskFactors).length > 0}
+                            {#if cred.riskFactors && (Array.isArray(cred.riskFactors) ? cred.riskFactors.length > 0 : Object.keys(cred.riskFactors).length > 0)}
                               <div>
                                 <span class="text-xs font-medium text-muted-foreground uppercase">Risk Factors</span>
                                 <div class="flex flex-wrap gap-1 mt-1">
-                                  {#each Object.entries(cred.riskFactors) as [key, val]}
-                                    <Badge variant="warning" class="text-xs">{key}: {val}</Badge>
-                                  {/each}
+                                  {#if Array.isArray(cred.riskFactors)}
+                                    {#each cred.riskFactors as factor}
+                                      <Badge variant="warning" class="text-xs">{String(factor).replace(/_/g, " ")}</Badge>
+                                    {/each}
+                                  {:else}
+                                    {#each Object.entries(cred.riskFactors) as [key, val]}
+                                      <Badge variant="warning" class="text-xs">{key}: {val}</Badge>
+                                    {/each}
+                                  {/if}
                                 </div>
                               </div>
                             {/if}
