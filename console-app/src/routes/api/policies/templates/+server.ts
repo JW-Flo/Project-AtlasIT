@@ -3,8 +3,8 @@ import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
 const FALLBACK_TEMPLATES = [
   {
-    key: "soc2.demo",
-    name: "SOC 2 Access Control Policy (Demo)",
+    key: "soc2.access_control",
+    name: "SOC 2 Access Control Policy",
     format: "markdown",
   },
   {

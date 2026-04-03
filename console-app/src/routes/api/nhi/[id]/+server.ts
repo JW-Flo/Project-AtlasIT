@@ -76,12 +76,7 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   });
 };
 
-export const PATCH: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
+export const PATCH: RequestHandler = async ({ params, request, locals, platform }) => {
   const user = locals.user as any;
   const guard = requireTenantRole(user, ["owner", "admin"]);
   if (guard) return guard;
@@ -95,9 +90,7 @@ export const PATCH: RequestHandler = async ({
   const { id } = params;
 
   const existing = await db
-    .prepare(
-      `SELECT id, owner_email, status FROM nhi_credentials WHERE id = ? AND tenant_id = ?`,
-    )
+    .prepare(`SELECT id, owner_email, status FROM nhi_credentials WHERE id = ? AND tenant_id = ?`)
     .bind(id, tenantId)
     .first();
 
@@ -138,9 +131,7 @@ export const PATCH: RequestHandler = async ({
   binds.push(now, id, tenantId);
 
   await db
-    .prepare(
-      `UPDATE nhi_credentials SET ${updates.join(", ")} WHERE id = ? AND tenant_id = ?`,
-    )
+    .prepare(`UPDATE nhi_credentials SET ${updates.join(", ")} WHERE id = ? AND tenant_id = ?`)
     .bind(...binds)
     .run();
 
@@ -169,8 +160,10 @@ export const PATCH: RequestHandler = async ({
       `SELECT nc.id, nc.tenant_id, nc.directory_user_id, nc.credential_type, nc.provider,
               nc.external_id, nc.display_name, nc.owner_email, nc.scopes, nc.permissions,
               nc.expires_at, nc.last_used_at, nc.last_rotated_at, nc.risk_score, nc.risk_factors,
-              nc.status, nc.metadata, nc.created_at, nc.updated_at
+              nc.status, nc.metadata, nc.created_at, nc.updated_at,
+              du.email as linked_user_email, du.display_name as linked_user_name
        FROM nhi_credentials nc
+       LEFT JOIN directory_users du ON du.id = nc.directory_user_id
        WHERE nc.id = ? AND nc.tenant_id = ?`,
     )
     .bind(id, tenantId)
@@ -194,9 +187,7 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
   const { id } = params;
 
   const existing = await db
-    .prepare(
-      `SELECT id, status FROM nhi_credentials WHERE id = ? AND tenant_id = ?`,
-    )
+    .prepare(`SELECT id, status FROM nhi_credentials WHERE id = ? AND tenant_id = ?`)
     .bind(id, tenantId)
     .first();
 

@@ -368,7 +368,7 @@
                   <Badge variant="outline">{alert.category}</Badge>
                   <span class="text-xs text-muted-foreground">{new Date(alert.createdAt).toLocaleString()}</span>
                 </div>
-                <p class="text-sm">{alert.data.description ?? JSON.stringify(alert.data)}</p>
+                <p class="text-sm">{alert.data.description ?? "Compliance drift detected — review details in the compliance dashboard."}</p>
                 {#if alert.data.suggestedRemediation}
                   <p class="text-xs text-muted-foreground mt-1">{alert.data.suggestedRemediation}</p>
                 {/if}

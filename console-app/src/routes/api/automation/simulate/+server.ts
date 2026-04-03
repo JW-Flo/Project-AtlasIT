@@ -129,7 +129,7 @@ async function generateSamplePayload(
 
       return user
         ? { userId: user.id, email: user.email, displayName: user.display_name }
-        : { userId: "sample-user-id", email: "sample@tenant.com", displayName: "Sample User" };
+        : { userId: "example-user-id", email: "user@example.com", displayName: "Example User" };
     }
 
     case "user_joined_group":
@@ -145,11 +145,11 @@ async function generateSamplePayload(
         .first<{ id: string; name: string }>();
 
       return {
-        userId: user?.id ?? "sample-user-id",
-        email: user?.email ?? "sample@tenant.com",
-        displayName: user?.display_name ?? "Sample User",
-        groupId: group?.id ?? "sample-group-id",
-        groupName: group?.name ?? "Sample Group",
+        userId: user?.id ?? "example-user-id",
+        email: user?.email ?? "user@example.com",
+        displayName: user?.display_name ?? "Example User",
+        groupId: group?.id ?? "example-group-id",
+        groupName: group?.name ?? "Example Group",
       };
     }
 
@@ -162,7 +162,7 @@ async function generateSamplePayload(
         .first<{ app_id: string }>();
 
       return {
-        appId: app?.app_id ?? "sample-app-id",
+        appId: app?.app_id ?? "example-app-id",
         healthy: triggerType !== "app_disconnected",
       };
     }

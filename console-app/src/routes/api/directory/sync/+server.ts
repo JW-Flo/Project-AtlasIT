@@ -140,7 +140,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       });
 
       if (syncRes.ok) {
-        const adapterData = await syncRes.json().catch(() => ({})) as any;
+        const adapterData = (await syncRes.json().catch(() => ({}))) as any;
         const userCount = adapterData.users?.length ?? adapterData.userCount ?? 0;
         const groupCount = adapterData.groups?.length ?? adapterData.groupCount ?? 0;
 
@@ -158,7 +158,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
           action: "directory.sync",
           targetType: "directory_connection",
           targetId: connection.id,
-          detail: JSON.stringify({ userCount, groupCount, source: "orchestrator", provider: connection.provider }),
+          detail: JSON.stringify({
+            userCount,
+            groupCount,
+            source: "orchestrator",
+            provider: connection.provider,
+          }),
         });
 
         return json({ success: true, userCount, groupCount, source: "orchestrator" });
@@ -168,7 +173,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       console.warn(`Orchestrator sync failed (${syncRes.status}), falling back to synthetic`);
     }
 
-    // Fallback: synthetic directory data for demo/development or when orchestrator unavailable
+    // Fallback: seed directory with example data when orchestrator is unavailable
     const tenantDomain = user.email?.split("@")[1] || "example.com";
     const { users, groups, memberships } = generateSyntheticData(tenantDomain);
 
@@ -233,9 +238,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
         .run();
 
       const row = await db
-        .prepare(
-          `SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?`,
-        )
+        .prepare(`SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?`)
         .bind(tenantId, externalId)
         .first();
       groupIdMap[g.name] = row?.id ?? id;
@@ -248,9 +251,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
       for (const externalId of userExternalIds) {
         const userRow = await db
-          .prepare(
-            `SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?`,
-          )
+          .prepare(`SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?`)
           .bind(tenantId, externalId)
           .first();
         if (!userRow) continue;
@@ -340,10 +341,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       .bind(err?.message ?? "unknown error", new Date().toISOString(), tenantId)
       .run();
 
-    return json(
-      { error: "sync failed", detail: err?.message },
-      { status: 500 },
-    );
+    return json({ error: "sync failed", detail: err?.message }, { status: 500 });
   }
 };
 
