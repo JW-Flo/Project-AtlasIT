@@ -139,7 +139,7 @@
     "vite": "^7.1.11",
     "vitest": "^3.2.4",
     "wrangler": "^4.74.0",
-    "yaml": "^2.8.2"
+    "yaml": "^2.8.3"
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20250927.0",
@@ -152,7 +152,13 @@
     "zod": "^3.23.8"
   },
   "overrides": {
-    "fast-xml-parser": ">=5.5.6"
+    "fast-xml-parser": ">=5.5.7",
+    "picomatch@>=4": ">=4.0.4",
+    "picomatch@<4": ">=2.3.2",
+    "flatted": ">=3.4.2",
+    "brace-expansion": ">=5.0.5",
+    "path-to-regexp@<1": ">=0.1.13",
+    "yaml": ">=2.8.3"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -166,9 +172,16 @@
       "cookie": ">=0.7.0",
       "form-data": "^4.0.1",
       "axios": "^1.7.9",
-      "tar-fs": "^3.1.1",
+      "tar-fs": ">=3.1.1",
       "esbuild": ">=0.25.0",
-      "fast-xml-parser": ">=5.5.6"
+      "fast-xml-parser": ">=5.5.7",
+      "picomatch@>=4": ">=4.0.4",
+      "picomatch@<4": ">=2.3.2",
+      "flatted": ">=3.4.2",
+      "brace-expansion@<2": ">=1.1.13",
+      "brace-expansion@>=4": ">=5.0.5",
+      "path-to-regexp@<1": ">=0.1.13",
+      "yaml": ">=2.8.3"
     }
   },
   "packageManager": "pnpm@10.32.1",
