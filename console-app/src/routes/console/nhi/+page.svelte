@@ -161,7 +161,7 @@
       const res = await fetch("/api/nhi", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        pushToast({ message: `Discovery complete: ${data.synced ?? data.discovered ?? "?"} credentials found`, variant: "success" });
+        pushToast({ message: `Discovery complete: ${data.total ?? data.synced ?? data.discovered ?? 0} credentials found`, variant: "success" });
         await loadCredentials();
       } else {
         pushToast({ message: data.error || data.message || "Discovery failed", variant: "error" });
