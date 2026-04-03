@@ -51,7 +51,7 @@
   "devDependencies": {
     "@types/node-notifier": "^8.0.5",
     "copyfiles": "^2.4.1",
-    "electron": "^35.7.5",
+    "electron": "^39.8.5",
     "electron-builder": "^26.8.1",
     "electron-debug": "^4.1.0",
     "node-notifier": "^10.0.1",

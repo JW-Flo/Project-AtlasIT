@@ -122,3 +122,8 @@ packages/shared/dist/
 docs/**/package-lock.json
 docs/**/uv.lock
 context/**/package-lock.json
+
+# Project uses pnpm — prevent stale npm lockfiles from generating alerts
+package-lock.json
+**/package-lock.json
+!pnpm-lock.yaml

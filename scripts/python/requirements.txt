@@ -1,4 +1,5 @@
 openai
 PyGithub
-requests
+requests>=2.33.0
 python-dotenv
+cryptography>=46.0.6
