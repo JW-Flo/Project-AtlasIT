@@ -619,11 +619,12 @@
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Link failed (${res.status})`);
       }
-      pushToast({ message: `Evidence linked to ${linkControlKey}`, variant: "success" });
+      const linkedKey = linkControlKey;
+      pushToast({ message: `Evidence linked to ${linkedKey}`, variant: "success" });
       linkingEvidenceId = null;
       linkControlKey = "";
       const item = evidenceItems.find((e) => e.id === evidenceId);
-      if (item) item.linkedControl = linkControlKey;
+      if (item) item.linkedControl = linkedKey;
       evidenceItems = [...evidenceItems];
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to link evidence", variant: "error" });
