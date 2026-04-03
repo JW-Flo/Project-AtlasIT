@@ -129,9 +129,20 @@
 
   $: current = $page.url.pathname;
 
+  // Collect all nav hrefs for precise active-state matching
+  $: allNavHrefs = computedSections.flatMap((s) => s.items.map((i) => i.href));
+
   function isActive(href: string, pathname: string): boolean {
     if (href === "/console") return pathname === "/console" || pathname === "/console/";
-    return pathname.startsWith(href);
+    if (!pathname.startsWith(href)) return false;
+    // If another nav item has a longer prefix that also matches, this one isn't active
+    // e.g. on /console/compliance/feed, /console/compliance should NOT highlight
+    for (const other of allNavHrefs) {
+      if (other !== href && other.startsWith(href) && pathname.startsWith(other)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   onMount(async () => {
@@ -234,7 +245,7 @@
   <!-- Sidebar -->
   <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0" style={accentColor ? `--accent-brand: ${accentColor}` : ''}>
     <!-- Logo -->
-    <div class="flex items-center gap-2 px-6 h-16 border-b">
+    <a href="/console" class="flex items-center gap-2 px-6 h-16 border-b hover:bg-accent/50 transition-colors">
       {#if logoUrl}
         <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
       {:else}
@@ -243,7 +254,7 @@
         </div>
       {/if}
       <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
-    </div>
+    </a>
 
     {#if isImpersonating}
       <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
@@ -309,7 +320,7 @@
       <aside class="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] flex flex-col bg-card border-r shadow-xl overflow-y-auto">
         <!-- Logo -->
         <div class="flex items-center justify-between gap-2 px-4 h-16 border-b shrink-0">
-          <div class="flex items-center gap-2">
+          <a href="/console" class="flex items-center gap-2" on:click={closeMobileMenu}>
             {#if logoUrl}
               <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
             {:else}
@@ -318,7 +329,7 @@
               </div>
             {/if}
             <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
-          </div>
+          </a>
           <button
             class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
             on:click={closeMobileMenu}

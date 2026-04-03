@@ -54,27 +54,38 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
   const where = conditions.join(" AND ");
 
-  const countRow = await db
-    .prepare(`SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`)
-    .bind(...binds)
-    .first();
+  try {
+    const countRow = await db
+      .prepare(`SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`)
+      .bind(...binds)
+      .first();
 
-  const rows = await db
-    .prepare(
-      `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
-              is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
-              created_at, updated_at
-       FROM discovered_apps
-       WHERE ${where}
-       ORDER BY is_ai_tool DESC, user_count DESC, last_seen_at DESC`,
-    )
-    .bind(...binds)
-    .all()
-    .then((r: any) => r.results || []);
+    const rows = await db
+      .prepare(
+        `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
+                is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
+                created_at, updated_at
+         FROM discovered_apps
+         WHERE ${where}
+         ORDER BY is_ai_tool DESC, user_count DESC, last_seen_at DESC`,
+      )
+      .bind(...binds)
+      .all()
+      .then((r: any) => r.results || []);
 
-  const mapped = rows.map(mapDiscoveredRow);
+    const mapped = rows.map(mapDiscoveredRow);
 
-  return json({ apps: toCamel(mapped), total: countRow?.total ?? 0 });
+    return json({ apps: toCamel(mapped), total: countRow?.total ?? 0 });
+  } catch (err: any) {
+    const msg = String(err);
+    if (msg.includes("no such table")) {
+      return json({ apps: [], total: 0 });
+    }
+    console.error(
+      JSON.stringify({ level: "error", message: "Discovery query failed", error: msg }),
+    );
+    return json({ error: "Failed to query discovered apps", apps: [], total: 0 }, { status: 500 });
+  }
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {

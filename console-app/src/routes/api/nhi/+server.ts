@@ -85,9 +85,12 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
     return json({ credentials: toCamel(mapped), total: countRow?.total ?? 0 });
   } catch (err: any) {
-    console.error(
-      JSON.stringify({ level: "error", message: "NHI query failed", error: String(err) }),
-    );
+    const msg = String(err);
+    // Table may not exist yet — return empty results instead of 500
+    if (msg.includes("no such table")) {
+      return json({ credentials: [], total: 0 });
+    }
+    console.error(JSON.stringify({ level: "error", message: "NHI query failed", error: msg }));
     return json(
       { error: "Failed to query NHI credentials", credentials: [], total: 0 },
       { status: 500 },
