@@ -77,6 +77,8 @@
       pushToast({ message: "Settings saved", variant: "success" });
       // Refresh compliance scores so sidebar tooltip reflects updated frameworks
       refreshComplianceScore();
+      // Signal AppFrame to reload session branding
+      window.dispatchEvent(new Event("branding-updated"));
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save settings", variant: "error" });
     } finally {

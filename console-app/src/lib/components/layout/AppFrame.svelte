@@ -145,6 +145,31 @@
     return true;
   }
 
+  function applyBranding(logo: string, accent: string) {
+    logoUrl = logo;
+    accentColor = accent;
+    if (typeof document !== "undefined") {
+      if (accent) {
+        document.documentElement.style.setProperty("--accent-brand", accent);
+      } else {
+        document.documentElement.style.removeProperty("--accent-brand");
+      }
+    }
+  }
+
+  async function loadSession() {
+    const sessionData = await fetchSession();
+    if (sessionData) {
+      userRoles = sessionData.roles || [];
+      userEmail = sessionData.email || "";
+      userDisplayName = sessionData.displayName || sessionData.email || "";
+      isImpersonating = sessionData.impersonating || false;
+      impersonatedBy = sessionData.impersonatedBy || "";
+      orgName = sessionData.orgName || "";
+      applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
+    }
+  }
+
   onMount(async () => {
     initUx();
     try {
@@ -152,24 +177,20 @@
     } catch {}
 
     try {
-      const sessionData = await fetchSession();
-      if (sessionData) {
-        userRoles = sessionData.roles || [];
-        userEmail = sessionData.email || "";
-        userDisplayName = sessionData.displayName || sessionData.email || "";
-        isImpersonating = sessionData.impersonating || false;
-        impersonatedBy = sessionData.impersonatedBy || "";
-        orgName = sessionData.orgName || "";
-        logoUrl = sessionData.branding?.logoUrl || "";
-        accentColor = sessionData.branding?.accentColor || "";
-      }
+      await loadSession();
     } catch {}
+
+    // Re-apply branding whenever settings page saves new values
+    const onBrandingUpdated = () => loadSession().catch(() => {});
+    window.addEventListener("branding-updated", onBrandingUpdated);
 
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
 
     // Fetch compliance score
     fetchComplianceScore().catch(() => {});
+
+    return () => window.removeEventListener("branding-updated", onBrandingUpdated);
   });
 
   // Poll compliance score every 60s
@@ -243,7 +264,7 @@
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0" style={accentColor ? `--accent-brand: ${accentColor}` : ''}>
+  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
     <!-- Logo -->
     <a href="/console" class="flex items-center gap-2 px-6 h-16 border-b hover:bg-accent/50 transition-colors">
       {#if logoUrl}
@@ -276,11 +297,12 @@
               <a
                 href={item.href}
                 class={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors border-l-2",
                   active
-                    ? "nav-active bg-primary/10 text-primary border-l-2 border-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                    ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                 )}
+                style={active && accentColor ? `color: ${accentColor}` : ""}
               >
                 <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
                 {item.label}
@@ -360,11 +382,12 @@
                     href={item.href}
                     on:click={closeMobileMenu}
                     class={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors border-l-2",
                       active
-                        ? "bg-primary/10 text-primary border-l-2 border-primary"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                        ? "bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                     )}
+                    style={active && accentColor ? `color: ${accentColor}` : ""}
                   >
                     <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
                     {item.label}
