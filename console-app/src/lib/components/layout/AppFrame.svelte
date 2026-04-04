@@ -50,6 +50,7 @@
   }
 
   let userRoles: string[] = [];
+  let isSuperAdmin = false;
   let userEmail = "";
   let userDisplayName = "";
   let isImpersonating = false;
@@ -110,7 +111,7 @@
     },
   ];
 
-  $: computedSections = userRoles.includes("super-admin")
+  $: computedSections = isSuperAdmin || userRoles.includes("super-admin")
     ? [...navSections.slice(0, -1), {
         ...navSections[navSections.length - 1],
         items: [
@@ -171,6 +172,7 @@
     const sessionData = await (force ? refreshSession() : fetchSession());
     if (sessionData) {
       userRoles = sessionData.roles || [];
+      isSuperAdmin = sessionData.superAdmin || false;
       userEmail = sessionData.email || "";
       userDisplayName = sessionData.displayName || sessionData.email || "";
       isImpersonating = sessionData.impersonating || false;
