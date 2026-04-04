@@ -6,11 +6,11 @@ import type { PolicyType } from "@atlasit/shared";
 const POLICY_TYPE_FALLBACKS: Record<string, PolicyType> = {
   "soc2.demo": "access_control",
   "iso27001.isms": "access_control",
-  "access_control": "access_control",
-  "incident_response": "incident_response",
-  "data_handling": "data_handling",
-  "password": "password",
-  "acceptable_use": "acceptable_use",
+  access_control: "access_control",
+  incident_response: "incident_response",
+  data_handling: "data_handling",
+  password: "password",
+  acceptable_use: "acceptable_use",
 };
 
 async function writeGeneratedPoliciesPreference(
@@ -119,11 +119,18 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       try {
         const [appsResult, fwResult] = await Promise.all([
           db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
-          db.prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'").bind(tenantId).first(),
+          db
+            .prepare(
+              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
+            )
+            .bind(tenantId)
+            .first(),
         ]);
         connectedApps = (appsResult?.results || []).map((r: any) => r.app_id);
         if (fwResult?.value) frameworks = JSON.parse(fwResult.value as string);
-      } catch { /* use defaults */ }
+      } catch {
+        /* use defaults */
+      }
     }
 
     const tenantContext = {
@@ -140,20 +147,31 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
     if (db) await writeGeneratedPoliciesPreference(db, tenantId, templateKey);
 
+    // Flatten sections into a single content string for the frontend
+    const content = policy.sections.map((s) => `## ${s.title}\n\n${s.content}`).join("\n\n");
+    const sizeBytes = new TextEncoder().encode(content).byteLength;
+
     return new Response(
       JSON.stringify({
         status: "success",
         data: {
-          policy,
+          policy: {
+            ...policy,
+            content,
+            sizeBytes,
+            templateKey,
+            hash: "",
+            reused: false,
+          },
           source: "local",
         },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (err: any) {
-    return new Response(
-      JSON.stringify({ error: err?.message || "Policy generation failed" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: err?.message || "Policy generation failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };
