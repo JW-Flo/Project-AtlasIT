@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { onMount } from "svelte";
   import { mark } from "$lib/instrumentation/ux-metrics";
   import Card from "$lib/components/ui/card.svelte";
@@ -41,6 +41,7 @@
         body: JSON.stringify({ email, password }),
       });
       if (resp.ok) {
+        await invalidateAll();
         goto("/console");
       } else {
         const data = await resp.json();
