@@ -49,6 +49,9 @@
     icon: any;
   }
 
+  /** Server-side session data passed from +layout.server.ts */
+  export let serverSession: any = null;
+
   let userRoles: string[] = [];
   let isSuperAdmin = false;
   let userEmail = "";
@@ -168,18 +171,26 @@
     }
   }
 
+  function applySessionData(sessionData: any) {
+    if (!sessionData?.authenticated) return;
+    userRoles = sessionData.roles || [];
+    isSuperAdmin = sessionData.superAdmin || false;
+    userEmail = sessionData.email || "";
+    userDisplayName = sessionData.displayName || sessionData.email || "User";
+    isImpersonating = sessionData.impersonating || false;
+    impersonatedBy = sessionData.impersonatedBy || "";
+    orgName = sessionData.orgName || "";
+    applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
+  }
+
   async function loadSession(force = false) {
     const sessionData = await (force ? refreshSession() : fetchSession());
-    if (sessionData?.authenticated) {
-      userRoles = sessionData.roles || [];
-      isSuperAdmin = sessionData.superAdmin || false;
-      userEmail = sessionData.email || "";
-      userDisplayName = sessionData.displayName || sessionData.email || "User";
-      isImpersonating = sessionData.impersonating || false;
-      impersonatedBy = sessionData.impersonatedBy || "";
-      orgName = sessionData.orgName || "";
-      applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
-    }
+    applySessionData(sessionData);
+  }
+
+  // Apply server-side session immediately (no client fetch needed for initial render)
+  if (serverSession?.authenticated) {
+    applySessionData(serverSession);
   }
 
   onMount(async () => {
@@ -188,12 +199,24 @@
       await getRuntimeConfig();
     } catch {}
 
-    try {
-      await loadSession();
-    } catch {}
+    // If server session wasn't available, fall back to client-side fetch
+    if (!serverSession?.authenticated) {
+      try {
+        await loadSession();
+      } catch {}
+    }
 
-    // Re-apply branding whenever settings page saves new values (force-bypass cache)
-    const onBrandingUpdated = () => loadSession(true).catch(() => {});
+    // Re-apply branding whenever settings page saves new values
+    const onBrandingUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail) {
+        // Apply branding directly from the saved values
+        applyBranding(detail.logoUrl || "", detail.accentColor || "");
+      } else {
+        // Fallback: refetch session
+        loadSession(true).catch(() => {});
+      }
+    };
     window.addEventListener("branding-updated", onBrandingUpdated);
 
     // Sync theme preference from DB
