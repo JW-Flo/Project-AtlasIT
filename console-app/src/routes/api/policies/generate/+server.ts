@@ -41,6 +41,123 @@ async function writeGeneratedPoliciesPreference(
   }
 }
 
+/** Query D1 for real tenant data to populate the policy context. */
+async function buildTenantContext(
+  db: any,
+  tenantId: string,
+  user: any,
+): Promise<{
+  tenantName: string;
+  connectedApps: string[];
+  selectedFrameworks: string[];
+  automationRuleCount: number;
+  complianceScores: Record<string, number>;
+  evidenceSummary: string;
+  userCount: number;
+  industry: string;
+  contactEmail: string;
+}> {
+  let tenantName = "Organization";
+  let industry = "";
+  let connectedApps: string[] = [];
+  let frameworks: string[] = [];
+  let automationRuleCount = 0;
+  let complianceScores: Record<string, number> = {};
+  let userCount = 0;
+
+  if (!db) {
+    return {
+      tenantName,
+      connectedApps,
+      selectedFrameworks: ["SOC2"],
+      automationRuleCount: 0,
+      complianceScores: {},
+      evidenceSummary: "No evidence data available.",
+      userCount: 0,
+      industry: "",
+      contactEmail: user.email || "",
+    };
+  }
+
+  try {
+    // Parallel queries for all tenant data
+    const [tenantRow, appsResult, fwResult, rulesResult, scoresResult, usersResult] =
+      await Promise.all([
+        db
+          .prepare("SELECT name, industry FROM tenants WHERE id = ?")
+          .bind(tenantId)
+          .first<{ name: string; industry: string }>(),
+        db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
+        db
+          .prepare(
+            "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
+          )
+          .bind(tenantId)
+          .first<{ value: string }>(),
+        db
+          .prepare(
+            "SELECT COUNT(*) as cnt FROM tenant_preferences WHERE tenant_id = ? AND key = 'automation_rules'",
+          )
+          .bind(tenantId)
+          .first<{ cnt: number }>()
+          .catch(() => null),
+        db
+          .prepare(
+            "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_scores'",
+          )
+          .bind(tenantId)
+          .first<{ value: string }>()
+          .catch(() => null),
+        db
+          .prepare("SELECT COUNT(*) as cnt FROM users WHERE tenant_id = ?")
+          .bind(tenantId)
+          .first<{ cnt: number }>()
+          .catch(() => null),
+      ]);
+
+    if (tenantRow?.name) tenantName = tenantRow.name;
+    if (tenantRow?.industry) industry = tenantRow.industry;
+    connectedApps = (appsResult?.results || []).map((r: any) => r.app_id);
+    if (fwResult?.value) {
+      try {
+        frameworks = JSON.parse(fwResult.value);
+      } catch {}
+    }
+    automationRuleCount = rulesResult?.cnt ?? 0;
+    if (scoresResult?.value) {
+      try {
+        complianceScores = JSON.parse(scoresResult.value);
+      } catch {}
+    }
+    userCount = usersResult?.cnt ?? 0;
+  } catch {
+    /* use defaults */
+  }
+
+  // Build a meaningful evidence summary from real data
+  const evidenceParts: string[] = [];
+  if (connectedApps.length > 0)
+    evidenceParts.push(`${connectedApps.length} integrated application(s)`);
+  if (userCount > 0) evidenceParts.push(`${userCount} directory user(s)`);
+  if (automationRuleCount > 0) evidenceParts.push(`${automationRuleCount} automation rule(s)`);
+  const evidenceSummary =
+    evidenceParts.length > 0
+      ? `Active evidence sources: ${evidenceParts.join(", ")}.`
+      : "Evidence collection is being configured.";
+
+  return {
+    tenantName,
+    connectedApps,
+    selectedFrameworks: frameworks.length > 0 ? frameworks : ["SOC2"],
+    automationRuleCount,
+    complianceScores,
+    evidenceSummary,
+    userCount,
+    industry,
+    contactEmail: user.email || "",
+  };
+}
+
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
   if (!user) {
@@ -109,38 +226,19 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     // Fall through to local generator
   }
 
-  // Fallback: use local policy generator
+  // Fallback: use local policy generator with enriched tenant context
   const policyType = POLICY_TYPE_FALLBACKS[templateKey] || "access_control";
   try {
-    // Build minimal tenant context
-    let connectedApps: string[] = [];
-    let frameworks: string[] = [];
-    if (db) {
-      try {
-        const [appsResult, fwResult] = await Promise.all([
-          db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
-          db
-            .prepare(
-              "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
-            )
-            .bind(tenantId)
-            .first(),
-        ]);
-        connectedApps = (appsResult?.results || []).map((r: any) => r.app_id);
-        if (fwResult?.value) frameworks = JSON.parse(fwResult.value as string);
-      } catch {
-        /* use defaults */
-      }
-    }
+    const ctx = await buildTenantContext(db, tenantId, user);
 
     const tenantContext = {
       tenantId,
-      tenantName: (user as any).tenantName || "Organization",
-      connectedApps,
-      selectedFrameworks: frameworks.length > 0 ? frameworks : ["SOC2"],
-      automationRuleCount: 0,
-      complianceScores: {},
-      evidenceSummary: "No evidence data available.",
+      tenantName: ctx.tenantName,
+      connectedApps: ctx.connectedApps,
+      selectedFrameworks: ctx.selectedFrameworks,
+      automationRuleCount: ctx.automationRuleCount,
+      complianceScores: ctx.complianceScores,
+      evidenceSummary: ctx.evidenceSummary,
     };
 
     const policy = await generateSecurityPolicy(env, tenantContext, policyType);
