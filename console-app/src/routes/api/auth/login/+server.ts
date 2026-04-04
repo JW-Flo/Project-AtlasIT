@@ -112,6 +112,16 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       roles = ["admin"];
     }
 
+    const isSuperAdmin =
+      roles.includes("super-admin") ||
+      row.email.toLowerCase() === (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
+
+    // Ensure super admins have full role set in the session
+    if (isSuperAdmin) {
+      if (!roles.includes("super-admin")) roles.push("super-admin");
+      if (!roles.includes("owner")) roles.push("owner");
+    }
+
     if (!kv) {
       return json({ error: "Session store unavailable" }, { status: 503 });
     }
@@ -122,9 +132,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       email: row.email,
       displayName: row.display_name,
       roles,
-      superAdmin:
-        roles.includes("super-admin") ||
-        row.email.toLowerCase() === (env.SUPER_ADMIN_EMAIL || "").toLowerCase(),
+      superAdmin: isSuperAdmin,
       provider: "password",
       tenantId: row.tenant_id,
       createdAt: new Date().toISOString(),

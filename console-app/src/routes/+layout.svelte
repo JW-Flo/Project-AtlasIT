@@ -7,6 +7,9 @@
   const PUBLIC_ROUTES = ["/support", "/trust"];
 
   $: isBare = PUBLIC_ROUTES.some((r) => $page.url.pathname === r || $page.url.pathname.startsWith(r + "/"));
+
+  // Server-side session data from +layout.server.ts
+  $: serverSession = $page.data?.session;
 </script>
 
 <svelte:head>
@@ -17,7 +20,7 @@
 {#if isBare}
   <slot />
 {:else}
-  <AppFrame>
+  <AppFrame {serverSession}>
     <slot />
   </AppFrame>
 {/if}

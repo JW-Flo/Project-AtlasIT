@@ -77,8 +77,10 @@
       pushToast({ message: "Settings saved", variant: "success" });
       // Refresh compliance scores so sidebar tooltip reflects updated frameworks
       refreshComplianceScore();
-      // Signal AppFrame to reload session branding
-      window.dispatchEvent(new Event("branding-updated"));
+      // Signal AppFrame with the saved branding values directly
+      window.dispatchEvent(new CustomEvent("branding-updated", {
+        detail: { logoUrl, accentColor },
+      }));
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save settings", variant: "error" });
     } finally {
