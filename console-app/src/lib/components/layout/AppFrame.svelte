@@ -170,11 +170,11 @@
 
   async function loadSession(force = false) {
     const sessionData = await (force ? refreshSession() : fetchSession());
-    if (sessionData) {
+    if (sessionData?.authenticated) {
       userRoles = sessionData.roles || [];
       isSuperAdmin = sessionData.superAdmin || false;
       userEmail = sessionData.email || "";
-      userDisplayName = sessionData.displayName || sessionData.email || "";
+      userDisplayName = sessionData.displayName || sessionData.email || "User";
       isImpersonating = sessionData.impersonating || false;
       impersonatedBy = sessionData.impersonatedBy || "";
       orgName = sessionData.orgName || "";

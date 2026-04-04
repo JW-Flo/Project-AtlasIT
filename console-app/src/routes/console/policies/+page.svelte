@@ -386,12 +386,23 @@
     try {
       const tpl = templates.find((t) => t.key === selectedTemplate);
       const title = tpl ? `${tpl.name} Policy` : "Generated Policy";
+      // Map template key to a valid policy type for storage
+      const typeMap: Record<string, string> = {
+        "soc2.demo": "access_control",
+        "iso27001.isms": "access_control",
+        "access_control": "access_control",
+        "incident_response": "incident_response",
+        "data_handling": "data_handling",
+        "password": "password",
+        "acceptable_use": "acceptable_use",
+      };
+      const policyType = typeMap[selectedTemplate] || "access_control";
       const res = await fetch("/api/policies/managed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          type: selectedTemplate,
+          type: policyType,
           content: generatedPolicy.content,
         }),
       });
