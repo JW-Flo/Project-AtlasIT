@@ -1055,7 +1055,8 @@
                         </td>
                         <td class="px-4 py-3">{run.subjectEmail || run.email || "—"}</td>
                         <td class="px-4 py-3">
-                          <Badge variant={run.status === "completed" || run.status === "success" ? "success" : run.status === "failed" ? "destructive" : "info"} class="capitalize">{run.status}</Badge>
+                          {@const isStale = (run.status === "running" || run.status === "pending") && !run.completedAt && run.startedAt && (Date.now() - new Date(run.startedAt).getTime()) > 60 * 60 * 1000}
+                          <Badge variant={run.status === "completed" || run.status === "success" ? "success" : run.status === "failed" ? "destructive" : isStale ? "warning" : "info"} class="capitalize">{isStale ? "Stalled" : run.status}</Badge>
                         </td>
                         <td class="px-4 py-3 text-muted-foreground hidden md:table-cell">{run.stepsCompleted ?? run.stepsDone ?? 0}/{run.stepsTotal ?? 0}</td>
                         <td class="px-4 py-3 text-right">
