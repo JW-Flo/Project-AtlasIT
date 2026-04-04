@@ -18,10 +18,7 @@ const SESSION_CACHE_MAX_AGE = 300; // 5 minutes
  * This just avoids a KV read on every request.
  */
 function encodeSessionCache(user: UserPrincipal): string {
-  return btoa(JSON.stringify(user))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return btoa(JSON.stringify(user)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function decodeSessionCache(cookie: string): UserPrincipal | null {
@@ -50,8 +47,7 @@ function isDevAuthBypass(env: Record<string, string | undefined>): boolean {
       JSON.stringify({
         level: "warn",
         event: "auth.dev_bypass_active",
-        message:
-          "DEV_AUTH_BYPASS is active — this MUST NOT appear in production logs",
+        message: "DEV_AUTH_BYPASS is active — this MUST NOT appear in production logs",
       }),
     );
   }
@@ -69,10 +65,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   // Typed env: avoid spreading `any` through the rest of the handler.
   // We use `Record<string, string | undefined>` because wrangler vars are strings.
-  const envRaw = event.platform?.env as unknown as Record<
-    string,
-    string | undefined
-  >;
+  const envRaw = event.platform?.env as unknown as Record<string, string | undefined>;
   const envAny = event.platform?.env as Record<string, unknown> | undefined;
 
   const devBypass = isDevAuthBypass(envRaw ?? {});
@@ -120,9 +113,16 @@ export const handle: Handle = async ({ event, resolve }) => {
       }
     }
 
-    // Ensure superAdmin flag is consistent with roles (handles sessions created before the field existed)
-    if (user && user.superAdmin === undefined) {
-      user.superAdmin = (user.roles ?? []).includes("super-admin");
+    // Ensure superAdmin flag is always derived authoritatively on every request.
+    // SUPER_ADMIN_EMAIL grants super-admin regardless of stored session value,
+    // so a role change or email match takes effect without requiring re-login.
+    if (user) {
+      const superAdminEmail = (envRaw?.["SUPER_ADMIN_EMAIL"] || "").toLowerCase();
+      const isSuperByEmail = Boolean(
+        superAdminEmail && user.email?.toLowerCase() === superAdminEmail,
+      );
+      const isSuperByRole = (user.roles ?? []).includes("super-admin");
+      user.superAdmin = isSuperByEmail || isSuperByRole;
     }
 
     // Enrich stale sessions missing tenantId (e.g., created before enrichment was added)
@@ -163,7 +163,13 @@ export const handle: Handle = async ({ event, resolve }) => {
           }
         }
       } catch (e) {
-        console.error(JSON.stringify({ level: "error", event: "auth.tenant_enrichment_failed", err: String(e) }));
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "auth.tenant_enrichment_failed",
+            err: String(e),
+          }),
+        );
       }
     }
 
@@ -242,7 +248,13 @@ export const handle: Handle = async ({ event, resolve }) => {
     } catch (e) {
       // Re-throw redirects; only swallow DB errors
       if (e instanceof Response || (e as any)?.status) throw e;
-      console.error(JSON.stringify({ level: "error", event: "auth.tenant_status_check_failed", err: String(e) }));
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auth.tenant_status_check_failed",
+          err: String(e),
+        }),
+      );
     }
   }
 
@@ -250,18 +262,15 @@ export const handle: Handle = async ({ event, resolve }) => {
   // 4. Centralized RBAC enforcement for API routes
   // ------------------------------------------------------------------
   if (event.url.pathname.startsWith("/api/")) {
-    const requiredRoles = matchRoutePermission(
-      event.url.pathname,
-      event.request.method,
-    );
+    const requiredRoles = matchRoutePermission(event.url.pathname, event.request.method);
 
     if (requiredRoles !== undefined) {
       // null = any authenticated user; string[] = specific roles required
       if (!user) {
-        return new Response(
-          JSON.stringify({ error: "Authentication required" }),
-          { status: 401, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ error: "Authentication required" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
 
       if (requiredRoles !== null) {
@@ -270,10 +279,10 @@ export const handle: Handle = async ({ event, resolve }) => {
           const userRoles: string[] = user.roles ?? [];
           const hasRole = requiredRoles.some((r) => userRoles.includes(r));
           if (!hasRole) {
-            return new Response(
-              JSON.stringify({ error: "Insufficient permissions" }),
-              { status: 403, headers: { "content-type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: "Insufficient permissions" }), {
+              status: 403,
+              headers: { "content-type": "application/json" },
+            });
           }
         }
       }
@@ -291,13 +300,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!user) {
       // API routes return 401; page routes redirect to login
       if (event.url.pathname.startsWith("/api/")) {
-        return new Response(
-          JSON.stringify({ error: "unauthorized", code: "auth_required" }),
-          {
-            status: 401,
-            headers: { "content-type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ error: "unauthorized", code: "auth_required" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
       throw redirect(302, "/console/login");
     }
@@ -315,8 +321,7 @@ export const handle: Handle = async ({ event, resolve }) => {
  * For API routes, SvelteKit serializes it as JSON automatically.
  */
 export const handleError: HandleServerError = ({ error, event }) => {
-  const message =
-    error instanceof Error ? error.message : "Internal server error";
+  const message = error instanceof Error ? error.message : "Internal server error";
 
   console.error(
     JSON.stringify({

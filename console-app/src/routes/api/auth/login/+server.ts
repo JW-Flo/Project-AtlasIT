@@ -19,10 +19,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     const superEmail = (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
     const superPass = env.ADMIN_PASSWORD;
     if (!superPass) {
-      return json(
-        { error: "Authentication service unavailable" },
-        { status: 503 },
-      );
+      return json({ error: "Authentication service unavailable" }, { status: 503 });
     }
     if (email.toLowerCase() === superEmail && password === superPass) {
       if (!kv) {
@@ -125,7 +122,9 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       email: row.email,
       displayName: row.display_name,
       roles,
-      superAdmin: roles.includes("super-admin"),
+      superAdmin:
+        roles.includes("super-admin") ||
+        row.email.toLowerCase() === (env.SUPER_ADMIN_EMAIL || "").toLowerCase(),
       provider: "password",
       tenantId: row.tenant_id,
       createdAt: new Date().toISOString(),
