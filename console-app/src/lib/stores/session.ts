@@ -52,3 +52,9 @@ export function clearSession() {
   fetched = false;
   sessionLoading.set(true);
 }
+
+/** Force a fresh fetch from the server, bypassing the in-memory cache. */
+export async function refreshSession(): Promise<SessionData | null> {
+  fetched = false;
+  return fetchSession();
+}

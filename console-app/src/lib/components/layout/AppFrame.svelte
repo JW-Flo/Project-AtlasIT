@@ -8,7 +8,7 @@
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
-  import { fetchSession } from "../../stores/session";
+  import { fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
   import {
     LayoutDashboard,
@@ -145,20 +145,30 @@
     return true;
   }
 
+  // Only allow safe CSS color values to prevent injection via stored branding
+  function sanitizeColor(color: string): string {
+    const trimmed = color.trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return trimmed; // hex
+    if (/^rgb[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // rgb/rgba
+    if (/^hsl[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // hsl/hsla
+    if (/^[a-zA-Z]{2,30}$/.test(trimmed)) return trimmed;      // named color
+    return "";
+  }
+
   function applyBranding(logo: string, accent: string) {
     logoUrl = logo;
-    accentColor = accent;
+    accentColor = sanitizeColor(accent);
     if (typeof document !== "undefined") {
-      if (accent) {
-        document.documentElement.style.setProperty("--accent-brand", accent);
+      if (accentColor) {
+        document.documentElement.style.setProperty("--accent-brand", accentColor);
       } else {
         document.documentElement.style.removeProperty("--accent-brand");
       }
     }
   }
 
-  async function loadSession() {
-    const sessionData = await fetchSession();
+  async function loadSession(force = false) {
+    const sessionData = await (force ? refreshSession() : fetchSession());
     if (sessionData) {
       userRoles = sessionData.roles || [];
       userEmail = sessionData.email || "";
@@ -180,8 +190,8 @@
       await loadSession();
     } catch {}
 
-    // Re-apply branding whenever settings page saves new values
-    const onBrandingUpdated = () => loadSession().catch(() => {});
+    // Re-apply branding whenever settings page saves new values (force-bypass cache)
+    const onBrandingUpdated = () => loadSession(true).catch(() => {});
     window.addEventListener("branding-updated", onBrandingUpdated);
 
     // Sync theme preference from DB

@@ -85,12 +85,18 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
     );
   }
   if (accentColor !== undefined) {
+    // Validate color value before persisting to prevent CSS injection
+    const safeColor = /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$|^[a-zA-Z]{2,30}$/.test(
+      (accentColor ?? "").trim(),
+    )
+      ? accentColor.trim()
+      : "";
     prefUpserts.push(
       db
         .prepare(
           `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value) VALUES (?, 'accent_color', ?)`,
         )
-        .bind(user!.tenantId, accentColor),
+        .bind(user!.tenantId, safeColor),
     );
   }
   if (frameworks !== undefined && Array.isArray(frameworks)) {
