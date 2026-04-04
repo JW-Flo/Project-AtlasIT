@@ -120,6 +120,11 @@ export const handle: Handle = async ({ event, resolve }) => {
       }
     }
 
+    // Ensure superAdmin flag is consistent with roles (handles sessions created before the field existed)
+    if (user && user.superAdmin === undefined) {
+      user.superAdmin = (user.roles ?? []).includes("super-admin");
+    }
+
     // Enrich stale sessions missing tenantId (e.g., created before enrichment was added)
     if (user && !user.tenantId) {
       try {

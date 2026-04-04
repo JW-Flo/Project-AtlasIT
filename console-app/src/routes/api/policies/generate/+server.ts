@@ -130,8 +130,10 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       tenantId,
       tenantName: (user as any).tenantName || "Organization",
       connectedApps,
-      frameworks: frameworks.length > 0 ? frameworks : ["SOC2"],
-      industry: "technology",
+      selectedFrameworks: frameworks.length > 0 ? frameworks : ["SOC2"],
+      automationRuleCount: 0,
+      complianceScores: {},
+      evidenceSummary: "No evidence data available.",
     };
 
     const policy = await generateSecurityPolicy(env, tenantContext, policyType);

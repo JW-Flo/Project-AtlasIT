@@ -8,7 +8,7 @@
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
-  import { fetchSession } from "../../stores/session";
+  import { fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
   import {
     LayoutDashboard,
@@ -145,6 +145,41 @@
     return true;
   }
 
+  // Only allow safe CSS color values to prevent injection via stored branding
+  function sanitizeColor(color: string): string {
+    const trimmed = color.trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return trimmed; // hex
+    if (/^rgb[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // rgb/rgba
+    if (/^hsl[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // hsl/hsla
+    if (/^[a-zA-Z]{2,30}$/.test(trimmed)) return trimmed;      // named color
+    return "";
+  }
+
+  function applyBranding(logo: string, accent: string) {
+    logoUrl = logo;
+    accentColor = sanitizeColor(accent);
+    if (typeof document !== "undefined") {
+      if (accentColor) {
+        document.documentElement.style.setProperty("--accent-brand", accentColor);
+      } else {
+        document.documentElement.style.removeProperty("--accent-brand");
+      }
+    }
+  }
+
+  async function loadSession(force = false) {
+    const sessionData = await (force ? refreshSession() : fetchSession());
+    if (sessionData) {
+      userRoles = sessionData.roles || [];
+      userEmail = sessionData.email || "";
+      userDisplayName = sessionData.displayName || sessionData.email || "";
+      isImpersonating = sessionData.impersonating || false;
+      impersonatedBy = sessionData.impersonatedBy || "";
+      orgName = sessionData.orgName || "";
+      applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
+    }
+  }
+
   onMount(async () => {
     initUx();
     try {
@@ -152,24 +187,20 @@
     } catch {}
 
     try {
-      const sessionData = await fetchSession();
-      if (sessionData) {
-        userRoles = sessionData.roles || [];
-        userEmail = sessionData.email || "";
-        userDisplayName = sessionData.displayName || sessionData.email || "";
-        isImpersonating = sessionData.impersonating || false;
-        impersonatedBy = sessionData.impersonatedBy || "";
-        orgName = sessionData.orgName || "";
-        logoUrl = sessionData.branding?.logoUrl || "";
-        accentColor = sessionData.branding?.accentColor || "";
-      }
+      await loadSession();
     } catch {}
+
+    // Re-apply branding whenever settings page saves new values (force-bypass cache)
+    const onBrandingUpdated = () => loadSession(true).catch(() => {});
+    window.addEventListener("branding-updated", onBrandingUpdated);
 
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
 
     // Fetch compliance score
     fetchComplianceScore().catch(() => {});
+
+    return () => window.removeEventListener("branding-updated", onBrandingUpdated);
   });
 
   // Poll compliance score every 60s
@@ -243,7 +274,7 @@
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0" style={accentColor ? `--accent-brand: ${accentColor}` : ''}>
+  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
     <!-- Logo -->
     <a href="/console" class="flex items-center gap-2 px-6 h-16 border-b hover:bg-accent/50 transition-colors">
       {#if logoUrl}
@@ -276,11 +307,12 @@
               <a
                 href={item.href}
                 class={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors border-l-2",
                   active
-                    ? "nav-active bg-primary/10 text-primary border-l-2 border-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                    ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                 )}
+                style={active && accentColor ? `color: ${accentColor}` : ""}
               >
                 <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
                 {item.label}
@@ -360,11 +392,12 @@
                     href={item.href}
                     on:click={closeMobileMenu}
                     class={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors border-l-2",
                       active
-                        ? "bg-primary/10 text-primary border-l-2 border-primary"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                        ? "bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                     )}
+                    style={active && accentColor ? `color: ${accentColor}` : ""}
                   >
                     <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
                     {item.label}
