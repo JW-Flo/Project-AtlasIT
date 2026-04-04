@@ -1046,6 +1046,7 @@
                   </thead>
                   <tbody>
                     {#each runs as run}
+                      {@const isStale = (run.status === "running" || run.status === "pending") && !run.completedAt && run.startedAt && (Date.now() - new Date(run.startedAt).getTime()) > 60 * 60 * 1000}
                       <tr
                         class="border-t hover:bg-muted/50 transition-colors cursor-pointer {selectedRunId === run.id ? 'bg-primary/5 border-l-2 border-l-primary' : ''}"
                         on:click={() => selectedRunId = selectedRunId === run.id ? null : run.id}
@@ -1055,7 +1056,6 @@
                         </td>
                         <td class="px-4 py-3">{run.subjectEmail || run.email || "—"}</td>
                         <td class="px-4 py-3">
-                          {@const isStale = (run.status === "running" || run.status === "pending") && !run.completedAt && run.startedAt && (Date.now() - new Date(run.startedAt).getTime()) > 60 * 60 * 1000}
                           <Badge variant={run.status === "completed" || run.status === "success" ? "success" : run.status === "failed" ? "destructive" : isStale ? "warning" : "info"} class="capitalize">{isStale ? "Stalled" : run.status}</Badge>
                         </td>
                         <td class="px-4 py-3 text-muted-foreground hidden md:table-cell">{run.stepsCompleted ?? run.stepsDone ?? 0}/{run.stepsTotal ?? 0}</td>
