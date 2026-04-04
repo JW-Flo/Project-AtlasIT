@@ -123,6 +123,10 @@ export const handle: Handle = async ({ event, resolve }) => {
       );
       const isSuperByRole = (user.roles ?? []).includes("super-admin");
       user.superAdmin = isSuperByEmail || isSuperByRole;
+      // Ensure roles array includes "super-admin" so UI nav guards work
+      if (user.superAdmin && !(user.roles ?? []).includes("super-admin")) {
+        user.roles = [...(user.roles ?? []), "super-admin"];
+      }
     }
 
     // Enrich stale sessions missing tenantId (e.g., created before enrichment was added)

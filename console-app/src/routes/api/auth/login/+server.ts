@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       .run();
 
     const row = await db
-      .prepare("SELECT * FROM console_users WHERE email = ? LIMIT 1")
+      .prepare("SELECT * FROM console_users WHERE email = ? COLLATE NOCASE LIMIT 1")
       .bind(email.toLowerCase())
       .first<{
         id: string;
