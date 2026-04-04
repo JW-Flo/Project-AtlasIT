@@ -188,8 +188,8 @@
     applySessionData(sessionData);
   }
 
-  // Apply server-side session immediately (no client fetch needed for initial render)
-  if (serverSession?.authenticated) {
+  // Reactively apply session data whenever serverSession changes (e.g., after login navigates via goto)
+  $: if (serverSession?.authenticated) {
     applySessionData(serverSession);
   }
 
