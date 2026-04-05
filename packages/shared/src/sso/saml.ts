@@ -184,8 +184,8 @@ async function verifySignatureWithCert(
     return await crypto.subtle.verify(
       "RSASSA-PKCS1-v1_5",
       publicKey,
-      signatureBytes,
-      signedInfoBytes,
+      signatureBytes.buffer as ArrayBuffer,
+      signedInfoBytes.buffer as ArrayBuffer,
     );
   } catch {
     return false;
@@ -335,7 +335,7 @@ function pemToDer(pem: string): ArrayBuffer | null {
     .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s/g, "");
   if (!lines) return null;
-  return base64ToUint8Array(lines).buffer;
+  return base64ToUint8Array(lines).buffer as ArrayBuffer;
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
