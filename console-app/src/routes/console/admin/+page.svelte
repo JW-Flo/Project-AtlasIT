@@ -21,8 +21,11 @@
     ownerEmail: string;
     user_count: number;
     status: string;
+    tier: string;
     createdAt: string;
   }
+
+  const tierOptions = ["free", "starter", "professional", "enterprise"];
 
   let tenants: Tenant[] = [];
   let loading = true;
@@ -114,6 +117,22 @@
     tenantToImpersonate = null;
   }
 
+  async function changeTier(tenant: Tenant, newTier: string) {
+    try {
+      const res = await fetch(`/api/admin/tenants/${tenant.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tier: newTier }),
+      });
+      if (!res.ok) throw new Error("Failed to update tier");
+      tenant.tier = newTier;
+      tenants = tenants;
+      pushToast({ message: `Tier updated to ${newTier}`, variant: "success" });
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Failed to update tier", variant: "error" });
+    }
+  }
+
   async function impersonate() {
     if (!tenantToImpersonate) return;
     const tenant = tenantToImpersonate;
@@ -164,6 +183,7 @@
                 <th class="px-3 sm:px-4 py-3 font-medium">Org Name</th>
                 <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Owner Email</th>
                 <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Users</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Tier</th>
                 <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
                 <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Created</th>
                 <th class="px-3 sm:px-4 py-3 font-medium">Actions</th>
@@ -178,6 +198,17 @@
                   </td>
                   <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{tenant.ownerEmail}</td>
                   <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{tenant.user_count}</td>
+                  <td class="px-3 sm:px-4 py-3 hidden sm:table-cell">
+                    <select
+                      class="text-xs border rounded px-2 py-1 bg-background"
+                      value={tenant.tier || "free"}
+                      on:change={(e) => changeTier(tenant, e.currentTarget.value)}
+                    >
+                      {#each tierOptions as t}
+                        <option value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      {/each}
+                    </select>
+                  </td>
                   <td class="px-3 sm:px-4 py-3">
                     <Badge variant={tenant.status === 'active' ? 'success' : 'destructive'}>
                       {tenant.status}
@@ -206,7 +237,7 @@
                 </tr>
               {:else}
                 <tr>
-                  <td colspan="6" class="px-4 py-6 text-center text-muted-foreground">No tenants found</td>
+                  <td colspan="7" class="px-4 py-6 text-center text-muted-foreground">No tenants found</td>
                 </tr>
               {/each}
             </tbody>
