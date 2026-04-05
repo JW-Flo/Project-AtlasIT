@@ -5594,6 +5594,19 @@ var AUDIT_EVIDENCE_REGISTRY = [
     category: "config_mgmt"
   },
   {
+    action: "security_policy.updated",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "positive",
+    description: "Organization security policy updated (MFA, session, password controls)",
+    category: "auth_control"
+  },
+  {
     action: "trust_center_settings.updated",
     controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
     impact: "positive",
