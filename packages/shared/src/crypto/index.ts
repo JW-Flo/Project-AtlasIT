@@ -8,3 +8,5 @@ export {
   base32Encode,
   base32Decode,
 } from "./totp";
+export { signJwt, verifyJwt } from "./jwt";
+export type { JwtPayload } from "./jwt";

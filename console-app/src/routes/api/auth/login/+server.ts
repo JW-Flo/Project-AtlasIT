@@ -1,6 +1,14 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { hashPasswordPBKDF2, verifyPassword } from "$lib/server/password";
+import { signJwt } from "@atlasit/shared/crypto/jwt";
+import {
+  resolveSecurityPolicy,
+  isMfaRequiredForUser,
+  getSessionTtl,
+} from "@atlasit/shared/security/policies";
+
+const MFA_CHALLENGE_TTL = 300; // 5 minutes
 
 export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   const env = (platform?.env as any) || {};
@@ -13,6 +21,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
 
   const db = env.ATLAS_SHARED_DB;
   const kv = env.KV_SESSIONS;
+  const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET || "atlasit-dev-jwt-secret";
 
   if (!db) {
     // Fallback: allow super admin login only when ADMIN_PASSWORD is explicitly configured
@@ -116,46 +125,83 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       roles.includes("super-admin") ||
       row.email.toLowerCase() === (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
 
-    // Ensure super admins have full role set in the session
     if (isSuperAdmin) {
       if (!roles.includes("super-admin")) roles.push("super-admin");
       if (!roles.includes("owner")) roles.push("owner");
     }
 
-    // Check if user has MFA enabled
+    // Load tenant security policy
+    const secPolicy = await loadTenantSecurityPolicy(db, row.tenant_id);
+
+    // Check if user has MFA enrolled
     const mfaRow = await db
       .prepare("SELECT verified FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
       .bind(row.id)
       .first();
 
-    if (mfaRow) {
-      // MFA required — issue a short-lived challenge token instead of a session
-      const challengeToken = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
-      const userData = JSON.stringify({
+    const hasMfaEnrolled = !!mfaRow;
+    const mfaRequiredByPolicy = isMfaRequiredForUser(secPolicy, roles);
+
+    if (hasMfaEnrolled) {
+      // User has TOTP — issue a JWT challenge token
+      const now = Math.floor(Date.now() / 1000);
+      const challengeJwt = await signJwt(
+        {
+          sub: row.id,
+          iss: "atlasit",
+          aud: "mfa-challenge",
+          iat: now,
+          exp: now + MFA_CHALLENGE_TTL,
+          email: row.email,
+          displayName: row.display_name,
+          roles,
+          superAdmin: isSuperAdmin,
+          tenantId: row.tenant_id,
+        },
+        jwtSecret,
+      );
+
+      return json({ mfaRequired: true, mfaToken: challengeJwt });
+    }
+
+    if (mfaRequiredByPolicy && !hasMfaEnrolled) {
+      // Tenant policy requires MFA but user hasn't enrolled — force setup
+      // Create a temporary session that can only access MFA setup
+      if (!kv) return json({ error: "Session store unavailable" }, { status: 503 });
+
+      const sessionTtl = 900; // 15 min for MFA setup
+      const sid = crypto.randomUUID();
+      const user = {
         userId: row.id,
         email: row.email,
         displayName: row.display_name,
         roles,
         superAdmin: isSuperAdmin,
+        provider: "password",
         tenantId: row.tenant_id,
+        createdAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+        mfaSetupRequired: true,
+      };
+
+      await kv.put(sid, JSON.stringify(user), { expirationTtl: sessionTtl });
+      cookies.set("atlas_session", sid, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: sessionTtl,
       });
 
-      await db
-        .prepare(
-          `INSERT INTO mfa_challenges (token, user_id, tenant_id, user_email, user_data, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(challengeToken, row.id, row.tenant_id, row.email, userData, expiresAt)
-        .run();
-
-      return json({ mfaRequired: true, mfaToken: challengeToken });
+      return json({ success: true, email: user.email, mfaSetupRequired: true });
     }
 
+    // No MFA needed — create full session with policy-based TTL
     if (!kv) {
       return json({ error: "Session store unavailable" }, { status: 503 });
     }
 
+    const sessionTtl = getSessionTtl(secPolicy, false);
     const sid = crypto.randomUUID();
     const user = {
       userId: row.id,
@@ -167,16 +213,17 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       tenantId: row.tenant_id,
       createdAt: new Date().toISOString(),
       lastSeenAt: new Date().toISOString(),
+      mfaVerified: false,
     };
 
-    await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
+    await kv.put(sid, JSON.stringify(user), { expirationTtl: sessionTtl });
 
     cookies.set("atlas_session", sid, {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 604800,
+      maxAge: sessionTtl,
     });
 
     return json({ success: true, email: user.email });
@@ -185,3 +232,15 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Authentication service error" }, { status: 500 });
   }
 };
+
+async function loadTenantSecurityPolicy(db: any, tenantId: string) {
+  try {
+    const row = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+      .bind(tenantId, "security_policy")
+      .first<{ value: string }>();
+    return resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
+  } catch {
+    return resolveSecurityPolicy(null);
+  }
+}

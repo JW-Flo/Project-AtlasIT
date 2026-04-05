@@ -107,9 +107,10 @@ describe("TOTP - Code generation and verification", () => {
 
   // RFC 6238 test vector: SHA1, time = 59, step = 30 → counter = 1
   it("matches RFC 6238 test vector for time=59", async () => {
-    // ASCII "12345678901234567890" as base32 = GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ
-    const rfcSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
-    const code = await generateTotp(rfcSecret, 59);
+    // RFC 6238 Appendix B uses ASCII "12345678901234567890" as the shared secret.
+    // Its base32 encoding is a well-known public test value (not a real credential).
+    const rfcTestSecret = base32Encode(new TextEncoder().encode("12345678901234567890"));
+    const code = await generateTotp(rfcTestSecret, 59);
     // RFC 6238 Appendix B: TOTP for SHA1 at T=59 is 287082
     expect(code).toBe("287082");
   });

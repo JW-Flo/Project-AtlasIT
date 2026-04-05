@@ -10,7 +10,8 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Input from "$lib/components/ui/input.svelte";
   import Label from "$lib/components/ui/label.svelte";
-  import { ShieldCheck, Copy, AlertTriangle } from "lucide-svelte";
+  import { ShieldCheck, Copy, AlertTriangle, Settings } from "lucide-svelte";
+  import { session } from "$lib/stores/session";
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -41,7 +42,17 @@
   let disablePassword = "";
   let disabling = false;
 
-  onMount(loadStatus);
+  // Tenant security policy (owner only)
+  let policyLoading = false;
+  let policy: any = null;
+  let savingPolicy = false;
+
+  $: isOwner = $session?.roles?.includes("owner") || $session?.roles?.includes("super-admin") || $session?.superAdmin;
+
+  onMount(async () => {
+    await loadStatus();
+    if (isOwner) await loadPolicy();
+  });
 
   async function loadStatus() {
     loading = true;
@@ -133,6 +144,45 @@
     setupUri = "";
     setupRecoveryCodes = [];
     verifyCode = "";
+  }
+
+  async function loadPolicy() {
+    policyLoading = true;
+    try {
+      const res = await fetch("/api/tenant/security");
+      if (res.ok) {
+        const data = await res.json();
+        policy = data.policy;
+      }
+    } catch {}
+    policyLoading = false;
+  }
+
+  async function savePolicy() {
+    savingPolicy = true;
+    try {
+      const res = await fetch("/api/tenant/security", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(policy),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        policy = data.policy;
+        pushToast({ message: "Security policy updated", variant: "success" });
+      } else {
+        pushToast({ message: data.error || "Failed to save", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to save policy", variant: "error" });
+    }
+    savingPolicy = false;
+  }
+
+  function formatDuration(seconds: number): string {
+    if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`;
+    if (seconds < 86400) return `${Math.round(seconds / 3600)} hours`;
+    return `${Math.round(seconds / 86400)} days`;
   }
 </script>
 
@@ -303,4 +353,131 @@
       {/if}
     </CardContent>
   </Card>
+
+  <!-- Tenant Security Policy (owner only) -->
+  {#if isOwner && policy}
+    <Card>
+      <CardHeader>
+        <div class="flex items-center gap-3">
+          <Settings class="h-5 w-5 text-muted-foreground" />
+          <div>
+            <CardTitle>Organization Security Policy</CardTitle>
+            <p class="text-sm text-muted-foreground mt-1">
+              Configure security requirements for all users in your organization.
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div class="space-y-6">
+          <!-- MFA Requirement -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium">Require MFA for all users</p>
+                <p class="text-xs text-muted-foreground">Users without MFA will be forced to enroll on next login.</p>
+              </div>
+              <button
+                class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {policy.mfaRequired ? 'bg-primary' : 'bg-muted'}"
+                on:click={() => policy.mfaRequired = !policy.mfaRequired}
+              >
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {policy.mfaRequired ? 'translate-x-6' : 'translate-x-1'}" />
+              </button>
+            </div>
+
+            {#if !policy.mfaRequired}
+              <div class="space-y-2">
+                <Label>Require MFA for specific roles</Label>
+                <div class="flex flex-wrap gap-2">
+                  {#each ["owner", "admin", "member"] as role}
+                    <button
+                      class="px-3 py-1 rounded-full text-xs font-medium border transition-colors {policy.mfaRequiredRoles.includes(role) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:border-foreground'}"
+                      on:click={() => {
+                        if (policy.mfaRequiredRoles.includes(role)) {
+                          policy.mfaRequiredRoles = policy.mfaRequiredRoles.filter((r: string) => r !== role);
+                        } else {
+                          policy.mfaRequiredRoles = [...policy.mfaRequiredRoles, role];
+                        }
+                      }}
+                    >{role}</button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+          </div>
+
+          <!-- Session Duration -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="space-y-2">
+              <Label>Session duration</Label>
+              <select
+                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                bind:value={policy.sessionTtlSeconds}
+              >
+                <option value={3600}>1 hour</option>
+                <option value={14400}>4 hours</option>
+                <option value={28800}>8 hours</option>
+                <option value={86400}>1 day</option>
+                <option value={259200}>3 days</option>
+                <option value={604800}>7 days</option>
+                <option value={2592000}>30 days</option>
+              </select>
+              <p class="text-xs text-muted-foreground">How long sessions last without MFA.</p>
+            </div>
+
+            <div class="space-y-2">
+              <Label>MFA session duration</Label>
+              <select
+                class="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                bind:value={policy.mfaSessionTtlSeconds}
+              >
+                <option value={3600}>1 hour</option>
+                <option value={14400}>4 hours</option>
+                <option value={28800}>8 hours</option>
+                <option value={86400}>1 day</option>
+                <option value={259200}>3 days</option>
+                <option value={604800}>7 days</option>
+                <option value={2592000}>30 days</option>
+                <option value={7776000}>90 days</option>
+              </select>
+              <p class="text-xs text-muted-foreground">Longer sessions for MFA-verified users.</p>
+            </div>
+          </div>
+
+          <!-- Idle Timeout -->
+          <div class="space-y-2">
+            <Label>Idle timeout</Label>
+            <select
+              class="w-full rounded-md border bg-background px-3 py-2 text-sm max-w-xs"
+              bind:value={policy.idleTimeoutSeconds}
+            >
+              <option value={900}>15 minutes</option>
+              <option value={1800}>30 minutes</option>
+              <option value={3600}>1 hour</option>
+              <option value={14400}>4 hours</option>
+              <option value={86400}>1 day</option>
+              <option value={604800}>7 days</option>
+            </select>
+            <p class="text-xs text-muted-foreground">Sessions expire after this much inactivity.</p>
+          </div>
+
+          <!-- Min Password Length -->
+          <div class="space-y-2">
+            <Label>Minimum password length</Label>
+            <Input
+              type="number"
+              min={8}
+              max={128}
+              bind:value={policy.minPasswordLength}
+              class="max-w-[120px]"
+            />
+          </div>
+
+          <Button on:click={savePolicy} disabled={savingPolicy}>
+            {savingPolicy ? "Saving..." : "Save Security Policy"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 </div>
