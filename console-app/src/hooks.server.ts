@@ -4,31 +4,33 @@ import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
 
+/**
+ * Routes that are intentionally public (no authentication required).
+ * Everything else under /api/* is deny-by-default.
+ */
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/",          // login, register, SSO, MFA verify
+  "/api/health",         // health checks
+  "/api/trust/",         // public trust center
+  "/api/billing/webhook", // Stripe webhooks (verified by signature)
+  "/api/platform/health", // platform status (public)
+];
+
+function isPublicApiRoute(pathname: string): boolean {
+  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 let encryptionValidated = false;
 
 /** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
 const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
 
-/** Max age (seconds) for the session cache cookie before we re-read KV. */
-const SESSION_CACHE_MAX_AGE = 300; // 5 minutes
-
 /**
- * Encode user principal into a base64url cache cookie.
- * Not a security boundary — the atlas_session KV sid is the real auth token.
- * This just avoids a KV read on every request.
+ * KV cacheTtl (seconds) — Cloudflare KV caches reads at the edge for this
+ * duration, eliminating repeated KV fetches without trusting an unsigned cookie.
+ * Minimum is 60s; we use 60s for a tight revalidation window.
  */
-function encodeSessionCache(user: UserPrincipal): string {
-  return btoa(JSON.stringify(user)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function decodeSessionCache(cookie: string): UserPrincipal | null {
-  try {
-    const padded = cookie.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(padded)) as UserPrincipal;
-  } catch {
-    return null;
-  }
-}
+const KV_CACHE_TTL = 60;
 
 /**
  * Returns true only when running in a real local dev environment.
@@ -78,39 +80,29 @@ export const handle: Handle = async ({ event, resolve }) => {
   // 2. Session lookup — use cache cookie to avoid KV reads
   // ------------------------------------------------------------------
   if (!user && !devBypass && sessionId) {
-    // Try the cache cookie first (no KV read)
-    const cachedSession = event.cookies.get("atlas_session_cache");
-    if (cachedSession) {
-      user = decodeSessionCache(cachedSession);
+    // Always validate session against KV (source of truth).
+    // cacheTtl reduces KV read cost at the edge without trusting unsigned cookies.
+    try {
+      const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
+      if (kv) {
+        const sessionData = await kv.get(sessionId, { cacheTtl: KV_CACHE_TTL });
+        if (sessionData) {
+          user = JSON.parse(sessionData) as UserPrincipal;
+        }
+      }
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auth.session_lookup_failed",
+          err: String(e),
+        }),
+      );
     }
 
-    // If no cache or cache is stale, fall back to KV
-    if (!user) {
-      try {
-        const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-        if (kv) {
-          const sessionData = await kv.get(sessionId);
-          if (sessionData) {
-            user = JSON.parse(sessionData) as UserPrincipal;
-            // Set cache cookie so next requests skip KV
-            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: SESSION_CACHE_MAX_AGE,
-            });
-          }
-        }
-      } catch (e) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            event: "auth.session_lookup_failed",
-            err: String(e),
-          }),
-        );
-      }
+    // Clear any stale session cache cookies from before this hardening
+    if (event.cookies.get("atlas_session_cache")) {
+      event.cookies.delete("atlas_session_cache", { path: "/" });
     }
 
     // Ensure superAdmin flag is always derived authoritatively on every request.
@@ -189,14 +181,6 @@ export const handle: Handle = async ({ event, resolve }) => {
             await kv.put(sessionId, JSON.stringify(user), {
               expirationTtl: 604800,
             });
-            // Refresh the cache cookie too
-            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: SESSION_CACHE_MAX_AGE,
-            });
           }
         } catch {
           // Non-blocking — session is still valid
@@ -263,13 +247,14 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // ------------------------------------------------------------------
-  // 4. Centralized RBAC enforcement for API routes
+  // 4. Centralized RBAC enforcement for API routes (deny-by-default)
   // ------------------------------------------------------------------
   if (event.url.pathname.startsWith("/api/")) {
-    const requiredRoles = matchRoutePermission(event.url.pathname, event.request.method);
+    // Public routes that don't require authentication
+    const isPublicRoute = isPublicApiRoute(event.url.pathname);
 
-    if (requiredRoles !== undefined) {
-      // null = any authenticated user; string[] = specific roles required
+    if (!isPublicRoute) {
+      // Deny-by-default: all /api/* routes require authentication unless explicitly public
       if (!user) {
         return new Response(JSON.stringify({ error: "Authentication required" }), {
           status: 401,
@@ -277,7 +262,9 @@ export const handle: Handle = async ({ event, resolve }) => {
         });
       }
 
-      if (requiredRoles !== null) {
+      // Check RBAC permissions for routes in the permission matrix
+      const requiredRoles = matchRoutePermission(event.url.pathname, event.request.method);
+      if (requiredRoles !== undefined && requiredRoles !== null) {
         // Super-admins bypass role checks
         if (!user.superAdmin) {
           const userRoles: string[] = user.roles ?? [];

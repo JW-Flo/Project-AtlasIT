@@ -77,7 +77,8 @@ app.use("*", async (c, next) => {
 // Thin wrapper: delegates to shared authMiddleware when API keys are configured,
 // sets tenantId from header when no keys are configured (dev/unconfigured).
 const apiAuth: MiddlewareHandler = async (c, next) => {
-  const allowedKeys = ((c.env as Record<string, string>).API_ALLOWED_KEYS ?? "")
+  const envRecord = c.env as Record<string, string>;
+  const allowedKeys = (envRecord.API_ALLOWED_KEYS ?? "")
     .split(",")
     .map((k) => k.trim())
     .filter(Boolean);
@@ -85,17 +86,33 @@ const apiAuth: MiddlewareHandler = async (c, next) => {
   if (allowedKeys.length > 0 || c.req.header("Authorization")?.startsWith("Bearer ")) {
     return sharedAuthMiddleware({ allowApiKey: true })(c, next);
   }
-  // No API keys configured and no Bearer token — pass through with default tenant
-  const tenantId = c.req.header("X-Tenant-ID") ?? "default";
-  c.set("tenantId", tenantId);
-  c.set("auth", {
-    tenantId,
-    userId: "",
-    email: "",
-    roles: ["admin"],
-    tokenType: "api-key" as const,
-  });
-  await next();
+
+  // Fail-closed: no API keys configured means reject in production.
+  // Only allow dev bypass when ENVIRONMENT is explicitly "development".
+  const environment = (envRecord.ENVIRONMENT ?? "").toLowerCase();
+  if (environment === "development") {
+    const tenantId = c.req.header("X-Tenant-ID") ?? "default";
+    c.set("tenantId", tenantId);
+    c.set("auth", {
+      tenantId,
+      userId: "",
+      email: "",
+      roles: ["admin"],
+      tokenType: "api-key" as const,
+    });
+    return next();
+  }
+
+  return c.json(
+    {
+      status: "error",
+      code: "AUTH_NOT_CONFIGURED",
+      message: "API authentication is not configured. Set API_ALLOWED_KEYS.",
+      correlationId: c.get("correlationId"),
+      timestamp: new Date().toISOString(),
+    },
+    401,
+  );
 };
 app.use("/api/*", apiAuth);
 

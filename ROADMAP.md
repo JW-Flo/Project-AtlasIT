@@ -540,6 +540,42 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [ ] Governance framework visualizations — pillar-style SVG components for pricing/onboarding pages showing framework foundations (Oversight, Authority, Integrity, Competence, Risk Appetite) to emphasize compliance adherence value proposition
 - [ ] Interactive framework explorer — expandable compliance framework cards with control-level drill-down on onboarding and pricing pages
 
+## Phase 18 — Security Hardening & QA Remediation
+
+> **Source**: External QA, functional audit, and UI/UX review (April 2026). The audit identified
+> critical security posture gaps, correctness issues, and UX hardening priorities. This phase
+> addresses P0/P1 findings before new feature work resumes.
+>
+> **Why now**: Security debt compounds — a missed env var in production could expose internal APIs.
+> Unsigned session cookies, default admin roles, and hard-coded JWT secrets are class-leading
+> vulnerability patterns (OWASP Top 10). Fixing these before scaling protects the platform's
+> compliance credibility ("physician, heal thyself").
+
+### P0 — Security Hardening (Critical)
+
+- [x] **Remove unsigned session cache cookie trust path** — `hooks.server.ts` no longer trusts `atlas_session_cache` as an authentication source; session always validated against KV (with `cacheTtl: 30` to limit read pressure); cache cookie removed entirely
+- [x] **Remove "no API keys ⇒ admin" fallback in core-api and ai-orchestrator** — `apiAuth` middleware now returns 401 when `API_ALLOWED_KEYS` is not configured (fail-closed); explicit `ENVIRONMENT=development` guard for local dev bypass
+- [x] **Harden marketplace auth when API keys missing** — marketplace `apiAuth` now returns 401 when keys are unconfigured in non-dev environments instead of silently allowing unauthenticated access
+- [x] **Remove hard-coded JWT secret fallback in login** — `console-app/src/routes/api/auth/login/+server.ts` no longer falls back to `"atlasit-dev-jwt-secret"`; returns 503 when `JWT_SECRET`/`SESSION_SECRET` missing outside dev
+
+### P1 — Reliability & Correctness
+
+- [x] **Enforce deny-by-default for `/api/*` routes** — `hooks.server.ts` RBAC enforcement now requires authentication for ALL `/api/*` routes by default; only explicitly allowlisted public routes (auth, health, trust, webhooks) bypass the check
+- [x] **Fix Access Requests UI/API type mismatch** — `createAccessRequest()` client function now accepts `roleRequested`; server-side audit log correctly references `data.request.id` and `data.request.resource` instead of `data?.id`
+- [x] **Harden Slack approval worker** — Added ±5 minute timestamp replay window check; replaced `crypto.timingSafeEqual` string comparison with `crypto.subtle.verify` HMAC for Workers runtime compatibility; malformed payloads return 400 not 500
+
+### Files Changed
+
+- `console-app/src/hooks.server.ts` — session cache removal, deny-by-default API auth
+- `console-app/src/routes/api/auth/login/+server.ts` — JWT secret fallback removal
+- `console-app/src/routes/api/access-requests/+server.ts` — audit log field fix
+- `console-app/src/lib/api/accessRequests.ts` — `roleRequested` field added
+- `console-app/src/lib/server/permissions.ts` — public route allowlist for deny-by-default
+- `core-api/src/index.ts` — fail-closed auth middleware
+- `ai-orchestrator/src/index.ts` — fail-closed auth middleware
+- `marketplace/src/index.ts` — fail-closed auth middleware
+- `slack-approval-worker/index.js` — timestamp window + HMAC verify
+
 ## Long-Term Platform Modules
 
 AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
