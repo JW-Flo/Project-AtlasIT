@@ -208,15 +208,10 @@
 
   $: isOwner = $session?.roles?.includes("owner") || $session?.roles?.includes("super-admin") || $session?.superAdmin;
 
-  let ownerDataLoaded = false;
-  $: if (isOwner && !ownerDataLoaded) {
-    ownerDataLoaded = true;
-    loadPolicy();
-  }
-
   onMount(async () => {
-    // Load all sections in parallel on mount — the API endpoints handle auth
-    await Promise.all([loadStatus(), loadSsoConfig()]);
+    // Load all sections in parallel on mount — the API endpoints handle auth.
+    // loadPolicy is included here (not in a reactive block) to avoid SSR fetch issues.
+    await Promise.all([loadStatus(), loadSsoConfig(), loadPolicy()]);
   });
 
   async function loadStatus() {

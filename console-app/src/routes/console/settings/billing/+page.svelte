@@ -39,6 +39,24 @@
   let upgrading = false;
   let upgradeCycle: "monthly" | "annual" = "annual";
 
+  // Seat management
+  let seatInfo: { seats: number; activeUsers: number; hasSubscription: boolean } | null = null;
+  let seatInput = 5;
+  let updatingSeats = false;
+  let seatError = "";
+
+  // Per-user pricing per plan/cycle
+  const perUserPrice: Record<string, Record<string, number>> = {
+    starter:      { monthly: 4, annual: 3 },
+    professional: { monthly: 6, annual: 5 },
+    enterprise:   { monthly: 0, annual: 0 },
+  };
+
+  $: seatDelta = seatInfo ? seatInput - seatInfo.seats : 0;
+  $: monthlyCost = billing && perUserPrice[billing.plan]
+    ? perUserPrice[billing.plan][billing.billingCycle || "monthly"] * seatInput
+    : 0;
+
   const planColors: Record<string, string> = {
     free: "secondary",
     starter: "default",
@@ -85,17 +103,49 @@
   async function loadBilling() {
     loading = true;
     try {
-      const res = await fetch("/api/billing");
-      if (res.ok) {
-        const data = await res.json();
+      const [billingRes, seatRes] = await Promise.all([
+        fetch("/api/billing"),
+        fetch("/api/billing/seats"),
+      ]);
+      if (billingRes.ok) {
+        const data = await billingRes.json();
         billing = data.billing;
         usage = data.usage;
         invoices = data.invoices || [];
+      }
+      if (seatRes.ok) {
+        seatInfo = await seatRes.json();
+        seatInput = seatInfo?.seats ?? 5;
       }
     } catch (err) {
       console.error("Failed to load billing:", err);
     }
     loading = false;
+  }
+
+  async function updateSeats() {
+    if (!seatInfo || seatInput === seatInfo.seats) return;
+    updatingSeats = true;
+    seatError = "";
+    try {
+      const res = await fetch("/api/billing/seats", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ seats: seatInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        seatError = data.error || "Failed to update seats";
+        pushToast({ message: seatError, variant: "error" });
+      } else {
+        seatInfo = { ...seatInfo!, seats: data.seats };
+        pushToast({ message: `Seat count updated to ${data.seats}`, variant: "success" });
+      }
+    } catch {
+      seatError = "Failed to update seats";
+      pushToast({ message: seatError, variant: "error" });
+    }
+    updatingSeats = false;
   }
 
   async function handleUpgrade(plan: string) {
@@ -264,6 +314,109 @@
         {/if}
       </CardContent>
     </Card>
+
+    <!-- Seat management -->
+    {#if seatInfo && billing?.plan !== "free"}
+      <Card>
+        <CardHeader>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <Users class="h-5 w-5 text-muted-foreground" />
+              <div>
+                <CardTitle>Seats</CardTitle>
+                <p class="text-sm text-muted-foreground mt-1">
+                  {seatInfo.activeUsers} active user{seatInfo.activeUsers === 1 ? '' : 's'} of {seatInfo.seats} seats
+                </p>
+              </div>
+            </div>
+            {#if seatInfo.hasSubscription}
+              <Badge variant="success">Per-seat billing</Badge>
+            {/if}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div class="space-y-4">
+            <!-- Seat usage bar -->
+            <div class="space-y-1.5">
+              <div class="w-full bg-muted rounded-full h-2">
+                <div
+                  class="h-2 rounded-full transition-all {usagePercent(seatInfo.activeUsers, seatInfo.seats) >= 90 ? 'bg-warning' : 'bg-primary'}"
+                  style="width: {usagePercent(seatInfo.activeUsers, seatInfo.seats)}%"
+                ></div>
+              </div>
+              <p class="text-xs text-muted-foreground">
+                {seatInfo.seats - seatInfo.activeUsers} seat{seatInfo.seats - seatInfo.activeUsers === 1 ? '' : 's'} available
+              </p>
+            </div>
+
+            {#if seatInfo.hasSubscription}
+              <!-- Adjust seats -->
+              <div class="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-2 border-t">
+                <div class="space-y-1.5">
+                  <label for="seat-count" class="text-sm font-medium">Adjust seat count</label>
+                  <div class="flex items-center gap-2">
+                    <button
+                      class="h-9 w-9 rounded-md border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                      disabled={seatInput <= Math.max(seatInfo.activeUsers, 5) || updatingSeats}
+                      on:click={() => seatInput = Math.max(seatInput - 1, Math.max(seatInfo?.activeUsers ?? 5, 5))}
+                    >-</button>
+                    <input
+                      id="seat-count"
+                      type="number"
+                      min={Math.max(seatInfo.activeUsers, 5)}
+                      max="10000"
+                      class="h-9 w-20 rounded-md border bg-background px-3 text-center text-sm"
+                      bind:value={seatInput}
+                    />
+                    <button
+                      class="h-9 w-9 rounded-md border flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                      disabled={seatInput >= 10000 || updatingSeats}
+                      on:click={() => seatInput = Math.min(seatInput + 1, 10000)}
+                    >+</button>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    Minimum {Math.max(seatInfo.activeUsers, 5)} (5 or your active user count)
+                  </p>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                  {#if seatDelta !== 0 && monthlyCost > 0}
+                    <p class="text-sm">
+                      {seatInput} seats &times; ${perUserPrice[billing.plan]?.[billing.billingCycle || "monthly"] ?? 0}/user/mo = <span class="font-semibold">${monthlyCost}/mo</span>
+                    </p>
+                    {#if seatDelta > 0}
+                      <p class="text-xs text-muted-foreground">Adding {seatDelta} seat{seatDelta === 1 ? '' : 's'} &mdash; prorated for current period</p>
+                    {:else}
+                      <p class="text-xs text-muted-foreground">Removing {Math.abs(seatDelta)} seat{Math.abs(seatDelta) === 1 ? '' : 's'} &mdash; credit applied to next invoice</p>
+                    {/if}
+                  {/if}
+                  <Button
+                    size="sm"
+                    disabled={seatDelta === 0 || updatingSeats || seatInput < Math.max(seatInfo.activeUsers, 5)}
+                    on:click={updateSeats}
+                  >
+                    {#if updatingSeats}
+                      Updating...
+                    {:else}
+                      Update seats
+                    {/if}
+                  </Button>
+                </div>
+              </div>
+
+              {#if seatError}
+                <div class="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                  <AlertTriangle class="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                  <p class="text-sm text-destructive">{seatError}</p>
+                </div>
+              {/if}
+            {:else}
+              <p class="text-sm text-muted-foreground">Subscribe to a paid plan to manage seats.</p>
+            {/if}
+          </div>
+        </CardContent>
+      </Card>
+    {/if}
 
     <!-- Usage summary -->
     {#if usage}
