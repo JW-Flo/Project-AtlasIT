@@ -1,70 +1,75 @@
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
+import { toCamel } from "$lib/utils/dto";
 
-/** GET — proxy single DLQ entry from orchestrator */
+/** GET — fetch a single DLQ entry by ID directly from D1 */
 export const GET: RequestHandler = async ({ params, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
+  const guard = requireTenantRole(user, ["owner", "admin", "member"]);
+  if (guard) return guard;
 
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, 403);
+  const tenantId = user!.tenantId;
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const env = (platform?.env as any) || {};
-  const orchestratorUrl =
-    env.ORCHESTRATOR_URL ?? "https://orchestrator.atlasit.pro";
-
-  const upstream = `${orchestratorUrl}/api/v1/dead-letter/${encodeURIComponent(params.id!)}`;
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   try {
-    const res = await fetch(upstream, {
-      headers: {
-        "X-Tenant-ID": tenantId,
-        ...(env.ORCHESTRATOR_API_KEY
-          ? { "x-api-key": env.ORCHESTRATOR_API_KEY }
-          : {}),
-      },
-    });
-    const data = await res.json();
-    return json(data, res.status);
-  } catch {
-    return json({ error: "Dead letter service unavailable" }, 503);
+    const row = await db
+      .prepare(`SELECT * FROM dead_letter_queue WHERE id = ? AND tenant_id = ?`)
+      .bind(params.id, tenantId)
+      .first();
+
+    if (!row) {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+
+    return json({ entry: toCamel(row) });
+  } catch (err: any) {
+    if (err?.message?.includes("no such table")) {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+    console.error("[dead-letter/id] D1 query error:", err);
+    return json({ error: "Failed to fetch dead letter entry" }, { status: 500 });
   }
 };
 
-/** POST — replay a DLQ entry */
+/** POST — mark a DLQ entry for replay; actual execution handled by orchestrator cron */
 export const POST: RequestHandler = async ({ params, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
+  const guard = requireTenantRole(user, ["owner", "admin"]);
+  if (guard) return guard;
 
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, 403);
+  const tenantId = user!.tenantId;
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const env = (platform?.env as any) || {};
-  const orchestratorUrl =
-    env.ORCHESTRATOR_URL ?? "https://orchestrator.atlasit.pro";
-
-  const upstream = `${orchestratorUrl}/api/v1/dead-letter/${encodeURIComponent(params.id!)}/replay`;
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   try {
-    const res = await fetch(upstream, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": tenantId,
-        ...(env.ORCHESTRATOR_API_KEY
-          ? { "x-api-key": env.ORCHESTRATOR_API_KEY }
-          : {}),
-      },
-    });
-    const data = await res.json();
-    return json(data, res.status);
-  } catch {
-    return json({ error: "Dead letter replay service unavailable" }, 503);
+    const existing = await db
+      .prepare(`SELECT id FROM dead_letter_queue WHERE id = ? AND tenant_id = ?`)
+      .bind(params.id, tenantId)
+      .first();
+
+    if (!existing) {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+
+    await db
+      .prepare(
+        `UPDATE dead_letter_queue SET replay_status = 'pending', replayed_at = datetime('now') WHERE id = ? AND tenant_id = ?`
+      )
+      .bind(params.id, tenantId)
+      .run();
+
+    return json({ status: "replay_queued", id: params.id });
+  } catch (err: any) {
+    if (err?.message?.includes("no such table")) {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+    console.error("[dead-letter/id] replay error:", err);
+    return json({ error: "Failed to queue replay" }, { status: 500 });
   }
 };
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}

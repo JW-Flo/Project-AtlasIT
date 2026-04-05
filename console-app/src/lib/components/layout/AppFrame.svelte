@@ -79,7 +79,6 @@
         { href: "/console/policies", label: "Policies", icon: FileText },
         { href: "/console/insights", label: "Insights", icon: Lightbulb },
         { href: "/console/compliance/packs", label: "Packs", icon: FolderCog },
-        { href: "/console/analytics", label: "Analytics", icon: BarChart3 },
       ],
     },
     {
