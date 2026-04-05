@@ -8,7 +8,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import Badge from "$lib/components/ui/badge.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { ShieldCheck, Plus, FileCheck, AlertTriangle, Clock, X, ChevronDown } from "lucide-svelte";
+  import { ShieldCheck, Plus, FileCheck, AlertTriangle, Clock, X, ChevronDown, Lightbulb, FileText, Info } from "lucide-svelte";
 
   interface Attestation {
     id: string;
@@ -24,11 +24,19 @@
     updatedAt: string;
   }
 
+  interface EvidenceGuidance {
+    summary: string;
+    recommendedDocuments: string[];
+    acceptableFormats: string[];
+    tips: string;
+  }
+
   interface ControlDef {
     framework: string;
     key: string;
     description: string;
     cdtFields: string[];
+    evidenceGuidance?: EvidenceGuidance;
   }
 
   let loading = true;
@@ -246,6 +254,44 @@
             {/if}
           </div>
 
+          <!-- Evidence guidance panel -->
+          {#if selectedControl?.evidenceGuidance}
+            {@const guidance = selectedControl.evidenceGuidance}
+            <div class="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div class="flex items-start gap-2">
+                <Lightbulb class="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <h4 class="text-sm font-semibold text-primary">Evidence Recommendations</h4>
+                  <p class="text-xs text-muted-foreground mt-0.5">{guidance.summary}</p>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex items-center gap-1.5 mb-1.5">
+                  <FileText class="h-3.5 w-3.5 text-muted-foreground" />
+                  <span class="text-xs font-semibold">Recommended documents</span>
+                </div>
+                <ul class="space-y-1 ml-5">
+                  {#each guidance.recommendedDocuments as doc}
+                    <li class="text-xs text-muted-foreground list-disc">{doc}</li>
+                  {/each}
+                </ul>
+              </div>
+
+              <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <span class="font-semibold">Accepted formats:</span>
+                  <span class="text-muted-foreground">{guidance.acceptableFormats.join(", ")}</span>
+                </div>
+              </div>
+
+              <div class="flex items-start gap-1.5 bg-background/60 rounded-md px-3 py-2">
+                <Info class="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <p class="text-xs text-muted-foreground">{guidance.tips}</p>
+              </div>
+            </div>
+          {/if}
+
           <div>
             <label class="text-sm font-medium block mb-1.5">Evidence Summary</label>
             <textarea
@@ -402,24 +448,34 @@
       <CardContent>
         <div class="space-y-2">
           {#each unattestedControls as [id, def]}
-            <div class="flex items-center justify-between bg-muted/30 rounded-lg px-4 py-3">
-              <div>
-                <div class="flex items-center gap-2">
-                  <Badge variant="outline" class="text-[10px]">{def.framework}</Badge>
-                  <span class="font-mono text-sm">{id}</span>
+            <div class="bg-muted/30 rounded-lg px-4 py-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <Badge variant="outline" class="text-[10px]">{def.framework}</Badge>
+                    <span class="font-mono text-sm">{id}</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground mt-0.5">{def.description}</p>
                 </div>
-                <p class="text-xs text-muted-foreground mt-0.5">{def.description}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  on:click={() => {
+                    selectedControlId = id;
+                    showForm = true;
+                  }}
+                >
+                  Attest
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                on:click={() => {
-                  selectedControlId = id;
-                  showForm = true;
-                }}
-              >
-                Attest
-              </Button>
+              {#if def.evidenceGuidance}
+                <div class="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
+                  <Lightbulb class="h-3 w-3 mt-0.5 shrink-0 text-primary/60" />
+                  <span>
+                    Evidence needed: {def.evidenceGuidance.recommendedDocuments.slice(0, 2).join(", ")}{def.evidenceGuidance.recommendedDocuments.length > 2 ? `, +${def.evidenceGuidance.recommendedDocuments.length - 2} more` : ""}
+                  </span>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
