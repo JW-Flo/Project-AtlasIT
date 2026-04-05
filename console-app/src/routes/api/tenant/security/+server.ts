@@ -74,28 +74,14 @@ export const PUT: RequestHandler = async ({ request, locals, platform }) => {
     const current = existing ? JSON.parse(existing.value) : {};
     const merged = resolveSecurityPolicy({ ...current, ...updates });
 
-    if (existing) {
-      await db
-        .prepare(
-          "UPDATE tenant_preferences SET value = ?, updated_at = ? WHERE tenant_id = ? AND key = ?",
-        )
-        .bind(JSON.stringify(merged), new Date().toISOString(), user!.tenantId, "security_policy")
-        .run();
-    } else {
-      await db
-        .prepare(
-          "INSERT INTO tenant_preferences (id, tenant_id, key, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(
-          crypto.randomUUID(),
-          user!.tenantId,
-          "security_policy",
-          JSON.stringify(merged),
-          new Date().toISOString(),
-          new Date().toISOString(),
-        )
-        .run();
-    }
+    await db
+      .prepare(
+        `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+         VALUES (?, 'security_policy', ?, datetime('now'))
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .bind(user!.tenantId, JSON.stringify(merged))
+      .run();
 
     await writeAudit(db, {
       tenantId: user!.tenantId!,
