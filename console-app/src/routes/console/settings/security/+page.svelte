@@ -198,12 +198,15 @@
 
   $: isOwner = $session?.roles?.includes("owner") || $session?.roles?.includes("super-admin") || $session?.superAdmin;
 
+  let ownerDataLoaded = false;
+  $: if (isOwner && !ownerDataLoaded) {
+    ownerDataLoaded = true;
+    loadPolicy();
+    loadSsoConfig();
+  }
+
   onMount(async () => {
     await loadStatus();
-    if (isOwner) {
-      await loadPolicy();
-      await loadSsoConfig();
-    }
   });
 
   async function loadStatus() {
