@@ -37,8 +37,22 @@ paths = [
   '''\.spec\.(ts|js)$''',
   '''\.env\.example$''',
   '''docs/servers-main/''',
+  '''docs/stripe-setup\.md$''',
   '''documentation-worker/''',
   '''pnpm-lock\.yaml$''',
   '''package-lock\.json$''',
   '''artifacts/schema\.hash$''',
+  '''shared/integrations/''',
+  '''packages/connector-schema/''',
+  '''adapters/.*/wrangler\.toml$''',
+  '''scripts/scan-secrets\.js$''',
+  '''console-app/src/lib/data/integrations\.ts$''',
+]
+# Placeholder patterns like "sk_live_..." are documentation, not real secrets
+regexes = [
+  '''sk_(live|test)_\.\.\.''',
+  '''pk_(live|test)_\.\.\.''',
+  '''whsec_\.\.\.''',
+  '''price_\.\.\.''',
+  '''<REPLACE_WITH_''',
 ]
