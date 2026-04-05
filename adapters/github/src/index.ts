@@ -548,6 +548,79 @@ app.post("/api/compliance/check", async (c) => {
   });
 });
 
+// ── OAuth grant discovery for Shadow AI detection ────────────────────────────
+app.post("/api/oauth-grants", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+  const org = c.env.GITHUB_ORG;
+  const token = c.env.GITHUB_TOKEN;
+
+  try {
+    // List GitHub App installations on the org
+    const installationsRes = await fetch(
+      `https://api.github.com/orgs/${encodeURIComponent(org)}/installations?per_page=100`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+    );
+
+    if (installationsRes.ok) {
+      const data = (await installationsRes.json()) as {
+        installations?: Array<{
+          id: number;
+          app_slug: string;
+          app_id: number;
+          account?: { login?: string };
+          permissions?: Record<string, string>;
+          created_at?: string;
+          updated_at?: string;
+        }>;
+      };
+
+      for (const inst of data.installations ?? []) {
+        const scopes = Object.entries(inst.permissions ?? {}).map(
+          ([k, v]) => `${k}:${v}`,
+        );
+        grants.push({
+          appName: inst.app_slug,
+          clientId: String(inst.app_id),
+          userEmail: inst.account?.login ?? org,
+          scopes,
+          grantedAt: inst.created_at,
+          lastUsedAt: inst.updated_at,
+          metadata: { installationId: inst.id, type: "github_app" },
+        });
+      }
+    }
+  } catch (err) {
+    return c.json({
+      provider: "github",
+      grants: [],
+      discoveredAt: new Date().toISOString(),
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+
+  return c.json({ provider: "github", grants, discoveredAt: new Date().toISOString() });
+});
+
 // ── Adapter evidence collection ──────────────────────────────────────────────
 // POST /api/evidence — return compliance evidence items for this tenant's GitHub org.
 app.post("/api/evidence", async (c) => {
