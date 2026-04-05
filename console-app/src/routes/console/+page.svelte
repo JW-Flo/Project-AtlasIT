@@ -93,6 +93,13 @@
     workflows: { total: number };
   } | null = null;
 
+  interface ReviewSuggestion {
+    type: string;
+    title: string;
+    description: string;
+    priority: "high" | "medium" | "low";
+  }
+
   let tenantData: {
     connectedApps: number;
     directory: { connected: boolean; provider: string | null; userCount: number; groupCount: number; lastSync: string | null };
@@ -109,6 +116,7 @@
       activeRules: number;
       executions24h: number;
     };
+    accessReviewSuggestions?: ReviewSuggestion[];
   } | null = null;
 
   let inviteCopied = false;
@@ -180,6 +188,21 @@
       await trackGrowthEvent("invite_link_copied", session.tenantId);
     } catch {
       pushToast({ message: "Could not copy link. Please copy it manually.", variant: "error" });
+    }
+  }
+
+  async function dismissReviewSuggestion(type: string) {
+    try {
+      await fetch("/api/tenant/dashboard/dismiss-review-suggestion", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type }),
+      });
+      if (tenantData?.accessReviewSuggestions) {
+        tenantData.accessReviewSuggestions = tenantData.accessReviewSuggestions.filter(s => s.type !== type);
+      }
+    } catch {
+      pushToast({ message: "Failed to dismiss suggestion", variant: "error" });
     }
   }
 
@@ -699,6 +722,32 @@
           </Button>
         </CardContent>
       </Card>
+    {/if}
+
+    <!-- Access review suggestions -->
+    {#if tenantData?.accessReviewSuggestions && tenantData.accessReviewSuggestions.length > 0}
+      {#each tenantData.accessReviewSuggestions as suggestion (suggestion.type)}
+        <Card class="border-warning/30 bg-warning/5">
+          <CardContent class="py-4 flex items-center justify-between gap-4">
+            <div class="flex items-start gap-3">
+              <UserCheck class="h-5 w-5 text-warning mt-0.5 shrink-0" />
+              <div>
+                <div class="font-medium">{suggestion.title}</div>
+                <div class="text-sm text-muted-foreground mt-0.5">{suggestion.description}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <Button variant="ghost" size="sm" on:click={() => dismissReviewSuggestion(suggestion.type)}>
+                Dismiss
+              </Button>
+              <Button href="/console/access-reviews" size="sm">
+                Start Review
+                <ArrowRight class="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      {/each}
     {/if}
 
     <!-- recent automation runs -->
