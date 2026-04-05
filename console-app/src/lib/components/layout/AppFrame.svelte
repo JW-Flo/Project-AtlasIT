@@ -9,7 +9,7 @@
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
   import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
-  import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
+  import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache, hydrateComplianceScore } from "../../stores/compliance";
   import {
     LayoutDashboard,
     Shield,
@@ -232,8 +232,13 @@
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
 
-    // Fetch compliance score
-    fetchComplianceScore().catch(() => {});
+    // Use server-prefetched compliance scores when available, else fetch client-side
+    const prefetchedScores = $page.data?.complianceScores;
+    if (prefetchedScores) {
+      hydrateComplianceScore(prefetchedScores);
+    } else {
+      fetchComplianceScore().catch(() => {});
+    }
 
     return () => window.removeEventListener("branding-updated", onBrandingUpdated);
   });

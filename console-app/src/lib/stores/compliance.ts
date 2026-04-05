@@ -78,6 +78,28 @@ export async function fetchComplianceScore(): Promise<ComplianceStoreData | null
   }
 }
 
+/** Hydrate the store from server-prefetched data, avoiding a client-side fetch. */
+export function hydrateComplianceScore(data: any): void {
+  if (!data?.scores || fetched) return;
+  const scores: FrameworkScore[] = (data.scores || []).map((s: any) => ({
+    framework: s.framework,
+    score: Math.round(s.score ?? 0),
+    grade: s.grade || computeGrade(s.score ?? 0),
+    source: s.source as ScoreSource | undefined,
+  }));
+  if (scores.length === 0) return;
+  const avg = Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length);
+  complianceScore.set({
+    overallScore: avg,
+    grade: computeGrade(avg),
+    frameworks: scores,
+    globalSource: data.source || "empty",
+    lastUpdated: new Date().toISOString(),
+  });
+  fetched = true;
+  complianceLoading.set(false);
+}
+
 export async function refreshComplianceScore(): Promise<ComplianceStoreData | null> {
   fetched = false;
   return fetchComplianceScore();

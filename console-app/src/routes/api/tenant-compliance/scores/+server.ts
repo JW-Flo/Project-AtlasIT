@@ -104,54 +104,57 @@ async function fetchEvidenceGroundedScores(
   // Fetch each framework separately since the compliance-worker evaluates
   // SOC2 and ISO27001 controls (the two with defined control definitions).
   // For other frameworks, we'll still get results if evidence exists.
-  for (const fw of frameworks) {
-    const url = `${base}/api/v1/cdt/evaluate?framework=${encodeURIComponent(fw)}`;
-    const result = await safeProxyFetch(platform, url, {
-      headers: {
-        "x-tenant-id": tenantId,
-        "Content-Type": "application/json",
-      },
-    });
+  const results = await Promise.all(
+    frameworks.map(async (fw) => {
+      const url = `${base}/api/v1/cdt/evaluate?framework=${encodeURIComponent(fw)}`;
+      const result = await safeProxyFetch(platform, url, {
+        headers: {
+          "x-tenant-id": tenantId,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!result.ok) continue;
+      if (!result.ok) return null;
 
-    try {
-      const data = (await result.response.json()) as CdtEvaluateResponse;
-      if (data.scores && data.scores.length > 0) {
-        for (const s of data.scores) {
-          allScores.push({
+      try {
+        const data = (await result.response.json()) as CdtEvaluateResponse;
+        if (data.scores && data.scores.length > 0) {
+          return data.scores.map((s) => ({
             framework: s.framework,
             score: s.score,
             grade: s.grade,
             controlsTotal: s.controlsTotal,
             controlsImplemented: s.controlsImplemented + s.controlsVerified,
             controlsVerified: s.controlsVerified,
-          });
-        }
-      } else if (data.controls && data.controls.length > 0) {
-        // Compute score from controls if scores array wasn't returned
-        const controls = data.controls;
-        const total = controls.length;
-        const weightSum = controls.reduce((sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0), 0);
-        const score = total > 0 ? Math.round((weightSum / total) * 100 * 100) / 100 : 0;
-        const implemented = controls.filter(
-          (c) => c.status === "implemented" || c.status === "verified",
-        ).length;
-        const verified = controls.filter((c) => c.status === "verified").length;
+          }));
+        } else if (data.controls && data.controls.length > 0) {
+          const controls = data.controls;
+          const total = controls.length;
+          const weightSum = controls.reduce((sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0), 0);
+          const score = total > 0 ? Math.round((weightSum / total) * 100 * 100) / 100 : 0;
+          const implemented = controls.filter(
+            (c) => c.status === "implemented" || c.status === "verified",
+          ).length;
+          const verified = controls.filter((c) => c.status === "verified").length;
 
-        allScores.push({
-          framework: fw,
-          score,
-          grade: computeGrade(score),
-          controlsTotal: total,
-          controlsImplemented: implemented,
-          controlsVerified: verified,
-        });
+          return [{
+            framework: fw,
+            score,
+            grade: computeGrade(score),
+            controlsTotal: total,
+            controlsImplemented: implemented,
+            controlsVerified: verified,
+          }];
+        }
+      } catch {
+        // JSON parse failed — skip this framework
       }
-    } catch {
-      // JSON parse failed — skip this framework
-      continue;
-    }
+      return null;
+    }),
+  );
+
+  for (const batch of results) {
+    if (batch) allScores.push(...batch);
   }
 
   return allScores.length > 0 ? allScores : null;
@@ -279,8 +282,6 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
-  await ensureScoreTables(db);
-
   // Read tenant frameworks
   let frameworks: string[] = [];
   let frameworksConfigured = true;
@@ -300,11 +301,11 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     frameworksConfigured = false;
   }
 
-  // Try evidence-grounded scoring from compliance-worker first
-  const evidenceScores = await fetchEvidenceGroundedScores(platform, user.tenantId, frameworks);
-
-  // Always compute self-assessed scores from tenant controls as the primary source
-  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+  // Fetch evidence-grounded and self-assessed scores in parallel
+  const [evidenceScores, selfScores] = await Promise.all([
+    fetchEvidenceGroundedScores(platform, user.tenantId, frameworks),
+    computeSelfAssessedScores(db, user.tenantId, frameworks),
+  ]);
 
   if (evidenceScores && evidenceScores.length > 0) {
     // Blend: evidence-grounded scores take priority when evidence exists.
@@ -356,7 +357,9 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     }
 
     await persistScores(db, user.tenantId, blended);
-    return json({ scores: blended, source: "evidence", frameworksConfigured });
+    return json({ scores: blended, source: "evidence", frameworksConfigured }, {
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+    });
   }
 
   // Use self-assessed scores from controls (primary path when compliance-worker unavailable)
@@ -366,7 +369,9 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       source: (s.score > 0 ? "self-assessed" : "no-data") as ScoreSource,
     }));
     await persistScores(db, user.tenantId, tagged);
-    return json({ scores: tagged, source: "self-assessed", frameworksConfigured });
+    return json({ scores: tagged, source: "self-assessed", frameworksConfigured }, {
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+    });
   }
 
   // No scores available at all — return empty
@@ -379,7 +384,9 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controlsVerified: 0,
     source: "no-data" as ScoreSource,
   }));
-  return json({ scores: emptyScores, source: "empty", frameworksConfigured });
+  return json({ scores: emptyScores, source: "empty", frameworksConfigured }, {
+    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+  });
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
@@ -389,8 +396,6 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  await ensureScoreTables(db);
 
   // Read tenant frameworks
   let frameworks: string[] = [];

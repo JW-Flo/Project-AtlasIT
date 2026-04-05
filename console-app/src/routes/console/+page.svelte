@@ -206,6 +206,44 @@
     }
   }
 
+  function applyPrefetched(pre: any) {
+    if (pre.tenant) {
+      tenantData = pre.tenant;
+      connectedAppsCount = tenantData?.connectedApps ?? 0;
+    }
+    if (pre.scores) {
+      complianceScores = Array.isArray(pre.scores?.scores)
+        ? pre.scores.scores.map((row: any) => ({
+            framework: row.framework,
+            score: Number(row.score ?? 0),
+            grade: row.grade,
+          }))
+        : [];
+    }
+    if (pre.reviews) {
+      const campaigns: AccessReviewCampaign[] = Array.isArray(pre.reviews?.campaigns)
+        ? pre.reviews.campaigns
+        : [];
+      activeAccessReviews = campaigns.filter((c) => c.status === "active").length;
+    }
+    if (pre.incidents) {
+      const items: Incident[] = Array.isArray(pre.incidents?.items)
+        ? pre.incidents.items
+        : [];
+      const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
+      openIncidents = items.filter((i) =>
+        OPEN_INCIDENT_STATUSES.has(String(i.status || "").toLowerCase()),
+      ).length;
+    }
+    if (pre.runs) {
+      recentAutomationRuns = Array.isArray(pre.runs?.executions) ? pre.runs.executions : [];
+    }
+    if (pre.evidence) {
+      evidenceWaterfall = Array.isArray(pre.evidence?.feed) ? pre.evidence.feed : [];
+      evidenceWaterfallTotal = pre.evidence?.summary?.totalEvidence ?? 0;
+    }
+  }
+
   async function load() {
     loading = true;
     error = null;
@@ -235,76 +273,83 @@
         if (!session.tenantId) return;
       }
 
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const [tenantRes, scoresRes, reviewsRes, incidentsRes, runsRes, evidenceRes] =
-        await Promise.all([
-          fetch("/api/tenant/dashboard"),
-          fetch("/api/tenant-compliance/scores"),
-          fetch("/api/access-reviews"),
-          fetch("/api/incidents"),
-          fetch("/api/automation/executions?limit=5"),
-          fetch(`/api/evidence-feed?limit=8&since=${encodeURIComponent(since)}`),
-        ]);
-
-      if (!tenantRes.ok) {
-        throw new Error(`Tenant dashboard fetch failed (${tenantRes.status})`);
-      }
-
-      tenantData = await tenantRes.json();
-      connectedAppsCount = tenantData?.connectedApps ?? 0;
-
-      if (scoresRes.ok) {
-        const scoresData = await scoresRes.json();
-        complianceScores = Array.isArray(scoresData?.scores)
-          ? scoresData.scores.map((row: any) => ({
-              framework: row.framework,
-              score: Number(row.score ?? 0),
-              grade: row.grade,
-            }))
-          : [];
+      // Use server-prefetched data when available (eliminates client waterfall)
+      const prefetched = $page.data?.prefetched;
+      if (prefetched) {
+        applyPrefetched(prefetched);
       } else {
-        complianceScores = [];
-      }
+        // Fallback: client-side parallel fetch
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const [tenantRes, scoresRes, reviewsRes, incidentsRes, runsRes, evidenceRes] =
+          await Promise.all([
+            fetch("/api/tenant/dashboard"),
+            fetch("/api/tenant-compliance/scores"),
+            fetch("/api/access-reviews"),
+            fetch("/api/incidents"),
+            fetch("/api/automation/executions?limit=5"),
+            fetch(`/api/evidence-feed?limit=8&since=${encodeURIComponent(since)}`),
+          ]);
 
-      if (reviewsRes.ok) {
-        const reviewsData = await reviewsRes.json();
-        const campaigns: AccessReviewCampaign[] = Array.isArray(reviewsData?.campaigns)
-          ? reviewsData.campaigns
-          : [];
-        activeAccessReviews = campaigns.filter((c) => c.status === "active").length;
-      } else {
-        activeAccessReviews = 0;
-      }
+        if (!tenantRes.ok) {
+          throw new Error(`Tenant dashboard fetch failed (${tenantRes.status})`);
+        }
 
-      if (incidentsRes.ok) {
-        const incidentsData = await incidentsRes.json();
-        const incidents: Incident[] = Array.isArray(incidentsData?.items)
-          ? incidentsData.items
-          : [];
-        const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
-        openIncidents = incidents.filter((incident) =>
-          OPEN_INCIDENT_STATUSES.has(String(incident.status || "").toLowerCase()),
-        ).length;
-      } else {
-        openIncidents = 0;
-      }
+        tenantData = await tenantRes.json();
+        connectedAppsCount = tenantData?.connectedApps ?? 0;
 
-      if (runsRes.ok) {
-        const runsData = await runsRes.json();
-        recentAutomationRuns = Array.isArray(runsData?.executions)
-          ? runsData.executions
-          : [];
-      } else {
-        recentAutomationRuns = [];
-      }
+        if (scoresRes.ok) {
+          const scoresData = await scoresRes.json();
+          complianceScores = Array.isArray(scoresData?.scores)
+            ? scoresData.scores.map((row: any) => ({
+                framework: row.framework,
+                score: Number(row.score ?? 0),
+                grade: row.grade,
+              }))
+            : [];
+        } else {
+          complianceScores = [];
+        }
 
-      if (evidenceRes.ok) {
-        const evidenceData = await evidenceRes.json();
-        evidenceWaterfall = Array.isArray(evidenceData?.feed) ? evidenceData.feed : [];
-        evidenceWaterfallTotal = evidenceData?.summary?.totalEvidence ?? 0;
-      } else {
-        evidenceWaterfall = [];
-        evidenceWaterfallTotal = 0;
+        if (reviewsRes.ok) {
+          const reviewsData = await reviewsRes.json();
+          const campaigns: AccessReviewCampaign[] = Array.isArray(reviewsData?.campaigns)
+            ? reviewsData.campaigns
+            : [];
+          activeAccessReviews = campaigns.filter((c) => c.status === "active").length;
+        } else {
+          activeAccessReviews = 0;
+        }
+
+        if (incidentsRes.ok) {
+          const incidentsData = await incidentsRes.json();
+          const incidents: Incident[] = Array.isArray(incidentsData?.items)
+            ? incidentsData.items
+            : [];
+          const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
+          openIncidents = incidents.filter((incident) =>
+            OPEN_INCIDENT_STATUSES.has(String(incident.status || "").toLowerCase()),
+          ).length;
+        } else {
+          openIncidents = 0;
+        }
+
+        if (runsRes.ok) {
+          const runsData = await runsRes.json();
+          recentAutomationRuns = Array.isArray(runsData?.executions)
+            ? runsData.executions
+            : [];
+        } else {
+          recentAutomationRuns = [];
+        }
+
+        if (evidenceRes.ok) {
+          const evidenceData = await evidenceRes.json();
+          evidenceWaterfall = Array.isArray(evidenceData?.feed) ? evidenceData.feed : [];
+          evidenceWaterfallTotal = evidenceData?.summary?.totalEvidence ?? 0;
+        } else {
+          evidenceWaterfall = [];
+          evidenceWaterfallTotal = 0;
+        }
       }
     } catch (e: any) {
       error = e?.message || "Failed to load dashboard";
