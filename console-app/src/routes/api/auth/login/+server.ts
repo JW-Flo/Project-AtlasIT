@@ -122,6 +122,36 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       if (!roles.includes("owner")) roles.push("owner");
     }
 
+    // Check if user has MFA enabled
+    const mfaRow = await db
+      .prepare("SELECT verified FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
+      .bind(row.id)
+      .first();
+
+    if (mfaRow) {
+      // MFA required — issue a short-lived challenge token instead of a session
+      const challengeToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
+      const userData = JSON.stringify({
+        userId: row.id,
+        email: row.email,
+        displayName: row.display_name,
+        roles,
+        superAdmin: isSuperAdmin,
+        tenantId: row.tenant_id,
+      });
+
+      await db
+        .prepare(
+          `INSERT INTO mfa_challenges (token, user_id, tenant_id, user_email, user_data, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(challengeToken, row.id, row.tenant_id, row.email, userData, expiresAt)
+        .run();
+
+      return json({ mfaRequired: true, mfaToken: challengeToken });
+    }
+
     if (!kv) {
       return json({ error: "Session store unavailable" }, { status: 503 });
     }

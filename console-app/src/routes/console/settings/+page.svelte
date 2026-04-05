@@ -29,6 +29,7 @@
     { href: "/console/settings/billing", label: "Billing" },
     { href: "/console/settings/trust", label: "Trust Center" },
     { href: "/console/settings/incidents", label: "Incidents" },
+    { href: "/console/settings/security", label: "Security" },
   ];
   $: current = $page.url.pathname;
 
