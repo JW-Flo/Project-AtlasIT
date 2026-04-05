@@ -83,6 +83,7 @@
   let expandedRows = new Set<string>();
   let detailCache: Record<string, PolicyDetail> = {};
   let loadingDetail = new Set<string>();
+  let detailErrors: Record<string, string> = {};
 
   // selected version to preview per policy id
   let selectedVersion: Record<string, number> = {};
@@ -197,10 +198,24 @@
           approvals: data.approvals ?? [],
         };
         detailCache = { ...detailCache };
+      } else {
+        detailErrors[policyId] = `Failed to load (HTTP ${res.status})`;
+        detailErrors = { ...detailErrors };
       }
-    } catch { /* silent */ }
+    } catch {
+      detailErrors[policyId] = "Service unavailable";
+      detailErrors = { ...detailErrors };
+    }
     loadingDetail.delete(policyId);
     loadingDetail = new Set(loadingDetail);
+  }
+
+  function retryLoadDetail(policyId: string) {
+    delete detailErrors[policyId];
+    detailErrors = { ...detailErrors };
+    delete detailCache[policyId];
+    detailCache = { ...detailCache };
+    loadDetail(policyId);
   }
 
   async function loadTemplates() {
@@ -894,7 +909,10 @@
                           </div>
                         </div>
                       {:else}
-                        <p class="text-xs text-muted-foreground italic">Failed to load policy details.</p>
+                        <div class="flex items-center gap-2">
+                          <p class="text-xs text-destructive italic">{detailErrors[policy.id] || 'Failed to load policy details.'}</p>
+                          <button class="text-xs underline text-primary hover:text-primary/80" on:click|stopPropagation={() => retryLoadDetail(policy.id)}>Retry</button>
+                        </div>
                       {/if}
                     </td>
                   </tr>

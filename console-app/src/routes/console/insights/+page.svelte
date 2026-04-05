@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
   import CardContent from "$lib/components/ui/card-content.svelte";
@@ -45,12 +46,21 @@
     detectedAt: string;
   }
 
+  interface AnalyticsData {
+    overallScore: number;
+    trendDelta: number;
+    frameworkBreakdown: Array<{ framework: string; score: number; grade: string; controlsTotal: number; controlsImplemented: number; controlsVerified: number }>;
+    automationMetrics: { totalRules: number; activeRules: number; rulesExecuted: number; successRate: number; timeSavedHours: number };
+    topRisks: Array<{ controlRef: string; title: string; framework: string; score: number; status: string }>;
+  }
+
   let loading = true;
+  let analyticsData: AnalyticsData | null = null;
   let gapSummary: GapSummary | null = null;
   let gaps: ComplianceGap[] = [];
   let driftAlerts: DriftAlert[] = [];
   let anomalies: RiskAnomaly[] = [];
-  let activeTab: "gaps" | "drift" | "anomalies" = "gaps";
+  let activeTab: "gaps" | "drift" | "anomalies" | "analytics" = "gaps";
   let connectedAdapters: Set<string> = new Set();
   let collectingGap: string | null = null;
 
@@ -127,7 +137,7 @@
   }
 
   onMount(async () => {
-    await Promise.allSettled([loadGaps(), loadDrift(), loadAnomalies(), loadConnectedAdapters()]);
+    await Promise.allSettled([loadGaps(), loadDrift(), loadAnomalies(), loadConnectedAdapters(), loadAnalytics()]);
     loading = false;
   });
 
@@ -176,6 +186,24 @@
     } catch {
       pushToast({ type: "error", message: "Failed to load anomalies" });
     }
+  }
+
+  async function loadAnalytics() {
+    try {
+      const res = await fetch("/api/analytics/dashboard?days=30");
+      if (res.ok) {
+        analyticsData = await res.json();
+      }
+    } catch {
+      // Non-critical — analytics tab will show graceful empty state
+    }
+  }
+
+  function gradeColor(grade: string): string {
+    if (grade === "A" || grade === "A+") return "text-green-500";
+    if (grade === "B" || grade === "B+") return "text-blue-500";
+    if (grade === "C") return "text-yellow-500";
+    return "text-red-500";
   }
 
   function severityColor(severity: string): string {
@@ -286,6 +314,12 @@
         >
           Risk Anomalies ({anomalies.length})
         </button>
+        <button
+          class="px-3 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'analytics' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+          on:click={() => activeTab = "analytics"}
+        >
+          Analytics
+        </button>
       </nav>
     </div>
 
@@ -302,7 +336,7 @@
       {:else}
         <div class="space-y-3">
           {#each gaps as gap}
-            <Card>
+            <Card class="cursor-pointer hover:border-primary/50 transition-colors" on:click={() => goto(`/console/compliance/feed?framework=${gap.framework}&controlId=${gap.controlId}`)}>
               <CardContent class="p-4">
                 <div class="flex items-start justify-between">
                   <div class="flex-1">
@@ -328,14 +362,14 @@
                         variant="default"
                         size="sm"
                         disabled={collectingGap === gap.controlId}
-                        on:click={() => collectEvidenceForGap(gap)}
+                        on:click|stopPropagation={() => collectEvidenceForGap(gap)}
                       >
                         <Zap class="h-3 w-3 mr-1" />
                         {collectingGap === gap.controlId ? "Collecting..." : "Collect Now"}
                       </Button>
                     {/if}
                     {#if gap.suggestedAction}
-                      <Button variant="outline" size="sm" href="/console/automation">
+                      <Button variant="outline" size="sm" href="/console/automation" on:click|stopPropagation>
                         Create Rule
                       </Button>
                     {/if}
@@ -416,6 +450,96 @@
             </Card>
           {/each}
         </div>
+      {/if}
+    {/if}
+
+    <!-- Analytics -->
+    {#if activeTab === "analytics"}
+      {#if !analyticsData}
+        <Card>
+          <CardContent class="p-8 text-center text-muted-foreground">
+            <p class="text-lg font-medium">Analytics unavailable</p>
+            <p>Unable to load analytics data. Try refreshing the page.</p>
+          </CardContent>
+        </Card>
+      {:else}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card>
+            <CardContent class="p-4">
+              <div class="text-sm text-muted-foreground mb-1">Overall Score</div>
+              <div class="text-3xl font-bold">{analyticsData.overallScore}%</div>
+              <div class="text-xs {analyticsData.trendDelta >= 0 ? 'text-green-500' : 'text-red-500'}">
+                {analyticsData.trendDelta >= 0 ? '+' : ''}{analyticsData.trendDelta}% vs last period
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent class="p-4">
+              <div class="text-sm text-muted-foreground mb-1">Automation Rules</div>
+              <div class="text-3xl font-bold">{analyticsData.automationMetrics.activeRules}</div>
+              <div class="text-xs text-muted-foreground">
+                {analyticsData.automationMetrics.rulesExecuted} executions, {analyticsData.automationMetrics.successRate}% success
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent class="p-4">
+              <div class="text-sm text-muted-foreground mb-1">Time Saved</div>
+              <div class="text-3xl font-bold">{analyticsData.automationMetrics.timeSavedHours}h</div>
+              <div class="text-xs text-muted-foreground">estimated via automation</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <!-- Framework Breakdown -->
+        {#if analyticsData.frameworkBreakdown.length > 0}
+          <Card>
+            <CardContent class="p-4">
+              <h3 class="font-medium mb-3">Framework Breakdown</h3>
+              <div class="space-y-3">
+                {#each analyticsData.frameworkBreakdown as fw}
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <span class="text-2xl font-bold {gradeColor(fw.grade)}">{fw.grade}</span>
+                      <div>
+                        <div class="font-medium">{fw.framework}</div>
+                        <div class="text-xs text-muted-foreground">
+                          {fw.controlsImplemented}/{fw.controlsTotal} implemented, {fw.controlsVerified} verified
+                        </div>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <div class="font-medium">{fw.score}%</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </CardContent>
+          </Card>
+        {/if}
+
+        <!-- Top Risks -->
+        {#if analyticsData.topRisks.length > 0}
+          <Card>
+            <CardContent class="p-4">
+              <h3 class="font-medium mb-3">Top Risks</h3>
+              <div class="space-y-2">
+                {#each analyticsData.topRisks.slice(0, 5) as risk}
+                  <div class="flex items-center justify-between py-1 border-b border-border last:border-0">
+                    <div>
+                      <span class="text-sm font-medium">{risk.controlRef}</span>
+                      <span class="text-sm text-muted-foreground ml-2">{risk.title}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <Badge variant="outline">{risk.framework}</Badge>
+                      <span class="text-sm font-medium {risk.score < 30 ? 'text-red-500' : risk.score < 60 ? 'text-yellow-500' : 'text-green-500'}">{risk.score}%</span>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </CardContent>
+          </Card>
+        {/if}
       {/if}
     {/if}
 
