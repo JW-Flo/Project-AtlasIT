@@ -3,12 +3,7 @@ import { json } from "@sveltejs/kit";
 import { requireSuperAdmin } from "$lib/server/guards";
 import { writeAudit } from "$lib/server/audit";
 
-export const PATCH: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
+export const PATCH: RequestHandler = async ({ params, request, locals, platform }) => {
   const denied = requireSuperAdmin(locals.user);
   if (denied) return denied;
 
@@ -51,12 +46,14 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
-  // Delete all tenant-scoped data before removing the tenant row
+  // Delete all tenant-scoped data before removing the tenant row.
+  // Each delete is wrapped individually since some tables may not exist yet.
   const tenantScoped = [
     "audit_log",
     "automation_executions",
     "automation_rules",
     "compliance_evidence",
+    "compliance_history",
     "compliance_scores",
     "console_user_roles",
     "console_users",
@@ -64,14 +61,31 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
     "directory_memberships",
     "directory_users",
     "group_app_mappings",
+    "incidents",
+    "access_reviews",
     "integrations",
+    "app_credentials",
     "tenant_preferences",
+    "tenant_billing",
+    "tenant_compliance_packs",
+    "mfa_totp_secrets",
+    "sso_configurations",
+    "sso_auth_state",
+    "notifications",
   ];
   for (const table of tenantScoped) {
-    await db
-      .prepare(`DELETE FROM ${table} WHERE tenant_id = ?`)
-      .bind(params.id)
-      .run();
+    try {
+      await db.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).bind(params.id).run();
+    } catch {
+      // Table may not exist — skip
+    }
+  }
+
+  // Also clean up users table (directory users) which may reference tenant
+  try {
+    await db.prepare(`DELETE FROM users WHERE tenant_id = ?`).bind(params.id).run();
+  } catch {
+    /* ignore */
   }
 
   await db.prepare(`DELETE FROM tenants WHERE id = ?`).bind(params.id).run();

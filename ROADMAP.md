@@ -531,6 +531,15 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] Plugin API for third-party compliance packs — CRUD + install/uninstall, tier-gated to Professional+, 5 built-in packs seeded (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR)
 - [x] Advanced analytics and reporting — compliance trend chart, framework breakdown, evidence volume, automation metrics, security posture, top risks, export stub
 
+## Phase 17 — SSO, Analytics Export & Visual Identity
+
+- [x] SSO (SAML 2.0 + OIDC) — Web Crypto API SP/RP, PKCE, JIT provisioning, SP metadata, tier-gated to Professional+
+- [x] SSO configuration UI — Settings > Security, protocol selector, IdP config, behavior toggles (force-SSO, MFA bypass, JIT)
+- [x] SSO login flow — `/api/auth/sso/init` → IdP redirect → `/api/auth/sso/callback` → session creation
+- [x] Analytics report export — CSV download with compliance scores, framework breakdown, control details, automation metrics
+- [ ] Governance framework visualizations — pillar-style SVG components for pricing/onboarding pages showing framework foundations (Oversight, Authority, Integrity, Competence, Risk Appetite) to emphasize compliance adherence value proposition
+- [ ] Interactive framework explorer — expandable compliance framework cards with control-level drill-down on onboarding and pricing pages
+
 ## Long-Term Platform Modules
 
 AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
