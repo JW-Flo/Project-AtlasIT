@@ -52,10 +52,7 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
     if (!policy) return json({ error: "Policy not found" }, { status: 404 });
 
     if (policy.status !== "pending_review") {
-      return json(
-        { error: "Policy is not pending review" },
-        { status: 422 },
-      );
+      return json({ error: "Policy is not pending review" }, { status: 422 });
     }
 
     // Verify requesting user is a pending reviewer
@@ -68,10 +65,7 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
       .first<any>();
 
     if (!approval) {
-      return json(
-        { error: "You are not a pending reviewer for this policy" },
-        { status: 403 },
-      );
+      return json({ error: "You are not a pending reviewer for this policy" }, { status: 403 });
     }
 
     const now = new Date().toISOString();
@@ -121,9 +115,19 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
                (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                VALUES (?, ?, 'SOC2', 'CC1.1', 'Control environment — policy approved', 'policy_approval', 'console', ?, ?, ?, ?, ?)`,
             )
-            .bind(evidenceId, tenantId, id, reviewerEmail, `policy:${id}`, JSON.stringify({ policyId: id, decision, approvedBy }), now)
+            .bind(
+              evidenceId,
+              tenantId,
+              id,
+              reviewerEmail,
+              `policy:${id}`,
+              JSON.stringify({ policyId: id, decision, approvedBy }),
+              now,
+            )
             .run();
-        } catch { /* best-effort evidence write */ }
+        } catch {
+          /* best-effort evidence write */
+        }
       } else {
         // Waiting for other reviewers
         newStatus = "pending_review";
@@ -157,6 +161,31 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
         targetType: "policy",
         targetId: id,
         detail: JSON.stringify({ decision, comment }),
+      });
+    } catch {
+      // Non-blocking
+    }
+
+    // Notify about review decision
+    try {
+      const { notify } = await import("$lib/server/notifications");
+      const notifType = decision === "approved" ? "policy_approved" : "policy_rejected";
+      const decisionLabel =
+        decision === "approved"
+          ? "approved"
+          : decision === "rejected"
+            ? "rejected"
+            : "returned for changes";
+      await notify(db, platform, {
+        tenantId,
+        type: notifType,
+        title: `Policy ${decisionLabel}`,
+        body: `Policy was ${decisionLabel} by ${reviewerEmail}${comment ? `: ${comment}` : ""}`,
+        severity: decision === "approved" ? "info" : "warning",
+        sourceType: "policy",
+        sourceId: id!,
+        sourceLabel: `Policy ${id}`,
+        actionUrl: `/console/policies`,
       });
     } catch {
       // Non-blocking

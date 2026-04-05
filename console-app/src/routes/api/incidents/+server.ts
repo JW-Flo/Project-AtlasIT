@@ -179,5 +179,23 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     // Non-blocking
   }
 
+  // Send notification (best-effort)
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(db, platform, {
+      tenantId,
+      type: "incident_created",
+      title: `New incident: ${body.title}`,
+      body: description || undefined,
+      severity: severity as any,
+      sourceType: "incident",
+      sourceId: id,
+      sourceLabel: body.title,
+      actionUrl: `/console/incidents`,
+    });
+  } catch {
+    // Non-blocking
+  }
+
   return json({ id, title: body.title, severity, status: "open", autoClassified }, { status: 201 });
 };

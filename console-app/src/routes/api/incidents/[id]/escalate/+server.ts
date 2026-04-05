@@ -110,6 +110,25 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
     // non-blocking
   }
 
+  // Notify about escalation
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(db, platform, {
+      tenantId,
+      type: "incident_escalated",
+      title: `Incident escalated to ${soarConfig.provider}`,
+      body: `${incident.title} was escalated by ${user.email}`,
+      severity: "critical",
+      sourceType: "incident",
+      sourceId: incidentId!,
+      sourceLabel: incident.title,
+      actionUrl: `/console/incidents`,
+      metadata: { provider: soarConfig.provider, externalId: result.externalId },
+    });
+  } catch {
+    // Non-blocking
+  }
+
   return json({
     success: result.success,
     provider: result.provider,
