@@ -202,6 +202,12 @@
   $: if (isOwner && !ownerDataLoaded) {
     ownerDataLoaded = true;
     loadPolicy();
+  }
+
+  // Always load SSO config for any authenticated user — the API enforces tier gating
+  let ssoDataLoaded = false;
+  $: if ($session?.authenticated && !ssoDataLoaded) {
+    ssoDataLoaded = true;
     loadSsoConfig();
   }
 
@@ -509,10 +515,8 @@
     </CardContent>
   </Card>
 
-  <!-- Tenant Security Policy (owner only) -->
-  <!-- SSO Configuration (owner only) -->
-  {#if isOwner}
-    <Card>
+  <!-- SSO Configuration -->
+  <Card>
       <CardHeader>
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
@@ -744,8 +748,8 @@
         {/if}
       </CardContent>
     </Card>
-  {/if}
 
+  <!-- Tenant Security Policy (owner only) -->
   {#if isOwner && policy}
     <Card>
       <CardHeader>
