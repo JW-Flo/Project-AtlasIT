@@ -17,8 +17,10 @@ id = "TBD"
 
 # Production environment
 [env.production]
-# Route for documentation worker
-route = "docs.atlasit.workers.dev/*"
+# Custom domain route — requires DNS CNAME: docs.atlasit.pro → atlasit-docs.workers.dev
+routes = [
+  { pattern = "docs.atlasit.pro/*", custom_domain = true },
+]
 usage_model = "bundled"
 
 [env.production.vars]

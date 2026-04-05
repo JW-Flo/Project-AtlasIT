@@ -94,7 +94,7 @@
       <section>
         <h2 class="text-xl font-semibold mb-3">8. Your Rights</h2>
         <p class="text-sm text-muted-foreground leading-relaxed">
-          Depending on your jurisdiction, you may have the right to: access your personal data, correct inaccurate data, delete your data, restrict processing, data portability, and object to processing. To exercise these rights, contact us at privacy@atlasit.pro or through the support page.
+          Depending on your jurisdiction, you may have the right to: access your personal data, correct inaccurate data, delete your data, restrict processing, data portability, and object to processing. To exercise these rights, <a href="/privacy/dsar" class="text-primary hover:underline">submit a data privacy request</a> or contact us at privacy@atlasit.pro.
         </p>
       </section>
 

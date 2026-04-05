@@ -14,6 +14,8 @@ const PUBLIC_API_PREFIXES = [
   "/api/trust/", // public trust center
   "/api/billing/webhook", // Stripe webhooks (verified by signature)
   "/api/platform/health", // platform status (public)
+  "/api/support", // public support form submissions
+  "/api/privacy/dsar", // public data subject access requests
 ];
 
 function isPublicApiRoute(pathname: string): boolean {

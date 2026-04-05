@@ -1,8 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
+import { sendEmail } from "$lib/server/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUPPORT_INBOX = "support@atlasit.pro";
 
 export const POST: RequestHandler = async ({ request, platform }) => {
   let body: unknown;
@@ -14,7 +16,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
   const { name, email, category, message } = body as Record<string, unknown>;
 
-  // Validate required fields
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return json({ error: "Name is required" }, { status: 400 });
   }
@@ -28,27 +29,54 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     return json({ error: "Message is required" }, { status: 400 });
   }
 
+  const safeName = name.trim();
+  const safeEmail = email.trim();
+  const safeMessage = message.trim();
   const safeCategory =
-    typeof category === "string" && category.trim()
-      ? category.trim()
-      : "general";
+    typeof category === "string" && category.trim() ? category.trim() : "general";
 
-  // Write to audit log so nothing is lost; future work can wire to email / Zendesk
+  // Persist to audit log (durable record)
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (db) {
     await writeAudit(db, {
       tenantId: "public",
       actorUserId: "anonymous",
-      actorEmail: email.trim(),
+      actorEmail: safeEmail,
       action: "support.request",
       targetType: "support",
       detail: JSON.stringify({
-        name: name.trim(),
+        name: safeName,
         category: safeCategory,
-        message: message.trim(),
+        message: safeMessage,
       }),
     });
   }
 
+  // Notify support team via email (non-blocking — audit log is the source of truth)
+  sendEmail(platform, {
+    type: "raw",
+    to: SUPPORT_INBOX,
+    subject: `[Support · ${safeCategory}] New request from ${safeName}`,
+    html: [
+      `<h2>New support request</h2>`,
+      `<table style="border-collapse:collapse;font-size:14px">`,
+      `<tr><td style="padding:4px 12px 4px 0;font-weight:600">Name</td><td>${escapeHtml(safeName)}</td></tr>`,
+      `<tr><td style="padding:4px 12px 4px 0;font-weight:600">Email</td><td><a href="mailto:${escapeHtml(safeEmail)}">${escapeHtml(safeEmail)}</a></td></tr>`,
+      `<tr><td style="padding:4px 12px 4px 0;font-weight:600">Category</td><td>${escapeHtml(safeCategory)}</td></tr>`,
+      `</table>`,
+      `<h3 style="margin-top:16px">Message</h3>`,
+      `<p style="white-space:pre-wrap">${escapeHtml(safeMessage)}</p>`,
+    ].join("\n"),
+    replyTo: safeEmail,
+  }).catch((err) => console.error("Support email failed:", err));
+
   return json({ success: true });
 };
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
