@@ -82,12 +82,13 @@ export async function processSamlResponse(
     return { success: false, error: "SAML Response destination mismatch" };
   }
 
-  // Verify signature if certificate is configured
-  if (config.samlCertificate) {
-    const signatureValid = await verifySamlSignature(xml, config.samlCertificate);
-    if (!signatureValid) {
-      return { success: false, error: "SAML Response signature verification failed" };
-    }
+  // Verify XML signature — reject unsigned responses
+  if (!config.samlCertificate) {
+    return { success: false, error: "SAML certificate not configured — cannot verify response signature" };
+  }
+  const signatureValid = await verifySamlSignature(xml, config.samlCertificate);
+  if (!signatureValid) {
+    return { success: false, error: "SAML Response signature verification failed" };
   }
 
   // Check conditions (NotBefore / NotOnOrAfter)
