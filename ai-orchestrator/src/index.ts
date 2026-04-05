@@ -31,6 +31,7 @@ import {
   buildCdtPayloadFromEvidence,
   flattenAdapterResults,
 } from "@atlasit/shared";
+import { computeAuditMetrics } from "../../packages/shared/src/evidence/computed-metrics";
 import type { DriftEvent } from "@atlasit/shared";
 
 // Register built-in step handlers at module load
@@ -454,6 +455,53 @@ const worker = {
               }
             } catch {
               /* non-fatal — platform policy enrichment is best-effort */
+            }
+
+            // Enrich CDT payload with computed metrics from audit data and platform state
+            // (access revoke hours, incident triage time, endpoint protection, ZTNA, etc.)
+            try {
+              const computed = await computeAuditMetrics(sharedDb, row.id);
+              Object.assign(cdtPayload, computed);
+            } catch {
+              /* non-fatal — computed metrics enrichment is best-effort */
+            }
+
+            // Enrich CDT payload from manual attestations
+            // (governance controls like board oversight, BCR plans, GDPR legal basis)
+            try {
+              const { results: attestations } = await sharedDb
+                .prepare(
+                  `SELECT control_id, attestation_key, metadata FROM compliance_attestations
+                   WHERE tenant_id = ? AND status = 'active'
+                     AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+                )
+                .bind(row.id)
+                .all();
+              for (const att of (attestations ?? []) as any[]) {
+                // Each attestation key maps directly to a CDT payload boolean
+                cdtPayload[att.attestation_key] = true;
+                // Parse metadata for numeric fields (e.g., unmitigated_high_risks = 0)
+                if (att.metadata) {
+                  try {
+                    const meta = JSON.parse(att.metadata);
+                    if (typeof meta.value === "number") {
+                      cdtPayload[att.attestation_key] = meta.value;
+                    }
+                    // Spread any explicit CDT field overrides
+                    if (
+                      meta.cdtFields &&
+                      typeof meta.cdtFields === "object" &&
+                      !Array.isArray(meta.cdtFields)
+                    ) {
+                      Object.assign(cdtPayload, meta.cdtFields);
+                    }
+                  } catch {
+                    /* ignore parse errors */
+                  }
+                }
+              }
+            } catch {
+              /* non-fatal — attestation enrichment is best-effort */
             }
 
             await fetch(`${complianceWorkerUrl}/api/v1/policies/evaluate-all`, {
