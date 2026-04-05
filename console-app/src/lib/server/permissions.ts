@@ -110,6 +110,14 @@ const PERMISSIONS: RoutePermission[] = [
     pattern: /^\/api\/tenant\/settings$/,
     methods: { PATCH: ["owner"] },
   },
+  {
+    pattern: /^\/api\/tenant\/sso$/,
+    methods: { POST: ["owner", "admin"], DELETE: ["owner", "admin"] },
+  },
+  {
+    pattern: /^\/api\/tenant\/security$/,
+    methods: { PUT: ["owner"] },
+  },
 
   // ── Incidents ────────────────────────────────────────────────────
   // Any authenticated user can create an incident

@@ -15,11 +15,11 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
-  // Tier gate: SSO requires Professional or higher
-  const gate = await gateFeature(db, user.tenantId, "sso", user.superAdmin);
-  if (gate) return gate;
-
   try {
+    // Tier gate: SSO requires Professional or higher
+    const gate = await gateFeature(db, user.tenantId, "sso", user.superAdmin);
+    if (gate) return gate;
+
     const row = await db
       .prepare("SELECT * FROM sso_configurations WHERE tenant_id = ? LIMIT 1")
       .bind(user.tenantId)
@@ -39,7 +39,8 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       },
     });
   } catch (e) {
-    // Table might not exist yet
+    console.error("SSO config load error:", e);
+    // Table might not exist yet, or tier-gate query failed
     return json({ configured: false, config: null });
   }
 };

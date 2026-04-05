@@ -13,13 +13,18 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ policy: resolveSecurityPolicy(null) });
 
-  const row = await db
-    .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-    .bind(user.tenantId, "security_policy")
-    .first<{ value: string }>();
+  try {
+    const row = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+      .bind(user.tenantId, "security_policy")
+      .first<{ value: string }>();
 
-  const policy = resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
-  return json({ policy });
+    const policy = resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
+    return json({ policy });
+  } catch (e) {
+    console.error("Security policy load error:", e);
+    return json({ policy: resolveSecurityPolicy(null) });
+  }
 };
 
 /** PUT: Update tenant security policy (owner only) */
@@ -59,47 +64,52 @@ export const PUT: RequestHandler = async ({ request, locals, platform }) => {
     }
   }
 
-  // Load existing, merge, save
-  const existing = await db
-    .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-    .bind(user!.tenantId, "security_policy")
-    .first<{ value: string }>();
+  try {
+    // Load existing, merge, save
+    const existing = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+      .bind(user!.tenantId, "security_policy")
+      .first<{ value: string }>();
 
-  const current = existing ? JSON.parse(existing.value) : {};
-  const merged = resolveSecurityPolicy({ ...current, ...updates });
+    const current = existing ? JSON.parse(existing.value) : {};
+    const merged = resolveSecurityPolicy({ ...current, ...updates });
 
-  if (existing) {
-    await db
-      .prepare(
-        "UPDATE tenant_preferences SET value = ?, updated_at = ? WHERE tenant_id = ? AND key = ?",
-      )
-      .bind(JSON.stringify(merged), new Date().toISOString(), user!.tenantId, "security_policy")
-      .run();
-  } else {
-    await db
-      .prepare(
-        "INSERT INTO tenant_preferences (id, tenant_id, key, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        crypto.randomUUID(),
-        user!.tenantId,
-        "security_policy",
-        JSON.stringify(merged),
-        new Date().toISOString(),
-        new Date().toISOString(),
-      )
-      .run();
+    if (existing) {
+      await db
+        .prepare(
+          "UPDATE tenant_preferences SET value = ?, updated_at = ? WHERE tenant_id = ? AND key = ?",
+        )
+        .bind(JSON.stringify(merged), new Date().toISOString(), user!.tenantId, "security_policy")
+        .run();
+    } else {
+      await db
+        .prepare(
+          "INSERT INTO tenant_preferences (id, tenant_id, key, value, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(
+          crypto.randomUUID(),
+          user!.tenantId,
+          "security_policy",
+          JSON.stringify(merged),
+          new Date().toISOString(),
+          new Date().toISOString(),
+        )
+        .run();
+    }
+
+    await writeAudit(db, {
+      tenantId: user!.tenantId!,
+      actorUserId: user!.userId,
+      actorEmail: user!.email,
+      action: "security_policy.updated",
+      targetType: "tenant",
+      targetId: user!.tenantId!,
+      detail: JSON.stringify(updates),
+    });
+
+    return json({ policy: merged });
+  } catch (e) {
+    console.error("Security policy save error:", e);
+    return json({ error: "Failed to save security policy" }, { status: 500 });
   }
-
-  await writeAudit(db, {
-    tenantId: user!.tenantId!,
-    actorUserId: user!.userId,
-    actorEmail: user!.email,
-    action: "security_policy.updated",
-    targetType: "tenant",
-    targetId: user!.tenantId!,
-    detail: JSON.stringify(updates),
-  });
-
-  return json({ policy: merged });
 };
