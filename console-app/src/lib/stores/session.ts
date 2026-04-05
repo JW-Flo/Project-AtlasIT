@@ -25,6 +25,7 @@ let fetched = false;
 
 export async function fetchSession(): Promise<SessionData | null> {
   if (fetched) {
+    sessionLoading.set(false);
     let current: SessionData | null = null;
     session.subscribe((v) => (current = v))();
     return current;
