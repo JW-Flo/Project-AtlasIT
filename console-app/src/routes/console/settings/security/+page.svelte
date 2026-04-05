@@ -607,6 +607,9 @@
                   on:click={() => ssoProtocol = 'saml'}
                 >SAML 2.0</button>
               </div>
+              {#if ssoProtocol === 'saml'}
+                <p class="text-xs text-warning">SAML 2.0 support is in beta. For production SSO, we recommend using OpenID Connect.</p>
+              {/if}
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -61,8 +61,13 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
-  const gate = await gateFeature(db, user.tenantId, "sso", user.superAdmin);
-  if (gate) return gate;
+  try {
+    const gate = await gateFeature(db, user.tenantId, "sso", user.superAdmin);
+    if (gate) return gate;
+  } catch (e) {
+    console.error("SSO tier gate error:", e);
+    return json({ error: "Failed to verify plan eligibility" }, { status: 500 });
+  }
 
   const body = await request.json().catch(() => ({}));
   const {
