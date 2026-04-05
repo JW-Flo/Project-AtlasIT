@@ -5,6 +5,7 @@ import type { AppEnv } from "../types";
 
 type WorkflowBindings = AppEnv["Bindings"] & {
   WORKFLOW: DurableObjectNamespace;
+  ATLAS_WORKFLOW?: Workflow;
 };
 type WorkflowEnv = {
   Bindings: WorkflowBindings;
@@ -59,8 +60,6 @@ workflowRoutes.post("/", requireRole("member"), async (c) => {
   }
 
   const workflowId = crypto.randomUUID();
-  const doId = c.env.WORKFLOW.idFromName(workflowId);
-  const stub = c.env.WORKFLOW.get(doId);
 
   const definition = {
     id: parsed.data.definitionId,
@@ -69,6 +68,31 @@ workflowRoutes.post("/", requireRole("member"), async (c) => {
     onFailure: parsed.data.onFailure,
     globalTimeoutMs: parsed.data.globalTimeoutMs,
   };
+
+  // Prefer Cloudflare Workflows when available, fall back to WorkflowDO
+  if (c.env.ATLAS_WORKFLOW) {
+    await c.env.ATLAS_WORKFLOW.create({
+      id: workflowId,
+      params: {
+        definition,
+        tenantId: parsed.data.tenantId,
+        correlationId: workflowId,
+        context: parsed.data.context ?? {},
+      },
+    });
+    return c.json(
+      {
+        status: "success",
+        data: { workflowId, status: "started", engine: "cloudflare-workflows" },
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      },
+      201,
+    );
+  }
+
+  const doId = c.env.WORKFLOW.idFromName(workflowId);
+  const stub = c.env.WORKFLOW.get(doId);
 
   const response = await stub.fetch(
     new Request("http://workflow/start", {
@@ -97,6 +121,27 @@ workflowRoutes.post("/", requireRole("member"), async (c) => {
 
 workflowRoutes.get("/:id", requireRole("member"), async (c) => {
   const { id } = c.req.param();
+
+  // Try Cloudflare Workflows first
+  if (c.env.ATLAS_WORKFLOW) {
+    try {
+      const instance = await c.env.ATLAS_WORKFLOW.get(id);
+      const instanceStatus = await instance.status();
+      return c.json({
+        status: "success",
+        data: {
+          workflowId: id,
+          engine: "cloudflare-workflows",
+          ...instanceStatus,
+        },
+        correlationId: c.get("correlationId"),
+        timestamp: new Date().toISOString(),
+      });
+    } catch {
+      // Not found in CF Workflows — fall through to WorkflowDO
+    }
+  }
+
   const doId = c.env.WORKFLOW.idFromName(id);
   const stub = c.env.WORKFLOW.get(doId);
 
@@ -178,6 +223,26 @@ workflowRoutes.post("/:id/steps/:stepId/fail", requireRole("member"), async (c) 
 
 workflowRoutes.post("/:id/cancel", requireRole("member"), async (c) => {
   const { id } = c.req.param();
+
+  // Try Cloudflare Workflows first
+  if (c.env.ATLAS_WORKFLOW) {
+    try {
+      const instance = await c.env.ATLAS_WORKFLOW.get(id);
+      await instance.terminate();
+      return c.json(
+        {
+          status: "success",
+          data: { status: "cancelled", engine: "cloudflare-workflows" },
+          correlationId: c.get("correlationId"),
+          timestamp: new Date().toISOString(),
+        },
+        200,
+      );
+    } catch {
+      // Not found in CF Workflows — fall through to WorkflowDO
+    }
+  }
+
   const doId = c.env.WORKFLOW.idFromName(id);
   const stub = c.env.WORKFLOW.get(doId);
 

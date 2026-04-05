@@ -270,6 +270,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   })();
   const actionContext: ActionContext = {
     workflow: c.env.WORKFLOW,
+    atlasWorkflow: c.env.ATLAS_WORKFLOW,
     selfUrl: c.env.SELF_URL,
     adapterUrls,
     sharedDb,
@@ -345,6 +346,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     const jmlPromise = classifyAndExecute(tenantId, jmlChange, {
       db: sharedDb,
       workflow: c.env.WORKFLOW,
+      atlasWorkflow: c.env.ATLAS_WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
       evidenceBucket: c.env.EVIDENCE ?? undefined,
