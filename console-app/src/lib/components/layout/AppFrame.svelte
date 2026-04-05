@@ -88,7 +88,7 @@
         { href: "/console/access-reviews", label: "Access Reviews", icon: ClipboardCheck },
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
         { href: "/console/incidents", label: "Incidents", icon: AlertTriangle },
-        { href: "/console/nhi", label: "NHI Governance", icon: FolderCog },
+        { href: "/console/nhi", label: "NHI Governance", icon: ShieldCheck },
         { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
       ],
     },

@@ -140,10 +140,29 @@ const AI_TOOL_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /\botter\.ai/i, category: "ai_productivity" },
   { pattern: /\bfireflies\.ai/i, category: "ai_productivity" },
   { pattern: /\bgong\b/i, category: "ai_productivity" },
+  { pattern: /\bglean\b/i, category: "ai_productivity" },
 
   // AI data/analytics
   { pattern: /\bdatabricks/i, category: "ml_platform" },
   { pattern: /\bsnowflake\s*cortex/i, category: "ml_platform" },
+
+  // Additional AI coding tools
+  { pattern: /\bdevin\b|cognition\.ai/i, category: "ai_coding" },
+  { pattern: /\bcline\b|continue\.dev/i, category: "ai_coding" },
+  { pattern: /\bcodewhisperer|amazon\s*q\b/i, category: "ai_coding" },
+  { pattern: /\bv0\.dev|vercel\s*v0/i, category: "ai_coding" },
+
+  // Additional LLMs
+  { pattern: /\bgrok\b|x\.ai/i, category: "llm" },
+  { pattern: /\bharvey\.ai|harvey\s*ai/i, category: "llm" },
+
+  // AI writing/content (additional)
+  { pattern: /\bwriter\.com|writer\s*ai/i, category: "ai_writing" },
+
+  // AI video/voice
+  { pattern: /\bsynthesia/i, category: "ai_video" },
+  { pattern: /\belevenlabs/i, category: "ai_productivity" },
+  { pattern: /\bsora\b/i, category: "ai_video" },
 ];
 
 /**

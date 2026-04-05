@@ -19,6 +19,8 @@ import { executeStepTask } from "./lib/step-executor";
 import { registerBuiltinHandlers } from "./lib/handler-registry";
 import { processExpiredCampaigns } from "./lib/access-review-auto-revoke";
 import { processExpiringNhiCredentials } from "./lib/nhi-expiry-processor";
+import { syncNhiFromAdapters } from "./lib/nhi-sync";
+import { syncDiscoveredApps } from "./lib/discovery-sync";
 import {
   collectAllAdapterEvidence,
   parseControlRef,
@@ -721,6 +723,77 @@ const worker = {
       }
     }
 
+    // ── Duty 5a: NHI credential discovery + sync from adapters ────────────
+    //    Discover non-human identities (service accounts, API keys, deploy keys)
+    //    from connected adapters and upsert into nhi_credentials.
+    let nhiSynced = 0;
+    let nhiSyncErrors = 0;
+    try {
+      const tenantRows = await sharedDb
+        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 200")
+        .all<{ tenant_id: string }>();
+
+      for (const row of tenantRows.results ?? []) {
+        try {
+          const result = await syncNhiFromAdapters(
+            adapterUrls,
+            row.tenant_id,
+            sharedDb,
+            crypto.randomUUID(),
+          );
+          nhiSynced += result.created + result.updated;
+        } catch {
+          nhiSyncErrors++;
+        }
+      }
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty5a.nhi_sync_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
+    // ── Duty 5b: Shadow AI / SaaS discovery scan ────────────────────────
+    //    Scan OAuth grants from capable adapters, classify discovered apps,
+    //    detect shadow AI tools, and create incidents for high-risk grants.
+    let discoveryApps = 0;
+    let discoveryGrants = 0;
+    let discoveryAiTools = 0;
+    try {
+      const tenantRows = await sharedDb
+        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 200")
+        .all<{ tenant_id: string }>();
+
+      for (const row of tenantRows.results ?? []) {
+        try {
+          const result = await syncDiscoveredApps(
+            adapterUrls,
+            row.tenant_id,
+            sharedDb,
+            crypto.randomUUID(),
+          );
+          discoveryApps += result.newApps + result.updatedApps;
+          discoveryGrants += result.totalGrants;
+          discoveryAiTools += result.aiToolsFound;
+        } catch {
+          // continue to next tenant
+        }
+      }
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "duty5b.discovery_scan_failed",
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+
     // ── Duty 5: NHI token expiry processing ──────────────────────────────
     //    Scan nhi_credentials for tokens expiring within grace period or
     //    already expired. Emit compliance evidence and update statuses.
@@ -860,10 +933,15 @@ const worker = {
         evidenceCollected,
         scoresRefreshed,
         controlsPromoted,
+        nhiSynced,
+        nhiSyncErrors,
         nhiExpirySoon,
         nhiExpired,
         nhiRotationPending,
         nhiIncidentsCreated,
+        discoveryApps,
+        discoveryGrants,
+        discoveryAiTools,
         insightsWritten,
         slaBreach,
         autoResolved,

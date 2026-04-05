@@ -58,7 +58,10 @@ async function populateNhiItems(
   for (const nhi of nhis as any[]) {
     const id = crypto.randomUUID();
     await (db as any)
-      .prepare("INSERT ...")
+      .prepare(
+        `INSERT INTO access_review_items (id, campaign_id, tenant_id, user_id, user_email, app_id, app_name, role, reviewer_email, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+      )
       .bind(id, campaignId, tenantId, nhi.id, nhi.display_name, nhi.provider, `${nhi.provider} - ${nhi.credential_type}`, nhi.credential_type, nhi.owner_email ?? null)
       .run();
 
