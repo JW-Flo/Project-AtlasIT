@@ -8,7 +8,7 @@
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
-  import { fetchSession, refreshSession } from "../../stores/session";
+  import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache } from "../../stores/compliance";
   import {
     LayoutDashboard,
@@ -184,6 +184,8 @@
     impersonatedBy = sessionData.impersonatedBy || "";
     orgName = sessionData.orgName || "";
     applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
+    // Populate the shared session store so child pages can react to it
+    sessionStore.set(sessionData);
   }
 
   async function loadSession(force = false) {

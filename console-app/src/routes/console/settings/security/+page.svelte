@@ -49,7 +49,10 @@
     ssoLoading = true;
     ssoError = "";
     try {
-      const res = await fetch("/api/tenant/sso");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch("/api/tenant/sso", { signal: controller.signal });
+      clearTimeout(timeout);
       if (res.status === 403) {
         const data = await res.json().catch(() => ({}));
         ssoTierBlocked = true;
@@ -211,15 +214,9 @@
     loadPolicy();
   }
 
-  // Always load SSO config for any authenticated user — the API enforces tier gating
-  let ssoDataLoaded = false;
-  $: if ($session?.authenticated && !ssoDataLoaded) {
-    ssoDataLoaded = true;
-    loadSsoConfig();
-  }
-
   onMount(async () => {
-    await loadStatus();
+    // Load all sections in parallel on mount — the API endpoints handle auth
+    await Promise.all([loadStatus(), loadSsoConfig()]);
   });
 
   async function loadStatus() {

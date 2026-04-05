@@ -1,5 +1,5 @@
 import type { Handle, HandleServerError } from "@sveltejs/kit";
-import { redirect } from "@sveltejs/kit";
+import { redirect, isRedirect, isHttpError } from "@sveltejs/kit";
 import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
@@ -9,9 +9,9 @@ import { validateEncryptionConfig } from "$lib/server/credentials";
  * Everything else under /api/* is deny-by-default.
  */
 const PUBLIC_API_PREFIXES = [
-  "/api/auth/",          // login, register, SSO, MFA verify
-  "/api/health",         // health checks
-  "/api/trust/",         // public trust center
+  "/api/auth/", // login, register, SSO, MFA verify
+  "/api/health", // health checks
+  "/api/trust/", // public trust center
   "/api/billing/webhook", // Stripe webhooks (verified by signature)
   "/api/platform/health", // platform status (public)
 ];
@@ -234,8 +234,8 @@ export const handle: Handle = async ({ event, resolve }) => {
         }
       }
     } catch (e) {
-      // Re-throw redirects; only swallow DB errors
-      if (e instanceof Response || (e as any)?.status) throw e;
+      // Re-throw SvelteKit redirects and HTTP errors; only swallow DB errors
+      if (isRedirect(e) || isHttpError(e)) throw e;
       console.error(
         JSON.stringify({
           level: "error",

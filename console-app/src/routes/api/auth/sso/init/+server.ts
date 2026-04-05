@@ -25,9 +25,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
   let config;
   try {
     const row = await db
-      .prepare(
-        "SELECT * FROM sso_configurations WHERE tenant_id = ? AND enabled = 1 LIMIT 1",
-      )
+      .prepare("SELECT * FROM sso_configurations WHERE tenant_id = ? AND enabled = 1 LIMIT 1")
       .bind(tenantId)
       .first<SSOConfigRow>();
 
@@ -62,7 +60,13 @@ export const GET: RequestHandler = async ({ url, platform }) => {
       console.error("Failed to store SSO state:", e);
     }
 
-    const redirectUrl = buildAuthnRequestUrl(config, spEntityId, acsUrl, state);
+    let redirectUrl: string;
+    try {
+      redirectUrl = buildAuthnRequestUrl(config, spEntityId, acsUrl, state);
+    } catch (e) {
+      console.error("Failed to build SAML AuthnRequest URL:", e);
+      return json({ error: "Failed to initiate SSO — check SAML configuration" }, { status: 500 });
+    }
     throw redirect(302, redirectUrl);
   }
 
@@ -90,12 +94,13 @@ export const GET: RequestHandler = async ({ url, platform }) => {
       console.error("Failed to store SSO state:", e);
     }
 
-    const authorizationUrl = await buildAuthorizationUrl(
-      config,
-      callbackUrl,
-      state,
-      codeChallenge,
-    );
+    let authorizationUrl: string;
+    try {
+      authorizationUrl = await buildAuthorizationUrl(config, callbackUrl, state, codeChallenge);
+    } catch (e) {
+      console.error("Failed to build OIDC authorization URL:", e);
+      return json({ error: "Failed to initiate SSO — check OIDC configuration" }, { status: 500 });
+    }
     throw redirect(302, authorizationUrl);
   }
 
