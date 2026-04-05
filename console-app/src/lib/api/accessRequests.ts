@@ -31,6 +31,7 @@ export async function createAccessRequest(input: {
   subjectRef: string;
   resource: string;
   justification?: string;
+  roleRequested?: string;
 }): Promise<AccessRequest> {
   const body = JSON.stringify(input);
   const res = await api<{ request: AccessRequest }>(`/api/access-requests`, {

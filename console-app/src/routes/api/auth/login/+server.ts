@@ -21,7 +21,18 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
 
   const db = env.ATLAS_SHARED_DB;
   const kv = env.KV_SESSIONS;
-  const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET || "atlasit-dev-jwt-secret";
+  const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET;
+  if (!jwtSecret) {
+    // Fail-fast: never use a default secret. In dev, set JWT_SECRET in .dev.vars.
+    console.error(
+      JSON.stringify({
+        level: "error",
+        event: "auth.missing_jwt_secret",
+        message: "JWT_SECRET or SESSION_SECRET must be configured",
+      }),
+    );
+    return json({ error: "Authentication service misconfigured" }, { status: 503 });
+  }
 
   if (!db) {
     // Fallback: allow super admin login only when ADMIN_PASSWORD is explicitly configured

@@ -128,9 +128,9 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
             actorEmail: user.email ?? "unknown",
             action: "access_request.created",
             targetType: "access_request",
-            targetId: data?.id,
-            detail: data?.resource
-              ? JSON.stringify({ resource: data.resource })
+            targetId: data?.request?.id ?? data?.id,
+            detail: data?.request?.resource
+              ? JSON.stringify({ resource: data.request.resource })
               : undefined,
           });
         } catch {
