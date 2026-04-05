@@ -26,6 +26,8 @@ import {
   analyzeComplianceGaps,
   detectComplianceDrift,
   detectRiskAnomalies,
+  buildCdtPayloadFromEvidence,
+  flattenAdapterResults,
 } from "@atlasit/shared";
 import type { DriftEvent } from "@atlasit/shared";
 
@@ -248,6 +250,19 @@ const worker = {
     //    and write to compliance_evidence in D1.
     let evidenceCollected = 0;
     const adapterErrorList: { adapter: string; controlRef: string; error: string }[] = [];
+    // Capture per-tenant evidence for Duty 2.5 CDT payload construction
+    const tenantEvidenceMap = new Map<
+      string,
+      Array<{
+        slug: string;
+        items: Array<{
+          type: string;
+          controlRefs: string[];
+          status: "pass" | "fail" | "unknown";
+          details: Record<string, unknown>;
+        }>;
+      }>
+    >();
     if (Object.keys(adapterUrls).length > 0) {
       // Get distinct tenant IDs from tenants table
       const { results: tenantRows } = await sharedDb
@@ -257,6 +272,8 @@ const worker = {
       const collectSettled = await Promise.allSettled(
         (tenantRows ?? []).map(async (row) => {
           const adapterResults = await collectAllAdapterEvidence(adapterUrls, row.id);
+          // Store for Duty 2.5
+          tenantEvidenceMap.set(row.id, adapterResults);
           let rowsWritten = 0;
           for (const result of adapterResults) {
             for (const item of result.items) {
@@ -378,10 +395,14 @@ const worker = {
       const policySettled = await Promise.allSettled(
         (policyTenants ?? []).map(async (row) => {
           try {
+            // Build CDT payload from collected adapter evidence
+            const adapterResults = tenantEvidenceMap.get(row.id) ?? [];
+            const flatItems = flattenAdapterResults(adapterResults);
+            const cdtPayload = buildCdtPayloadFromEvidence(flatItems);
             await fetch(`${complianceWorkerUrl}/api/v1/policies/evaluate-all`, {
               method: "POST",
               headers: { "x-tenant-id": row.id, "content-type": "application/json" },
-              body: JSON.stringify({ input: {} }),
+              body: JSON.stringify({ input: cdtPayload }),
             });
             return 1;
           } catch {

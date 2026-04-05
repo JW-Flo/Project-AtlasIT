@@ -304,10 +304,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
 
   if (evidenceScores && evidenceScores.length > 0) {
-    // Blend: use self-assessed as the base (covers all controls), then incorporate
-    // evidence-grounded data where it provides ADDITIONAL detail (e.g. controlsVerified
-    // from evidence auto-promotion). Never allow stale evidence scores to inflate
-    // beyond what the controls actually show.
+    // Blend: evidence-grounded scores take priority when evidence exists.
+    // Self-assessed scores are only used for frameworks the compliance-worker
+    // doesn't cover. Within a covered framework, take the MAX score to avoid
+    // penalizing tenants who have self-assessed but haven't connected adapters.
     const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
 
     const blended: FrameworkScore[] = [];
@@ -315,9 +315,15 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
     for (const ev of evidenceScores) {
       const sa = selfMap.get(ev.framework);
-      // Use self-assessed when it has more controls (stale evidence eval may have fewer)
-      if (sa && sa.controlsTotal > ev.controlsTotal) {
-        blended.push(sa);
+      if (sa) {
+        // Use the higher score — evidence can promote beyond self-assessed
+        // (via adapter pass + verification), and self-assessed shouldn't be
+        // wiped out when adapters aren't connected yet.
+        blended.push(
+          ev.score >= sa.score
+            ? ev
+            : { ...sa, controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal) },
+        );
       } else {
         blended.push(ev);
       }
@@ -410,15 +416,19 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   let source: string;
 
   if (scores && scores.length > 0) {
-    // Blend: prefer self-assessed when it has more controls (stale evidence may have fewer)
+    // Blend: evidence scores take priority; self-assessed used for uncovered frameworks
     const selfMap = new Map(selfScores.map((s) => [s.framework, s]));
     const blended: FrameworkScore[] = [];
     const covered = new Set(scores.map((s) => s.framework));
 
     for (const ev of scores) {
       const sa = selfMap.get(ev.framework);
-      if (sa && sa.controlsTotal > ev.controlsTotal) {
-        blended.push(sa);
+      if (sa) {
+        blended.push(
+          ev.score >= sa.score
+            ? ev
+            : { ...sa, controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal) },
+        );
       } else {
         blended.push(ev);
       }
