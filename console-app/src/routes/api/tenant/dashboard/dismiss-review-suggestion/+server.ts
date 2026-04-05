@@ -36,14 +36,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       dismissed.push(type);
     }
 
-    await db
-      .prepare(
-        `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
-         VALUES (?, 'dismissed_review_suggestions', ?, datetime('now'))
-         ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      )
-      .bind(user.tenantId, JSON.stringify(dismissed))
-      .run();
+    await db.batch([
+      db
+        .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+        .bind(user.tenantId, "dismissed_review_suggestions"),
+      db
+        .prepare("INSERT INTO tenant_preferences (tenant_id, key, value) VALUES (?, ?, ?)")
+        .bind(user.tenantId, "dismissed_review_suggestions", JSON.stringify(dismissed)),
+    ]);
 
     return json({ success: true });
   } catch (e) {

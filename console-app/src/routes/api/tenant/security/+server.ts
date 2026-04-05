@@ -76,16 +76,14 @@ export const PUT: RequestHandler = async ({ request, locals, platform }) => {
     const mergedJson = JSON.stringify(merged);
     const now = new Date().toISOString();
 
-    // Delete + insert to avoid schema mismatches across environments
+    // Delete + insert; production table may lack updated_at column
     await db.batch([
       db
         .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
         .bind(user!.tenantId, "security_policy"),
       db
-        .prepare(
-          "INSERT INTO tenant_preferences (tenant_id, key, value, updated_at) VALUES (?, ?, ?, ?)",
-        )
-        .bind(user!.tenantId, "security_policy", mergedJson, now),
+        .prepare("INSERT INTO tenant_preferences (tenant_id, key, value) VALUES (?, ?, ?)")
+        .bind(user!.tenantId, "security_policy", mergedJson),
     ]);
 
     await writeAudit(db, {

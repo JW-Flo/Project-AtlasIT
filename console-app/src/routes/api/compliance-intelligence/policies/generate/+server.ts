@@ -118,14 +118,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       const current: string[] = existing?.value ? JSON.parse(existing.value) : [];
       if (!current.includes(policyType)) current.push(policyType);
       const newValue = JSON.stringify(current);
-      await db
-        .prepare(
-          `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
-           VALUES (?, 'generated_policies', ?, datetime('now'))
-           ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
-        )
-        .bind(tenantId, newValue, newValue)
-        .run();
+      await db.batch([
+        db
+          .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+          .bind(tenantId, "generated_policies"),
+        db
+          .prepare("INSERT INTO tenant_preferences (tenant_id, key, value) VALUES (?, ?, ?)")
+          .bind(tenantId, "generated_policies", newValue),
+      ]);
     } catch {
       // Non-fatal: preference write failure should not fail the generation response
     }
