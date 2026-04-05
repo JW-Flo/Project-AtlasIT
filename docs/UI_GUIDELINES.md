@@ -47,6 +47,12 @@ Use token spacing scale (2,4,8,12,16,20,24,32). Prefer 8 multiples.
 Dark default; user override persisted in localStorage key `atlasit.theme`.
 Adding new token: update both light & dark sets and docs.
 
+### FOUC Prevention
+
+`app.html` includes a blocking inline `<script>` in `<head>` that reads the theme from `localStorage` and sets `data-theme` on `<html>` before first paint. The CSS custom properties in `app.css` key off `:root[data-theme="dark"]`, so this eliminates the white flash that would otherwise occur while SvelteKit hydrates.
+
+**Never remove this script.** If you change theme storage keys or add new themes, update both `app.html` (blocking script) and `src/lib/stores/theme.ts` (runtime logic).
+
 ## Metrics & Instrumentation
 
 Use `ux-metrics.ts` mark() for significant interactions. Name format: `ui:<domain>:<action>`.

@@ -1,35 +1,67 @@
-Project Ignite sounds ambitious and cutting-edge, focusing on implementing a zero-trust security model while managing DevSecOps processes across both local and cloud environments. Let's explore how this platform can be effectively set up and managed:
+# AtlasIT CI/CD Pipeline
 
-### Key Components
+**Last updated:** April 2026
 
-1. **Zero-Trust Security Model**
-   - **Identity Verification**: Use robust identity and access management (IAM) policies in both cloud and local environments. Implement multifactor authentication (MFA) and least-privilege access principles.
-   - **Network Segmentation**: Ensure network communications are encrypted and segmented to limit potential lateral movement within the infrastructure.
-   - **Continuous Monitoring**: Implement real-time monitoring and anomaly detection using logs, alerts, and security information and event management (SIEM) systems.
+## Overview
 
-2. **Local Environment (Prometheus)**
-   - **Monitoring and Alerting**: Use Prometheus for metrics collection and monitoring of server performance. Set up alerting rules to notify of any deviations from normal behavior.
-   - **Data Security**: Ensure that Prometheus data is encrypted at rest and in transit. Regularly update and patch Prometheus to safeguard against vulnerabilities.
+All production deploys flow through a single workflow: `.github/workflows/deploy-on-merge.yml`. It triggers on push to `main` and via `workflow_dispatch`.
 
-3. **Cloud Environment (GCP→AWS)**
-   - **Cross-Cloud Collaboration**: Utilize services like Google Cloud's Anthos and AWS Outposts for hybrid cloud management, ensuring seamless operation across both platforms.
-   - **Automation and Infrastructure as Code (IaC)**: Use Terraform or AWS CloudFormation for consistent environment setup and scaling. Implement CI/CD pipelines tailored for poly-cloud services.
-   - **Cloud Security Best Practices**: Follow specific security best practices for both GCP and AWS, like configuring identity policies according to well-architected frameworks provided by the respective platforms.
+## Pipeline Architecture
 
-### Implementation Strategies
+```
+Push to main
+  ↓ dorny/paths-filter (detect changed paths)
+  ↓ Conditional deploy jobs (only affected workers)
+  ↓ pnpm install + build (per worker)
+  ↓ wrangler deploy
+  ↓ scripts/smoke-test.sh <worker> <url>
+```
 
-- **DevSecOps Practices**: Embed security into every stage of the DevOps lifecycle, ensuring developers, operations, and security teams collaborate using secure coding practices, vulnerability assessments, and automated compliance checks.
-  
-- **Integration and Tooling**: Leverage best-of-breed tools that complement each other. GitHub/GitLab for version control and CI/CD, Jenkins/Spinnaker for pipeline management, and SonarQube/Checkmarx for static code analysis.
+## Workers Covered
 
-- **Observability and Logging**: Implement centralized logging and tracing solutions that aggregate data from all environments, such as Stackdriver for GCP and CloudWatch for AWS, with integration capabilities with Prometheus.
+| Worker                  | Path Filter                        | Build Notes                                |
+| ----------------------- | ---------------------------------- | ------------------------------------------ |
+| console-app             | `console-app/**`, `packages/**`    | SvelteKit → CF Pages                       |
+| core-api                | `core-api/**`, `packages/**`       | Standalone install (not in workspaces)      |
+| ai-orchestrator         | `ai-orchestrator/**`, `packages/**`| Workspace member                           |
+| compliance-worker       | `compliance-worker/**`, `packages/**`, `shared/**` | Workspace member              |
+| onboarding              | `onboarding/**`, `packages/**`     | Workspace member                           |
+| dispatch-worker         | `dispatch-worker/**`, `packages/**`| Standalone install                         |
+| documentation-worker    | `documentation-worker/**`          | Pre-built (`main = "index.js"`)            |
+| email-worker            | `email-worker/**`                  | TypeScript build                           |
+| apex-redirect-worker    | `apex-redirect-worker/**`          | TypeScript build                           |
+| scheduler-worker        | `scheduler-worker/**`              | TypeScript build                           |
+| marketplace             | `marketplace/**`, `packages/**`    | Standalone install                         |
+| slack-approval-worker   | `slack-approval-worker/**`         | Pre-built JS                               |
 
-- **Incident Response and Recovery**: Develop and maintain an incident response plan. Conduct regular drills and ensure backups and disaster recovery processes are in place and tested frequently.
+## Security Scanning
 
-### Governance and Compliance
+Two checks run on every PR:
+- **GitGuardian** — secret detection in diffs
+- **Gitleaks** — broad secret scanning (GH Actions)
 
-- **Policy Enforcement**: Automate policy configurations using tools like Open Policy Agent (OPA) or HashiCorp Sentinel.
-  
-- **Compliance Automation**: Leverage auditing and compliance services such as AWS Config/Audit Manager and GCP Security Command Center to ensure adherence to standards like SOC 2, ISO 27001, and GDPR.
+Weekly scheduled scans:
+- **Snyk** — dependency vulnerability scanning
+- **ZAP** — DAST security scanning
 
-By maintaining a focus on zero-trust principles and leveraging both DevSecOps best practices and automation, Project Ignite can achieve a secure, resilient, and flexible platform across multiple environments. Consider continually evaluating and iterating on these practices to adapt to evolving security landscapes and technological advancements.
+## Smoke Tests
+
+Post-deploy smoke tests use `scripts/smoke-test.sh <worker-name> <base-url>`:
+- Validates `/health` or root endpoint returns 200
+- Workers behind CF Access use `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` env vars
+- Supports: console-app, core-api, ai-orchestrator, compliance-worker, onboarding, documentation-worker, apex-redirect-worker, email-worker
+
+## Key Conventions
+
+- **Shared package build**: Always `rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json` in `packages/shared` before deploying — stale `.tsbuildinfo` can cause empty `dist/`
+- **Workspace vs standalone**: Workers in `package.json` `workspaces` share root `node_modules`. Standalone workers (`core-api`, `dispatch-worker`, `marketplace`) need their own `pnpm install --no-frozen-lockfile`
+- **Wrangler named envs**: `[env.<name>]` sections do NOT inherit top-level bindings — each must declare all bindings explicitly
+- **Debug deploys**: Use `WRANGLER_LOG=debug` env var (not `--log-level` flag)
+- **Dry run validation**: `npx wrangler deploy --dry-run --config <path>` before pushing CI changes
+
+## Pre-Push Checklist
+
+1. Verify CLI flags exist (`npx wrangler deploy --help`)
+2. Validate shell scripts (`bash -n scripts/<name>.sh`)
+3. Test locally with `--dry-run`
+4. Ensure path filters in deploy-on-merge.yml cover all modified directories

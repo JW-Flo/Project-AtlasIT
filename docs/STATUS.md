@@ -1,6 +1,6 @@
 # AtlasIT Platform Status
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 ## Current State
 
@@ -33,7 +33,13 @@
 | 14 — Workflow Trust & Evidence      | ✅ Complete     | #284       | Step idempotency, DLQ console UI, evidence retention protections, auth hardening (DLQ reads + workflow GET), Operations admin page                                                                                                           |
 | 15 — Continuous Validation          | ✅ Complete     | #285       | k6 SLO scripts, Snyk + ZAP CI, Playwright smoke CI, deep health checks, journey completion metrics                                                                                                                                           |
 | 15.5 — Platform Polish & Evidence   | ✅ Complete     | —          | NHI/SaaS discovery fixed, evidence card expand+detail panel, auto-evidence collection (Collect Now), auto-tagging, 6 new platform state probes, operations data enrichment, badge color fix, CF Access deep health, pagination fix, adapter-specific gap recommendations, 11 additional UI/bug fixes |
-| 16 — Market Readiness & PLG Entry   | 📋 Planned      | —          | Pricing, billing (Stripe), self-serve onboarding, analytics                                                                                                                                                                                  |
+| 16 — Market Readiness & PLG Entry   | ✅ Complete     | —          | Pricing, billing (Stripe), self-serve onboarding, analytics                                                                                                                                                                                  |
+| 17 — SSO, Analytics Export & Visual Identity | ✅ Complete | —     | SAML 2.0 + OIDC SSO, analytics CSV export, SSO config UI                                                                                                                                                                                     |
+| 18 — Security Hardening & QA       | ✅ Complete     | —          | Unsigned cookie removal, fail-closed auth, JWT secret hardening, deny-by-default API routes, Slack HMAC replay protection                                                                                                                    |
+| Support Infrastructure             | ✅ Complete     | #347–#350  | Email worker, terms/privacy pages, DSAR tracking, docs 404 fix, footer links, status redirect                                                                                                                                                |
+| Deploy Pipeline Validation          | ✅ Complete     | #351       | CI coverage for 6 missing workers (documentation, apex-redirect, email, slack-approval, scheduler, marketplace)                                                                                                                               |
+| Repo Cleanup & Organization         | ✅ Complete     | #352–#353  | Removed 10 redundant workflows, cleaned root, relocated docs to /docs                                                                                                                                                                        |
+| Console Performance                 | ✅ Complete     | #354–#355  | Server-side data prefetch, parallelized compliance API, cache headers, FOUC fix (blocking theme init)                                                                                                                                        |
 
 ## Deployed Workers
 

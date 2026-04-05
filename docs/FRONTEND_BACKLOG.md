@@ -24,7 +24,7 @@ Maintains pending enhancements and backend data gaps post Batch 0.
 
 ## Resilience & Performance
 
-- Use fetchWithRetry for initial loader (safe GET) or prefetch refresh button only.
+- ~~Use fetchWithRetry for initial loader (safe GET) or prefetch refresh button only.~~ ✅ Done — server-side `+page.server.ts` prefetch with client-side fallback
 - Offline caching: last successful dashboard JSON persisted (localStorage or IDB) for offline view.
 - Skeleton refinement: consistent height alignment for metric cards during load.
 - Adaptive relative time ticker (currently static) – integrate startRelativeTimeTicker to force periodic re-render.
@@ -36,7 +36,7 @@ Maintains pending enhancements and backend data gaps post Batch 0.
 
 ## Theming
 
-- Dark/light theme toggle (CSS variables) with prefers-color-scheme initial state.
+- ~~Dark/light theme toggle (CSS variables) with prefers-color-scheme initial state.~~ ✅ Done — dark/light toggle implemented, FOUC prevention via blocking `<script>` in `app.html`
 - High contrast mode variant for a11y.
 
 ## Backend Data Gaps / Coordination
