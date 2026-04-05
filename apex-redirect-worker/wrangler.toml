@@ -4,4 +4,4 @@ compatibility_date = "2025-09-30"
 workers_dev = false
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 zone_id = "1a5cc8cc62bc51b21430f970dc86fec7"
-routes = ["atlasit.pro/*"]
+routes = ["atlasit.pro/*", "status.atlasit.pro/*"]
