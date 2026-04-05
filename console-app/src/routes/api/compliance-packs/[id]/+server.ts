@@ -10,32 +10,37 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
-  const pack = await db
-    .prepare("SELECT * FROM compliance_packs WHERE id = ?")
-    .bind(params.id)
-    .first();
-  if (!pack) return json({ error: "Pack not found" }, { status: 404 });
+  try {
+    const pack = await db
+      .prepare("SELECT * FROM compliance_packs WHERE id = ?")
+      .bind(params.id)
+      .first();
+    if (!pack) return json({ error: "Pack not found" }, { status: 404 });
 
-  const controlsResult = await db
-    .prepare("SELECT * FROM compliance_pack_controls WHERE pack_id = ? ORDER BY sort_order ASC")
-    .bind(params.id)
-    .all();
-  const controls = controlsResult.results ?? [];
+    const controlsResult = await db
+      .prepare("SELECT * FROM compliance_pack_controls WHERE pack_id = ? ORDER BY sort_order ASC")
+      .bind(params.id)
+      .all();
+    const controls = controlsResult.results ?? [];
 
-  const installation = await db
-    .prepare("SELECT * FROM tenant_compliance_packs WHERE tenant_id = ? AND pack_id = ?")
-    .bind(user.tenantId, params.id)
-    .first();
+    const installation = await db
+      .prepare("SELECT * FROM tenant_compliance_packs WHERE tenant_id = ? AND pack_id = ?")
+      .bind(user.tenantId, params.id)
+      .first();
 
-  return json({
-    pack: {
-      ...pack,
-      is_builtin: pack.is_builtin === 1,
-      installed: installation !== null,
-      installedAt: installation?.installed_at ?? null,
-    },
-    controls,
-  });
+    return json({
+      pack: {
+        ...pack,
+        is_builtin: pack.is_builtin === 1,
+        installed: installation !== null,
+        installedAt: installation?.installed_at ?? null,
+      },
+      controls,
+    });
+  } catch (e) {
+    console.error("Compliance pack load error:", e);
+    return json({ error: "Failed to load compliance pack" }, { status: 500 });
+  }
 };
 
 export const PUT: RequestHandler = async ({ params, request, locals, platform }) => {

@@ -1,9 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import {
-  getWorkerBase,
-  safeProxyFetch,
-} from "../../_proxy-helpers";
+import { getWorkerBase, safeProxyFetch } from "../../_proxy-helpers";
 
 interface FrameworkScore {
   framework: string;
@@ -30,9 +27,10 @@ function computeGrade(score: number): string {
 }
 
 async function ensureScoreTables(db: any): Promise<void> {
-  await db.batch([
-    db.prepare(
-      `CREATE TABLE IF NOT EXISTS compliance_scores (
+  try {
+    await db.batch([
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS compliance_scores (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         tenant_id TEXT NOT NULL,
         framework TEXT NOT NULL,
@@ -45,9 +43,9 @@ async function ensureScoreTables(db: any): Promise<void> {
         calculated_at TEXT NOT NULL DEFAULT (datetime('now')),
         UNIQUE(tenant_id, framework)
       )`,
-    ),
-    db.prepare(
-      `CREATE TABLE IF NOT EXISTS compliance_history (
+      ),
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS compliance_history (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
         tenant_id TEXT NOT NULL,
         framework TEXT NOT NULL,
@@ -55,8 +53,11 @@ async function ensureScoreTables(db: any): Promise<void> {
         grade TEXT NOT NULL,
         recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
-    ),
-  ]);
+      ),
+    ]);
+  } catch (e) {
+    console.error("ensureScoreTables error:", e);
+  }
 }
 
 // ── Evidence-grounded scoring via compliance-worker ──────────────────────────
@@ -128,20 +129,12 @@ async function fetchEvidenceGroundedScores(
         // Compute score from controls if scores array wasn't returned
         const controls = data.controls;
         const total = controls.length;
-        const weightSum = controls.reduce(
-          (sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0),
-          0,
-        );
-        const score =
-          total > 0
-            ? Math.round((weightSum / total) * 100 * 100) / 100
-            : 0;
+        const weightSum = controls.reduce((sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0), 0);
+        const score = total > 0 ? Math.round((weightSum / total) * 100 * 100) / 100 : 0;
         const implemented = controls.filter(
           (c) => c.status === "implemented" || c.status === "verified",
         ).length;
-        const verified = controls.filter(
-          (c) => c.status === "verified",
-        ).length;
+        const verified = controls.filter((c) => c.status === "verified").length;
 
         allScores.push({
           framework: fw,
@@ -163,11 +156,7 @@ async function fetchEvidenceGroundedScores(
 
 // ── Persist scores to D1 ─────────────────────────────────────────────────────
 
-async function persistScores(
-  db: any,
-  tenantId: string,
-  scores: FrameworkScore[],
-): Promise<void> {
+async function persistScores(db: any, tenantId: string, scores: FrameworkScore[]): Promise<void> {
   const upsertStmts: any[] = [];
   const historyStmts: any[] = [];
 
@@ -227,8 +216,9 @@ async function computeSelfAssessedScores(
       .first();
     if (!row?.value) return [];
 
-    const controls: Array<{ id: string; framework: string; status: string }> =
-      JSON.parse(row.value as string);
+    const controls: Array<{ id: string; framework: string; status: string }> = JSON.parse(
+      row.value as string,
+    );
     if (!Array.isArray(controls) || controls.length === 0) return [];
 
     const frameworkSet = new Set(frameworks);
@@ -245,13 +235,17 @@ async function computeSelfAssessedScores(
       const fwControls = byFramework.get(fw) || [];
       const total = fwControls.length;
       if (total === 0) {
-        scores.push({ framework: fw, score: 0, grade: "F", controlsTotal: 0, controlsImplemented: 0, controlsVerified: 0 });
+        scores.push({
+          framework: fw,
+          score: 0,
+          grade: "F",
+          controlsTotal: 0,
+          controlsImplemented: 0,
+          controlsVerified: 0,
+        });
         continue;
       }
-      const weightSum = fwControls.reduce(
-        (sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0),
-        0,
-      );
+      const weightSum = fwControls.reduce((sum, c) => sum + (STATUS_WEIGHTS[c.status] ?? 0), 0);
       const score = Math.round((weightSum / total) * 100 * 100) / 100;
       const implemented = fwControls.filter(
         (c) => c.status === "implemented" || c.status === "verified",
@@ -289,9 +283,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   let frameworksConfigured = true;
   try {
     const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
-      )
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
       .bind(user.tenantId)
       .first();
     if (row?.value) {
@@ -306,11 +298,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   }
 
   // Try evidence-grounded scoring from compliance-worker first
-  const evidenceScores = await fetchEvidenceGroundedScores(
-    platform,
-    user.tenantId,
-    frameworks,
-  );
+  const evidenceScores = await fetchEvidenceGroundedScores(platform, user.tenantId, frameworks);
 
   // Always compute self-assessed scores from tenant controls as the primary source
   const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
@@ -340,14 +328,16 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     for (const fw of frameworks) {
       if (!coveredFrameworks.has(fw)) {
         const sa = selfMap.get(fw);
-        blended.push(sa ?? {
-          framework: fw,
-          score: 0,
-          grade: "F",
-          controlsTotal: 0,
-          controlsImplemented: 0,
-          controlsVerified: 0,
-        });
+        blended.push(
+          sa ?? {
+            framework: fw,
+            score: 0,
+            grade: "F",
+            controlsTotal: 0,
+            controlsImplemented: 0,
+            controlsVerified: 0,
+          },
+        );
       }
     }
 
@@ -387,9 +377,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   let frameworks: string[] = [];
   try {
     const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`,
-      )
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
       .bind(user.tenantId)
       .first();
     if (row?.value) {
@@ -404,9 +392,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   // Read previous scores before recalculation to detect changes
   const { results: prevRows } = await db
-    .prepare(
-      "SELECT framework, score FROM compliance_scores WHERE tenant_id = ?",
-    )
+    .prepare("SELECT framework, score FROM compliance_scores WHERE tenant_id = ?")
     .bind(user.tenantId)
     .all<{ framework: string; score: number }>();
   const previousScores: Record<string, number> = {};
@@ -418,11 +404,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
 
   // Recalculate from evidence via compliance-worker
-  const scores = await fetchEvidenceGroundedScores(
-    platform,
-    user.tenantId,
-    frameworks,
-  );
+  const scores = await fetchEvidenceGroundedScores(platform, user.tenantId, frameworks);
 
   let finalScores: FrameworkScore[];
   let source: string;
@@ -446,14 +428,16 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     for (const fw of frameworks) {
       if (!covered.has(fw)) {
         const sa = selfMap.get(fw);
-        blended.push(sa ?? {
-          framework: fw,
-          score: 0,
-          grade: "F",
-          controlsTotal: 0,
-          controlsImplemented: 0,
-          controlsVerified: 0,
-        });
+        blended.push(
+          sa ?? {
+            framework: fw,
+            score: 0,
+            grade: "F",
+            controlsTotal: 0,
+            controlsImplemented: 0,
+            controlsVerified: 0,
+          },
+        );
       }
     }
 

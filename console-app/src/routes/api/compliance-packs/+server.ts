@@ -37,17 +37,22 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
   query += " ORDER BY p.is_builtin DESC, p.name ASC";
 
-  const result = await db
-    .prepare(query)
-    .bind(...bindings)
-    .all();
-  const packs = (result.results ?? []).map((p: any) => ({
-    ...p,
-    installed: p.installed === 1,
-    is_builtin: p.is_builtin === 1,
-  }));
+  try {
+    const result = await db
+      .prepare(query)
+      .bind(...bindings)
+      .all();
+    const packs = (result.results ?? []).map((p: any) => ({
+      ...p,
+      installed: p.installed === 1,
+      is_builtin: p.is_builtin === 1,
+    }));
 
-  return json({ packs });
+    return json({ packs });
+  } catch (e) {
+    console.error("Compliance packs list error:", e);
+    return json({ packs: [] });
+  }
 };
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {

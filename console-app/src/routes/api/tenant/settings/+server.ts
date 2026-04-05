@@ -13,38 +13,45 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
-  const tenant = await db
-    .prepare(
-      `SELECT id, name, owner_email, industry, size, created_at, status FROM tenants WHERE id = ?`,
-    )
-    .bind(user.tenantId)
-    .first();
-
-  if (!tenant) {
-    return json({ error: "Tenant not found" }, { status: 404 });
-  }
-
-  // Fetch branding and framework preferences
-  let logoUrl = "";
-  let accentColor = "";
-  let frameworks: string[] = [];
   try {
-    const { results: rows } = await db
+    const tenant = await db
       .prepare(
-        `SELECT key, value FROM tenant_preferences WHERE tenant_id = ? AND key IN ('logo_url', 'accent_color', 'frameworks')`,
+        `SELECT id, name, owner_email, industry, size, created_at, status FROM tenants WHERE id = ?`,
       )
       .bind(user.tenantId)
-      .all<{ key: string; value: string }>();
-    for (const row of rows ?? []) {
-      if (row.key === "logo_url") logoUrl = row.value;
-      if (row.key === "accent_color") accentColor = row.value;
-      if (row.key === "frameworks") {
-        try { frameworks = JSON.parse(row.value); } catch {}
-      }
-    }
-  } catch {}
+      .first();
 
-  return json({ ...toCamel(tenant), logoUrl, accentColor, frameworks });
+    if (!tenant) {
+      return json({ error: "Tenant not found" }, { status: 404 });
+    }
+
+    // Fetch branding and framework preferences
+    let logoUrl = "";
+    let accentColor = "";
+    let frameworks: string[] = [];
+    try {
+      const { results: rows } = await db
+        .prepare(
+          `SELECT key, value FROM tenant_preferences WHERE tenant_id = ? AND key IN ('logo_url', 'accent_color', 'frameworks')`,
+        )
+        .bind(user.tenantId)
+        .all<{ key: string; value: string }>();
+      for (const row of rows ?? []) {
+        if (row.key === "logo_url") logoUrl = row.value;
+        if (row.key === "accent_color") accentColor = row.value;
+        if (row.key === "frameworks") {
+          try {
+            frameworks = JSON.parse(row.value);
+          } catch {}
+        }
+      }
+    } catch {}
+
+    return json({ ...toCamel(tenant), logoUrl, accentColor, frameworks });
+  } catch (e) {
+    console.error("Tenant settings load error:", e);
+    return json({ error: "Failed to load tenant settings" }, { status: 500 });
+  }
 };
 
 export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
@@ -86,11 +93,12 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
   }
   if (accentColor !== undefined) {
     // Validate color value before persisting to prevent CSS injection
-    const safeColor = /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$|^[a-zA-Z]{2,30}$/.test(
-      (accentColor ?? "").trim(),
-    )
-      ? accentColor.trim()
-      : "";
+    const safeColor =
+      /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$|^[a-zA-Z]{2,30}$/.test(
+        (accentColor ?? "").trim(),
+      )
+        ? accentColor.trim()
+        : "";
     prefUpserts.push(
       db
         .prepare(
@@ -115,7 +123,9 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
       let existingControls: any[] = [];
       try {
         const row = await db
-          .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`)
+          .prepare(
+            `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
+          )
           .bind(user!.tenantId)
           .first<{ value: string }>();
         if (row?.value) existingControls = JSON.parse(row.value);

@@ -19,27 +19,32 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
-  const { results } = await db
-    .prepare(
-      `SELECT id, name, template_type, status, questions_count, responses_count, created_at, updated_at
-       FROM questionnaires
-       WHERE tenant_id = ?
-       ORDER BY created_at DESC
-       LIMIT 50`,
-    )
-    .bind(tenantId)
-    .all<{
-      id: string;
-      name: string;
-      template_type: string;
-      status: string;
-      questions_count: number;
-      responses_count: number;
-      created_at: string;
-      updated_at: string;
-    }>();
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT id, name, template_type, status, questions_count, responses_count, created_at, updated_at
+         FROM questionnaires
+         WHERE tenant_id = ?
+         ORDER BY created_at DESC
+         LIMIT 50`,
+      )
+      .bind(tenantId)
+      .all<{
+        id: string;
+        name: string;
+        template_type: string;
+        status: string;
+        questions_count: number;
+        responses_count: number;
+        created_at: string;
+        updated_at: string;
+      }>();
 
-  return json({ questionnaires: results ?? [] });
+    return json({ questionnaires: results ?? [] });
+  } catch (e) {
+    console.error("Questionnaires list error:", e);
+    return json({ questionnaires: [] });
+  }
 };
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
