@@ -634,7 +634,7 @@
                 <h3 class="text-sm font-medium">OIDC Configuration</h3>
                 <div class="space-y-2">
                   <Label>Issuer URL</Label>
-                  <Input bind:value={oidcIssuer} placeholder="https://accounts.google.com or https://login.microsoftonline.com/{tenant}/v2.0" />
+                  <Input bind:value={oidcIssuer} placeholder="https://accounts.google.com or https://login.microsoftonline.com/&#123;tenant&#125;/v2.0" />
                   <p class="text-xs text-muted-foreground">The OIDC issuer URL. Endpoints will be auto-discovered from .well-known/openid-configuration.</p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
