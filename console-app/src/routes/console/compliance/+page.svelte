@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { session } from "$lib/stores/session";
   import { CONTROL_TO_CDT_PREFIXES, FRAMEWORK_CONTROLS } from "$lib/compliance/framework-controls";
@@ -17,6 +19,7 @@
   import {
     AlertTriangle, ShieldCheck, FileText, ClipboardCheck, Download,
     Play, Link2, Upload, Search, Settings, TrendingUp, TrendingDown, Minus,
+    ChevronRight,
   } from "lucide-svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
@@ -91,7 +94,32 @@
   let scores: FrameworkScore[] = [];
   let evidenceCounts: Record<string, number> = {};
   let rawCdtCounts: Record<string, number> = {};
-  let activeTab: "overview" | "controls" | "evidence" = "overview";
+  const VALID_TABS = ["overview", "controls", "evidence"] as const;
+  type TabKey = (typeof VALID_TABS)[number];
+
+  function tabFromHash(): TabKey {
+    if (typeof window === "undefined") return "overview";
+    const h = window.location.hash.replace("#", "");
+    return VALID_TABS.includes(h as TabKey) ? (h as TabKey) : "overview";
+  }
+
+  let activeTab: TabKey = "overview";
+
+  function setTab(tab: TabKey) {
+    activeTab = tab;
+    goto(`#${tab}`, { replaceState: true, noScroll: true });
+  }
+
+  // Collapsed control rows — expand to show details
+  let expandedRows: Set<string> = new Set();
+  function toggleRow(controlId: string) {
+    if (expandedRows.has(controlId)) {
+      expandedRows.delete(controlId);
+    } else {
+      expandedRows.add(controlId);
+    }
+    expandedRows = expandedRows; // trigger reactivity
+  }
   let filterFramework = "all";
   let filterStatus = "all";
   let frameworksConfigured = true;
@@ -834,12 +862,17 @@
   }
 
   onMount(() => {
+    // Restore active tab from URL hash
+    const hash = window.location.hash.replace("#", "");
+    if (VALID_TABS.includes(hash as TabKey)) {
+      activeTab = hash as TabKey;
+    }
+
     loadData();
     loadEvidence().then(() => {
       // Deep-link: auto-expand evidence item from URL hash
-      const hash = window.location.hash;
-      if (hash.startsWith("#evidence=")) {
-        expandedEvidenceId = hash.slice("#evidence=".length);
+      if (hash.startsWith("evidence=")) {
+        expandedEvidenceId = hash.slice("evidence=".length);
       }
     });
     loadTenantTags();
@@ -886,7 +919,7 @@
           {activeTab === tab.key
           ? 'text-foreground border-b-2 border-primary'
           : 'text-muted-foreground hover:text-foreground'}"
-        on:click={() => (activeTab = tab.key)}
+        on:click={() => setTab(tab.key)}
       >
         {tab.label}
       </button>
@@ -1189,7 +1222,7 @@
           </CardContent>
         </Card>
       </a>
-      <button on:click={() => (activeTab = "controls")} class="text-left">
+      <button on:click={() => setTab("controls")} class="text-left">
         <Card class="hover:border-primary/40 transition-colors cursor-pointer group">
           <CardContent class="pt-5">
             <div class="flex items-center gap-3">
@@ -1280,121 +1313,131 @@
     </div>
 
     <Card>
-      <CardContent class="p-0">
-        <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-              <th class="px-3 sm:px-4 py-3 font-medium w-[140px] sm:w-[180px]">Control</th>
-              <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Description</th>
-              <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell w-[100px]">Framework</th>
-              <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell w-[80px]">Evidence</th>
-              <th class="px-3 sm:px-4 py-3 font-medium w-[120px] sm:w-[140px]">Status</th>
-              <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Notes</th>
-              <th class="px-3 sm:px-4 py-3 font-medium w-[100px] sm:w-[120px]">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#if statusFilteredControls.length === 0}
-              <tr>
-                <td colspan="7" class="px-4 py-10 text-center">
-                  <p class="text-sm text-muted-foreground mb-3">No controls match the selected filters.</p>
-                  <Button size="sm" variant="outline" on:click={() => { filterFramework = "all"; filterStatus = "all"; }}>Clear filters</Button>
-                </td>
-              </tr>
-            {/if}
-            {#each statusFilteredControls as control (control.id)}
-              <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => toggleControlEvidence(control.id, control.framework)}>
-                <td class="px-3 sm:px-4 py-3">
-                  <div class="font-medium flex items-center gap-1.5">
-                    {control.name}
-                    <span class="text-[10px] text-muted-foreground">{expandedControlId === control.id ? '▼' : '▶'}</span>
-                  </div>
-                  {#if control.automatable}
-                    <span class="text-[10px] text-primary font-medium uppercase tracking-wider">Auto</span>
-                  {/if}
-                </td>
-                <td class="px-3 sm:px-4 py-3 text-muted-foreground text-xs hidden md:table-cell">{control.description || ""}</td>
-                <td class="px-3 sm:px-4 py-3 hidden lg:table-cell">
-                  <Badge variant="outline">{control.framework}</Badge>
-                </td>
-                <td class="px-3 sm:px-4 py-3 hidden lg:table-cell">
-                  {#if (evidenceCounts[control.id] || evidenceCounts[control.name] || 0) > 0}
-                    <Badge variant="success">{evidenceCounts[control.id] || evidenceCounts[control.name] || 0}</Badge>
-                  {:else}
-                    <span class="text-xs text-muted-foreground">Gap</span>
-                  {/if}
-                </td>
-                <td class="px-3 sm:px-4 py-3" on:click|stopPropagation>
-                  <select
-                    value={control.status}
-                    on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
-                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full"
-                  >
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="implemented">Implemented</option>
-                    <option value="verified">Verified</option>
-                  </select>
-                </td>
-                <td class="px-3 sm:px-4 py-3 hidden xl:table-cell" on:click|stopPropagation>
-                  <input
-                    type="text"
-                    value={control.notes}
-                    on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
-                    placeholder="Add notes..."
-                    class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
-                  />
-                </td>
-                <td class="px-3 sm:px-4 py-3" on:click|stopPropagation>
-                  {#if control.status === "verified"}
-                    <Badge variant="success">Verified</Badge>
-                  {:else if control.status === "implemented"}
-                    <Button size="sm" variant="outline" on:click={() => submitVerification(control)}>
-                      {verifyingControlId === control.id ? "Confirm" : "Verify"}
-                    </Button>
-                  {:else}
-                    <a
-                      href="/console/automation?tab=rules&controlId={encodeURIComponent(control.id)}&framework={encodeURIComponent(control.framework)}"
-                      class="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-                      title="Auto-create a compliance rule for {control.id}"
-                    >
-                      <Play size={11} />
-                      Create Rule
-                    </a>
-                  {/if}
-                </td>
-              </tr>
-              {#if verifyingControlId === control.id}
-                <tr class="bg-green-500/5">
-                  <td colspan="7" class="px-4 py-3">
-                    <div class="flex items-center gap-3">
-                      <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
-                      <input
-                        type="text"
-                        bind:value={verifyNotes}
-                        placeholder="e.g. Reviewed by Jane Smith on 2026-03-20"
-                        class="flex-1 h-8 rounded-md border border-input bg-background px-3 text-xs"
-                        on:keydown={(e) => { if (e.key === "Enter") submitVerification(control); }}
-                      />
-                      <Button size="sm" variant="success" on:click={() => submitVerification(control)}>Submit Verification</Button>
-                      <Button size="sm" variant="ghost" on:click={() => { verifyingControlId = null; verifyNotes = ""; }}>Cancel</Button>
-                    </div>
-                  </td>
-                </tr>
+      <CardContent class="p-0 divide-y">
+        {#if statusFilteredControls.length === 0}
+          <div class="px-4 py-10 text-center">
+            <p class="text-sm text-muted-foreground mb-3">No controls match the selected filters.</p>
+            <Button size="sm" variant="outline" on:click={() => { filterFramework = "all"; filterStatus = "all"; }}>Clear filters</Button>
+          </div>
+        {/if}
+        {#each statusFilteredControls as control (control.id)}
+          {@const evCount = evidenceCounts[control.id] || evidenceCounts[control.name] || 0}
+          {@const isExpanded = expandedRows.has(control.id)}
+          <!-- Collapsed row: single line -->
+          <div class="hover:bg-muted/50 transition-colors">
+            <button
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-left"
+              on:click={() => toggleRow(control.id)}
+            >
+              <ChevronRight class="h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform {isExpanded ? 'rotate-90' : ''}" />
+              <span class="text-sm font-medium truncate min-w-0 flex-1">{control.name}</span>
+              {#if control.automatable}
+                <span class="text-[10px] text-primary font-medium uppercase tracking-wider shrink-0">Auto</span>
               {/if}
-              {#if expandedControlId === control.id}
-                <tr class="bg-muted/20 border-l-4 border-l-primary/40">
-                  <td colspan="7" class="px-4 py-4">
+              <Badge variant="outline" class="text-[10px] shrink-0">{control.framework}</Badge>
+              {#if evCount > 0}
+                <Badge variant="success" class="text-[10px] shrink-0">{evCount}</Badge>
+              {:else}
+                <span class="text-[10px] text-muted-foreground shrink-0">Gap</span>
+              {/if}
+              <span class="shrink-0 w-[90px] text-right">
+                <span class="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium
+                  {control.status === 'verified' ? 'bg-emerald-500/10 text-emerald-500' :
+                   control.status === 'implemented' ? 'bg-blue-500/10 text-blue-500' :
+                   control.status === 'in_progress' ? 'bg-amber-500/10 text-amber-500' :
+                   'bg-muted text-muted-foreground'}">
+                  {control.status === 'not_started' ? 'Not Started' :
+                   control.status === 'in_progress' ? 'In Progress' :
+                   control.status === 'implemented' ? 'Implemented' : 'Verified'}
+                </span>
+              </span>
+            </button>
+
+            <!-- Expanded details -->
+            {#if isExpanded}
+              <div class="px-4 pb-4 pt-1 ml-7 border-l-2 border-primary/20 space-y-3">
+                {#if control.description}
+                  <p class="text-xs text-muted-foreground">{control.description}</p>
+                {/if}
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="flex items-center gap-2" on:click|stopPropagation>
+                    <label class="text-xs font-medium text-muted-foreground shrink-0">Status:</label>
+                    <select
+                      value={control.status}
+                      on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
+                      class="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      <option value="not_started">Not Started</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="implemented">Implemented</option>
+                      <option value="verified">Verified</option>
+                    </select>
+                  </div>
+
+                  <div class="flex-1 min-w-[200px]" on:click|stopPropagation>
+                    <input
+                      type="text"
+                      value={control.notes}
+                      on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
+                      placeholder="Add notes..."
+                      class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
+                    />
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0" on:click|stopPropagation>
+                    {#if control.status === "verified"}
+                      <Badge variant="success">Verified</Badge>
+                    {:else if control.status === "implemented"}
+                      <Button size="sm" variant="outline" on:click={() => submitVerification(control)}>
+                        {verifyingControlId === control.id ? "Confirm" : "Verify"}
+                      </Button>
+                    {:else}
+                      <a
+                        href="/console/automation?tab=rules&controlId={encodeURIComponent(control.id)}&framework={encodeURIComponent(control.framework)}"
+                        class="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                      >
+                        <Play size={11} />
+                        Create Rule
+                      </a>
+                    {/if}
+                    <button
+                      class="text-xs text-primary hover:underline font-medium"
+                      on:click|stopPropagation={() => toggleControlEvidence(control.id, control.framework)}
+                    >
+                      {expandedControlId === control.id ? 'Hide' : 'View'} Evidence
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Verification form -->
+                {#if verifyingControlId === control.id}
+                  <div class="flex items-center gap-3 bg-green-500/5 rounded-lg p-3">
+                    <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
+                    <input
+                      type="text"
+                      bind:value={verifyNotes}
+                      placeholder="e.g. Reviewed by Jane Smith on 2026-03-20"
+                      class="flex-1 h-8 rounded-md border border-input bg-background px-3 text-xs"
+                      on:keydown={(e) => { if (e.key === "Enter") submitVerification(control); }}
+                    />
+                    <Button size="sm" variant="success" on:click={() => submitVerification(control)}>Submit</Button>
+                    <Button size="sm" variant="ghost" on:click={() => { verifyingControlId = null; verifyNotes = ""; }}>Cancel</Button>
+                  </div>
+                {/if}
+
+                <!-- Evidence panel -->
+                {#if expandedControlId === control.id}
+                  <div class="rounded-lg border bg-muted/20 p-4">
                     <div class="flex items-center justify-between mb-3">
                       <h4 class="text-sm font-semibold flex items-center gap-2">
                         <FileText class="h-4 w-4 text-primary" />
-                        Evidence for {control.name} ({control.framework})
+                        Evidence for {control.name}
                       </h4>
                       <div class="flex items-center gap-2">
                         <button
                           class="text-xs text-primary hover:underline font-medium"
-                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; activeTab = "evidence"; }}
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; setTab("evidence"); }}
                         >
                           + Add evidence
                         </button>
@@ -1412,7 +1455,7 @@
                         <p class="text-xs text-muted-foreground">No evidence found for this control.</p>
                         <button
                           class="text-xs text-primary hover:underline mt-1 font-medium"
-                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; activeTab = "evidence"; }}
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; setTab("evidence"); }}
                         >
                           Upload evidence now
                         </button>
@@ -1438,13 +1481,12 @@
                         {/each}
                       </div>
                     {/if}
-                  </td>
-                </tr>
-              {/if}
-            {/each}
-          </tbody>
-        </table>
-        </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/each}
       </CardContent>
     </Card>
 
