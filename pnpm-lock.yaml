@@ -314,6 +314,8 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/adapter-gen/templates/worker: {}
+
   packages/adapter-sim: {}
 
   packages/auth:
