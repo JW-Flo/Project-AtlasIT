@@ -20,6 +20,13 @@ export default {
       return new Response(null, { status: 204, headers: buildHeaders() });
     }
 
+    if (host === "status.atlasit.pro") {
+      return new Response(null, {
+        status: 302,
+        headers: buildHeaders({ Location: "https://www.atlasit.pro/support" }),
+      });
+    }
+
     if (host === "atlasit.pro") {
       url.hostname = "www.atlasit.pro";
       return new Response(null, {
