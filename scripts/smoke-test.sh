@@ -121,6 +121,19 @@ case "$WORKER_NAME" in
     HEALTH_PATH="/health"
     HEALTH_FIELDS=("status")
     ;;
+  documentation-worker|docs)
+    HEALTH_PATH="/health"
+    HEALTH_FIELDS=("status")
+    ;;
+  apex-redirect|apex-redirect-worker)
+    # Apex redirect returns 301/302 — verify the redirect works, not JSON
+    HEALTH_PATH="/"
+    HEALTH_FIELDS=()
+    ;;
+  email-worker|email)
+    HEALTH_PATH="/health"
+    HEALTH_FIELDS=("status")
+    ;;
   *)
     # Generic fallback
     HEALTH_PATH="/health"
