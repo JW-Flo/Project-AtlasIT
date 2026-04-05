@@ -100,24 +100,46 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
       return json({ error: "Price configuration missing" }, { status: 500 });
     }
 
-    // Create checkout session
+    // Count current active users to set initial seat quantity (min 5)
+    let seatCount = 5;
+    try {
+      const countRow = await db
+        .prepare("SELECT COUNT(*) as cnt FROM console_user_roles WHERE tenant_id = ?")
+        .bind(user.tenantId)
+        .first<{ cnt: number }>();
+      seatCount = Math.max(countRow?.cnt ?? 1, 5);
+    } catch {
+      // Default to minimum
+    }
+
+    // Create checkout session with per-seat pricing
+    const checkoutParams = new URLSearchParams({
+      customer: customerId,
+      mode: "subscription",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": String(seatCount),
+      "line_items[0][adjustable_quantity][enabled]": "true",
+      "line_items[0][adjustable_quantity][minimum]": "5",
+      "line_items[0][adjustable_quantity][maximum]": plan === "starter" ? "50" : "500",
+      success_url: `${url.origin}/console/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${url.origin}/console/settings/billing?checkout=canceled`,
+      "subscription_data[trial_period_days]": plan === "starter" ? "30" : "14",
+      "subscription_data[metadata][tenant_id]": user.tenantId,
+      "subscription_data[metadata][plan]": plan,
+    });
+
+    // Allow customers to choose invoice payment for larger orgs
+    if (seatCount >= 10) {
+      checkoutParams.set("payment_method_collection", "if_required");
+    }
+
     const sessionRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${stripeSecretKey}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        customer: customerId,
-        mode: "subscription",
-        "line_items[0][price]": priceId,
-        "line_items[0][quantity]": "1",
-        success_url: `${url.origin}/console/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${url.origin}/console/settings/billing?checkout=canceled`,
-        "subscription_data[trial_period_days]": plan === "starter" ? "30" : "14",
-        "subscription_data[metadata][tenant_id]": user.tenantId,
-        "subscription_data[metadata][plan]": plan,
-      }),
+      body: checkoutParams,
     });
 
     const session = (await sessionRes.json()) as any;

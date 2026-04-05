@@ -184,8 +184,12 @@
     impersonatedBy = sessionData.impersonatedBy || "";
     orgName = sessionData.orgName || "";
     applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
-    // Populate the shared session store so child pages can react to it
-    sessionStore.set(sessionData);
+    // Populate the shared session store so child pages can react to it.
+    // Only set on client — during SSR, child reactive blocks would trigger
+    // fetch calls that fail or hang during server rendering.
+    if (typeof window !== "undefined") {
+      sessionStore.set(sessionData);
+    }
   }
 
   async function loadSession(force = false) {
