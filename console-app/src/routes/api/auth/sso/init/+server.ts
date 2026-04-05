@@ -62,7 +62,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 
     let redirectUrl: string;
     try {
-      redirectUrl = buildAuthnRequestUrl(config, spEntityId, acsUrl, state);
+      redirectUrl = await buildAuthnRequestUrl(config, spEntityId, acsUrl, state);
     } catch (e) {
       console.error("Failed to build SAML AuthnRequest URL:", e);
       return json({ error: "Failed to initiate SSO — check SAML configuration" }, { status: 500 });

@@ -11,13 +11,14 @@ const SAMLP_NS = "urn:oasis:names:tc:SAML:2.0:protocol";
 
 /**
  * Generate a SAML AuthnRequest XML and return the redirect URL.
+ * Uses deflate-raw compression per the SAML HTTP-Redirect binding spec.
  */
-export function buildAuthnRequestUrl(
+export async function buildAuthnRequestUrl(
   config: SSOConfiguration,
   spEntityId: string,
   acsUrl: string,
   relayState: string,
-): string {
+): Promise<string> {
   const id = `_${crypto.randomUUID().replace(/-/g, "")}`;
   const issueInstant = new Date().toISOString();
 
@@ -40,8 +41,9 @@ export function buildAuthnRequestUrl(
     `</samlp:AuthnRequest>`,
   ].join("");
 
-  // Deflate + Base64 encode for HTTP-Redirect binding
-  const encoded = btoa(request);
+  // SAML HTTP-Redirect binding: XML → deflate-raw → base64 → URL encode
+  const deflated = await deflateRaw(new TextEncoder().encode(request));
+  const encoded = uint8ArrayToBase64(deflated);
   const params = new URLSearchParams({
     SAMLRequest: encoded,
     RelayState: relayState,
@@ -336,4 +338,42 @@ function base64ToUint8Array(b64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Compress data using raw deflate (no zlib/gzip headers).
+ * Uses the Web Streams CompressionStream API available in Cloudflare Workers.
+ */
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream("deflate-raw");
+  const writer = cs.writable.getWriter();
+  writer.write(data as unknown as BufferSource);
+  writer.close();
+
+  const reader = cs.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLength += value.length;
+  }
+
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }
