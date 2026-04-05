@@ -8,7 +8,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const db = (platform?.env as any)?.DB;
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) {
     return json({ error: "Database unavailable" }, { status: 503 });
   }

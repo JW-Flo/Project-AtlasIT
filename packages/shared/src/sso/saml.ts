@@ -84,7 +84,10 @@ export async function processSamlResponse(
 
   // Verify XML signature — reject unsigned responses
   if (!config.samlCertificate) {
-    return { success: false, error: "SAML certificate not configured — cannot verify response signature" };
+    return {
+      success: false,
+      error: "SAML certificate not configured — cannot verify response signature",
+    };
   }
   const signatureValid = await verifySamlSignature(xml, config.samlCertificate);
   if (!signatureValid) {
@@ -119,14 +122,10 @@ export async function processSamlResponse(
 async function verifySamlSignature(xml: string, pemCertificate: string): Promise<boolean> {
   try {
     // Extract the SignatureValue
-    const sigValueMatch = xml.match(
-      /<ds:SignatureValue[^>]*>([\s\S]*?)<\/ds:SignatureValue>/,
-    );
+    const sigValueMatch = xml.match(/<ds:SignatureValue[^>]*>([\s\S]*?)<\/ds:SignatureValue>/);
     if (!sigValueMatch) {
       // Also try without namespace prefix
-      const sigValueMatch2 = xml.match(
-        /<SignatureValue[^>]*>([\s\S]*?)<\/SignatureValue>/,
-      );
+      const sigValueMatch2 = xml.match(/<SignatureValue[^>]*>([\s\S]*?)<\/SignatureValue>/);
       if (!sigValueMatch2) return false;
       return await verifySignatureWithCert(xml, sigValueMatch2[1].trim(), pemCertificate);
     }
@@ -149,9 +148,7 @@ async function verifySignatureWithCert(
   if (!signedInfoMatch) return false;
 
   // Determine the signature algorithm
-  const algMatch = xml.match(
-    /SignatureMethod\s+Algorithm="([^"]+)"/,
-  );
+  const algMatch = xml.match(/SignatureMethod\s+Algorithm="([^"]+)"/);
   const algorithm = algMatch?.[1] || "";
 
   let hashAlg: string;
@@ -196,9 +193,7 @@ async function verifySignatureWithCert(
  * Validate SAML Conditions (time bounds and audience restriction).
  */
 function validateConditions(xml: string, spEntityId: string): { valid: boolean; error?: string } {
-  const conditionsMatch = xml.match(
-    /<saml:Conditions([^>]*)>/,
-  );
+  const conditionsMatch = xml.match(/<saml:Conditions([^>]*)>/);
   if (!conditionsMatch) {
     // No conditions — some IdPs omit them, allow
     return { valid: true };
@@ -224,9 +219,7 @@ function validateConditions(xml: string, spEntityId: string): { valid: boolean; 
   }
 
   // Audience restriction
-  const audienceMatch = xml.match(
-    /<saml:Audience>([\s\S]*?)<\/saml:Audience>/,
-  );
+  const audienceMatch = xml.match(/<saml:Audience>([\s\S]*?)<\/saml:Audience>/);
   if (audienceMatch && audienceMatch[1].trim() !== spEntityId) {
     return { valid: false, error: "SAML audience restriction mismatch" };
   }
@@ -239,9 +232,7 @@ function validateConditions(xml: string, spEntityId: string): { valid: boolean; 
  */
 function extractIdentity(xml: string): SSOIdentity | null {
   // NameID
-  const nameIdMatch = xml.match(
-    /<saml:NameID[^>]*>([\s\S]*?)<\/saml:NameID>/,
-  );
+  const nameIdMatch = xml.match(/<saml:NameID[^>]*>([\s\S]*?)<\/saml:NameID>/);
   const nameId = nameIdMatch?.[1]?.trim();
 
   // Attributes

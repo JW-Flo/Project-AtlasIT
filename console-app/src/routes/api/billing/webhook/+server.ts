@@ -3,7 +3,7 @@ import type { RequestHandler } from "./$types";
 
 /** POST /api/billing/webhook — Stripe webhook handler */
 export const POST: RequestHandler = async ({ request, platform }) => {
-  const db = (platform?.env as any)?.DB;
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   const env = (platform?.env as any) || {};
   if (!db) {
     return json({ error: "Database unavailable" }, { status: 503 });

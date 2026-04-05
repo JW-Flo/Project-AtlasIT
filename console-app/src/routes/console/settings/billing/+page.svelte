@@ -70,6 +70,16 @@
     }
 
     await loadBilling();
+
+    // Auto-trigger checkout if redirected from pricing page with plan param
+    const planParam = $page.url.searchParams.get("plan");
+    const cycleParam = $page.url.searchParams.get("cycle");
+    if (planParam && ["starter", "professional", "enterprise"].includes(planParam) && !checkout) {
+      if (cycleParam === "monthly" || cycleParam === "annual") {
+        upgradeCycle = cycleParam;
+      }
+      handleUpgrade(planParam);
+    }
   });
 
   async function loadBilling() {

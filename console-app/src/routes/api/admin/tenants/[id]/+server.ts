@@ -14,22 +14,40 @@ export const PATCH: RequestHandler = async ({ params, request, locals, platform 
 
   const body: Record<string, unknown> = await request.json().catch(() => ({}));
   const status = body.status as string | undefined;
-  if (!status || !["active", "disabled"].includes(status)) {
+  const tier = body.tier as string | undefined;
+
+  if (!status && !tier) {
+    return json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
+  if (status && !["active", "disabled"].includes(status)) {
     return json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const disabledAt = status === "disabled" ? new Date().toISOString() : null;
+  if (tier && !["free", "starter", "professional", "enterprise"].includes(tier)) {
+    return json({ error: "Invalid tier" }, { status: 400 });
+  }
 
-  await db
-    .prepare(`UPDATE tenants SET status = ?, disabled_at = ? WHERE id = ?`)
-    .bind(status, disabledAt, params.id)
-    .run();
+  if (status) {
+    const disabledAt = status === "disabled" ? new Date().toISOString() : null;
+    await db
+      .prepare(`UPDATE tenants SET status = ?, disabled_at = ? WHERE id = ?`)
+      .bind(status, disabledAt, params.id)
+      .run();
+  }
+
+  if (tier) {
+    await db
+      .prepare(`UPDATE tenants SET tier = ?, updated_at = datetime('now') WHERE id = ?`)
+      .bind(tier, params.id)
+      .run();
+  }
 
   await writeAudit(db, {
     tenantId: params.id!,
     actorUserId: user.userId,
     actorEmail: user.email,
-    action: `tenant.${status}`,
+    action: tier ? `tenant.tier.${tier}` : `tenant.${status}`,
     targetType: "tenant",
     targetId: params.id,
   });
