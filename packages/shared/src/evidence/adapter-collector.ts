@@ -152,6 +152,39 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
       },
     ],
   },
+  // TODO: jira adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "jira",
+    evidenceTypes: [
+      {
+        type: "project_permissions",
+        controlRefs: ["SOC2-CC6.3", "SOC2-CC8.1", "ISO-27001-A.9.1.2"],
+        description: "Project permission schemes and change management",
+      },
+    ],
+  },
+  // TODO: confluence adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "confluence",
+    evidenceTypes: [
+      {
+        type: "space_permissions",
+        controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.1.2", "GDPR-Art.5(1)(f)"],
+        description: "Space permissions and page restrictions",
+      },
+    ],
+  },
+  // TODO: bamboohr adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "bamboohr",
+    evidenceTypes: [
+      {
+        type: "employee_lifecycle",
+        controlRefs: ["ISO-27001-A.9.2.1", "SOC2-CC6.2", "NIST-CSF-PR.AC-1"],
+        description: "Employee lifecycle event tracking",
+      },
+    ],
+  },
 ];
 
 /**

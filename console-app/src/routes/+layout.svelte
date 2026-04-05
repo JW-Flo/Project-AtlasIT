@@ -4,7 +4,7 @@
   import { page } from "$app/stores";
 
   // Public routes that should not use the AppFrame shell (sidebar + topbar)
-  const PUBLIC_ROUTES = ["/support", "/trust", "/console/login", "/console/onboarding"];
+  const PUBLIC_ROUTES = ["/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers"];
 
   $: isBare = PUBLIC_ROUTES.some((r) => $page.url.pathname === r || $page.url.pathname.startsWith(r + "/"));
 

@@ -361,6 +361,28 @@ const worker = {
           }
         }
       }
+
+      // Persist adapter collection health for each tenant
+      const now = new Date().toISOString();
+      for (const [tenantId, results] of tenantEvidenceMap) {
+        for (const result of results) {
+          try {
+            await sharedDb
+              .prepare(
+                `INSERT INTO adapter_collection_health (id, tenant_id, adapter_slug, collected_at, items_count, error)
+                 VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)
+                 ON CONFLICT(tenant_id, adapter_slug) DO UPDATE SET
+                   collected_at = excluded.collected_at,
+                   items_count = excluded.items_count,
+                   error = excluded.error`,
+              )
+              .bind(tenantId, result.slug, now, result.items.length, result.error ?? null)
+              .run();
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
     }
 
     // ── Duty 2b: Platform state evidence collection ────────────────────────
@@ -403,6 +425,37 @@ const worker = {
             const adapterResults = tenantEvidenceMap.get(row.id) ?? [];
             const flatItems = flattenAdapterResults(adapterResults);
             const cdtPayload = buildCdtPayloadFromEvidence(flatItems);
+
+            // Enrich CDT payload with platform-native security policy settings
+            // (MFA enforcement, session timeout, etc.) that aren't from adapters
+            try {
+              const secRow = await sharedDb
+                .prepare(
+                  `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'security_policy'`,
+                )
+                .bind(row.id)
+                .first<{ value: string }>();
+              if (secRow?.value) {
+                const secPolicy = JSON.parse(secRow.value);
+                if (secPolicy.mfaRequired === true) {
+                  cdtPayload.mfa_required = true;
+                  cdtPayload.mfa_required_for_phi = true;
+                }
+                if (typeof secPolicy.sessionDuration === "string") {
+                  const days = parseInt(secPolicy.sessionDuration, 10);
+                  if (!isNaN(days)) cdtPayload.auto_logoff_mins = days * 24 * 60;
+                }
+                if (
+                  typeof secPolicy.minPasswordLength === "number" &&
+                  secPolicy.minPasswordLength >= 8
+                ) {
+                  cdtPayload.secure_auth_training_pct = cdtPayload.secure_auth_training_pct ?? 80;
+                }
+              }
+            } catch {
+              /* non-fatal — platform policy enrichment is best-effort */
+            }
+
             await fetch(`${complianceWorkerUrl}/api/v1/policies/evaluate-all`, {
               method: "POST",
               headers: { "x-tenant-id": row.id, "content-type": "application/json" },

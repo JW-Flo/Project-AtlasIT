@@ -53,6 +53,7 @@ import { evaluateControls, scoreFromEvaluations } from "./modules/policies/cdt-r
 import { evaluateAndStoreEvidence } from "./modules/policies/evaluation";
 import {
   collectAllAdapterEvidence,
+  parseControlRef,
   type AdapterEvidenceItem,
 } from "../../packages/shared/src/evidence/adapter-collector";
 
@@ -726,9 +727,8 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
         if (sharedDb) {
           for (const controlRef of item.controlRefs) {
             // Parse "SOC2-CC6.1" → framework="SOC2", controlId="CC6.1"
-            const dashIdx = controlRef.indexOf("-");
-            const framework = dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
-            const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+            // Uses shared parseControlRef to handle multi-segment prefixes (ISO-27001, NIST-CSF)
+            const { framework, controlId } = parseControlRef(controlRef);
 
             try {
               await sharedDb

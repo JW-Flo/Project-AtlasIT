@@ -122,6 +122,33 @@ const EXTRACTORS: Record<string, FieldExtractor> = {
     retention_policy_enforced: true,
     data_accuracy_controls: true,
   }),
+
+  // ── Jira ──────────────────────────────────────────────────────────────
+  // TODO: jira adapter lacks /api/evidence endpoint — extractors ready for when it's added
+  "jira:project_permissions": (d) => ({
+    access_controls_enforced:
+      d.restrictedProjects === true ||
+      (typeof d.restrictedCount === "number" && d.restrictedCount > 0),
+    change_management_process: d.workflowEnforced === true,
+    approved_change_pct: typeof d.approvedIssuePct === "number" ? d.approvedIssuePct : undefined,
+  }),
+
+  // ── Confluence ───────────────────────────────────────────────���────────
+  // TODO: confluence adapter lacks /api/evidence endpoint — extractors ready for when it's added
+  "confluence:space_permissions": (d) => ({
+    data_classification_enforced: d.restrictedSpaces === true,
+    access_controls_enforced: d.permissionsConfigured === true,
+    documentation_current: d.recentlyUpdated === true,
+  }),
+
+  // ── BambooHR ─���────────────────────────────────────────────────────────
+  // TODO: bamboohr adapter lacks /api/evidence endpoint — extractors ready for when it's added
+  "bamboohr:employee_lifecycle": (d) => ({
+    user_lifecycle_process_documented: d.lifecycleTracked === true,
+    offboarding_within_24h:
+      d.avgOffboardingHours != null && (d.avgOffboardingHours as number) <= 24,
+    automated_identity_lifecycle: d.automatedWorkflows === true,
+  }),
 };
 
 /**

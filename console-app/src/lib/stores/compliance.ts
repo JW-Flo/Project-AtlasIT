@@ -1,15 +1,19 @@
 import { writable, get } from "svelte/store";
 
+export type ScoreSource = "evidence" | "self-assessed" | "self-assessed-fallback" | "no-data";
+
 export interface FrameworkScore {
   framework: string;
   score: number;
   grade: string;
+  source?: ScoreSource;
 }
 
 export interface ComplianceStoreData {
   overallScore: number;
   grade: string;
   frameworks: FrameworkScore[];
+  globalSource: string;
   lastUpdated: string | null;
 }
 
@@ -42,11 +46,12 @@ export async function fetchComplianceScore(): Promise<ComplianceStoreData | null
       complianceScore.set(null);
       return null;
     }
-    const data = await res.json();
+    const data: any = await res.json();
     const scores: FrameworkScore[] = (data.scores || []).map((s: any) => ({
       framework: s.framework,
       score: Math.round(s.score ?? 0),
       grade: s.grade || computeGrade(s.score ?? 0),
+      source: s.source as ScoreSource | undefined,
     }));
 
     if (scores.length === 0) {
@@ -59,6 +64,7 @@ export async function fetchComplianceScore(): Promise<ComplianceStoreData | null
       overallScore: avg,
       grade: computeGrade(avg),
       frameworks: scores,
+      globalSource: data.source || "empty",
       lastUpdated: new Date().toISOString(),
     };
     complianceScore.set(result);
