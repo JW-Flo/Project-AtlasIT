@@ -733,11 +733,14 @@
         </div>
 
         {#if roles.length === 0}
-          <Card class="border-dashed">
+          <Card class="border-dashed border-amber-500/50">
             <CardContent class="py-12 text-center text-muted-foreground">
-              <Users class="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <AlertTriangle class="w-12 h-12 mx-auto mb-3 text-amber-500 opacity-70" />
               <p class="text-lg font-medium">No lifecycle policies configured</p>
               <p class="text-sm mt-1">Create your first role to define which apps each team gets.</p>
+              <p class="text-xs mt-2 text-amber-600 dark:text-amber-400">
+                JML automation (auto-provisioning on hire/transfer/offboard) requires at least one role with app entitlements.
+              </p>
               <Button class="mt-4" on:click={() => showCreateRole = true}>Create Role</Button>
             </CardContent>
           </Card>
@@ -785,7 +788,10 @@
                               <Skeleton class="h-8 w-full" />
                             {:else if roleDetail}
                               {#if roleDetail.entitlements.length === 0}
-                                <p class="text-sm text-muted-foreground">No app entitlements configured. Add apps to this role.</p>
+                                <div class="p-3 rounded bg-amber-500/10 border border-amber-500/20">
+                                  <p class="text-sm text-amber-700 dark:text-amber-400">No app entitlements configured. Users assigned to this role won't receive automatic provisioning.</p>
+                                  <Button size="sm" variant="outline" class="mt-2" href={`/console/directory?tab=mappings&role=${role.id}`}>Add App Entitlements</Button>
+                                </div>
                               {:else}
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                   {#each roleDetail.entitlements as ent}

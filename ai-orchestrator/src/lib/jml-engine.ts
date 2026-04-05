@@ -110,7 +110,7 @@ export async function classifyAndExecute(
   if (classification.action === "rehire" && !policy.autoJoiner) return null;
 
   // 4. Build and execute workflow
-  const workflowRunId = await executeJmlWorkflow(
+  const { runId: workflowRunId, skippedAdapters } = await executeJmlWorkflow(
     tenantId,
     classification,
     policy,
@@ -137,8 +137,8 @@ export async function classifyAndExecute(
     )
     .run();
 
-  // 6. Emit compliance evidence for the JML action
-  await emitJmlEvidence(tenantId, classification, workflowRunId, change, ctx);
+  // 6. Emit compliance evidence for the JML action (includes skipped adapters)
+  await emitJmlEvidence(tenantId, classification, workflowRunId, change, ctx, skippedAdapters);
 
   // 7. Emit activity stream event
   await emitActivity(ctx.db, tenantId, classification, workflowRunId);
@@ -215,11 +215,7 @@ async function classify(
     case "deleted": {
       const appsToRevoke = profile?.appAccess ?? [];
       // Discover NHI credentials owned by this user for revocation
-      const nhiToRevoke = await discoverOwnedNhiCredentials(
-        db,
-        tenantId,
-        change.email,
-      );
+      const nhiToRevoke = await discoverOwnedNhiCredentials(db, tenantId, change.email);
       return {
         action: "leaver",
         userId: change.userId,
@@ -268,9 +264,7 @@ async function classifyUpdate(
 
   // Detect meaningful mover signals
   const moverFields = ["department", "title", "manager", "orgUnit", "groups"];
-  const changedFields = Object.keys(delta).filter((f) =>
-    moverFields.includes(f),
-  );
+  const changedFields = Object.keys(delta).filter((f) => moverFields.includes(f));
   if (changedFields.length === 0) return null;
 
   // Resolve old and new access bundles
@@ -296,15 +290,11 @@ async function classifyUpdate(
 
   // Apps to revoke: were in old set, not in new set
   const currentAppIds = new Set(currentApps.map((a) => `${a.appId}:${a.role}`));
-  const appsToRevoke = oldApps.filter(
-    (a) => !currentAppIds.has(`${a.appId}:${a.role}`),
-  );
+  const appsToRevoke = oldApps.filter((a) => !currentAppIds.has(`${a.appId}:${a.role}`));
 
   // Apps to provision: in new set, not in old set
   const oldAppIds = new Set(oldApps.map((a) => `${a.appId}:${a.role}`));
-  const appsToProvision = currentApps.filter(
-    (a) => !oldAppIds.has(`${a.appId}:${a.role}`),
-  );
+  const appsToProvision = currentApps.filter((a) => !oldAppIds.has(`${a.appId}:${a.role}`));
 
   if (appsToRevoke.length === 0 && appsToProvision.length === 0) return null;
 
@@ -326,9 +316,26 @@ async function executeJmlWorkflow(
   classification: JmlClassification,
   policy: JmlPolicy,
   ctx: JmlContext,
-): Promise<string> {
+): Promise<{ runId: string; skippedAdapters: string[] }> {
   const runId = crypto.randomUUID();
-  const steps = buildJmlSteps(classification, ctx.adapterUrls, policy);
+  const { main, compensation, skippedAdapters } = buildJmlSteps(
+    classification,
+    ctx.adapterUrls,
+    policy,
+  );
+
+  if (skippedAdapters.length > 0) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "jml.adapters_skipped",
+        tenantId,
+        action: classification.action,
+        skipped: [...new Set(skippedAdapters)],
+        message: `${skippedAdapters.length} adapter(s) skipped — no URL configured`,
+      }),
+    );
+  }
 
   const profileContext = classification.profile
     ? {
@@ -350,8 +357,8 @@ async function executeJmlWorkflow(
   const definition = {
     id: `jml-${classification.action}-${runId}`,
     name: `${classification.action} workflow`,
-    steps: steps.main,
-    onFailure: steps.compensation,
+    steps: main,
+    onFailure: compensation,
     globalTimeoutMs: 5 * 60_000,
   };
 
@@ -375,7 +382,12 @@ async function executeJmlWorkflow(
       new Request("http://workflow/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ definition, tenantId, correlationId: runId, context: workflowContext }),
+        body: JSON.stringify({
+          definition,
+          tenantId,
+          correlationId: runId,
+          context: workflowContext,
+        }),
       }),
     );
   }
@@ -392,22 +404,20 @@ async function executeJmlWorkflow(
       classification.action,
       classification.userId,
       classification.email ?? null,
-      steps.main.length,
+      main.length,
       JSON.stringify(profileContext),
     )
     .run();
 
   // Send notifications if configured
   if (policy.notifyManager && classification.profile?.manager && ctx.selfUrl) {
-    notifyAsync(ctx.selfUrl, tenantId, classification, "manager").catch(
-      () => {},
-    );
+    notifyAsync(ctx.selfUrl, tenantId, classification, "manager").catch(() => {});
   }
   if (policy.notifyUser && classification.email && ctx.selfUrl) {
     notifyAsync(ctx.selfUrl, tenantId, classification, "user").catch(() => {});
   }
 
-  return runId;
+  return { runId, skippedAdapters: [...new Set(skippedAdapters)] };
 }
 
 interface WorkflowStepDef {
@@ -423,9 +433,10 @@ function buildJmlSteps(
   classification: JmlClassification,
   adapterUrls: Record<string, string>,
   policy: JmlPolicy,
-): { main: WorkflowStepDef[]; compensation: WorkflowStepDef[] } {
+): { main: WorkflowStepDef[]; compensation: WorkflowStepDef[]; skippedAdapters: string[] } {
   const main: WorkflowStepDef[] = [];
   const compensation: WorkflowStepDef[] = [];
+  const skippedAdapters: string[] = [];
 
   // Always start with access resolution
   main.push({
@@ -435,13 +446,13 @@ function buildJmlSteps(
     timeoutMs: 10_000,
   });
 
-  if (
-    classification.action === "joiner" ||
-    classification.action === "rehire"
-  ) {
+  if (classification.action === "joiner" || classification.action === "rehire") {
     // Provision each app the user should have access to
     for (const app of classification.appsToProvision) {
-      if (!adapterUrls[app.appId]) continue;
+      if (!adapterUrls[app.appId]) {
+        skippedAdapters.push(app.appId);
+        continue;
+      }
       main.push({
         id: `provision_${app.appId}`,
         name: `Provision ${app.appId} (${app.role})`,
@@ -462,7 +473,10 @@ function buildJmlSteps(
     // Apply grace period delay to the first revocation step if configured
     let graceApplied = false;
     for (const app of classification.appsToRevoke) {
-      if (!adapterUrls[app.appId]) continue;
+      if (!adapterUrls[app.appId]) {
+        skippedAdapters.push(app.appId);
+        continue;
+      }
       const step: WorkflowStepDef = {
         id: `revoke_${app.appId}`,
         name: `Revoke ${app.appId}`,
@@ -501,7 +515,10 @@ function buildJmlSteps(
   if (classification.action === "mover") {
     // Revoke old apps first
     for (const app of classification.appsToRevoke) {
-      if (!adapterUrls[app.appId]) continue;
+      if (!adapterUrls[app.appId]) {
+        skippedAdapters.push(app.appId);
+        continue;
+      }
       main.push({
         id: `revoke_old_${app.appId}`,
         name: `Revoke old ${app.appId} (${app.role})`,
@@ -511,7 +528,10 @@ function buildJmlSteps(
     }
     // Then provision new apps
     for (const app of classification.appsToProvision) {
-      if (!adapterUrls[app.appId]) continue;
+      if (!adapterUrls[app.appId]) {
+        skippedAdapters.push(app.appId);
+        continue;
+      }
       main.push({
         id: `provision_new_${app.appId}`,
         name: `Provision ${app.appId} (${app.role})`,
@@ -536,7 +556,7 @@ function buildJmlSteps(
     timeoutMs: 10_000,
   });
 
-  return { main, compensation };
+  return { main, compensation, skippedAdapters };
 }
 
 // ── Policy loading ──────────────────────────────────────────────────────────
@@ -552,10 +572,7 @@ const DEFAULT_POLICY: Omit<JmlPolicy, "tenantId"> = {
   requireJoinerApproval: false,
 };
 
-export async function loadJmlPolicy(
-  db: D1Database,
-  tenantId: string,
-): Promise<JmlPolicy> {
+export async function loadJmlPolicy(db: D1Database, tenantId: string): Promise<JmlPolicy> {
   const row = await db
     .prepare("SELECT * FROM jml_policies WHERE tenant_id = ?")
     .bind(tenantId)
@@ -576,10 +593,7 @@ export async function loadJmlPolicy(
   };
 }
 
-export async function upsertJmlPolicy(
-  db: D1Database,
-  policy: JmlPolicy,
-): Promise<void> {
+export async function upsertJmlPolicy(db: D1Database, policy: JmlPolicy): Promise<void> {
   await db
     .prepare(
       `INSERT INTO jml_policies (tenant_id, enabled, auto_joiner, auto_leaver, auto_mover, leaver_grace_ms, notify_manager, notify_user, require_joiner_approval, updated_at)
@@ -629,6 +643,7 @@ async function emitJmlEvidence(
   workflowRunId: string,
   change: DirectoryChange,
   ctx: JmlContext,
+  skippedAdapters: string[] = [],
 ): Promise<void> {
   const eventType = JML_ACTION_EVENT_TYPE[classification.action];
   const actor = classification.email ?? classification.userId;
@@ -648,6 +663,7 @@ async function emitJmlEvidence(
       provider: n.provider,
       type: n.credentialType,
     })),
+    skippedAdapters: skippedAdapters.length > 0 ? skippedAdapters : undefined,
     profile: classification.profile
       ? {
           department: classification.profile.department,
@@ -656,21 +672,11 @@ async function emitJmlEvidence(
       : undefined,
   };
 
-  const classified = classifyEvent(
-    tenantId,
-    eventType,
-    change.source,
-    actor,
-    subject,
-    payload,
-  );
+  const classified = classifyEvent(tenantId, eventType, change.source, actor, subject, payload);
 
   if (!classified) return;
 
-  await storeEvidence(
-    { db: ctx.db, bucket: ctx.evidenceBucket },
-    classified,
-  ).catch((err) => {
+  await storeEvidence({ db: ctx.db, bucket: ctx.evidenceBucket }, classified).catch((err) => {
     // Non-fatal: log but never block the JML workflow
     console.error(
       JSON.stringify({
@@ -738,8 +744,7 @@ async function notifyAsync(
         channel: "slack",
         target,
         notifyUser: target === "user" ? classification.email : undefined,
-        notifyAdmin:
-          target === "manager" ? classification.profile?.manager : undefined,
+        notifyAdmin: target === "manager" ? classification.profile?.manager : undefined,
         user: {
           email: classification.email,
           displayName: classification.profile?.displayName,

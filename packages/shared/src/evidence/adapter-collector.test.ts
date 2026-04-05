@@ -173,13 +173,23 @@ describe("collectAllAdapterEvidence", () => {
 });
 
 describe("ADAPTER_EVIDENCE_REGISTRY", () => {
-  it("contains 6 adapters", () => {
-    expect(ADAPTER_EVIDENCE_REGISTRY).toHaveLength(6);
+  it("contains 9 adapters (6 live + 3 pending)", () => {
+    expect(ADAPTER_EVIDENCE_REGISTRY).toHaveLength(9);
   });
 
-  it("has github, okta, google-workspace, microsoft-365, aws, slack", () => {
+  it("has all 9 registered adapter slugs", () => {
     const slugs = ADAPTER_EVIDENCE_REGISTRY.map((c) => c.slug).sort();
-    expect(slugs).toEqual(["aws", "github", "google-workspace", "microsoft-365", "okta", "slack"]);
+    expect(slugs).toEqual([
+      "aws",
+      "bamboohr",
+      "confluence",
+      "github",
+      "google-workspace",
+      "jira",
+      "microsoft-365",
+      "okta",
+      "slack",
+    ]);
   });
 
   it("each evidence type has non-empty controlRefs", () => {
