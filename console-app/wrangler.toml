@@ -53,6 +53,9 @@ routes = [
 	"www.atlasit.pro/api/integrations/*",
 	"www.atlasit.pro/api/dead-letter*",
 	"www.atlasit.pro/api/user/*",
+	"www.atlasit.pro/api/billing*",
+	"www.atlasit.pro/pricing*",
+	"www.atlasit.pro/api/compliance-packs*",
 	"www.atlasit.pro/_app/*",
 	"www.atlasit.pro/favicon.png",
 	"www.atlasit.pro/" # root catch for redirect
@@ -77,6 +80,13 @@ SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.app"
 TENANT_ID = "atlasit"
 # Secret bindings (set via `wrangler secret put <KEY> --name atlasit-console`):
 # GROQ_API_KEY — Required for NL automation rule builder and AI features
+# STRIPE_SECRET_KEY — Stripe secret key for billing/checkout (1Password: "Stripe - AtlasIT")
+# STRIPE_PUBLISHABLE_KEY — Stripe publishable key for client-side checkout
+# STRIPE_WEBHOOK_SECRET — Stripe webhook signing secret
+# STRIPE_PRICE_STARTER_MONTHLY — Stripe price ID for Starter monthly
+# STRIPE_PRICE_STARTER_ANNUAL — Stripe price ID for Starter annual
+# STRIPE_PRICE_PROFESSIONAL_MONTHLY — Stripe price ID for Professional monthly
+# STRIPE_PRICE_PROFESSIONAL_ANNUAL — Stripe price ID for Professional annual
 # DEV_AUTH_BYPASS must NEVER be set here — only in local dev env vars alongside NODE_ENV=development
 
 [observability]
