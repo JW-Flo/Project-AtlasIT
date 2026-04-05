@@ -22,3 +22,4 @@ export * from "./discovery/index";
 export * from "./compliance-intelligence/index";
 export * from "./roles/index";
 export * from "./incidents/index";
+export * from "./billing/index";

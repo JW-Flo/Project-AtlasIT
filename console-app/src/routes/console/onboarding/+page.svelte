@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { integrations, categories, iconMap } from "$lib/data/integrations";
   import Card from "$lib/components/ui/card.svelte";
@@ -9,7 +10,11 @@
   import Input from "$lib/components/ui/input.svelte";
   import Label from "$lib/components/ui/label.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle, ArrowRight, ArrowLeft, Check, ChevronDown } from "lucide-svelte";
+  import { AlertTriangle, ArrowRight, ArrowLeft, Check, ChevronDown, Zap, Clock } from "lucide-svelte";
+
+  // Read plan from URL query (from pricing page)
+  $: selectedPlan = $page.url.searchParams.get("plan") || "free";
+  $: selectedCycle = $page.url.searchParams.get("cycle") || "monthly";
 
   let step = 1;
   let loading = false;
@@ -164,6 +169,8 @@
           ownerName,
           ownerEmail,
           ownerPassword,
+          plan: selectedPlan,
+          billingCycle: selectedCycle,
         }),
       });
       const data = await res.json();
@@ -187,6 +194,25 @@
         await runNarration();
         pushToast({ message: `Welcome to AtlasIT! ${data.orgName} is ready.`, variant: "success" });
         await new Promise((r) => setTimeout(r, 1500));
+
+        // If a paid plan was selected, redirect to checkout
+        if (selectedPlan !== "free" && selectedPlan !== "enterprise") {
+          try {
+            const checkoutRes = await fetch("/api/billing/checkout", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ plan: selectedPlan, cycle: selectedCycle }),
+            });
+            const checkoutData = await checkoutRes.json();
+            if (checkoutData.url) {
+              window.location.href = checkoutData.url;
+              return;
+            }
+          } catch {
+            // Fall through to dashboard if checkout fails
+          }
+        }
+
         goto(selectedIdp ? "/console?setup=idp" : "/console");
         return;
       } else {
@@ -205,6 +231,17 @@
     <div class="text-center mb-8">
       <div class="text-4xl font-bold mb-2 text-primary">AtlasIT</div>
       <p class="text-sm text-muted-foreground">Set up your organization in minutes</p>
+      <div class="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
+        <Clock class="w-3.5 h-3.5" />
+        <span>Connect your first app and see your compliance score in under 10 minutes</span>
+      </div>
+      {#if selectedPlan !== "free"}
+        <div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+          <Zap class="w-3.5 h-3.5" />
+          {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} plan selected
+          {#if selectedPlan !== "enterprise"}&middot; 14-day free trial{/if}
+        </div>
+      {/if}
     </div>
 
     <!-- Progress -->
