@@ -33,6 +33,14 @@
     decidedAt: string;
   }
 
+  interface ApprovalSummary {
+    total: number;
+    approved: number;
+    rejected: number;
+    pending: number;
+    reviewers: { email: string; decision: string; decidedAt: string | null }[];
+  }
+
   interface Policy {
     id: string;
     title: string;
@@ -43,6 +51,7 @@
     content: string;
     updatedAt: string;
     createdAt: string;
+    approvalSummary?: ApprovalSummary | null;
   }
 
   interface PolicyDetail extends Policy {
@@ -94,6 +103,10 @@
 
   // archive state
   let archiving = new Set<string>();
+
+  // Tenant users for reviewer picker
+  let tenantUsers: { email: string; name?: string }[] = [];
+  let selectedReviewers: Record<string, Set<string>> = {};
 
   // Generate panel
   let showGenerate = false;
@@ -418,8 +431,32 @@
     }
   }
 
+  async function loadTenantUsers() {
+    try {
+      const res = await fetch("/api/directory?type=users&limit=100");
+      if (res.ok) {
+        const data = await res.json();
+        tenantUsers = (data.items ?? data.users ?? [])
+          .map((u: any) => ({ email: u.email, name: u.displayName ?? u.name }))
+          .filter((u: any) => u.email);
+      }
+    } catch { /* silent */ }
+  }
+
+  function toggleReviewer(policyId: string, email: string) {
+    if (!selectedReviewers[policyId]) selectedReviewers[policyId] = new Set();
+    const set = selectedReviewers[policyId];
+    if (set.has(email)) set.delete(email);
+    else set.add(email);
+    selectedReviewers = { ...selectedReviewers };
+    // Sync to reviewerEmails for the submit function
+    reviewerEmails[policyId] = Array.from(set).join(", ");
+    reviewerEmails = { ...reviewerEmails };
+  }
+
   onMount(() => {
     loadPolicies();
+    loadTenantUsers();
     if ($session?.email) contactEmail = $session.email;
   });
 </script>
@@ -546,6 +583,7 @@
                 <th class="px-4 py-3 font-medium">Title</th>
                 <th class="px-4 py-3 font-medium">Type</th>
                 <th class="px-4 py-3 font-medium">Status</th>
+                <th class="px-4 py-3 font-medium">Approval</th>
                 <th class="px-4 py-3 font-medium">Version</th>
                 <th class="px-4 py-3 font-medium">Owner</th>
                 <th class="px-4 py-3 font-medium">Last Updated</th>
@@ -569,6 +607,24 @@
                   <td class="px-4 py-3">
                     <Badge variant={statusVariant(policy.status)}>{statusLabel(policy.status)}</Badge>
                   </td>
+                  <td class="px-4 py-3">
+                    {#if policy.approvalSummary && policy.approvalSummary.total > 0}
+                      {@const s = policy.approvalSummary}
+                      <div class="flex items-center gap-1.5">
+                        {#if s.approved === s.total}
+                          <Badge variant="success" class="text-xs">All approved</Badge>
+                        {:else if s.rejected > 0}
+                          <Badge variant="destructive" class="text-xs">Rejected</Badge>
+                        {:else if s.pending > 0}
+                          <span class="text-xs text-muted-foreground">{s.approved}/{s.total - (s.total - s.approved - s.pending)} signed</span>
+                        {:else}
+                          <Badge variant="secondary" class="text-xs">{s.approved}/{s.total}</Badge>
+                        {/if}
+                      </div>
+                    {:else}
+                      <span class="text-xs text-muted-foreground">—</span>
+                    {/if}
+                  </td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">v{policy.version}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{policy.createdBy || "—"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{fmtDate(policy.updatedAt)}</td>
@@ -576,7 +632,7 @@
 
                 {#if expandedRows.has(policy.id)}
                   <tr class="border-t bg-muted/20">
-                    <td colspan="7" class="px-6 py-5">
+                    <td colspan="8" class="px-6 py-5">
                       {#if loadingDetail.has(policy.id)}
                         <div class="space-y-2">
                           <Skeleton class="h-5 w-3/5 rounded" />
@@ -725,30 +781,51 @@
 
                               <!-- Submit for review -->
                               {#if submitOpen.has(policy.id)}
-                                <div class="flex items-center gap-2 flex-wrap">
-                                  <Input
-                                    placeholder="reviewer@company.com, ..."
-                                    bind:value={reviewerEmails[policy.id]}
-                                    class="h-8 text-xs w-64"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    on:click={() => submitForReview(policy)}
-                                    disabled={submitting.has(policy.id)}
-                                  >
-                                    <Send class="h-3 w-3 mr-1" />
-                                    {submitting.has(policy.id) ? "Submitting..." : "Submit"}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    on:click={() => {
-                                      submitOpen.delete(policy.id);
-                                      submitOpen = new Set(submitOpen);
-                                    }}
-                                  >
-                                    <X class="h-3 w-3" />
-                                  </Button>
+                                <div class="space-y-2">
+                                  {#if tenantUsers.length > 0}
+                                    <div class="text-xs font-medium text-muted-foreground">Select reviewers from your team:</div>
+                                    <div class="flex flex-wrap gap-1.5">
+                                      {#each tenantUsers.filter(u => u.email !== $session?.email) as user}
+                                        <button
+                                          type="button"
+                                          class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors {selectedReviewers[policy.id]?.has(user.email) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'}"
+                                          on:click|stopPropagation={() => toggleReviewer(policy.id, user.email)}
+                                        >
+                                          {user.name || user.email}
+                                          {#if selectedReviewers[policy.id]?.has(user.email)}
+                                            <Check class="h-3 w-3" />
+                                          {/if}
+                                        </button>
+                                      {/each}
+                                    </div>
+                                  {/if}
+                                  <div class="flex items-center gap-2 flex-wrap">
+                                    <Input
+                                      placeholder="Or type emails: reviewer@company.com, ..."
+                                      bind:value={reviewerEmails[policy.id]}
+                                      class="h-8 text-xs w-64"
+                                    />
+                                    <Button
+                                      size="sm"
+                                      on:click={() => submitForReview(policy)}
+                                      disabled={submitting.has(policy.id) || !reviewerEmails[policy.id]?.trim()}
+                                    >
+                                      <Send class="h-3 w-3 mr-1" />
+                                      {submitting.has(policy.id) ? "Submitting..." : "Submit"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      on:click={() => {
+                                        submitOpen.delete(policy.id);
+                                        submitOpen = new Set(submitOpen);
+                                        selectedReviewers[policy.id] = new Set();
+                                        selectedReviewers = { ...selectedReviewers };
+                                      }}
+                                    >
+                                      <X class="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </div>
                               {:else}
                                 <Button

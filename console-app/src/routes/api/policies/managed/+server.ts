@@ -24,7 +24,8 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const status = url.searchParams.get("status");
   const type = url.searchParams.get("type");
 
-  let query = "SELECT id, title, type, version, status, created_by, approved_by, approved_at, created_at, updated_at FROM policies WHERE tenant_id = ?";
+  let query =
+    "SELECT id, title, type, version, status, created_by, approved_by, approved_at, created_at, updated_at FROM policies WHERE tenant_id = ?";
   const params: unknown[] = [tenantId];
 
   if (status) {
@@ -39,7 +40,60 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
   query += " ORDER BY updated_at DESC LIMIT 100";
 
   try {
-    const { results } = await db.prepare(query).bind(...params).all();
+    const { results } = await db
+      .prepare(query)
+      .bind(...params)
+      .all();
+    const policyIds = (results ?? []).map((r: any) => r.id);
+
+    // Batch-load approval summaries for all policies
+    let approvalMap: Record<
+      string,
+      {
+        total: number;
+        approved: number;
+        rejected: number;
+        pending: number;
+        reviewers: { email: string; decision: string; decidedAt: string | null }[];
+      }
+    > = {};
+    if (policyIds.length > 0) {
+      try {
+        const placeholders = policyIds.map(() => "?").join(",");
+        const { results: approvalRows } = await db
+          .prepare(
+            `SELECT policy_id, reviewer_email, decision, decided_at FROM policy_approvals WHERE policy_id IN (${placeholders}) ORDER BY created_at ASC`,
+          )
+          .bind(...policyIds)
+          .all();
+        for (const row of approvalRows ?? []) {
+          const r = row as any;
+          if (!approvalMap[r.policy_id]) {
+            approvalMap[r.policy_id] = {
+              total: 0,
+              approved: 0,
+              rejected: 0,
+              pending: 0,
+              reviewers: [],
+            };
+          }
+          const entry = approvalMap[r.policy_id];
+          entry.total++;
+          if (r.decision === "approved") entry.approved++;
+          else if (r.decision === "rejected" || r.decision === "changes_requested")
+            entry.rejected++;
+          else if (r.decision === "pending") entry.pending++;
+          entry.reviewers.push({
+            email: r.reviewer_email,
+            decision: r.decision,
+            decidedAt: r.decided_at ?? null,
+          });
+        }
+      } catch {
+        // policy_approvals table may not exist yet
+      }
+    }
+
     const items = (results ?? []).map((row: any) => ({
       id: row.id,
       title: row.title,
@@ -51,6 +105,7 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
       approvedAt: row.approved_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      approvalSummary: approvalMap[row.id] ?? null,
     }));
     return json({ items });
   } catch (e: any) {
@@ -80,9 +135,18 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   if (!title?.trim() || !type?.trim() || !content?.trim()) {
     return json({ error: "Missing required fields: title, type, content" }, { status: 400 });
   }
-  const validTypes = ["access_control", "incident_response", "data_handling", "password", "acceptable_use"];
+  const validTypes = [
+    "access_control",
+    "incident_response",
+    "data_handling",
+    "password",
+    "acceptable_use",
+  ];
   if (!validTypes.includes(type)) {
-    return json({ error: `Invalid policy type. Must be one of: ${validTypes.join(", ")}` }, { status: 400 });
+    return json(
+      { error: `Invalid policy type. Must be one of: ${validTypes.join(", ")}` },
+      { status: 400 },
+    );
   }
 
   const id = crypto.randomUUID().replace(/-/g, "");
@@ -119,7 +183,9 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       targetId: id,
       detail: JSON.stringify({ title, type }),
     });
-  } catch { /* Non-blocking */ }
+  } catch {
+    /* Non-blocking */
+  }
 
   return json({ id, title, type, version: 1, status: "draft" }, { status: 201 });
 };

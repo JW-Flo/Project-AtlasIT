@@ -1,0 +1,22 @@
+name = "atlasit-email-worker"
+account_id = "620865722bd88ef0a77dbbb60c91392e"
+main = "src/index.ts"
+compatibility_date = "2025-09-27"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[observability.logs]
+enabled = true
+
+[vars]
+FROM_EMAIL = "noreply@atlasit.pro"
+FROM_NAME = "AtlasIT"
+ENVIRONMENT = "production"
+
+# Secrets (set via wrangler secret put):
+# MAILCHANNELS_API_KEY — MailChannels transactional API key
+# SMTP_HOST — SMTP relay host (alternative to MailChannels)
+# SMTP_PORT — SMTP relay port
+# SMTP_USERNAME — SMTP auth username
+# SMTP_PASSWORD — SMTP auth password
+# WORKER_AUTH_TOKEN — shared secret for service-to-service auth

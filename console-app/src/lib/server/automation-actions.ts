@@ -47,6 +47,25 @@ async function emitEvent(
 // ---------------------------------------------------------------------------
 
 const handleSendNotification: ActionHandler = async (config, ctx) => {
+  // Dispatch through the notification service for in-app + email delivery
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(ctx.db, null, {
+      tenantId: ctx.tenantId,
+      type: "automation_triggered",
+      title: (config.title as string) || "Automation notification",
+      body: (config.message as string) || (config.body as string) || "",
+      severity: (config.severity as any) || "info",
+      sourceType: "automation_rule",
+      sourceId: (config.ruleId as string) || undefined,
+      sourceLabel: (config.ruleName as string) || "Automation rule",
+      actionUrl: "/console/automation",
+      metadata: { triggerPayload: ctx.payload },
+    });
+  } catch {
+    // Fall back to event emission if notification service fails
+  }
+
   const eventId = await emitEvent(ctx.db, ctx.tenantId, "notification", "automation-engine", {
     ...config,
     triggerPayload: ctx.payload,
@@ -54,7 +73,7 @@ const handleSendNotification: ActionHandler = async (config, ctx) => {
   return {
     actionType: "send_notification",
     status: "success",
-    message: `Notification event emitted`,
+    message: `Notification dispatched`,
     details: { eventId, ...config },
   };
 };
@@ -121,6 +140,25 @@ const handleCreateIncident: ActionHandler = async (config, ctx) => {
       )
       .bind(timelineId, id, ctx.tenantId)
       .run();
+  } catch {
+    // Non-blocking
+  }
+
+  // Dispatch notification for auto-created incident
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(ctx.db, null, {
+      tenantId: ctx.tenantId,
+      type: "incident_created",
+      title: `Auto-incident: ${title}`,
+      body: description,
+      severity: severity as any,
+      sourceType: "incident",
+      sourceId: id,
+      sourceLabel: title,
+      actionUrl: `/console/incidents`,
+      metadata: { automated: true, ruleId: config.ruleId },
+    });
   } catch {
     // Non-blocking
   }

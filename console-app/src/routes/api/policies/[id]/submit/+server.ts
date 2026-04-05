@@ -22,15 +22,17 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
   let body: any;
   try {
     body = await request.json();
-    if (
-      !body ||
-      !Array.isArray(body.reviewerEmails) ||
-      body.reviewerEmails.length === 0
-    ) {
-      return json({ error: "Missing required field: reviewerEmails (non-empty array)" }, { status: 400 });
+    if (!body || !Array.isArray(body.reviewerEmails) || body.reviewerEmails.length === 0) {
+      return json(
+        { error: "Missing required field: reviewerEmails (non-empty array)" },
+        { status: 400 },
+      );
     }
     if (!body.reviewerEmails.every((e: unknown) => typeof e === "string" && e.trim())) {
-      return json({ error: "reviewerEmails must be an array of non-empty strings" }, { status: 400 });
+      return json(
+        { error: "reviewerEmails must be an array of non-empty strings" },
+        { status: 400 },
+      );
     }
   } catch {
     return json({ error: "Invalid JSON" }, { status: 400 });
@@ -81,6 +83,32 @@ export const POST: RequestHandler = async ({ params, request, platform, locals }
         targetId: id,
         detail: JSON.stringify({ reviewerEmails: body.reviewerEmails }),
       });
+    } catch {
+      // Non-blocking
+    }
+
+    // Notify reviewers about approval request
+    try {
+      const { notify } = await import("$lib/server/notifications");
+      for (const email of body.reviewerEmails) {
+        const reviewer = await db
+          .prepare("SELECT id FROM console_users WHERE email = ? AND tenant_id = ?")
+          .bind(email.trim(), tenantId)
+          .first<{ id: string }>();
+        await notify(db, platform, {
+          tenantId,
+          userId: reviewer?.id || null,
+          type: "policy_approval_requested",
+          title: `Policy review requested`,
+          body: `${user.email} submitted a policy for your review`,
+          severity: "warning",
+          sourceType: "policy",
+          sourceId: id!,
+          sourceLabel: `Policy ${id}`,
+          actionUrl: `/console/policies`,
+          metadata: { requesterName: user.email },
+        });
+      }
     } catch {
       // Non-blocking
     }

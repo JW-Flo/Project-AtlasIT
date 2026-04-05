@@ -6,6 +6,7 @@ import {
   DEFAULT_SLA_SECONDS,
   type SlaConfig,
 } from "@atlasit/shared/incidents/lifecycle";
+import { classifySeverity, type EventData } from "@atlasit/shared/incidents/classifier";
 
 async function loadSlaConfig(db: D1Database, tenantId: string): Promise<SlaConfig> {
   try {
@@ -109,8 +110,28 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
   const id = crypto.randomUUID().replace(/-/g, "");
   const validSeverities = ["low", "medium", "high", "critical"];
-  const severity = validSeverities.includes(body.severity) ? body.severity : "medium";
   const description = body.description || "";
+
+  // Auto-classify severity if requested or no severity provided
+  let severity: string;
+  let autoClassified = false;
+  if (body.autoClassify || !body.severity) {
+    const event: EventData = {
+      type: body.eventType ?? "manual",
+      source: body.source ?? "manual",
+      title: body.title,
+      description,
+      metadata: body.metadata ?? {},
+    };
+    const classification = classifySeverity(event);
+    severity =
+      body.severity && validSeverities.includes(body.severity)
+        ? body.severity
+        : classification.severity;
+    autoClassified = !body.severity;
+  } else {
+    severity = validSeverities.includes(body.severity) ? body.severity : "medium";
+  }
   const now = new Date().toISOString();
 
   // Compute SLA breach deadline from tenant config
@@ -158,5 +179,23 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     // Non-blocking
   }
 
-  return json({ id, title: body.title, severity, status: "open" }, { status: 201 });
+  // Send notification (best-effort)
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(db, platform, {
+      tenantId,
+      type: "incident_created",
+      title: `New incident: ${body.title}`,
+      body: description || undefined,
+      severity: severity as any,
+      sourceType: "incident",
+      sourceId: id,
+      sourceLabel: body.title,
+      actionUrl: `/console/incidents`,
+    });
+  } catch {
+    // Non-blocking
+  }
+
+  return json({ id, title: body.title, severity, status: "open", autoClassified }, { status: 201 });
 };

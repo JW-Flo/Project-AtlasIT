@@ -28,6 +28,7 @@
     { href: "/console/settings/billing", label: "Billing" },
     { href: "/console/settings/trust", label: "Trust Center" },
     { href: "/console/settings/incidents", label: "Incidents" },
+    { href: "/console/settings/security", label: "Security" },
   ];
   $: current = $page.url.pathname;
 
@@ -36,6 +37,7 @@
   let usage: any = null;
   let invoices: any[] = [];
   let upgrading = false;
+  let upgradeCycle: "monthly" | "annual" = "annual";
 
   const planColors: Record<string, string> = {
     free: "secondary",
@@ -92,7 +94,7 @@
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan, cycle: "monthly" }),
+        body: JSON.stringify({ plan, cycle: upgradeCycle }),
       });
       const data = await res.json();
       if (data.url) {
@@ -202,18 +204,34 @@
           </div>
         {/if}
 
-        <div class="flex flex-wrap gap-3">
+        <div class="space-y-3">
+          {#if billing?.plan === "free" || billing?.plan === "starter"}
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted-foreground">Billing cycle:</span>
+              <div class="inline-flex items-center gap-1 bg-muted rounded-full p-0.5">
+                <button
+                  class="px-3 py-1 rounded-full text-xs font-medium transition-colors {upgradeCycle === 'monthly' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}"
+                  on:click={() => upgradeCycle = 'monthly'}
+                >Monthly</button>
+                <button
+                  class="px-3 py-1 rounded-full text-xs font-medium transition-colors {upgradeCycle === 'annual' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}"
+                  on:click={() => upgradeCycle = 'annual'}
+                >Annual <Badge variant="success" class="ml-1 text-[10px]">Save</Badge></button>
+              </div>
+            </div>
+          {/if}
+          <div class="flex flex-wrap gap-3">
           {#if billing?.plan === "free"}
             <Button on:click={() => handleUpgrade("starter")} disabled={upgrading}>
-              Upgrade to Starter
+              Upgrade to Starter — {upgradeCycle === 'annual' ? '$3' : '$4'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
             <Button variant="outline" on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$5' : '$6'}/user/mo
             </Button>
           {:else if billing?.plan === "starter"}
             <Button on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$5' : '$6'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
           {/if}
@@ -226,6 +244,7 @@
           <Button variant="outline" on:click={() => window.location.href = "/pricing"}>
             Compare plans
           </Button>
+        </div>
         </div>
 
         {#if billing?.currentPeriodEnd}

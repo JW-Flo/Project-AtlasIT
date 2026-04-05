@@ -6,6 +6,8 @@ export interface PlanDefinition {
   tagline: string;
   monthlyPriceCents: number;
   annualPriceCents: number;
+  /** Minimum monthly charge (in cents) regardless of user count */
+  minimumMonthlyCents: number;
   features: string[];
   limits: PlanLimits;
   highlighted?: boolean;
@@ -31,6 +33,7 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     tagline: "SaaS discovery & compliance assessment",
     monthlyPriceCents: 0,
     annualPriceCents: 0,
+    minimumMonthlyCents: 0,
     cta: "Get started free",
     features: [
       "SaaS discovery & shadow IT detection",
@@ -56,9 +59,10 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     id: "starter",
     name: "Starter",
     tagline: "IT ops automation for growing teams",
-    monthlyPriceCents: 800,
-    annualPriceCents: 7200,
-    cta: "Start free trial",
+    monthlyPriceCents: 400,
+    annualPriceCents: 3600,
+    minimumMonthlyCents: 2000,
+    cta: "Start 30-day free trial",
     features: [
       "Everything in Free",
       "Up to 50 users",
@@ -84,10 +88,11 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     id: "professional",
     name: "Professional",
     tagline: "Full compliance & governance platform",
-    monthlyPriceCents: 1600,
-    annualPriceCents: 14400,
+    monthlyPriceCents: 600,
+    annualPriceCents: 6000,
+    minimumMonthlyCents: 3000,
     highlighted: true,
-    cta: "Start free trial",
+    cta: "Start 14-day free trial",
     features: [
       "Everything in Starter",
       "Up to 500 users",
@@ -118,6 +123,7 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     tagline: "Custom deployment & dedicated support",
     monthlyPriceCents: 0, // custom pricing
     annualPriceCents: 0,
+    minimumMonthlyCents: 0,
     cta: "Contact sales",
     features: [
       "Everything in Professional",

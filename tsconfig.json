@@ -55,6 +55,7 @@
     "marketplace/src/**/*.ts",
     "agents/*/src/**/*.ts",
     "adapters/*/src/**/*.ts",
+    "email-worker/src/**/*.ts",
     "test/**/*.ts",
     "vitest.workspace.ts"
   ],

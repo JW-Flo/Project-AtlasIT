@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
+import { gateFrameworkAdd } from "$lib/server/tier-gate";
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = (locals as any).user;
@@ -8,6 +9,9 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+
+  const tierGate = await gateFrameworkAdd(db, user.tenantId, !!user.superAdmin);
+  if (tierGate) return tierGate;
 
   let body: any;
   try {

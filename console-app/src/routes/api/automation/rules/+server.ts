@@ -32,6 +32,10 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
+  const { gateAutomationRule } = await import("$lib/server/tier-gate");
+  const tierGate = await gateAutomationRule(db, tenantId, !!user.superAdmin);
+  if (tierGate) return tierGate;
+
   let body: any;
   try {
     body = await request.json();

@@ -6,7 +6,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle, ChevronDown, ChevronUp, Plus, Clock, User, MessageSquare, Send } from "lucide-svelte";
+  import { AlertTriangle, ChevronDown, ChevronUp, Plus, Clock, User, MessageSquare, Send, Zap, ExternalLink } from "lucide-svelte";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
 
   interface TimelineEntry {
@@ -47,10 +47,16 @@
   let newDescription = "";
   let creating = false;
 
+  // Auto-classify toggle
+  let autoClassify = true;
+  let classifying = false;
+  let classificationHint: { severity: string; confidence: number; rules: string[] } | null = null;
+
   // Comment form per incident
   let commentInputs: Record<string, string> = {};
   let submittingComment = new Set<string>();
   let changingSeverity = new Set<string>();
+  let escalating = new Set<string>();
 
   // Tenant team members for assignment
   let teamMembers: string[] = [];
@@ -140,6 +146,26 @@
     } catch { /* silent */ }
   }
 
+  async function runAutoClassify() {
+    if (!newTitle.trim()) return;
+    classifying = true;
+    classificationHint = null;
+    try {
+      const res = await fetch("/api/incidents/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim(), description: newDescription.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const c = data.classification;
+        classificationHint = { severity: c.severity, confidence: c.confidence, rules: c.matchedRules };
+        newSeverity = c.severity;
+      }
+    } catch { /* silent */ }
+    classifying = false;
+  }
+
   async function createIncident() {
     if (!newTitle.trim()) return;
     creating = true;
@@ -149,15 +175,21 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newTitle.trim(),
-          severity: newSeverity,
+          severity: autoClassify ? undefined : newSeverity,
           description: newDescription.trim() || null,
+          autoClassify,
         }),
       });
       if (!res.ok) throw new Error("Failed to create incident");
-      pushToast({ message: "Incident created", variant: "success" });
+      const result = await res.json();
+      const msg = result.autoClassified
+        ? `Incident created (auto-classified as ${result.severity})`
+        : "Incident created";
+      pushToast({ message: msg, variant: "success" });
       newTitle = "";
       newDescription = "";
       newSeverity = "medium";
+      classificationHint = null;
       showCreateForm = false;
       await loadIncidents();
     } catch (e: any) {
@@ -165,6 +197,26 @@
     } finally {
       creating = false;
     }
+  }
+
+  async function escalateIncident(incidentId: string) {
+    escalating.add(incidentId);
+    escalating = new Set(escalating);
+    try {
+      const res = await fetch(`/api/incidents/${incidentId}/escalate`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Escalation failed");
+      pushToast({ message: `Escalated to ${data.provider}`, variant: "success" });
+      delete timelineCache[incidentId];
+      timelineCache = { ...timelineCache };
+      loadTimeline(incidentId);
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Escalation failed", variant: "error" });
+    }
+    escalating.delete(incidentId);
+    escalating = new Set(escalating);
   }
 
   async function updateStatus(incidentId: string, newStatus: string, comment?: string) {
@@ -314,16 +366,44 @@
           </div>
           <div class="space-y-2">
             <label for="inc-severity" class="text-sm font-medium">Severity</label>
-            <select
-              id="inc-severity"
-              bind:value={newSeverity}
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+            <div class="flex items-center gap-2">
+              <select
+                id="inc-severity"
+                bind:value={newSeverity}
+                disabled={autoClassify}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+            <label class="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+              <input type="checkbox" bind:checked={autoClassify} class="rounded" />
+              Auto-classify severity
+            </label>
+            {#if autoClassify && newTitle.trim()}
+              <button
+                type="button"
+                class="text-xs text-primary underline-offset-2 hover:underline flex items-center gap-1"
+                disabled={classifying}
+                on:click={runAutoClassify}
+              >
+                <Zap class="h-3 w-3" />
+                {classifying ? "Classifying..." : "Preview classification"}
+              </button>
+            {/if}
+            {#if classificationHint}
+              <div class="text-xs bg-muted/50 rounded p-2 space-y-1">
+                <div>Suggested: <span class="font-medium capitalize">{classificationHint.severity}</span>
+                  <span class="text-muted-foreground">({Math.round(classificationHint.confidence * 100)}% confidence)</span>
+                </div>
+                {#if classificationHint.rules.length > 0}
+                  <div class="text-muted-foreground">Rules: {classificationHint.rules.join(", ")}</div>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
         <div class="space-y-2">
@@ -448,6 +528,17 @@
                                   </Button>
                                 {:else}
                                   <span class="text-xs text-muted-foreground italic">Resolved</span>
+                                {/if}
+                                {#if incident.status !== "resolved"}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={escalating.has(incident.id)}
+                                    on:click={(e) => { e.stopPropagation(); escalateIncident(incident.id); }}
+                                  >
+                                    <ExternalLink class="h-3 w-3 mr-1" />
+                                    {escalating.has(incident.id) ? "Escalating..." : "Escalate"}
+                                  </Button>
                                 {/if}
                               </div>
                             </div>

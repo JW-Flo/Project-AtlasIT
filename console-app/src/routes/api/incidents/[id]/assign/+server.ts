@@ -93,5 +93,29 @@ export const PUT: RequestHandler = async ({ params, request, platform, locals })
     // Non-blocking
   }
 
+  // Notify the assignee
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    const assigneeUser = await db
+      .prepare("SELECT id FROM console_users WHERE email = ? AND tenant_id = ?")
+      .bind(ownerEmail, tenantId)
+      .first<{ id: string }>();
+
+    await notify(db, platform, {
+      tenantId,
+      userId: assigneeUser?.id || null,
+      type: "incident_assigned",
+      title: `Incident assigned to you`,
+      body: `You've been assigned to incident ${id} by ${user.email}`,
+      severity: "warning",
+      sourceType: "incident",
+      sourceId: id!,
+      sourceLabel: ownerEmail,
+      actionUrl: `/console/incidents`,
+    });
+  } catch {
+    // Non-blocking
+  }
+
   return json({ id, ownerEmail });
 };

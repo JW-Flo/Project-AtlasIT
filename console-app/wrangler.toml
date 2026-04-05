@@ -113,3 +113,7 @@ service = "atlasit-compliance-worker"
 [[services]]
 binding = "MARKETPLACE_WORKER"
 service = "atlasit-marketplace"
+
+[[services]]
+binding = "EMAIL_WORKER"
+service = "atlasit-email-worker"
