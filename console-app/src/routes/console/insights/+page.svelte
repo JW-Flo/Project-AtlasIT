@@ -356,20 +356,21 @@
                     </div>
                     <p class="text-sm text-muted-foreground">{enrichRecommendation(gap)}</p>
                   </div>
-                  <div class="flex flex-col gap-1 shrink-0">
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <div class="flex flex-col gap-1 shrink-0" on:click|stopPropagation role="group">
                     {#if getConnectedAdaptersForGap(gap).length > 0}
                       <Button
                         variant="default"
                         size="sm"
                         disabled={collectingGap === gap.controlId}
-                        on:click|stopPropagation={() => collectEvidenceForGap(gap)}
+                        on:click={() => collectEvidenceForGap(gap)}
                       >
                         <Zap class="h-3 w-3 mr-1" />
                         {collectingGap === gap.controlId ? "Collecting..." : "Collect Now"}
                       </Button>
                     {/if}
                     {#if gap.suggestedAction}
-                      <Button variant="outline" size="sm" href="/console/automation" on:click|stopPropagation>
+                      <Button variant="outline" size="sm" href="/console/automation">
                         Create Rule
                       </Button>
                     {/if}

@@ -14,7 +14,7 @@
   import { session } from "$lib/stores/session";
   import {
     Plus, FileText, Check, X, Archive, Send, Edit3, History,
-    ChevronDown, ChevronUp, AlertTriangle, Clock, MessageSquare
+    ChevronDown, ChevronUp, AlertTriangle, Clock, MessageSquare, Download
   } from "lucide-svelte";
 
   // ── Types ────────────────────────────────────────────────────────────────
@@ -216,6 +216,117 @@
     delete detailCache[policyId];
     detailCache = { ...detailCache };
     loadDetail(policyId);
+  }
+
+  async function downloadPdf(detail: PolicyDetail) {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+
+    const orgName = $session?.orgName || "Organization";
+    const accentHex = $session?.branding?.accentColor || "#1a56db";
+    const pageW = doc.internal.pageSize.getWidth();
+    const margin = 56;
+    const contentW = pageW - margin * 2;
+    let y = margin;
+
+    // Parse accent color to RGB
+    function hexToRgb(hex: string): [number, number, number] {
+      const h = hex.replace("#", "");
+      if (h.length >= 6) return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+      return [26, 86, 219]; // fallback blue
+    }
+    const [ar, ag, ab] = hexToRgb(accentHex);
+
+    // Header bar
+    doc.setFillColor(ar, ag, ab);
+    doc.rect(0, 0, pageW, 72, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont("helvetica", "bold");
+    doc.text(orgName, margin, 44);
+
+    // Title
+    y = 100;
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text(detail.title, margin, y);
+    y += 28;
+
+    // Metadata line
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    const meta = [
+      `Type: ${detail.type}`,
+      `Status: ${statusLabel(detail.status)}`,
+      `Version: v${detail.version}`,
+      `Last updated: ${fmtDate(detail.updatedAt)}`,
+      detail.createdBy ? `Author: ${detail.createdBy}` : null,
+    ].filter(Boolean).join("  •  ");
+    doc.text(meta, margin, y);
+    y += 8;
+
+    // Divider
+    doc.setDrawColor(ar, ag, ab);
+    doc.setLineWidth(1.5);
+    doc.line(margin, y, pageW - margin, y);
+    y += 20;
+
+    // Content body
+    doc.setTextColor(40, 40, 40);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const content = visibleContent(detail, detail.id);
+    const lines = doc.splitTextToSize(content, contentW) as string[];
+    const lineH = 14;
+    const pageH = doc.internal.pageSize.getHeight();
+
+    for (const line of lines) {
+      if (y + lineH > pageH - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += lineH;
+    }
+
+    // Approval section (if any)
+    if (detail.approvals?.length > 0) {
+      y += 16;
+      if (y + 40 > pageH - margin) { doc.addPage(); y = margin; }
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 30, 30);
+      doc.text("Approval History", margin, y);
+      y += 16;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      for (const a of detail.approvals) {
+        if (y + 14 > pageH - margin) { doc.addPage(); y = margin; }
+        const decision = a.decision === "changes_requested" ? "changes requested" : a.decision;
+        const aLine = `${a.reviewerEmail} — ${decision}${a.decidedAt ? ` (${fmtDate(a.decidedAt)})` : ""}${a.comment ? `: ${a.comment}` : ""}`;
+        doc.setTextColor(80, 80, 80);
+        doc.text(aLine, margin, y);
+        y += 14;
+      }
+    }
+
+    // Footer on each page
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(160, 160, 160);
+      doc.text(`${orgName} — ${detail.title} v${detail.version}`, margin, pageH - 30);
+      doc.text(`Page ${i} of ${totalPages}`, pageW - margin, pageH - 30, { align: "right" });
+      doc.text(`Generated ${new Date().toLocaleDateString()}`, margin, pageH - 20);
+    }
+
+    const slug = detail.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    doc.save(`${slug}-v${detail.version}.pdf`);
   }
 
   async function loadTemplates() {
@@ -776,6 +887,15 @@
 
                           <!-- Action bar -->
                           <div class="flex flex-wrap items-start gap-3 pt-2 border-t" on:click|stopPropagation>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              on:click={() => downloadPdf(detail)}
+                            >
+                              <Download class="h-3 w-3 mr-1" />
+                              Download PDF
+                            </Button>
 
                             {#if policy.status === "draft"}
                               <!-- Edit button -->
