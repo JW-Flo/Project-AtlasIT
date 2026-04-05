@@ -93,6 +93,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     return json({ error: "protocol must be 'saml' or 'oidc'" }, { status: 400 });
   }
 
+  // Validate required fields per protocol
+  if (protocol === "oidc" && (!oidcIssuer || !oidcClientId)) {
+    return json({ error: "OIDC requires an issuer URL and client ID" }, { status: 400 });
+  }
+  if (protocol === "saml" && !samlSsoUrl) {
+    return json({ error: "SAML requires an SSO URL" }, { status: 400 });
+  }
+
   // Auto-discover OIDC endpoints if issuer provided
   let authUrl = body.oidcAuthorizationUrl;
   let tokenUrl = body.oidcTokenUrl;
