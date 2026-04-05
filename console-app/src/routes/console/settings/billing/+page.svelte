@@ -222,15 +222,15 @@
           <div class="flex flex-wrap gap-3">
           {#if billing?.plan === "free"}
             <Button on:click={() => handleUpgrade("starter")} disabled={upgrading}>
-              Upgrade to Starter — {upgradeCycle === 'annual' ? '$6' : '$8'}/user/mo
+              Upgrade to Starter — {upgradeCycle === 'annual' ? '$2' : '$3'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
             <Button variant="outline" on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional — {upgradeCycle === 'annual' ? '$12' : '$16'}/user/mo
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$4' : '$5'}/user/mo
             </Button>
           {:else if billing?.plan === "starter"}
             <Button on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional — {upgradeCycle === 'annual' ? '$12' : '$16'}/user/mo
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$4' : '$5'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
           {/if}

@@ -53,7 +53,6 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   }
 
   // Fire automation event for app_connected trigger
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (db) {
     try {
       await writeAudit(db, {
