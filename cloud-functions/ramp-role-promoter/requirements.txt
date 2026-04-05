@@ -1,5 +1,0 @@
-# This file is used for defining the dependencies for the Cloud Function
-
-# Required dependencies
-requests>=2.33.0
-functions-framework

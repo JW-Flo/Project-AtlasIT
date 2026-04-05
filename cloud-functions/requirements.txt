@@ -1,4 +1,0 @@
-requests>=2.33.0
-pytest
-flask
-Pygments>=2.20.0

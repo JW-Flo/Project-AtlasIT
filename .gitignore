@@ -28,6 +28,7 @@ Logs/
 test-results/
 qwen_eval_out/
 issues/
+context/
 
 # Ignore keys and private certificates
 Keys/
