@@ -21,6 +21,8 @@ export interface AdapterEvidenceResult {
   slug: string;
   collectedAt: string;
   items: AdapterEvidenceItem[];
+  /** Non-null when the adapter returned an error or was unreachable */
+  error?: string;
 }
 
 export interface AdapterEvidenceItem {
@@ -172,13 +174,18 @@ export async function collectAdapterEvidence(
     });
 
     if (!res.ok) {
-      return { slug, collectedAt, items: [] };
+      const body = await res.text().catch(() => "");
+      const error = `${slug} returned ${res.status}: ${body.slice(0, 200)}`;
+      console.warn(`[evidence] ${error}`);
+      return { slug, collectedAt, items: [], error };
     }
 
     const data = (await res.json()) as { items?: AdapterEvidenceItem[] };
     return { slug, collectedAt, items: data.items ?? [] };
-  } catch {
-    return { slug, collectedAt, items: [] };
+  } catch (err) {
+    const error = `${slug} unreachable: ${err instanceof Error ? err.message : String(err)}`;
+    console.warn(`[evidence] ${error}`);
+    return { slug, collectedAt, items: [], error };
   }
 }
 
