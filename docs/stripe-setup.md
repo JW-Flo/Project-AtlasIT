@@ -11,13 +11,13 @@ Run these commands from the project root to configure Stripe keys as worker secr
 
 ```bash
 # Secret key (server-side only — never expose in client code)
-echo "<sk_live_...>" | npx wrangler secret put STRIPE_SECRET_KEY --name atlasit-console
+echo "<REPLACE_WITH_STRIPE_SECRET_KEY>" | npx wrangler secret put STRIPE_SECRET_KEY --name atlasit-console
 
 # Publishable key (safe for client-side)
-echo "<pk_live_...>" | npx wrangler secret put STRIPE_PUBLISHABLE_KEY --name atlasit-console
+echo "<REPLACE_WITH_STRIPE_PUBLISHABLE_KEY>" | npx wrangler secret put STRIPE_PUBLISHABLE_KEY --name atlasit-console
 
 # Webhook signing secret (from Stripe Dashboard → Webhooks)
-echo "<whsec_...>" | npx wrangler secret put STRIPE_WEBHOOK_SECRET --name atlasit-console
+echo "<REPLACE_WITH_WEBHOOK_SECRET>" | npx wrangler secret put STRIPE_WEBHOOK_SECRET --name atlasit-console
 ```
 
 ## Create Stripe Products & Prices
