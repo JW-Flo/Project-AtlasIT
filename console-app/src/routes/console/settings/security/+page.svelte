@@ -19,6 +19,7 @@
   let ssoConfig: any = null;
   let ssoTierBlocked = false;
   let ssoTierMessage = "";
+  let ssoError = "";
   let ssoSaving = false;
   let ssoProtocol: "saml" | "oidc" = "oidc";
   let ssoTestResult: { success: boolean; message: string } | null = null;
@@ -46,44 +47,50 @@
 
   async function loadSsoConfig() {
     ssoLoading = true;
+    ssoError = "";
     try {
       const res = await fetch("/api/tenant/sso");
       if (res.status === 403) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         ssoTierBlocked = true;
         ssoTierMessage = data.error || "SSO requires a Professional or Enterprise plan";
-        ssoLoading = false;
         return;
       }
-      if (res.ok) {
-        const data = await res.json();
-        ssoConfigured = data.configured;
-        if (data.config) {
-          ssoConfig = data.config;
-          ssoProtocol = data.config.protocol;
-          ssoDisplayName = data.config.displayName || "";
-          ssoIdpName = data.config.idpName || "";
-          ssoEnabled = data.config.enabled;
-          ssoJitProvisioning = data.config.jitProvisioning;
-          ssoForceSso = data.config.forceSso;
-          ssoBypassMfa = data.config.ssoBypassMfa;
-          ssoDefaultRoles = JSON.stringify(data.config.defaultRoles || ["member"]);
-
-          // SAML
-          samlEntityId = data.config.samlEntityId || "";
-          samlSsoUrl = data.config.samlSsoUrl || "";
-          samlCertificate = data.config.samlCertificate || "";
-          samlMetadataUrl = data.config.samlMetadataUrl || "";
-
-          // OIDC
-          oidcIssuer = data.config.oidcIssuer || "";
-          oidcClientId = data.config.oidcClientId || "";
-          oidcClientSecret = "";
-          oidcScopes = data.config.oidcScopes || "openid email profile";
-        }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        ssoError = data.error || `Failed to load SSO configuration (${res.status})`;
+        return;
       }
-    } catch {}
-    ssoLoading = false;
+      const data = await res.json();
+      ssoConfigured = data.configured;
+      if (data.config) {
+        ssoConfig = data.config;
+        ssoProtocol = data.config.protocol;
+        ssoDisplayName = data.config.displayName || "";
+        ssoIdpName = data.config.idpName || "";
+        ssoEnabled = data.config.enabled;
+        ssoJitProvisioning = data.config.jitProvisioning;
+        ssoForceSso = data.config.forceSso;
+        ssoBypassMfa = data.config.ssoBypassMfa;
+        ssoDefaultRoles = JSON.stringify(data.config.defaultRoles || ["member"]);
+
+        // SAML
+        samlEntityId = data.config.samlEntityId || "";
+        samlSsoUrl = data.config.samlSsoUrl || "";
+        samlCertificate = data.config.samlCertificate || "";
+        samlMetadataUrl = data.config.samlMetadataUrl || "";
+
+        // OIDC
+        oidcIssuer = data.config.oidcIssuer || "";
+        oidcClientId = data.config.oidcClientId || "";
+        oidcClientSecret = "";
+        oidcScopes = data.config.oidcScopes || "openid email profile";
+      }
+    } catch (e) {
+      ssoError = "Failed to load SSO configuration";
+    } finally {
+      ssoLoading = false;
+    }
   }
 
   async function saveSsoConfig() {
@@ -314,8 +321,32 @@
       if (res.ok) {
         const data = await res.json();
         policy = data.policy;
+      } else {
+        console.error("Failed to load security policy:", res.status);
+        // Still show the card with defaults so the user can configure
+        policy = {
+          mfaRequired: false,
+          sessionTtlSeconds: 604800,
+          mfaSessionTtlSeconds: 604800,
+          maxSessionTtlSeconds: 2592000,
+          idleTimeoutSeconds: 86400,
+          passwordRotationDays: 0,
+          minPasswordLength: 8,
+          mfaRequiredRoles: [],
+        };
       }
-    } catch {}
+    } catch {
+      policy = {
+        mfaRequired: false,
+        sessionTtlSeconds: 604800,
+        mfaSessionTtlSeconds: 604800,
+        maxSessionTtlSeconds: 2592000,
+        idleTimeoutSeconds: 86400,
+        passwordRotationDays: 0,
+        minPasswordLength: 8,
+        mfaRequiredRoles: [],
+      };
+    }
     policyLoading = false;
   }
 
@@ -542,6 +573,17 @@
       <CardContent>
         {#if ssoLoading}
           <p class="text-sm text-muted-foreground">Loading SSO configuration...</p>
+        {:else if ssoError}
+          <div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-3">
+            <div class="flex items-start gap-2">
+              <AlertTriangle class="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p class="text-sm font-medium text-destructive">{ssoError}</p>
+                <p class="text-xs text-muted-foreground mt-1">Try refreshing the page. If this persists, contact support.</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" on:click={loadSsoConfig}>Retry</Button>
+          </div>
         {:else if ssoTierBlocked}
           <div class="rounded-lg border border-warning/20 bg-warning/5 p-4 space-y-3">
             <div class="flex items-start gap-2">
