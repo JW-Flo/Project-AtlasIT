@@ -20,6 +20,11 @@
   let inviteParam = "";
 
   // MFA state
+  // SSO state
+  let ssoTenantId = "";
+  let ssoError = "";
+
+  // MFA state
   let mfaRequired = false;
   let mfaToken = "";
   let totpCode = "";
@@ -130,8 +135,22 @@
     else register();
   }
 
+  function initSso() {
+    if (!ssoTenantId.trim()) {
+      ssoError = "Enter your organization ID";
+      return;
+    }
+    ssoError = "";
+    window.location.href = `/api/auth/sso/init?tenant=${encodeURIComponent(ssoTenantId.trim())}`;
+  }
+
   onMount(() => {
     inviteParam = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+    const urlError = new URLSearchParams(window.location.search).get("error");
+    const urlMessage = new URLSearchParams(window.location.search).get("message");
+    if (urlError?.startsWith("sso")) {
+      error = urlMessage || `SSO login failed (${urlError})`;
+    }
     if (inviteParam) {
       void trackGrowthEvent("invite_link_opened", inviteParam);
       mode = "register";
@@ -305,6 +324,30 @@
           {/if}
           <ArrowRight class="h-4 w-4 ml-2" />
         </Button>
+
+        <!-- SSO Login -->
+        {#if mode === "login"}
+          <div class="relative flex items-center justify-center py-2">
+            <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-border"></div></div>
+            <span class="relative bg-background px-3 text-xs text-muted-foreground">or sign in with SSO</span>
+          </div>
+
+          <div class="flex gap-2">
+            <Input
+              bind:value={ssoTenantId}
+              placeholder="Organization ID"
+              class="flex-1"
+              on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); initSso(); } }}
+            />
+            <Button variant="outline" on:click={initSso} type="button">
+              SSO
+              <ArrowRight class="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+          {#if ssoError}
+            <p class="text-xs text-destructive">{ssoError}</p>
+          {/if}
+        {/if}
 
         <div class="text-center mt-2">
           <a href="/console/onboarding" class="text-xs text-primary hover:underline">

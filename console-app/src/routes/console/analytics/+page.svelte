@@ -227,8 +227,35 @@
     }
   }
 
-  function handleExport() {
-    pushToast({ message: "Report generation coming soon", variant: "default" });
+  let exporting = false;
+
+  async function handleExport() {
+    exporting = true;
+    try {
+      const res = await fetch("/api/analytics/report?format=csv");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        pushToast({ message: (body as any).error || "Report generation failed", variant: "error" });
+        return;
+      }
+      // Trigger browser download
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      a.download = filenameMatch?.[1] || `atlasit-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      pushToast({ message: "Report downloaded", variant: "success" });
+    } catch {
+      pushToast({ message: "Report generation failed", variant: "error" });
+    } finally {
+      exporting = false;
+    }
   }
 
   onMount(() => {
@@ -268,9 +295,9 @@
         {/each}
       </div>
 
-      <Button variant="outline" size="sm" on:click={handleExport}>
+      <Button variant="outline" size="sm" on:click={handleExport} disabled={exporting}>
         <Download class="mr-2 h-4 w-4" />
-        Download Report
+        {exporting ? "Generating..." : "Download Report"}
       </Button>
     </div>
   </div>

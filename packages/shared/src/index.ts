@@ -24,3 +24,4 @@ export * from "./roles/index";
 export * from "./incidents/index";
 export * from "./billing/index";
 export * from "./security/index";
+export * from "./sso/index";
