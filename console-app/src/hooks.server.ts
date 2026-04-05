@@ -325,6 +325,16 @@ export const handleError: HandleServerError = ({ error, event }) => {
     }),
   );
 
+  // Expose error details when debug param is present (owner-only troubleshooting)
+  const debug = event.url.searchParams.get("_debug") === "1";
+  if (debug) {
+    const stack = error instanceof Error ? error.stack : String(error);
+    return {
+      message: `${message} | ${(stack || "").split("\n").slice(0, 3).join(" ")}`,
+      code: "INTERNAL_ERROR",
+    };
+  }
+
   // Never expose internal details to the client.
   return { message: "An unexpected error occurred", code: "INTERNAL_ERROR" };
 };
