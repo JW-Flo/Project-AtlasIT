@@ -32,10 +32,10 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
     await db
       .prepare(
         `INSERT INTO tenant_billing (tenant_id, plan, billing_cycle, status, current_period_start, current_period_end, created_at, updated_at)
-         VALUES (?, ?, ?, 'trialing', datetime('now'), datetime('now', '+14 days'), datetime('now'), datetime('now'))
+         VALUES (?, ?, ?, 'trialing', datetime('now'), datetime('now', ? || ' days'), datetime('now'), datetime('now'))
          ON CONFLICT(tenant_id) DO UPDATE SET plan = ?, billing_cycle = ?, status = 'trialing', updated_at = datetime('now')`,
       )
-      .bind(user.tenantId, plan, cycle, plan, cycle)
+      .bind(user.tenantId, plan, cycle, plan === "starter" ? "+30" : "+14", plan, cycle)
       .run();
 
     // Update tenant tier
@@ -114,7 +114,7 @@ export const POST: RequestHandler = async ({ request, locals, platform, url }) =
         "line_items[0][quantity]": "1",
         success_url: `${url.origin}/console/settings/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${url.origin}/console/settings/billing?checkout=canceled`,
-        "subscription_data[trial_period_days]": "14",
+        "subscription_data[trial_period_days]": plan === "starter" ? "30" : "14",
         "subscription_data[metadata][tenant_id]": user.tenantId,
         "subscription_data[metadata][plan]": plan,
       }),

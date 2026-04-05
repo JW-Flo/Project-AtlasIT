@@ -45,7 +45,7 @@
       tagline: "IT ops automation for growing teams",
       monthlyPrice: 8,
       annualPrice: 6,
-      cta: "Start free trial",
+      cta: "Start 30-day free trial",
       ctaVariant: "outline",
       features: [
         "Everything in Free",
@@ -64,7 +64,7 @@
       monthlyPrice: 16,
       annualPrice: 12,
       highlighted: true,
-      cta: "Start free trial",
+      cta: "Start 14-day free trial",
       ctaVariant: "default",
       features: [
         "Everything in Starter",
@@ -278,7 +278,7 @@
           <h3 class="font-medium mb-2">Can I try before I buy?</h3>
           <p class="text-sm text-muted-foreground">
             Yes! The free tier includes SaaS discovery and one compliance framework with no credit card required.
-            Paid plans include a 14-day free trial with full access.
+            Starter includes a 30-day free trial and Professional includes a 14-day free trial, both with full access.
           </p>
         </div>
         <div>
