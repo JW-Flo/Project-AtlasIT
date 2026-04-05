@@ -226,6 +226,19 @@ export const AUDIT_EVIDENCE_REGISTRY: AuditEvidenceMapping[] = [
     category: "config_mgmt",
   },
   {
+    action: "security_policy.updated",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    impact: "positive",
+    description: "Organization security policy updated (MFA, session, password controls)",
+    category: "auth_control",
+  },
+  {
     action: "trust_center_settings.updated",
     controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
     impact: "positive",
@@ -434,5 +447,18 @@ export const PLATFORM_STATE_PROBES: PlatformStateProbe[] = [
     description: "Security policies uploaded to evidence locker",
     category: "policy_mgmt",
     query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND evidence_type = 'policy' AND created_at >= datetime('now', '-365 days')`,
+  },
+  {
+    id: "mfa_enforced",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    description: "MFA required for all users via organization security policy",
+    category: "auth_control",
+    query: `SELECT COUNT(*) AS result FROM tenant_preferences WHERE tenant_id = ? AND key = 'security_policy' AND json_extract(value, '$.mfaRequired') = true`,
   },
 ];
