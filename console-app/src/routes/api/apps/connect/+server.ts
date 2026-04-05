@@ -3,6 +3,7 @@ import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { saveCredentials } from "$lib/server/credentials";
 import { writeAudit } from "$lib/server/audit";
+import { gateAdapterInstall } from "$lib/server/tier-gate";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
@@ -15,6 +16,13 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   if (!tenantId) {
     return json({ error: "Tenant context required" }, { status: 403 });
   }
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (db) {
+    const tierGate = await gateAdapterInstall(db, tenantId, !!user.superAdmin);
+    if (tierGate) return tierGate;
+  }
+
   let body: any;
   try {
     body = await request.json();
@@ -38,10 +46,10 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const result = await saveCredentials(platform, appId, credentials, tenantId);
 
   if (!result.ok) {
-    return new Response(
-      JSON.stringify({ error: result.error || "Failed to save credentials" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: result.error || "Failed to save credentials" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Fire automation event for app_connected trigger
@@ -61,11 +69,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     }
   }
 
-  return new Response(
-    JSON.stringify({ success: true, connected: true, id: appId }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  return new Response(JSON.stringify({ success: true, connected: true, id: appId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 };

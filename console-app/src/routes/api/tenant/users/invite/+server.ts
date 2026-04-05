@@ -37,6 +37,10 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
+  const { gateUserInvite } = await import("$lib/server/tier-gate");
+  const tierGate = await gateUserInvite(db, user!.tenantId!, !!user!.superAdmin);
+  if (tierGate) return tierGate;
+
   const body = await request.json().catch(() => ({}));
   const { email, displayName, role } = body as {
     email?: string;
@@ -45,10 +49,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   };
 
   if (!email || !role || !["admin", "member"].includes(role)) {
-    return json(
-      { error: "email and role (admin|member) required" },
-      { status: 400 },
-    );
+    return json({ error: "email and role (admin|member) required" }, { status: 400 });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,10 +63,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     .first();
 
   if (existing) {
-    return json(
-      { error: "User already exists in this tenant" },
-      { status: 409 },
-    );
+    return json({ error: "User already exists in this tenant" }, { status: 409 });
   }
 
   const tempPassword = crypto.randomUUID().slice(0, 12);
