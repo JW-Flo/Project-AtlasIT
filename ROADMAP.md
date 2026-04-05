@@ -457,50 +457,50 @@ Directory Event / Schedule / Webhook
 
 ### Cross-Cutting P0 Findings — Resolution Status
 
-| Codex Finding | Codex Severity | Status | Resolution |
-|---|---|---|---|
-| Auth bypass flag still implied | P0 | ✅ **Resolved** (Phase 1, 6) | CF Access JWT validation + D1-backed RBAC (27 guarded routes) + startup-failing assertions for missing secrets |
-| Majority of metrics appear static/demo | P0 | ✅ **Resolved** (Phase 10, 15.5) | Live Feed rewired to `automation_executions`, KPIs from D1 queries, platform health endpoint with functional checks |
-| No immutable evidence chain | P0 | ✅ **Resolved** (Phase 7/7.5) | R2 write-once content-addressed storage + SHA-256 hashing per workflow step + D1 index + evidence retention policy |
-| UI renders features not backed by APIs | P0 | ✅ **Resolved** (Phase 6, 10) | DTO normalization (`safeProxyFetch`), incidents wired to shared DB, directory sync through orchestrator |
-| No visible tenant isolation | P0 | ✅ **Resolved** (Phase 1+) | `tenant_id` enforced in every query + `locals.user` auth guard on all API routes + policy guard |
-| No visible observability | P0 | ✅ **Resolved** (Phase 4, 15) | Structured JSON logging with correlation IDs, W3C traceparent tracing, Analytics Engine metrics, SLO burn-rate alerting, deep health endpoint |
+| Codex Finding                          | Codex Severity | Status                           | Resolution                                                                                                                                    |
+| -------------------------------------- | -------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth bypass flag still implied         | P0             | ✅ **Resolved** (Phase 1, 6)     | CF Access JWT validation + D1-backed RBAC (27 guarded routes) + startup-failing assertions for missing secrets                                |
+| Majority of metrics appear static/demo | P0             | ✅ **Resolved** (Phase 10, 15.5) | Live Feed rewired to `automation_executions`, KPIs from D1 queries, platform health endpoint with functional checks                           |
+| No immutable evidence chain            | P0             | ✅ **Resolved** (Phase 7/7.5)    | R2 write-once content-addressed storage + SHA-256 hashing per workflow step + D1 index + evidence retention policy                            |
+| UI renders features not backed by APIs | P0             | ✅ **Resolved** (Phase 6, 10)    | DTO normalization (`safeProxyFetch`), incidents wired to shared DB, directory sync through orchestrator                                       |
+| No visible tenant isolation            | P0             | ✅ **Resolved** (Phase 1+)       | `tenant_id` enforced in every query + `locals.user` auth guard on all API routes + policy guard                                               |
+| No visible observability               | P0             | ✅ **Resolved** (Phase 4, 15)    | Structured JSON logging with correlation IDs, W3C traceparent tracing, Analytics Engine metrics, SLO burn-rate alerting, deep health endpoint |
 
 ### Page-by-Page Findings — Resolution Status
 
-| Page | Codex Issues | Status | Phase(s) |
-|---|---|---|---|
-| Dashboard (`/console`) | Static KPIs, no health indicators, no tenant context | ✅ Resolved | 10, 15.5 |
-| Compliance (`/console/compliance`) | No scoring engine, no framework mapping, fake trends | ✅ Resolved | 7, 7.5 |
-| Controls tab | No execution engine, no evidence linkage | ✅ Resolved | 7.5 P4 |
-| Evidence Feed (`/console/compliance/feed`) | No real ingestion, no hash verification | ✅ Resolved | 7, 7.5, 15.5 |
-| Policies (`/console/policies`) | No generation backend, no versioning | ✅ Resolved | 7.5 P3, 13 |
-| Directory (`/console/directory`) | No IdP integration, no RBAC | ✅ Resolved | 5, 6, 10 |
-| Access Reviews | No decision logging, no evidence | ✅ Resolved | 8 |
-| Incidents | Stub list, no severity classification | ⚠️ **Partial** | 10 (API wired); missing: severity classification, SLA tracking, SOAR |
-| Automation (Workflows/Rules/Runs) | Execution engine unverified, no retry/DLQ | ✅ Resolved | 1, 2, 10, 14 |
-| Connected Apps / Adapters | No health checks, no token validation | ✅ Resolved | 10 |
+| Page                                       | Codex Issues                                         | Status         | Phase(s)                                                             |
+| ------------------------------------------ | ---------------------------------------------------- | -------------- | -------------------------------------------------------------------- |
+| Dashboard (`/console`)                     | Static KPIs, no health indicators, no tenant context | ✅ Resolved    | 10, 15.5                                                             |
+| Compliance (`/console/compliance`)         | No scoring engine, no framework mapping, fake trends | ✅ Resolved    | 7, 7.5                                                               |
+| Controls tab                               | No execution engine, no evidence linkage             | ✅ Resolved    | 7.5 P4                                                               |
+| Evidence Feed (`/console/compliance/feed`) | No real ingestion, no hash verification              | ✅ Resolved    | 7, 7.5, 15.5                                                         |
+| Policies (`/console/policies`)             | No generation backend, no versioning                 | ✅ Resolved    | 7.5 P3, 13                                                           |
+| Directory (`/console/directory`)           | No IdP integration, no RBAC                          | ✅ Resolved    | 5, 6, 10                                                             |
+| Access Reviews                             | No decision logging, no evidence                     | ✅ Resolved    | 8                                                                    |
+| Incidents                                  | Stub list, no severity classification                | ⚠️ **Partial** | 10 (API wired); missing: severity classification, SLA tracking, SOAR |
+| Automation (Workflows/Rules/Runs)          | Execution engine unverified, no retry/DLQ            | ✅ Resolved    | 1, 2, 10, 14                                                         |
+| Connected Apps / Adapters                  | No health checks, no token validation                | ✅ Resolved    | 10                                                                   |
 
 ### Compliance-Specific Gaps — Resolution Status
 
-| Gap Area | Codex Assessment | Status | Resolution |
-|---|---|---|---|
-| RBAC enforcement | Missing | ✅ Resolved | D1-backed RBAC, 27 mutation guards, role hierarchy (Phase 6, PR #283) |
-| Immutable audit logs | Missing | ✅ Resolved | R2 write-once + SHA-256 content addressing (Phase 7) |
-| Automated deprovisioning | Missing | ✅ Resolved | Provision/deprovision on 5 core adapters, JML leaver workflows (Phase 10) |
-| Evidence hashing + timestamping | Missing | ✅ Resolved | SHA-256 per evidence item, content-addressed R2 (Phase 7) |
-| Chain-of-custody | Missing | ✅ Resolved | Evidence retention policy, deletion protection for active controls (Phase 14) |
+| Gap Area                        | Codex Assessment | Status      | Resolution                                                                    |
+| ------------------------------- | ---------------- | ----------- | ----------------------------------------------------------------------------- |
+| RBAC enforcement                | Missing          | ✅ Resolved | D1-backed RBAC, 27 mutation guards, role hierarchy (Phase 6, PR #283)         |
+| Immutable audit logs            | Missing          | ✅ Resolved | R2 write-once + SHA-256 content addressing (Phase 7)                          |
+| Automated deprovisioning        | Missing          | ✅ Resolved | Provision/deprovision on 5 core adapters, JML leaver workflows (Phase 10)     |
+| Evidence hashing + timestamping | Missing          | ✅ Resolved | SHA-256 per evidence item, content-addressed R2 (Phase 7)                     |
+| Chain-of-custody                | Missing          | ✅ Resolved | Evidence retention policy, deletion protection for active controls (Phase 14) |
 
 ### Updated Platform Maturity Score (Post-Remediation)
 
-| Category | Codex Score (3/28) | Current Estimate | Key Improvements |
-|---|---|---|---|
-| UI/UX | 6/10 | 8/10 | Evidence drill-down, deep links, grouped tables, collapsible sections |
-| Backend Functionality | 2/10 | 7/10 | WorkflowDO, queue dispatch, DLQ, 20 adapter URLs, directory sync |
-| Compliance Readiness | 1/10 | 7/10 | 60 CDT rules, evidence pipeline E2E, 139 controls, scoring unified |
-| Security Posture | 3/10 | 7/10 | RBAC, secret rotation, OIDC hardening, Gitleaks CI, SHA-pinned actions |
-| Observability | 1/10 | 6/10 | Structured logs, W3C traces, Analytics Engine, deep health, k6 SLOs |
-| Automation Depth | 3/10 | 7/10 | AutomationDO, 9 trigger types, 8 action types, JML auto-evidence |
+| Category              | Codex Score (3/28) | Current Estimate | Key Improvements                                                       |
+| --------------------- | ------------------ | ---------------- | ---------------------------------------------------------------------- |
+| UI/UX                 | 6/10               | 8/10             | Evidence drill-down, deep links, grouped tables, collapsible sections  |
+| Backend Functionality | 2/10               | 7/10             | WorkflowDO, queue dispatch, DLQ, 20 adapter URLs, directory sync       |
+| Compliance Readiness  | 1/10               | 7/10             | 60 CDT rules, evidence pipeline E2E, 139 controls, scoring unified     |
+| Security Posture      | 3/10               | 7/10             | RBAC, secret rotation, OIDC hardening, Gitleaks CI, SHA-pinned actions |
+| Observability         | 1/10               | 6/10             | Structured logs, W3C traces, Analytics Engine, deep health, k6 SLOs    |
+| Automation Depth      | 3/10               | 7/10             | AutomationDO, 9 trigger types, 8 action types, JML auto-evidence       |
 
 **Updated Overall: ~7/10 (Functional MVP, pilot-ready with caveats)**
 
@@ -508,12 +508,12 @@ Directory Event / Schedule / Webhook
 
 These items from the Codex Review are not yet fully addressed and should be prioritized:
 
-1. **Incident lifecycle maturity** (Codex §2.8) — severity classification engine, response SLA tracking, SOAR integration. *Maps to: new work item, pre-Phase 16.*
-2. **Policy approval workflow** (Codex §2.5) — policies generate and evaluate but lack formal approval chains with reviewer assignment and sign-off tracking. *Maps to: enhancement within Phase 13 scope.*
-3. **NHI governance** (Codex §2.6, §3) — non-human identity discovery, token expiry tracking, NHI access reviews. *Maps to: Phase 11 (future).*
-4. **Shadow AI/SaaS discovery** (Codex §3) — OAuth grant analysis, unapproved app detection. *Maps to: Phase 12 (future).*
-5. **OpenAPI parity enforcement** (Codex §1) — CI check that verifies all UI-rendered features have backing API routes. *Maps to: new CI work item.*
-6. **Onboarding empty-state UX** (Codex §2.1) — guided setup for new tenants with no data. *Maps to: Phase 16 self-serve onboarding.*
+1. **Incident lifecycle maturity** (Codex §2.8) — severity classification engine, response SLA tracking, SOAR integration. _Maps to: new work item, pre-Phase 16._
+2. **Policy approval workflow** (Codex §2.5) — policies generate and evaluate but lack formal approval chains with reviewer assignment and sign-off tracking. _Maps to: enhancement within Phase 13 scope._
+3. **NHI governance** (Codex §2.6, §3) — non-human identity discovery, token expiry tracking, NHI access reviews. _Maps to: Phase 11 (future)._
+4. **Shadow AI/SaaS discovery** (Codex §3) — OAuth grant analysis, unapproved app detection. _Maps to: Phase 12 (future)._
+5. **OpenAPI parity enforcement** (Codex §1) — CI check that verifies all UI-rendered features have backing API routes. _Maps to: new CI work item._
+6. **Onboarding empty-state UX** (Codex §2.1) — guided setup for new tenants with no data. _Maps to: Phase 16 self-serve onboarding._
 
 ---
 
@@ -524,12 +524,12 @@ These items from the Codex Review are not yet fully addressed and should be prio
 > self-serve onboarding with transparent pricing captures the mid-market buyers frustrated by
 > being forced through sales calls for a $15K tool.
 
-- [ ] Transparent pricing: self-serve tiers ($X/user/month for IT ops, +$Y/framework for compliance)
-- [ ] Free tier — SaaS discovery + compliance assessment (no credit card, PLG funnel)
-- [ ] Self-serve onboarding — connect first adapter, see first compliance score in <10 minutes
-- [ ] Usage metering + billing infrastructure (Stripe integration)
-- [ ] Plugin API for third-party compliance packs and custom frameworks
-- [ ] Advanced analytics and reporting (audit-ready dashboards, trend analysis, benchmark vs. peers)
+- [x] Transparent pricing: self-serve tiers (Free / Starter $8/user / Professional $16/user / Enterprise custom) — `/pricing` page with comparison table, monthly/annual toggle
+- [x] Free tier — SaaS discovery + 1 compliance framework, 10 users, 3 integrations (no credit card, PLG funnel)
+- [x] Self-serve onboarding — enhanced wizard with plan selection from pricing page, "10-min to first score" promise, auto-redirect to Stripe checkout
+- [x] Usage metering + billing infrastructure — Stripe checkout, portal, webhook, usage APIs; dev mode simulates checkout; secrets deployed to Cloudflare
+- [x] Plugin API for third-party compliance packs — CRUD + install/uninstall, tier-gated to Professional+, 5 built-in packs seeded (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR)
+- [x] Advanced analytics and reporting — compliance trend chart, framework breakdown, evidence volume, automation metrics, security posture, top risks, export stub
 
 ## Long-Term Platform Modules
 
@@ -591,7 +591,7 @@ Competitors must stitch together:
 - [x] **Implement Drive Record Canonical Table Population** — files: src/types/drive-record.ts, src/etl/drive-record-transformer.ts, src/etl/drive-record-loader.ts, src/etl/drive-record-etl.ts
 - [x] **Implement Charge Record Canonical Table Population** — files: src/types/charge.ts, src/repositories/charge-repository.ts, src/services/charge-service.ts, src/integrations/payment-gateway.ts
 - [x] **Implement Journey Totals Calculation and Update** — files: src/types/journey.ts, src/utils/journey-calculator.ts, src/services/journey-service.ts
-- [x] **Create Base Security Middleware Structure** *(auto-remediated)* — files: src/middleware/security.ts
+- [x] **Create Base Security Middleware Structure** _(auto-remediated)_ — files: src/middleware/security.ts
 - [x] **Implement Rate Limiting Middleware** — files: src/middleware/rateLimiter.ts, src/config/rateLimitConfig.ts, src/app.ts
 
 **Stats:** 5 dispatched, 5 succeeded (1 remediated), 0 failed, 0 skipped (168622ms)
@@ -603,7 +603,7 @@ Competitors must stitch together:
 ### Completed
 
 - [x] **Implement core autonomous loop skeleton** — files: src/loop/autonomousLoop.ts
-- [x] **Integrate AutomationDO and WorkflowDO into loop** *(auto-remediated)* — files: src/loop/autonomousLoop.ts, src/loop/autonomousLoop.ts
+- [x] **Integrate AutomationDO and WorkflowDO into loop** _(auto-remediated)_ — files: src/loop/autonomousLoop.ts, src/loop/autonomousLoop.ts
 
 ### Deferred
 
@@ -620,8 +620,8 @@ Competitors must stitch together:
 ### Completed
 
 - [x] **Implement AutomationDO rule engine core logic** — files: src/automationDO/baseCondition.ts, src/automationDO/baseAction.ts, src/automationDO/rule.ts, src/automationDO/engine.ts
-- [x] **Implement WorkflowDO durable workflow engine** *(auto-remediated)* — files: src/workflowDO/engine.ts, src/workflowDO/workflow.ts
-- [x] **Build MCP agent bus with Cloudflare bindings** *(auto-remediated)* — files: src/mcpBus/worker.ts, src/mcpBus/dispatcher.ts, src/mcpBus/bindings/kv.ts
+- [x] **Implement WorkflowDO durable workflow engine** _(auto-remediated)_ — files: src/workflowDO/engine.ts, src/workflowDO/workflow.ts
+- [x] **Build MCP agent bus with Cloudflare bindings** _(auto-remediated)_ — files: src/mcpBus/worker.ts, src/mcpBus/dispatcher.ts, src/mcpBus/bindings/kv.ts
 
 **Stats:** 3 dispatched, 3 succeeded (2 remediated), 0 failed, 0 skipped (761708ms)
 
@@ -648,7 +648,7 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Create Unified Data JSON Schema** *(auto-remediated)* — files: src/schemas/unified-data.ts
+- [x] **Create Unified Data JSON Schema** _(auto-remediated)_ — files: src/schemas/unified-data.ts
 
 ### Needs Attention
 
@@ -669,8 +669,8 @@ Competitors must stitch together:
 ### Completed
 
 - [x] **Implement Core Security Middleware** — files: src/middleware/validation.ts, src/middleware/security.ts, src/types/express.d.ts
-- [x] **Configure Rate Limiting Middleware** *(auto-remediated)* — files: src/middleware/rate-limiter.ts
-- [x] **Implement CORS Protection** *(auto-remediated)* — files: src/middleware/cors.ts
+- [x] **Configure Rate Limiting Middleware** _(auto-remediated)_ — files: src/middleware/rate-limiter.ts
+- [x] **Implement CORS Protection** _(auto-remediated)_ — files: src/middleware/cors.ts
 
 ### Needs Attention
 
@@ -688,10 +688,10 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Create Tessie Data Migration Script** *(auto-remediated)* — files: src/etl/tessie-migration.ts
-- [x] **Implement Data Validation for Tessie ETL** *(auto-remediated)* — files: src/etl/tessie-migration.ts
-- [x] **Create ETL Integration Tests** *(auto-remediated)* — files: tests/fixtures/tessie-test-data.json
-- [x] **Configure Core Security Middleware** *(auto-remediated)* — files: backend/edge-worker/src/middleware/security.ts, backend/edge-worker/package.json
+- [x] **Create Tessie Data Migration Script** _(auto-remediated)_ — files: src/etl/tessie-migration.ts
+- [x] **Implement Data Validation for Tessie ETL** _(auto-remediated)_ — files: src/etl/tessie-migration.ts
+- [x] **Create ETL Integration Tests** _(auto-remediated)_ — files: tests/fixtures/tessie-test-data.json
+- [x] **Configure Core Security Middleware** _(auto-remediated)_ — files: backend/edge-worker/src/middleware/security.ts, backend/edge-worker/package.json
 - [x] **Implement CORS Protection** — files: src/config/corsOptions.ts, src/middleware/corsMiddleware.ts, src/server.ts
 
 **Stats:** 5 dispatched, 5 succeeded (4 remediated), 0 failed, 0 skipped (283579ms)
@@ -719,11 +719,11 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Create Tessie Data Migration Script** *(auto-remediated)* — files: src/etl/tessie-migration.ts
+- [x] **Create Tessie Data Migration Script** _(auto-remediated)_ — files: src/etl/tessie-migration.ts
 - [x] **Implement Charge Import ETL Pipeline** — files: src/types/ChargingSession.ts, src/utils/dataValidation.ts, src/services/ChargingSessionImportPipeline.ts, src/index.ts
 - [x] **Develop Journey Totals Aggregation** — files: src/models/Journey.ts, src/services/JourneyAggregationService.ts, src/types/index.ts
-- [x] **Configure Core Security Middleware** *(auto-remediated)* — files: src/middleware/security.ts
-- [x] **Implement Comprehensive Request Logging** *(auto-remediated)* — files: src/middleware/request-logger.ts
+- [x] **Configure Core Security Middleware** _(auto-remediated)_ — files: src/middleware/security.ts
+- [x] **Implement Comprehensive Request Logging** _(auto-remediated)_ — files: src/middleware/request-logger.ts
 
 **Stats:** 5 dispatched, 5 succeeded (3 remediated), 0 failed, 0 skipped (307970ms)
 
@@ -733,11 +733,11 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Update Existing ETL Migration Script** *(auto-remediated)* — files: migrations/0007-tessie-data-pipeline.ts
-- [x] **Implement Tessie Charge Import Service** *(auto-remediated)* — files: src/services/charge-import/tessie-charge-importer.ts
-- [x] **Develop Journey Totals Aggregation Logic** *(auto-remediated)* — files: src/services/journey-aggregator/tessie-journey-totals.ts
-- [x] **Create Core Security Middleware Framework** *(auto-remediated)* — files: src/config/security-config.ts
-- [x] **Implement API Rate Limiting** *(auto-remediated)* — files: src/middleware/rate-limiter.ts
+- [x] **Update Existing ETL Migration Script** _(auto-remediated)_ — files: migrations/0007-tessie-data-pipeline.ts
+- [x] **Implement Tessie Charge Import Service** _(auto-remediated)_ — files: src/services/charge-import/tessie-charge-importer.ts
+- [x] **Develop Journey Totals Aggregation Logic** _(auto-remediated)_ — files: src/services/journey-aggregator/tessie-journey-totals.ts
+- [x] **Create Core Security Middleware Framework** _(auto-remediated)_ — files: src/config/security-config.ts
+- [x] **Implement API Rate Limiting** _(auto-remediated)_ — files: src/middleware/rate-limiter.ts
 
 **Stats:** 5 dispatched, 5 succeeded (5 remediated), 0 failed, 0 skipped (359100ms)
 
@@ -747,9 +747,9 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Create Tessie Raw Data Ingestion Adapter** *(auto-remediated)* — files: src/adapters/tessie-adapter.ts
+- [x] **Create Tessie Raw Data Ingestion Adapter** _(auto-remediated)_ — files: src/adapters/tessie-adapter.ts
 - [x] **Implement Canonical Table Population Logic** — files: src/types/telemetry.ts, src/etl/telemetry-transformer.ts, src/etl/telemetry-loader.ts, src/etl/telemetry-extractor.ts, src/etl/telemetry-pipeline.ts, src/clients/tessie-api-client.ts, src/database/database.ts
-- [x] **Develop Data Integrity Test Suite** *(auto-remediated)* — files: tests/etl/tessie-pipeline.test.ts
+- [x] **Develop Data Integrity Test Suite** _(auto-remediated)_ — files: tests/etl/tessie-pipeline.test.ts
 
 ### Needs Attention
 
@@ -767,10 +767,10 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Implement Tessie Charge Data Import** *(auto-remediated)* — files: src/etl/tessie/charge-import.ts
+- [x] **Implement Tessie Charge Data Import** _(auto-remediated)_ — files: src/etl/tessie/charge-import.ts
 - [x] **Update Journey Totals from Tessie Data** — files: src/types/journey.ts, src/repositories/journey-repository.ts, src/services/journey-metrics-service.ts, src/config/database.ts, src/etl/journey-metrics-etl.ts
-- [x] **Configure Core Security Middleware** *(auto-remediated)* — files: backend/edge-worker/src/middleware/security.ts, backend/edge-worker/package.json
-- [x] **Define Strict CORS Policy** *(auto-remediated)* — files: src/config/cors-config.ts
+- [x] **Configure Core Security Middleware** _(auto-remediated)_ — files: backend/edge-worker/src/middleware/security.ts, backend/edge-worker/package.json
+- [x] **Define Strict CORS Policy** _(auto-remediated)_ — files: src/config/cors-config.ts
 
 ### Needs Attention
 
@@ -784,7 +784,7 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Implement Tessie Raw Data Transformer** *(auto-remediated)* — files: src/etl/tessie/transformer.ts
+- [x] **Implement Tessie Raw Data Transformer** _(auto-remediated)_ — files: src/etl/tessie/transformer.ts
 - [x] **Develop Tessie Charge Import Pipeline** — files: src/models/ChargingSession.ts, src/services/ChargingSessionImportService.ts, src/repositories/ChargingSessionRepository.ts, src/index.ts
 - [x] **Implement Journey Totals Aggregation** — files: src/types/journey.ts, src/utils/journey-aggregator.ts, src/index.ts
 - [x] **Implement Core Security Middleware** — files: src/middleware/validation.middleware.ts, src/middleware/cors.middleware.ts, src/middleware/rate-limit.middleware.ts, src/middleware/error.middleware.ts
@@ -815,7 +815,7 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Implement ETL script to populate canonical tables from raw Tessie data** *(auto-remediated)* — files: src/utils/populate-canonical-tables.ts
+- [x] **Implement ETL script to populate canonical tables from raw Tessie data** _(auto-remediated)_ — files: src/utils/populate-canonical-tables.ts
 - [x] **Run ETL migration script and validate drives and charges counts meet targets** — files: src/utils/validate-counts.ts
 - [x] **Create H3 privacy middleware to redact IP and user agent** — files: src/middleware/privacy.ts
 - [x] **Add H3 rate limiting middleware** — files: src/middleware/rateLimit.ts, src/types/express/index.d.ts
@@ -851,8 +851,8 @@ Competitors must stitch together:
 
 - [x] **Define Canonical Tessie Data Schema** — files: src/models/User.ts, src/models/Project.ts, src/models/Task.ts, src/models/index.ts
 - [x] **Implement Tessie Data ETL Transformer** — files: src/types/tessie.ts, src/transformers/tessie-transformer.ts, src/index.ts
-- [x] **Set Up Tessie Data Migrations** *(auto-remediated)* — files: migrations/tessie-canonical-tables.sql
-- [x] **Configure Core Security Middleware** *(auto-remediated)* — files: src/config/security-config.ts
+- [x] **Set Up Tessie Data Migrations** _(auto-remediated)_ — files: migrations/tessie-canonical-tables.sql
+- [x] **Configure Core Security Middleware** _(auto-remediated)_ — files: src/config/security-config.ts
 - [x] **Add Rate Limiting Protection** — files: src/middleware/rateLimiter.ts, src/config/rateLimitConfig.ts, src/app.ts
 
 **Stats:** 5 dispatched, 5 succeeded (2 remediated), 0 failed, 0 skipped (233088ms)
@@ -863,9 +863,9 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Define Canonical Tessie Data Schema** *(auto-remediated)* — files: src/schemas/tessie-canonical.ts
-- [x] **Install API Security Middleware Dependencies** *(auto-remediated)* — files: package.json
-- [x] **Implement CORS Configuration Middleware** *(auto-remediated)* — files: src/middleware/corsConfig.ts
+- [x] **Define Canonical Tessie Data Schema** _(auto-remediated)_ — files: src/schemas/tessie-canonical.ts
+- [x] **Install API Security Middleware Dependencies** _(auto-remediated)_ — files: package.json
+- [x] **Implement CORS Configuration Middleware** _(auto-remediated)_ — files: src/middleware/corsConfig.ts
 
 ### Needs Attention
 
@@ -883,10 +883,10 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Define Canonical Tessie Data Schema** *(auto-remediated)* — files: src/models/tessie-data.ts
-- [x] **Implement Tessie Data Transformation Utility** *(auto-remediated)* — files: src/utils/tessie-transformer.ts
-- [x] **Install API Security Middleware Dependencies** *(auto-remediated)* — files: package.json
-- [x] **Implement CORS Configuration Middleware** *(auto-remediated)* — files: src/middleware/corsConfig.ts
+- [x] **Define Canonical Tessie Data Schema** _(auto-remediated)_ — files: src/models/tessie-data.ts
+- [x] **Implement Tessie Data Transformation Utility** _(auto-remediated)_ — files: src/utils/tessie-transformer.ts
+- [x] **Install API Security Middleware Dependencies** _(auto-remediated)_ — files: package.json
+- [x] **Implement CORS Configuration Middleware** _(auto-remediated)_ — files: src/middleware/corsConfig.ts
 
 ### Needs Attention
 
@@ -901,8 +901,8 @@ Competitors must stitch together:
 ### Completed
 
 - [x] **Implement Core Security Middleware** — files: src/middleware/validation.middleware.ts, src/middleware/cors.middleware.ts, src/middleware/security.middleware.ts, src/middleware/index.ts
-- [x] **Configure API Rate Limiting** *(auto-remediated)* — files: src/middleware/rate-limiter.ts
-- [x] **Add Comprehensive Request Logging** *(auto-remediated)* — files: src/middleware/request-logger.ts
+- [x] **Configure API Rate Limiting** _(auto-remediated)_ — files: src/middleware/rate-limiter.ts
+- [x] **Add Comprehensive Request Logging** _(auto-remediated)_ — files: src/middleware/request-logger.ts
 
 ### Needs Attention
 
@@ -920,11 +920,11 @@ Competitors must stitch together:
 
 ### Completed
 
-- [x] **Define Canonical Data Schema for Tessie ETL** *(auto-remediated)* — files: src/schemas/tessie.ts
-- [x] **Implement Tessie Data Transformation Utilities** *(auto-remediated)* — files: src/utils/tessie-transformers.ts
-- [x] **Create Tessie Migrations and Charge Import Script** *(auto-remediated)* — files: src/scripts/tessie-migration-import.ts
-- [x] **Implement Journey Totals Aggregation** *(auto-remediated)* — files: src/utils/journey-aggregator.ts
-- [x] **Integrate Tessie ETL Pipeline Components** *(auto-remediated)* — files: src/config/etl-config.ts
+- [x] **Define Canonical Data Schema for Tessie ETL** _(auto-remediated)_ — files: src/schemas/tessie.ts
+- [x] **Implement Tessie Data Transformation Utilities** _(auto-remediated)_ — files: src/utils/tessie-transformers.ts
+- [x] **Create Tessie Migrations and Charge Import Script** _(auto-remediated)_ — files: src/scripts/tessie-migration-import.ts
+- [x] **Implement Journey Totals Aggregation** _(auto-remediated)_ — files: src/utils/journey-aggregator.ts
+- [x] **Integrate Tessie ETL Pipeline Components** _(auto-remediated)_ — files: src/config/etl-config.ts
 
 **Stats:** 5 dispatched, 5 succeeded (5 remediated), 0 failed, 0 skipped (735056ms)
 
@@ -935,10 +935,10 @@ Competitors must stitch together:
 ### Completed
 
 - [x] **Define Tessie Canonical Data Schema** — files: shared/src/models/tessie.ts
-- [x] **Implement Tessie Data ETL Pipeline** *(auto-remediated)* — files: src/utils/etl.ts
-- [x] **Develop Tessie Charge and Journey Migration Import** *(auto-remediated)* — files: src/importers/charge-migration.ts
-- [x] **Configure Core Security Middleware** *(auto-remediated)* — files: src/middleware/security.ts, src/config/security-config.ts
-- [x] **Implement API Rate Limiting** *(auto-remediated)* — files: src/middleware/rate-limiter.ts, src/config/rate-limit-config.ts
+- [x] **Implement Tessie Data ETL Pipeline** _(auto-remediated)_ — files: src/utils/etl.ts
+- [x] **Develop Tessie Charge and Journey Migration Import** _(auto-remediated)_ — files: src/importers/charge-migration.ts
+- [x] **Configure Core Security Middleware** _(auto-remediated)_ — files: src/middleware/security.ts, src/config/security-config.ts
+- [x] **Implement API Rate Limiting** _(auto-remediated)_ — files: src/middleware/rate-limiter.ts, src/config/rate-limit-config.ts
 
 **Stats:** 5 dispatched, 5 succeeded (4 remediated), 0 failed, 0 skipped (459522ms)
 
@@ -966,7 +966,7 @@ Competitors must stitch together:
 - [x] **Create validation script to verify drives and charges counts** — files: src/utils/validate-pipeline.ts
 - [x] **Create H3 request logging middleware** — files: src/middleware/requestLogger.ts
 - [x] **Wire privacy, rate limiting, CORS, and request logging middlewares into API** — files: backend/edge-worker/src/server.ts
-- [x] **Define unified-data JSON schema** *(auto-remediated)* — files: src/schemas/unified-data.schema.json
+- [x] **Define unified-data JSON schema** _(auto-remediated)_ — files: src/schemas/unified-data.schema.json
 
 **Stats:** 5 dispatched, 5 succeeded (1 remediated), 0 failed, 0 skipped (388873ms)
 

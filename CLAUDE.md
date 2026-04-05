@@ -169,6 +169,17 @@ Read these files directly at session start — do NOT explore or search for them
 | **DB migrations**             | `migrations/` (numbered SQL files)                               |
 | **CDT rules**                 | `shared/services/cdt/` (60 compliance rules)                     |
 | **CI/CD**                     | `.github/workflows/deploy-on-merge.yml`                          |
+| **Billing types/plans**       | `packages/shared/src/billing/plans.ts`                           |
+| **Tier gating**               | `packages/shared/src/billing/tier-gating.ts`                     |
+| **Billing API**               | `console-app/src/routes/api/billing/+server.ts`                  |
+| **Stripe checkout**           | `console-app/src/routes/api/billing/checkout/+server.ts`         |
+| **Stripe webhook**            | `console-app/src/routes/api/billing/webhook/+server.ts`          |
+| **Pricing page**              | `console-app/src/routes/pricing/+page.svelte`                    |
+| **Analytics dashboard**       | `console-app/src/routes/console/analytics/+page.svelte`          |
+| **Analytics API**             | `console-app/src/routes/api/analytics/dashboard/+server.ts`      |
+| **Compliance packs API**      | `console-app/src/routes/api/compliance-packs/+server.ts`         |
+| **Compliance packs page**     | `console-app/src/routes/console/compliance/packs/+page.svelte`   |
+| **Billing settings**          | `console-app/src/routes/console/settings/billing/+page.svelte`   |
 
 ## Project Architecture
 
