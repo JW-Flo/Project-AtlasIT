@@ -19,7 +19,15 @@ env/
 
 # Ignore virtual environments
 .venv/
+.mistral-venv/
 venv/
+
+# Ignore generated/temporary directories
+backups/
+Logs/
+test-results/
+qwen_eval_out/
+issues/
 
 # Ignore keys and private certificates
 Keys/
