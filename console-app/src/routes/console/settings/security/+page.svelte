@@ -10,8 +10,157 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Input from "$lib/components/ui/input.svelte";
   import Label from "$lib/components/ui/label.svelte";
-  import { ShieldCheck, Copy, AlertTriangle, Settings } from "lucide-svelte";
+  import { ShieldCheck, Copy, AlertTriangle, Settings, Globe, ExternalLink, Trash2, CheckCircle } from "lucide-svelte";
   import { session } from "$lib/stores/session";
+
+  // SSO state
+  let ssoLoading = false;
+  let ssoConfigured = false;
+  let ssoConfig: any = null;
+  let ssoTierBlocked = false;
+  let ssoTierMessage = "";
+  let ssoSaving = false;
+  let ssoProtocol: "saml" | "oidc" = "oidc";
+  let ssoTestResult: { success: boolean; message: string } | null = null;
+
+  // SSO form fields
+  let ssoDisplayName = "";
+  let ssoIdpName = "";
+  let ssoEnabled = false;
+  let ssoJitProvisioning = true;
+  let ssoForceSso = false;
+  let ssoBypassMfa = false;
+  let ssoDefaultRoles = '["member"]';
+
+  // SAML fields
+  let samlEntityId = "";
+  let samlSsoUrl = "";
+  let samlCertificate = "";
+  let samlMetadataUrl = "";
+
+  // OIDC fields
+  let oidcIssuer = "";
+  let oidcClientId = "";
+  let oidcClientSecret = "";
+  let oidcScopes = "openid email profile";
+
+  async function loadSsoConfig() {
+    ssoLoading = true;
+    try {
+      const res = await fetch("/api/tenant/sso");
+      if (res.status === 403) {
+        const data = await res.json();
+        ssoTierBlocked = true;
+        ssoTierMessage = data.error || "SSO requires a Professional or Enterprise plan";
+        ssoLoading = false;
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        ssoConfigured = data.configured;
+        if (data.config) {
+          ssoConfig = data.config;
+          ssoProtocol = data.config.protocol;
+          ssoDisplayName = data.config.displayName || "";
+          ssoIdpName = data.config.idpName || "";
+          ssoEnabled = data.config.enabled;
+          ssoJitProvisioning = data.config.jitProvisioning;
+          ssoForceSso = data.config.forceSso;
+          ssoBypassMfa = data.config.ssoBypassMfa;
+          ssoDefaultRoles = JSON.stringify(data.config.defaultRoles || ["member"]);
+
+          // SAML
+          samlEntityId = data.config.samlEntityId || "";
+          samlSsoUrl = data.config.samlSsoUrl || "";
+          samlCertificate = data.config.samlCertificate || "";
+          samlMetadataUrl = data.config.samlMetadataUrl || "";
+
+          // OIDC
+          oidcIssuer = data.config.oidcIssuer || "";
+          oidcClientId = data.config.oidcClientId || "";
+          oidcClientSecret = "";
+          oidcScopes = data.config.oidcScopes || "openid email profile";
+        }
+      }
+    } catch {}
+    ssoLoading = false;
+  }
+
+  async function saveSsoConfig() {
+    ssoSaving = true;
+    ssoTestResult = null;
+    try {
+      let defaultRoles: string[];
+      try { defaultRoles = JSON.parse(ssoDefaultRoles); } catch { defaultRoles = ["member"]; }
+
+      const payload: Record<string, any> = {
+        protocol: ssoProtocol,
+        enabled: ssoEnabled,
+        displayName: ssoDisplayName || undefined,
+        idpName: ssoIdpName || undefined,
+        jitProvisioning: ssoJitProvisioning,
+        defaultRoles,
+        forceSso: ssoForceSso,
+        ssoBypassMfa: ssoBypassMfa,
+      };
+
+      if (ssoProtocol === "saml") {
+        payload.samlEntityId = samlEntityId;
+        payload.samlSsoUrl = samlSsoUrl;
+        payload.samlCertificate = samlCertificate;
+        payload.samlMetadataUrl = samlMetadataUrl;
+      } else {
+        payload.oidcIssuer = oidcIssuer;
+        payload.oidcClientId = oidcClientId;
+        if (oidcClientSecret) payload.oidcClientSecret = oidcClientSecret;
+        payload.oidcScopes = oidcScopes;
+      }
+
+      const res = await fetch("/api/tenant/sso", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        pushToast({ message: "SSO configuration saved", variant: "success" });
+        ssoConfigured = true;
+        await loadSsoConfig();
+      } else {
+        pushToast({ message: data.error || "Failed to save", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to save SSO configuration", variant: "error" });
+    }
+    ssoSaving = false;
+  }
+
+  async function deleteSsoConfig() {
+    try {
+      const res = await fetch("/api/tenant/sso", { method: "DELETE" });
+      if (res.ok) {
+        pushToast({ message: "SSO configuration removed", variant: "success" });
+        ssoConfigured = false;
+        ssoConfig = null;
+        ssoEnabled = false;
+      } else {
+        pushToast({ message: "Failed to remove SSO", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Failed to remove SSO", variant: "error" });
+    }
+  }
+
+  function testSsoConnection() {
+    const tenantId = $session?.tenantId;
+    if (!tenantId) {
+      ssoTestResult = { success: false, message: "No tenant ID" };
+      return;
+    }
+    // Open SSO init in a new window for testing
+    window.open(`/api/auth/sso/init?tenant=${tenantId}`, "_blank", "width=600,height=700");
+    ssoTestResult = { success: true, message: "SSO test initiated in a new window. Complete the IdP login to verify." };
+  }
 
   const settingsTabs = [
     { href: "/console/settings", label: "General" },
@@ -51,7 +200,10 @@
 
   onMount(async () => {
     await loadStatus();
-    if (isOwner) await loadPolicy();
+    if (isOwner) {
+      await loadPolicy();
+      await loadSsoConfig();
+    }
   });
 
   async function loadStatus() {
@@ -355,6 +507,242 @@
   </Card>
 
   <!-- Tenant Security Policy (owner only) -->
+  <!-- SSO Configuration (owner only) -->
+  {#if isOwner}
+    <Card>
+      <CardHeader>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <Globe class="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle>Single Sign-On (SSO)</CardTitle>
+              <p class="text-sm text-muted-foreground mt-1">
+                Configure SAML 2.0 or OIDC for centralized authentication via your identity provider.
+              </p>
+            </div>
+          </div>
+          {#if ssoEnabled && ssoConfigured}
+            <Badge variant="success">Enabled</Badge>
+          {:else if ssoConfigured}
+            <Badge variant="secondary">Configured</Badge>
+          {:else if ssoTierBlocked}
+            <Badge variant="warning">Upgrade Required</Badge>
+          {:else}
+            <Badge variant="secondary">Not Configured</Badge>
+          {/if}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {#if ssoLoading}
+          <p class="text-sm text-muted-foreground">Loading SSO configuration...</p>
+        {:else if ssoTierBlocked}
+          <div class="rounded-lg border border-warning/20 bg-warning/5 p-4 space-y-3">
+            <div class="flex items-start gap-2">
+              <AlertTriangle class="h-4 w-4 text-warning shrink-0 mt-0.5" />
+              <div>
+                <p class="text-sm font-medium">{ssoTierMessage}</p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  SSO enables centralized authentication via your identity provider (Okta, Azure AD, Google Workspace, etc.)
+                </p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" on:click={() => window.location.href = '/console/settings/billing'}>
+              View Plans
+              <ExternalLink class="ml-1 h-3 w-3" />
+            </Button>
+          </div>
+        {:else}
+          <div class="space-y-6">
+            <!-- Protocol selector -->
+            <div class="space-y-2">
+              <Label>Protocol</Label>
+              <div class="flex gap-2">
+                <button
+                  class="px-4 py-2 rounded-lg text-sm font-medium border transition-colors {ssoProtocol === 'oidc' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:border-foreground'}"
+                  on:click={() => ssoProtocol = 'oidc'}
+                >OpenID Connect</button>
+                <button
+                  class="px-4 py-2 rounded-lg text-sm font-medium border transition-colors {ssoProtocol === 'saml' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-muted-foreground border-border hover:border-foreground'}"
+                  on:click={() => ssoProtocol = 'saml'}
+                >SAML 2.0</button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <Label>Display Name</Label>
+                <Input bind:value={ssoDisplayName} placeholder="e.g. Corporate SSO" />
+              </div>
+              <div class="space-y-2">
+                <Label>Identity Provider</Label>
+                <select class="w-full rounded-md border bg-background px-3 py-2 text-sm" bind:value={ssoIdpName}>
+                  <option value="">Select IdP...</option>
+                  <option value="okta">Okta</option>
+                  <option value="azure-ad">Azure AD / Entra ID</option>
+                  <option value="google">Google Workspace</option>
+                  <option value="onelogin">OneLogin</option>
+                  <option value="ping">PingFederate</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            {#if ssoProtocol === "oidc"}
+              <!-- OIDC Configuration -->
+              <div class="space-y-4 border-t pt-4">
+                <h3 class="text-sm font-medium">OIDC Configuration</h3>
+                <div class="space-y-2">
+                  <Label>Issuer URL</Label>
+                  <Input bind:value={oidcIssuer} placeholder="https://accounts.google.com or https://login.microsoftonline.com/{tenant}/v2.0" />
+                  <p class="text-xs text-muted-foreground">The OIDC issuer URL. Endpoints will be auto-discovered from .well-known/openid-configuration.</p>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="space-y-2">
+                    <Label>Client ID</Label>
+                    <Input bind:value={oidcClientId} placeholder="your-client-id" />
+                  </div>
+                  <div class="space-y-2">
+                    <Label>Client Secret</Label>
+                    <Input type="password" bind:value={oidcClientSecret} placeholder={ssoConfigured ? '••••••••' : 'your-client-secret'} />
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <Label>Scopes</Label>
+                  <Input bind:value={oidcScopes} placeholder="openid email profile" />
+                </div>
+              </div>
+            {:else}
+              <!-- SAML Configuration -->
+              <div class="space-y-4 border-t pt-4">
+                <h3 class="text-sm font-medium">SAML 2.0 Configuration</h3>
+                <div class="space-y-2">
+                  <Label>IdP Entity ID</Label>
+                  <Input bind:value={samlEntityId} placeholder="https://idp.example.com/saml/metadata" />
+                </div>
+                <div class="space-y-2">
+                  <Label>IdP SSO URL</Label>
+                  <Input bind:value={samlSsoUrl} placeholder="https://idp.example.com/saml/sso" />
+                </div>
+                <div class="space-y-2">
+                  <Label>IdP Metadata URL (optional)</Label>
+                  <Input bind:value={samlMetadataUrl} placeholder="https://idp.example.com/saml/metadata" />
+                </div>
+                <div class="space-y-2">
+                  <Label>X.509 Signing Certificate (PEM)</Label>
+                  <textarea
+                    class="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono min-h-[120px] resize-y"
+                    bind:value={samlCertificate}
+                    placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                  ></textarea>
+                </div>
+
+                <!-- SP Metadata for IdP setup -->
+                <div class="rounded-lg bg-muted/50 p-3 space-y-1">
+                  <p class="text-xs font-medium text-muted-foreground">Your SP Metadata (provide to your IdP)</p>
+                  <div class="flex items-center gap-2">
+                    <code class="text-xs">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/metadata</code>
+                    <Button variant="ghost" size="sm" on:click={() => copyToClipboard(`${window.location.origin}/api/auth/sso/metadata`)}>
+                      <Copy class="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <p class="text-xs text-muted-foreground">ACS URL: <code>{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/callback</code></p>
+                </div>
+              </div>
+            {/if}
+
+            <!-- Behavior settings -->
+            <div class="space-y-4 border-t pt-4">
+              <h3 class="text-sm font-medium">Behavior</h3>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Enable SSO</p>
+                  <p class="text-xs text-muted-foreground">Allow users to sign in via this identity provider.</p>
+                </div>
+                <button
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {ssoEnabled ? 'bg-primary' : 'bg-muted'}"
+                  on:click={() => ssoEnabled = !ssoEnabled}
+                >
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {ssoEnabled ? 'translate-x-6' : 'translate-x-1'}" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Just-in-Time Provisioning</p>
+                  <p class="text-xs text-muted-foreground">Auto-create user accounts on first SSO login.</p>
+                </div>
+                <button
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {ssoJitProvisioning ? 'bg-primary' : 'bg-muted'}"
+                  on:click={() => ssoJitProvisioning = !ssoJitProvisioning}
+                >
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {ssoJitProvisioning ? 'translate-x-6' : 'translate-x-1'}" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Force SSO</p>
+                  <p class="text-xs text-muted-foreground">Block password login; require SSO for all users.</p>
+                </div>
+                <button
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {ssoForceSso ? 'bg-primary' : 'bg-muted'}"
+                  on:click={() => ssoForceSso = !ssoForceSso}
+                >
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {ssoForceSso ? 'translate-x-6' : 'translate-x-1'}" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm">Bypass MFA for SSO Users</p>
+                  <p class="text-xs text-muted-foreground">Skip TOTP challenge when authenticating via IdP.</p>
+                </div>
+                <button
+                  class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {ssoBypassMfa ? 'bg-primary' : 'bg-muted'}"
+                  on:click={() => ssoBypassMfa = !ssoBypassMfa}
+                >
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {ssoBypassMfa ? 'translate-x-6' : 'translate-x-1'}" />
+                </button>
+              </div>
+
+              <div class="space-y-2">
+                <Label>Default Roles for New SSO Users</Label>
+                <Input bind:value={ssoDefaultRoles} placeholder='["member"]' class="font-mono text-sm" />
+                <p class="text-xs text-muted-foreground">JSON array of roles assigned to JIT-provisioned users.</p>
+              </div>
+            </div>
+
+            <!-- Test & Actions -->
+            {#if ssoTestResult}
+              <div class="rounded-md p-3 text-sm {ssoTestResult.success ? 'bg-green-500/10 text-green-700' : 'bg-destructive/10 text-destructive'}">
+                {ssoTestResult.message}
+              </div>
+            {/if}
+
+            <div class="flex items-center gap-2 border-t pt-4">
+              <Button on:click={saveSsoConfig} disabled={ssoSaving}>
+                {ssoSaving ? "Saving..." : "Save SSO Configuration"}
+              </Button>
+              {#if ssoConfigured && ssoEnabled}
+                <Button variant="outline" on:click={testSsoConnection}>
+                  <ExternalLink class="h-4 w-4 mr-1" />
+                  Test Connection
+                </Button>
+              {/if}
+              {#if ssoConfigured}
+                <Button variant="outline" class="text-destructive" on:click={deleteSsoConfig}>
+                  <Trash2 class="h-4 w-4 mr-1" />
+                  Remove
+                </Button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </CardContent>
+    </Card>
+  {/if}
+
   {#if isOwner && policy}
     <Card>
       <CardHeader>
