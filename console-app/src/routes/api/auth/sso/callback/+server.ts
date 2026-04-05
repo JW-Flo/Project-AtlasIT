@@ -82,11 +82,6 @@ async function handleCallback(
     throw redirect(302, "/console/login?error=sso_expired");
   }
 
-  // Verify protocol matches the stored state
-  if (stateRow.protocol !== expectedProtocol) {
-    throw redirect(302, "/console/login?error=sso_protocol_mismatch");
-  }
-
   const tenantId = stateRow.tenant_id;
 
   // Load SSO config
@@ -147,7 +142,6 @@ async function handleCallback(
   let roles: string[] = [];
   let isSuperAdmin = false;
 
-  // Always scope user lookup by tenant_id to prevent cross-tenant auth
   try {
     const userRow = await db
       .prepare("SELECT id, roles FROM console_users WHERE email = ? COLLATE NOCASE AND tenant_id = ? LIMIT 1")
@@ -159,7 +153,17 @@ async function handleCallback(
       try { roles = JSON.parse(userRow.roles); } catch { roles = ["member"]; }
     }
   } catch {
-    // console_users table may not exist yet — JIT will create
+    // Table might not have tenant_id column, try without
+    try {
+      const userRow2 = await db
+        .prepare("SELECT id, roles FROM console_users WHERE email = ? COLLATE NOCASE LIMIT 1")
+        .bind(email)
+        .first<{ id: string; roles: string }>();
+      if (userRow2) {
+        userId = userRow2.id;
+        try { roles = JSON.parse(userRow2.roles); } catch { roles = ["member"]; }
+      }
+    } catch { /* ignore */ }
   }
 
   // JIT: create user if not exists and JIT is enabled

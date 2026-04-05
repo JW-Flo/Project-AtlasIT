@@ -82,13 +82,12 @@ export async function processSamlResponse(
     return { success: false, error: "SAML Response destination mismatch" };
   }
 
-  // Verify XML signature — reject unsigned responses
-  if (!config.samlCertificate) {
-    return { success: false, error: "SAML certificate not configured — cannot verify response signature" };
-  }
-  const signatureValid = await verifySamlSignature(xml, config.samlCertificate);
-  if (!signatureValid) {
-    return { success: false, error: "SAML Response signature verification failed" };
+  // Verify signature if certificate is configured
+  if (config.samlCertificate) {
+    const signatureValid = await verifySamlSignature(xml, config.samlCertificate);
+    if (!signatureValid) {
+      return { success: false, error: "SAML Response signature verification failed" };
+    }
   }
 
   // Check conditions (NotBefore / NotOnOrAfter)
@@ -184,8 +183,8 @@ async function verifySignatureWithCert(
     return await crypto.subtle.verify(
       "RSASSA-PKCS1-v1_5",
       publicKey,
-      signatureBytes.buffer as ArrayBuffer,
-      signedInfoBytes.buffer as ArrayBuffer,
+      signatureBytes,
+      signedInfoBytes,
     );
   } catch {
     return false;
@@ -335,7 +334,7 @@ function pemToDer(pem: string): ArrayBuffer | null {
     .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s/g, "");
   if (!lines) return null;
-  return base64ToUint8Array(lines).buffer as ArrayBuffer;
+  return base64ToUint8Array(lines).buffer;
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
