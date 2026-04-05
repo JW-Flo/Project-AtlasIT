@@ -161,6 +161,38 @@
     }
   }
 
+  let metadataFetching = false;
+  let metadataError = "";
+
+  async function fetchSamlMetadata() {
+    if (!samlMetadataUrl) {
+      metadataError = "Enter a metadata URL first";
+      return;
+    }
+    metadataFetching = true;
+    metadataError = "";
+    try {
+      const res = await fetch("/api/tenant/sso/metadata-fetch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ metadataUrl: samlMetadataUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        metadataError = data.error || "Failed to fetch metadata";
+        return;
+      }
+      samlEntityId = data.entityId || "";
+      samlSsoUrl = data.ssoUrl || "";
+      samlCertificate = data.certificate || "";
+      pushToast({ message: "IdP metadata loaded successfully", variant: "success" });
+    } catch {
+      metadataError = "Network error fetching metadata";
+    } finally {
+      metadataFetching = false;
+    }
+  }
+
   function testSsoConnection() {
     const tenantId = $session?.tenantId;
     if (!tenantId) {
@@ -607,9 +639,6 @@
                   on:click={() => ssoProtocol = 'saml'}
                 >SAML 2.0</button>
               </div>
-              {#if ssoProtocol === 'saml'}
-                <p class="text-xs text-warning">SAML 2.0 support is in beta. For production SSO, we recommend using OpenID Connect.</p>
-              {/if}
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -659,38 +688,75 @@
               <!-- SAML Configuration -->
               <div class="space-y-4 border-t pt-4">
                 <h3 class="text-sm font-medium">SAML 2.0 Configuration</h3>
-                <div class="space-y-2">
-                  <Label>IdP Entity ID</Label>
-                  <Input bind:value={samlEntityId} placeholder="https://idp.example.com/saml/metadata" />
-                </div>
-                <div class="space-y-2">
-                  <Label>IdP SSO URL</Label>
-                  <Input bind:value={samlSsoUrl} placeholder="https://idp.example.com/saml/sso" />
-                </div>
-                <div class="space-y-2">
-                  <Label>IdP Metadata URL (optional)</Label>
-                  <Input bind:value={samlMetadataUrl} placeholder="https://idp.example.com/saml/metadata" />
-                </div>
-                <div class="space-y-2">
-                  <Label>X.509 Signing Certificate (PEM)</Label>
-                  <textarea
-                    class="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono min-h-[120px] resize-y"
-                    bind:value={samlCertificate}
-                    placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
-                  ></textarea>
+
+                <!-- Step 1: SP info to give to IdP -->
+                <div class="rounded-lg bg-muted/50 p-4 space-y-2">
+                  <p class="text-sm font-medium">Step 1: Add AtlasIT in your Identity Provider</p>
+                  <p class="text-xs text-muted-foreground">Create a new SAML app in your IdP and enter these values:</p>
+                  <div class="grid grid-cols-1 gap-2 mt-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <div>
+                        <p class="text-xs text-muted-foreground">SP Entity ID / Audience URI</p>
+                        <code class="text-xs">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/metadata</code>
+                      </div>
+                      <Button variant="ghost" size="sm" on:click={() => copyToClipboard(`${window.location.origin}/api/auth/sso/metadata`)}>
+                        <Copy class="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                      <div>
+                        <p class="text-xs text-muted-foreground">ACS URL (Reply URL)</p>
+                        <code class="text-xs">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/callback</code>
+                      </div>
+                      <Button variant="ghost" size="sm" on:click={() => copyToClipboard(`${window.location.origin}/api/auth/sso/callback`)}>
+                        <Copy class="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p class="text-xs text-muted-foreground mt-1">Or import our <a href="/api/auth/sso/metadata" target="_blank" class="text-primary underline">SP metadata XML</a> directly.</p>
                 </div>
 
-                <!-- SP Metadata for IdP setup -->
-                <div class="rounded-lg bg-muted/50 p-3 space-y-1">
-                  <p class="text-xs font-medium text-muted-foreground">Your SP Metadata (provide to your IdP)</p>
-                  <div class="flex items-center gap-2">
-                    <code class="text-xs">{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/metadata</code>
-                    <Button variant="ghost" size="sm" on:click={() => copyToClipboard(`${window.location.origin}/api/auth/sso/metadata`)}>
-                      <Copy class="h-3 w-3" />
+                <!-- Step 2: Import IdP metadata -->
+                <div class="space-y-2">
+                  <p class="text-sm font-medium">Step 2: Import your IdP metadata</p>
+                  <p class="text-xs text-muted-foreground">Paste the metadata URL from your IdP and we'll fill in the rest automatically.</p>
+                  <div class="flex gap-2">
+                    <div class="flex-1">
+                      <Input bind:value={samlMetadataUrl} placeholder="https://login.microsoftonline.com/.../federationmetadata/2007-06/FederationMetadata.xml" />
+                    </div>
+                    <Button variant="outline" size="default" disabled={metadataFetching || !samlMetadataUrl} on:click={fetchSamlMetadata}>
+                      {metadataFetching ? 'Fetching...' : 'Import'}
                     </Button>
                   </div>
-                  <p class="text-xs text-muted-foreground">ACS URL: <code>{typeof window !== 'undefined' ? window.location.origin : ''}/api/auth/sso/callback</code></p>
+                  {#if metadataError}
+                    <p class="text-xs text-destructive">{metadataError}</p>
+                  {/if}
                 </div>
+
+                <!-- Populated fields (shown after import or for manual entry) -->
+                <details class:open={!!samlEntityId || !!samlSsoUrl} class="space-y-4">
+                  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                    {samlEntityId ? 'IdP details (auto-filled)' : 'Or enter IdP details manually'}
+                  </summary>
+                  <div class="space-y-3 mt-3">
+                    <div class="space-y-2">
+                      <Label>IdP Entity ID</Label>
+                      <Input bind:value={samlEntityId} placeholder="https://sts.windows.net/..." />
+                    </div>
+                    <div class="space-y-2">
+                      <Label>IdP SSO URL</Label>
+                      <Input bind:value={samlSsoUrl} placeholder="https://login.microsoftonline.com/.../saml2" />
+                    </div>
+                    <div class="space-y-2">
+                      <Label>X.509 Signing Certificate (PEM)</Label>
+                      <textarea
+                        class="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono min-h-[100px] resize-y"
+                        bind:value={samlCertificate}
+                        placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                      ></textarea>
+                    </div>
+                  </div>
+                </details>
               </div>
             {/if}
 

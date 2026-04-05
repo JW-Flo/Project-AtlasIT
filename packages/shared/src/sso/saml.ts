@@ -292,6 +292,91 @@ function extractIdentity(xml: string): SSOIdentity | null {
 }
 
 /**
+ * Fetch and parse IdP SAML metadata XML from a URL.
+ * Extracts entityID, SSO URL, SLO URL, and signing certificate.
+ */
+export async function fetchIdpMetadata(metadataUrl: string): Promise<{
+  entityId: string;
+  ssoUrl: string;
+  sloUrl?: string;
+  certificate: string;
+  nameIdFormat?: string;
+} | null> {
+  const res = await fetch(metadataUrl, {
+    headers: { Accept: "application/xml, text/xml" },
+  });
+  if (!res.ok) return null;
+  const xml = await res.text();
+  return parseIdpMetadata(xml);
+}
+
+/**
+ * Parse IdP SAML metadata XML string.
+ */
+export function parseIdpMetadata(xml: string): {
+  entityId: string;
+  ssoUrl: string;
+  sloUrl?: string;
+  certificate: string;
+  nameIdFormat?: string;
+} | null {
+  // EntityID
+  const entityIdMatch = xml.match(/EntityDescriptor[^>]+entityID="([^"]+)"/);
+  if (!entityIdMatch) return null;
+
+  // SSO URL — prefer HTTP-Redirect binding, fall back to HTTP-POST
+  const ssoRedirectMatch = xml.match(
+    /<(?:md:)?SingleSignOnService[^>]+Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-Redirect"[^>]+Location="([^"]+)"/,
+  );
+  const ssoPostMatch = xml.match(
+    /<(?:md:)?SingleSignOnService[^>]+Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-POST"[^>]+Location="([^"]+)"/,
+  );
+  // Also handle Location before Binding
+  const ssoRedirectAlt = xml.match(
+    /<(?:md:)?SingleSignOnService[^>]+Location="([^"]+)"[^>]+Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-Redirect"/,
+  );
+  const ssoPostAlt = xml.match(
+    /<(?:md:)?SingleSignOnService[^>]+Location="([^"]+)"[^>]+Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-POST"/,
+  );
+
+  const ssoUrl =
+    ssoRedirectMatch?.[1] || ssoRedirectAlt?.[1] || ssoPostMatch?.[1] || ssoPostAlt?.[1];
+  if (!ssoUrl) return null;
+
+  // SLO URL (optional)
+  const sloMatch = xml.match(/<(?:md:)?SingleLogoutService[^>]+Location="([^"]+)"/);
+
+  // Signing certificate — look for use="signing" first, fall back to any X509Certificate
+  const signingCertBlock = xml.match(
+    /<(?:md:)?KeyDescriptor[^>]+use="signing"[^>]*>[\s\S]*?<(?:ds:)?X509Certificate[^>]*>([\s\S]*?)<\/(?:ds:)?X509Certificate>/,
+  );
+  const anyCertBlock = xml.match(
+    /<(?:ds:)?X509Certificate[^>]*>([\s\S]*?)<\/(?:ds:)?X509Certificate>/,
+  );
+  const certBase64 = (signingCertBlock?.[1] || anyCertBlock?.[1])?.replace(/\s/g, "");
+  if (!certBase64) return null;
+
+  // Format as PEM
+  const certLines = certBase64.match(/.{1,64}/g) || [];
+  const certificate = [
+    "-----BEGIN CERTIFICATE-----",
+    ...certLines,
+    "-----END CERTIFICATE-----",
+  ].join("\n");
+
+  // NameID format (optional)
+  const nameIdMatch = xml.match(/<(?:md:)?NameIDFormat[^>]*>([\s\S]*?)<\/(?:md:)?NameIDFormat>/);
+
+  return {
+    entityId: entityIdMatch[1],
+    ssoUrl,
+    sloUrl: sloMatch?.[1],
+    certificate,
+    nameIdFormat: nameIdMatch?.[1]?.trim(),
+  };
+}
+
+/**
  * Generate SP metadata XML for IdP configuration.
  */
 export function generateSpMetadata(spEntityId: string, acsUrl: string, sloUrl?: string): string {
