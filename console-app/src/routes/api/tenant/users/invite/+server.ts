@@ -120,5 +120,24 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     detail: JSON.stringify({ email, role }),
   });
 
+  // Send invite email (best-effort, non-blocking)
+  try {
+    const { sendInviteEmail } = await import("$lib/server/email");
+    const tenant = await db
+      .prepare("SELECT name FROM tenants WHERE id = ?")
+      .bind(user!.tenantId)
+      .first<{ name: string }>();
+
+    await sendInviteEmail(platform, {
+      email,
+      tempPassword,
+      inviterName: user!.displayName || user!.email,
+      orgName: tenant?.name || "your organization",
+      loginUrl: `${request.headers.get("origin") || "https://www.atlasit.pro"}/console/login`,
+    });
+  } catch (err) {
+    console.warn("Invite email send failed (non-blocking):", err);
+  }
+
   return json({ success: true, tempPassword });
 };
