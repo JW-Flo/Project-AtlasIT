@@ -47,6 +47,7 @@ paths = [
   '''scripts/scan-secrets\.js$''',
   '''console-app/src/lib/data/integrations\.ts$''',
   '''CLAUDE\.md$''',
+  '''onboarding/src/bundled-worker.*\.mjs$''',
 ]
 # Placeholder patterns like "sk_live_..." are documentation, not real secrets
 regexes = [
