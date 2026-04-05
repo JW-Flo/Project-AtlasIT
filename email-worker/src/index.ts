@@ -8,7 +8,8 @@
  */
 
 import { sendViaMailChannels } from "./send";
-import type { EmailMessage } from "./send";
+import type { EmailMessage, SendResult } from "./send";
+import { sendViaSmtp } from "./smtp";
 import {
   inviteEmail,
   mfaSetupReminderEmail,
@@ -22,6 +23,11 @@ interface Env {
   FROM_NAME: string;
   WORKER_AUTH_TOKEN: string;
   ENVIRONMENT: string;
+  // SMTP fallback
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_USERNAME?: string;
+  SMTP_PASSWORD?: string;
 }
 
 export default {
@@ -105,13 +111,30 @@ export default {
         return Response.json({ ok: true, dev: true, messageId: `dev-${Date.now()}` });
       }
 
-      const result = await sendViaMailChannels(message, env.FROM_EMAIL, env.FROM_NAME);
+      // Try MailChannels first, fall back to SMTP
+      let result: SendResult = await sendViaMailChannels(message, env.FROM_EMAIL, env.FROM_NAME);
+
+      if (!result.ok && env.SMTP_HOST && env.SMTP_USERNAME && env.SMTP_PASSWORD) {
+        console.log("MailChannels failed, falling back to SMTP:", result.error);
+        result = await sendViaSmtp(message, {
+          host: env.SMTP_HOST,
+          port: parseInt(env.SMTP_PORT || "587", 10),
+          username: env.SMTP_USERNAME,
+          password: env.SMTP_PASSWORD,
+          fromEmail: env.FROM_EMAIL,
+          fromName: env.FROM_NAME,
+        });
+      }
 
       if (!result.ok) {
         return Response.json({ error: result.error }, { status: 502 });
       }
 
-      return Response.json({ ok: true, messageId: result.messageId });
+      return Response.json({
+        ok: true,
+        messageId: result.messageId,
+        provider: result.messageId?.startsWith("mc-") ? "mailchannels" : "smtp",
+      });
     } catch (err: any) {
       console.error("Email worker error:", err.message);
       return Response.json({ error: "Internal error" }, { status: 500 });
