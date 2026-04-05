@@ -45,3 +45,5 @@ export {
 } from "./retention";
 
 export { buildCdtPayloadFromEvidence, flattenAdapterResults } from "./cdt-field-mapper";
+
+export { computeAuditMetrics, type ComputedMetrics } from "./computed-metrics";
