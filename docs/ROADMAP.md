@@ -1,6 +1,6 @@
 # AtlasIT Roadmap
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 This roadmap tracks implementation phases from foundation through market readiness. See `STATUS.md` for current deployment state and `CLAUDE.md` for coding standards.
 
@@ -493,7 +493,7 @@ Directory Event / Schedule / Webhook
 
 | Category              | Codex Score (3/28) | Current Estimate | Key Improvements                                                       |
 | --------------------- | ------------------ | ---------------- | ---------------------------------------------------------------------- |
-| UI/UX                 | 6/10               | 8/10             | Evidence drill-down, deep links, grouped tables, collapsible sections  |
+| UI/UX                 | 6/10               | 8.5/10           | Evidence drill-down, deep links, grouped tables, collapsible sections, SSR prefetch, FOUC fix |
 | Backend Functionality | 2/10               | 7/10             | WorkflowDO, queue dispatch, DLQ, 20 adapter URLs, directory sync       |
 | Compliance Readiness  | 1/10               | 7/10             | 60 CDT rules, evidence pipeline E2E, 139 controls, scoring unified     |
 | Security Posture      | 3/10               | 7/10             | RBAC, secret rotation, OIDC hardening, Gitleaks CI, SHA-pinned actions |
@@ -573,6 +573,16 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - `ai-orchestrator/src/index.ts` — fail-closed auth middleware
 - `marketplace/src/index.ts` — fail-closed auth middleware
 - `slack-approval-worker/index.js` — timestamp window + HMAC verify
+
+## Operations — Deploy Pipeline & Console Performance ✅ (PRs #351–#355)
+
+> **Context**: Post-Phase 18 operational hardening. Identified 6 production workers with no CI
+> coverage, 10 redundant workflow files, and console UI latency from client-only data fetching.
+
+- [x] **Deploy pipeline validation** (#351) — Added CI deploy jobs for 6 missing workers (documentation-worker, apex-redirect, email-worker, slack-approval, scheduler, marketplace) with `dorny/paths-filter` change detection
+- [x] **Workflow & repo cleanup** (#352–#353) — Removed 10 redundant GitHub Actions workflows, cleaned repo root, relocated docs to `/docs`, updated README
+- [x] **Console performance** (#354) — Server-side data prefetch (`+page.server.ts` for dashboard, `+layout.server.ts` for compliance scores), parallelized compliance-worker API calls, removed DDL from hot path, added `Cache-Control` headers, fixed `sessionLoading` stuck-on-true bug
+- [x] **FOUC fix** (#355) — Blocking inline `<script>` in `app.html` reads theme from `localStorage` and sets `data-theme` before first paint, eliminating white flash on page refresh
 
 ## Phase 19 — Core Pipeline Hardening (JML + Compliance Reality) 🚧
 
