@@ -292,16 +292,15 @@ Directory Event / Schedule / Webhook
 - [x] **Scoring pipeline fix** — control ID normalization (`soc2_cc1.1_-_...` → `soc2_cc1_1_...`) so evidence correctly maps to all 139 controls; stale 5-per-framework controls auto-expand to 139; scores always computed fresh from controls (no more stale cached 100%)
 - [x] Files: `ai-orchestrator/src/routes/directory.ts`, `console-app/src/routes/api/directory/`, `console-app/src/routes/api/tenant-compliance/scores/+server.ts`, `console-app/src/hooks.server.ts`, `console-app/src/lib/server/credentials.ts`
 
-## Phase 11 — Non-Human Identity Governance (Hottest IGA Category)
+## Phase 11 — Non-Human Identity Governance ⏸️ Deferred
 
-> **Strategic context**: NHIs outnumber human identities 10:1+. ConductorOne raised $79M (Oct 2025)
-> specifically for NHI governance. Astrix raised $45M (backed by Anthropic's fund) for NHI security.
-> OWASP Top 10 NHI Risks (2025) lists "improper offboarding" as #1 — exactly what AtlasIT's JML
-> engine already handles for humans.
->
-> **AtlasIT's advantage**: Our 35 adapters already touch service accounts, API keys, OAuth tokens, and
-> bot credentials during provisioning. Extending directory sync to surface these is incremental, not greenfield.
-> No competitor connects NHI governance to compliance evidence generation.
+> **Deferred**: Core JML and compliance pipelines need hardening before expanding to NHI governance.
+> The adapter provision/deprovision surface and evidence-to-scoring data model must be battle-tested
+> with real tenants first. NHI extends the same pipelines — fixing them now avoids compounding debt.
+> Revisit after Phase 19 is complete.
+
+<details>
+<summary>Original scope (collapsed)</summary>
 
 - [ ] Extend directory schema: `identity_type: human | service | bot | api_key | oauth_grant`
 - [ ] NHI discovery from existing adapters — pull service accounts (AWS IAM), API tokens (GitHub), OAuth apps (Google Workspace, M365), bot users (Slack)
@@ -310,29 +309,28 @@ Directory Event / Schedule / Webhook
 - [ ] NHI access reviews — extend Phase 8 campaigns to cover service accounts and API keys
 - [ ] NHI offboarding in JML leaver workflows — revoke associated service accounts, rotate shared secrets, disable OAuth grants
 - [ ] Compliance evidence auto-generation for NHI lifecycle events (SOC2 CC6.1/CC6.3, ISO27001 A.9.2.6, HIPAA 164.312(d))
-- [ ] Files: `packages/shared/src/directory/`, adapters' `/api/nhi` endpoints, `console-app/src/routes/console/directory/`
 
-## Phase 12 — Shadow AI & SaaS Discovery (The New Shadow IT)
+</details>
 
-> **Strategic context**: Shadow AI has overtaken traditional shadow IT as the #1 visibility risk.
-> 75% of employees are expected to acquire technology without IT oversight by 2027 (Gartner).
-> JumpCloud added "AI & SaaS Management" in 2026. Nudge Security raised $22.5M for shadow AI detection.
-> Torii data shows mid-size orgs average 536 SaaS apps.
->
-> **AtlasIT's advantage**: Google Workspace and M365 adapters already have OAuth grant access.
-> The MCP agent bus provides a unique angle — detect MCP connections and AI tool usage that
-> competitors without an MCP layer can't see. Discovery feeds directly into the compliance
-> scoring pipeline (unapproved app = evidence gap).
+## Phase 12 — Shadow AI & SaaS Discovery ⏸️ Deferred
 
-- [ ] OAuth grant analysis from Google Workspace + M365 admin APIs (adapters already have the scopes)
-- [ ] Shadow AI detection — identify unapproved LLM/AI tool OAuth grants, browser extension data flows, MCP server connections
-- [ ] Dashboard: discovered vs. managed apps with risk tiers (approved / under review / blocked / unknown)
-- [ ] Data flow mapping — show where corporate data flows to unapproved services (especially LLMs)
-- [ ] Auto-suggest marketplace install for discovered apps already in the 35-app catalog
-- [ ] Auto-create compliance incidents for high-risk discoveries (data flowing to unapproved LLMs, expired OAuth grants with broad scopes)
-- [ ] Governance playbooks — configurable auto-responses: notify user, notify admin, block OAuth grant, create access review
-- [ ] Compliance mapping — unapproved apps generate detrimental evidence for GDPR Art.5(1)(f), SOC2 CC6.6, ISO27001 A.9.1.2
-- [ ] Files: `ai-orchestrator/src/lib/discovery/`, `console-app/src/routes/console/discovery/`, adapter `/api/oauth-grants` endpoints
+> **Deferred**: Same rationale as Phase 11. Discovery feeds into the compliance scoring pipeline,
+> which currently silently produces zero genuine evidence. Fix the pipeline first, then extend it.
+> Revisit after Phase 19 is complete.
+
+<details>
+<summary>Original scope (collapsed)</summary>
+
+- [ ] OAuth grant analysis from Google Workspace + M365 admin APIs
+- [ ] Shadow AI detection — unapproved LLM/AI tool OAuth grants, MCP server connections
+- [ ] Dashboard: discovered vs. managed apps with risk tiers
+- [ ] Data flow mapping — corporate data to unapproved services
+- [ ] Auto-suggest marketplace install for discovered apps in the 35-app catalog
+- [ ] Auto-create compliance incidents for high-risk discoveries
+- [ ] Governance playbooks — configurable auto-responses
+- [ ] Compliance mapping — unapproved apps generate detrimental evidence
+
+</details>
 
 ## Phase 13 — AI-Driven Compliance Intelligence (Beyond Suggestions) ✅ (PR #282)
 
@@ -537,8 +535,8 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] SSO configuration UI — Settings > Security, protocol selector, IdP config, behavior toggles (force-SSO, MFA bypass, JIT)
 - [x] SSO login flow — `/api/auth/sso/init` → IdP redirect → `/api/auth/sso/callback` → session creation
 - [x] Analytics report export — CSV download with compliance scores, framework breakdown, control details, automation metrics
-- [ ] Governance framework visualizations — pillar-style SVG components for pricing/onboarding pages showing framework foundations (Oversight, Authority, Integrity, Competence, Risk Appetite) to emphasize compliance adherence value proposition
-- [ ] Interactive framework explorer — expandable compliance framework cards with control-level drill-down on onboarding and pricing pages
+- [ ] ~~Governance framework visualizations~~ — deferred (marketing polish, not core)
+- [ ] ~~Interactive framework explorer~~ — deferred (marketing polish, not core)
 
 ## Phase 18 — Security Hardening & QA Remediation
 
@@ -575,6 +573,53 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - `ai-orchestrator/src/index.ts` — fail-closed auth middleware
 - `marketplace/src/index.ts` — fail-closed auth middleware
 - `slack-approval-worker/index.js` — timestamp window + HMAC verify
+
+## Phase 19 — Core Pipeline Hardening (JML + Compliance Reality) 🚧
+
+> **Why now**: Internal audit (April 2026) revealed that both core value propositions — JML automation
+> and compliance evidence — have critical data-model gaps. The JML engine dispatches to adapters but
+> only 7/35 have real provision/deprovision. The compliance pipeline runs end-to-end without errors but
+> produces zero genuine evidence because adapter data never maps to CDT rule fields. Scores silently
+> fall back to self-assessed values. These aren't feature gaps — they're integrity gaps in the two things
+> the product promises to do. Nothing else matters until these work for real.
+
+### P0 — Evidence Data Model Bridge (Compliance scores from real adapter data)
+
+> The CDT engine has 60 rules that check boolean fields like `mfa_enforced`, `least_privilege_enforced`,
+> `access_policy_version`. Adapter evidence returns structured `details` objects. There is no mapping
+> layer between them. Every rule evaluates to "fail", and scores fall back to self-assessed.
+
+- [ ] **Evidence-to-CDT field mapper** — Transform `AdapterEvidenceItem.details` into the flat boolean payload CDT rules expect. One mapping per adapter×control combination (e.g., Okta MFA policy → `{ mfa_enforced: true }`).
+- [ ] **Surface evidence collection failures** — `collectAdapterEvidence()` currently swallows errors and returns `items: []`. Add error surfacing: log warnings, return `{ slug, error, items: [] }`, and expose collection health in the UI.
+- [ ] **Validate scoring end-to-end** — Write integration tests that: (1) inject real-shaped adapter evidence, (2) run CDT evaluate, (3) assert non-zero framework scores. Prove the pipeline produces genuine scores.
+- [ ] **Remove silent fallback to self-assessed** — When evidence-grounded scores return zero because evidence was empty (not because controls are failing), flag this as "no data" rather than blending with self-assessed scores.
+- [ ] Files: `packages/shared/src/evidence/adapter-collector.ts`, `packages/shared/src/evidence/cdt-field-mapper.ts` (new), `compliance-worker/src/modules/policies/evaluation.ts`, `console-app/src/routes/api/tenant-compliance/scores/+server.ts`
+
+### P1 — JML Pipeline Completion (Real provision/deprovision for core adapters)
+
+> The JML engine works. The step executor makes real HTTP calls. But `provision_app_access` automation
+> action writes events nobody consumes, and 28/35 adapters have no provision endpoints.
+
+- [ ] **Wire `provisioning.requested` event consumer** — Orchestrator must consume `provisioning.requested` events (written by `provision_app_access` action) and dispatch to the correct adapter's `/api/provision` endpoint.
+- [ ] **Add provision/deprovision to Jira and Confluence adapters** — These are core-tier adapters used by nearly every SMB. Currently scaffolded only.
+- [ ] **Validate 7 production adapters E2E** — Write integration tests for Okta, Google Workspace, M365, Slack, GitHub, AWS, Zscaler that mock adapter HTTP responses and assert the full chain: event → classify → WorkflowDO → step executor → adapter call → evidence emit.
+- [ ] **group_app_mappings seeding UX** — If `group_app_mappings` is empty, `classifyAndExecute` returns null (no apps to provision). Add onboarding prompt or default mappings so first-time tenants get working JML out of the box.
+- [ ] **Adapter health → JML awareness** — If an adapter is unhealthy, JML steps targeting it should be skipped with a warning rather than silently failing.
+- [ ] Files: `ai-orchestrator/src/routes/events.ts`, `ai-orchestrator/src/lib/jml-engine.ts`, `ai-orchestrator/src/lib/step-executor.ts`, `adapters/jira/src/index.ts`, `adapters/confluence/src/index.ts`, `console-app/src/lib/server/automation-actions.ts`
+
+### P2 — Integration Test Coverage
+
+> There are zero tests proving end-to-end JML or compliance scoring with real-shaped data.
+
+- [ ] **JML E2E test suite** — `user.created` → rule match → WorkflowDO → adapter HTTP mock → evidence emitted → compliance score updated. Covers joiner, mover, leaver paths.
+- [ ] **Compliance E2E test suite** — Adapter evidence collection → CDT field mapping → rule evaluation → score computation → API response. Covers all 5 frameworks with representative controls.
+- [ ] **Failure mode tests** — Adapter down, evidence collection timeout, CDT rule exception, empty `group_app_mappings`, missing `ADAPTER_URLS`. Prove failures are surfaced, not swallowed.
+
+### P3 — Observability for Core Pipelines
+
+- [ ] **JML execution dashboard** — Surface step-level success/failure rates, adapter latency, and provision/deprovision counts in the existing Operations page.
+- [ ] **Evidence pipeline health** — Show per-adapter evidence collection success rate, last collection time, and field mapping coverage on the Compliance page.
+- [ ] **Alerting** — Notify on: adapter provision failure rate > 50%, evidence collection returning empty for > 24h, scoring fallback to self-assessed.
 
 ## Long-Term Platform Modules
 
