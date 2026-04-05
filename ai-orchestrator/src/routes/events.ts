@@ -422,6 +422,10 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
                 body: body.slice(0, 200),
               }),
             );
+            // Record failure as evidence
+            recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "fail", email, {
+              status: res.status,
+            });
           } else {
             console.log(
               JSON.stringify({
@@ -432,6 +436,8 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
                 email,
               }),
             );
+            // Record success as evidence
+            recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "pass", email, {});
           }
         } catch (err) {
           console.error(
@@ -443,6 +449,10 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
               error: err instanceof Error ? err.message : String(err),
             }),
           );
+          // Record error as evidence
+          recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "fail", email, {
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       })();
 
@@ -739,4 +749,49 @@ async function fanOutToAgents(
   await env.DB.prepare("UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?")
     .bind(finalStatus, eventId)
     .run();
+}
+
+/**
+ * Record provisioning/deprovisioning outcomes as compliance evidence.
+ * Maps to access lifecycle controls across frameworks.
+ */
+function recordProvisioningEvidence(
+  db: D1Database,
+  tenantId: string,
+  appId: string,
+  operation: string,
+  status: "pass" | "fail",
+  email: string | undefined,
+  details: Record<string, unknown>,
+): void {
+  const id = `provisioning-${tenantId}-${appId}-${operation}-${Date.now()}`;
+  const controlId = operation === "provision" ? "CC6.2" : "CC6.3";
+  const metadata = JSON.stringify({
+    status,
+    operation,
+    appId,
+    email,
+    details,
+    recordedAt: new Date().toISOString(),
+  });
+
+  db.prepare(
+    `INSERT INTO compliance_evidence
+     (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+     VALUES (?, ?, 'SOC2', ?, ?, 'provisioning_event', 'orchestrator', ?, 'system', ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata, created_at = excluded.created_at`,
+  )
+    .bind(
+      id,
+      tenantId,
+      controlId,
+      `${appId}.${operation}`,
+      `orchestrator:${appId}:${operation}`,
+      appId,
+      metadata,
+    )
+    .run()
+    .catch(() => {
+      /* best-effort — never block provisioning */
+    });
 }

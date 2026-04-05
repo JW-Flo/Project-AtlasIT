@@ -16,6 +16,8 @@ export interface ActionContext {
   db: D1Database;
   tenantId: string;
   payload: Record<string, unknown>;
+  /** Orchestrator URL for forwarding events that need real-time processing */
+  orchestratorUrl?: string;
 }
 
 type ActionHandler = (config: Record<string, unknown>, ctx: ActionContext) => Promise<ActionResult>;
@@ -40,6 +42,39 @@ async function emitEvent(
     .bind(id, tenantId, type, source, JSON.stringify(payload))
     .run();
   return id;
+}
+
+/**
+ * Forward an event to the orchestrator for real-time processing.
+ * Events like provisioning.requested need the orchestrator to dispatch
+ * to adapters — D1 writes alone don't trigger the orchestrator's HTTP handler.
+ */
+async function forwardToOrchestrator(
+  orchestratorUrl: string,
+  tenantId: string,
+  type: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const res = await fetch(`${orchestratorUrl}/api/v1/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tenant-ID": tenantId,
+      },
+      body: JSON.stringify({ type, tenantId, payload, source: "console-app" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.warn(
+        `[automation-actions] Orchestrator forwarding failed: ${res.status} for ${type}`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[automation-actions] Orchestrator unreachable for ${type}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,13 +359,24 @@ const handleProvisionAppAccess: ActionHandler = async (config, ctx) => {
     };
   }
 
+  const provisionPayload = { action: "provision", appId, ...config, triggerPayload: ctx.payload };
   const eventId = await emitEvent(
     ctx.db,
     ctx.tenantId,
     "provisioning.requested",
     "automation-engine",
-    { action: "provision", appId, ...config, triggerPayload: ctx.payload },
+    provisionPayload,
   );
+
+  // Forward to orchestrator for real-time adapter dispatch
+  if (ctx.orchestratorUrl) {
+    forwardToOrchestrator(
+      ctx.orchestratorUrl,
+      ctx.tenantId,
+      "provisioning.requested",
+      provisionPayload,
+    );
+  }
 
   return {
     actionType: "provision_app_access",
@@ -364,13 +410,24 @@ const handleRevokeAppAccess: ActionHandler = async (config, ctx) => {
     };
   }
 
+  const revokePayload = { action: "revoke", appId, ...config, triggerPayload: ctx.payload };
   const eventId = await emitEvent(
     ctx.db,
     ctx.tenantId,
     "provisioning.requested",
     "automation-engine",
-    { action: "revoke", appId, ...config, triggerPayload: ctx.payload },
+    revokePayload,
   );
+
+  // Forward to orchestrator for real-time adapter dispatch
+  if (ctx.orchestratorUrl) {
+    forwardToOrchestrator(
+      ctx.orchestratorUrl,
+      ctx.tenantId,
+      "provisioning.requested",
+      revokePayload,
+    );
+  }
 
   return {
     actionType: "revoke_app_access",
@@ -439,13 +496,91 @@ export async function executeAction(
     };
   }
 
+  let result: ActionResult;
   try {
-    return await handler(config, ctx);
+    result = await handler(config, ctx);
   } catch (err: any) {
-    return {
+    result = {
       actionType,
       status: "failed",
       message: err?.message || "Action handler threw an unexpected error",
     };
   }
+
+  // Record every action outcome as compliance evidence
+  recordActionEvidence(ctx.db, ctx.tenantId, actionType, result, config);
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence recording for all automation actions
+// ---------------------------------------------------------------------------
+
+/** Map action types to relevant compliance control references */
+const ACTION_CONTROL_REFS: Record<string, string[]> = {
+  provision_app_access: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+  revoke_app_access: ["SOC2-CC6.3", "ISO-27001-A.9.2.6", "HIPAA-164.312(a)(1)"],
+  assign_role: ["SOC2-CC6.1", "ISO-27001-A.9.2.2"],
+  remove_role: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+  create_incident: ["SOC2-CC7.3", "ISO-27001-A.16.1.2", "NIST-CSF-RS.RP-1"],
+  send_notification: ["SOC2-CC2.2"],
+  update_compliance_status: ["SOC2-CC4.1", "ISO-27001-A.18.2.1"],
+  run_workflow: ["SOC2-CC8.1", "ISO-27001-A.12.1.2"],
+  sync_directory: ["SOC2-CC6.1", "ISO-27001-A.9.2.1"],
+};
+
+function recordActionEvidence(
+  db: D1Database,
+  tenantId: string,
+  actionType: string,
+  result: ActionResult,
+  config: Record<string, unknown>,
+): void {
+  const refs = ACTION_CONTROL_REFS[actionType];
+  if (!refs || refs.length === 0) return;
+
+  const id = `action-${tenantId}-${actionType}-${Date.now()}`;
+  const evidenceStatus = result.status === "success" ? "pass" : "fail";
+  const metadata = JSON.stringify({
+    status: evidenceStatus,
+    actionType,
+    outcome: result.status,
+    message: result.message,
+    config: { appId: config.appId, role: config.role },
+    recordedAt: new Date().toISOString(),
+  });
+
+  // Parse the first control ref for the primary evidence row
+  const primaryRef = refs[0];
+  const framework = primaryRef.startsWith("ISO-")
+    ? "ISO27001"
+    : primaryRef.startsWith("NIST-")
+      ? "NIST_CSF"
+      : primaryRef.startsWith("HIPAA-")
+        ? "HIPAA"
+        : primaryRef.startsWith("GDPR-")
+          ? "GDPR"
+          : "SOC2";
+
+  db.prepare(
+    `INSERT INTO compliance_evidence
+     (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, 'automation_action', 'automation-engine', ?, 'system', ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata, created_at = excluded.created_at`,
+  )
+    .bind(
+      id,
+      tenantId,
+      framework,
+      primaryRef.replace(/^[A-Z0-9]+-/, ""),
+      `${actionType}:${result.status}`,
+      `automation:${actionType}:${Date.now()}`,
+      config.appId ?? actionType,
+      metadata,
+    )
+    .run()
+    .catch(() => {
+      /* best-effort — never block automation execution */
+    });
 }

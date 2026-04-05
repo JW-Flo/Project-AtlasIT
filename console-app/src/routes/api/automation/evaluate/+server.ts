@@ -20,11 +20,11 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
 
   let event: AutomationEvent;
   try {
@@ -61,15 +61,13 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
     for (const action of actions) {
       try {
-        const interpolatedConfig = interpolateConfig(
-          action.config,
-          event.payload,
-        );
+        const interpolatedConfig = interpolateConfig(action.config, event.payload);
 
         const result = await executeAction(action.type, interpolatedConfig, {
           db,
           tenantId,
           payload: event.payload,
+          orchestratorUrl,
         });
         results.push(result);
       } catch (err: any) {

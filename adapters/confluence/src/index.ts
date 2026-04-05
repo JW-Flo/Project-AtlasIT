@@ -435,9 +435,21 @@ app.get("/auth/callback", async (c) => {
 // Provision a user in Confluence (JML: Joiner/Mover)
 app.post("/api/provision", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req
-    .json<{ tenantId: string; email: string; displayName?: string; groups?: string[] }>()
-    .catch(() => null);
+  const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const body = raw
+    ? {
+        tenantId: raw.tenantId as string,
+        email:
+          ((raw.userProfile as Record<string, unknown>)?.email as string) ?? (raw.email as string),
+        displayName:
+          ((raw.userProfile as Record<string, unknown>)?.displayName as string) ??
+          (raw.displayName as string) ??
+          undefined,
+        groups: (raw.groups ?? (raw.config as Record<string, unknown>)?.groups) as
+          | string[]
+          | undefined,
+      }
+    : null;
 
   if (!body?.tenantId || !body?.email) {
     return c.json({ error: "tenantId and email are required", correlationId }, 400);
@@ -531,7 +543,14 @@ app.post("/api/provision", async (c) => {
 // Deprovision a user from Confluence (JML: Leaver)
 app.post("/api/deprovision", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req.json<{ tenantId: string; email: string }>().catch(() => null);
+  const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const body = raw
+    ? {
+        tenantId: raw.tenantId as string,
+        email:
+          ((raw.userProfile as Record<string, unknown>)?.email as string) ?? (raw.email as string),
+      }
+    : null;
 
   if (!body?.tenantId || !body?.email) {
     return c.json({ error: "tenantId and email are required", correlationId }, 400);
