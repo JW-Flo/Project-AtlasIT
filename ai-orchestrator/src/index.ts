@@ -361,6 +361,28 @@ const worker = {
           }
         }
       }
+
+      // Persist adapter collection health for each tenant
+      const now = new Date().toISOString();
+      for (const [tenantId, results] of tenantEvidenceMap) {
+        for (const result of results) {
+          try {
+            await sharedDb
+              .prepare(
+                `INSERT INTO adapter_collection_health (id, tenant_id, adapter_slug, collected_at, items_count, error)
+                 VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)
+                 ON CONFLICT(tenant_id, adapter_slug) DO UPDATE SET
+                   collected_at = excluded.collected_at,
+                   items_count = excluded.items_count,
+                   error = excluded.error`,
+              )
+              .bind(tenantId, result.slug, now, result.items.length, result.error ?? null)
+              .run();
+          } catch {
+            /* best-effort */
+          }
+        }
+      }
     }
 
     // ── Duty 2b: Platform state evidence collection ────────────────────────

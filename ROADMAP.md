@@ -589,10 +589,10 @@ These items from the Codex Review are not yet fully addressed and should be prio
 > `access_policy_version`. Adapter evidence returns structured `details` objects. There is no mapping
 > layer between them. Every rule evaluates to "fail", and scores fall back to self-assessed.
 
-- [ ] **Evidence-to-CDT field mapper** — Transform `AdapterEvidenceItem.details` into the flat boolean payload CDT rules expect. One mapping per adapter×control combination (e.g., Okta MFA policy → `{ mfa_enforced: true }`).
-- [ ] **Surface evidence collection failures** — `collectAdapterEvidence()` currently swallows errors and returns `items: []`. Add error surfacing: log warnings, return `{ slug, error, items: [] }`, and expose collection health in the UI.
-- [ ] **Validate scoring end-to-end** — Write integration tests that: (1) inject real-shaped adapter evidence, (2) run CDT evaluate, (3) assert non-zero framework scores. Prove the pipeline produces genuine scores.
-- [ ] **Remove silent fallback to self-assessed** — When evidence-grounded scores return zero because evidence was empty (not because controls are failing), flag this as "no data" rather than blending with self-assessed scores.
+- [x] **Evidence-to-CDT field mapper** — Transform `AdapterEvidenceItem.details` into the flat boolean payload CDT rules expect. One mapping per adapter×control combination (e.g., Okta MFA policy → `{ mfa_enforced: true }`).
+- [x] **Surface evidence collection failures** — `collectAdapterEvidence()` currently swallows errors and returns `items: []`. Add error surfacing: log warnings, return `{ slug, error, items: [] }`, and expose collection health in the UI.
+- [x] **Validate scoring end-to-end** — Write integration tests that: (1) inject real-shaped adapter evidence, (2) run CDT evaluate, (3) assert non-zero framework scores. Prove the pipeline produces genuine scores.
+- [x] **Remove silent fallback to self-assessed** — When evidence-grounded scores return zero because evidence was empty (not because controls are failing), flag this as "no data" rather than blending with self-assessed scores.
 - [ ] Files: `packages/shared/src/evidence/adapter-collector.ts`, `packages/shared/src/evidence/cdt-field-mapper.ts` (new), `compliance-worker/src/modules/policies/evaluation.ts`, `console-app/src/routes/api/tenant-compliance/scores/+server.ts`
 
 ### P1 — JML Pipeline Completion (Real provision/deprovision for core adapters)

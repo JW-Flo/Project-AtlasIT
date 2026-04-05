@@ -29,6 +29,8 @@
     notes: string;
   }
 
+  type ScoreSource = "evidence" | "self-assessed" | "self-assessed-fallback" | "no-data";
+
   interface FrameworkScore {
     framework: string;
     score: number;
@@ -36,6 +38,7 @@
     controlsTotal: number;
     controlsImplemented: number;
     controlsVerified: number;
+    source?: ScoreSource;
   }
 
   interface FrameworkSummary {
@@ -104,6 +107,14 @@
   };
   let evidenceFeedPreview: EvidenceFeedPreviewItem[] = [];
   let evidenceFeedError: string | null = null;
+
+  interface AdapterHealth {
+    slug: string;
+    collectedAt: string;
+    itemsCount: number;
+    error: string | null;
+  }
+  let adapterHealth: AdapterHealth[] = [];
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -213,6 +224,18 @@
       .join(" ");
   }
 
+  function sourceLabel(source?: ScoreSource): string {
+    if (source === "evidence") return "Evidence-grounded";
+    if (source === "self-assessed" || source === "self-assessed-fallback") return "Self-assessed";
+    return "No data";
+  }
+
+  function sourceVariant(source?: ScoreSource): "success" | "warning" | "secondary" | "destructive" {
+    if (source === "evidence") return "success";
+    if (source === "self-assessed" || source === "self-assessed-fallback") return "warning";
+    return "secondary";
+  }
+
   function evidenceImpactVariant(impact: "positive" | "detrimental" | "neutral"): "success" | "destructive" | "secondary" {
     if (impact === "positive") return "success";
     if (impact === "detrimental") return "destructive";
@@ -229,7 +252,7 @@
         : await fetch("/api/tenant-compliance/scores");
       if (res.ok) {
         const data = await res.json();
-        scores = data.scores || [];
+        scores = (data.scores || []).map((s: any) => ({ ...s, source: s.source }));
       }
     } catch {}
 
@@ -295,6 +318,16 @@
     }
   }
 
+  async function loadAdapterHealth() {
+    try {
+      const res = await fetch("/api/integrations/health");
+      if (res.ok) {
+        const data = await res.json();
+        adapterHealth = data.adapters || [];
+      }
+    } catch { /* best-effort */ }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
@@ -304,6 +337,7 @@
         loadScores(false, true),
         loadHistory(),
         loadEvidenceFeedPreview(),
+        loadAdapterHealth(),
       ]);
       if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
       const data = await controlsRes.json();
@@ -991,7 +1025,10 @@
           <CardContent class="pt-5">
             <div class="flex items-center justify-between mb-2">
               <h3 class="font-semibold">{fw.framework}</h3>
-              <Badge variant={GRADE_VARIANTS[fw.grade] || "destructive"}>{fw.grade}</Badge>
+              <div class="flex items-center gap-1.5">
+                <Badge variant={sourceVariant(fw.source)} class="text-[10px] px-1.5 py-0">{sourceLabel(fw.source)}</Badge>
+                <Badge variant={GRADE_VARIANTS[fw.grade] || "destructive"}>{fw.grade}</Badge>
+              </div>
             </div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm text-muted-foreground">{fw.score}%</span>
@@ -1001,6 +1038,11 @@
             <p class="text-xs text-muted-foreground mt-2">
               {fw.controlsVerified} verified, {fw.controlsImplemented} implemented
             </p>
+            {#if fw.source === "self-assessed" || fw.source === "self-assessed-fallback"}
+              <p class="text-[11px] text-amber-600 dark:text-amber-400 mt-1">Connect adapters to get evidence-based scores</p>
+            {:else if fw.source === "no-data"}
+              <p class="text-[11px] text-muted-foreground mt-1">No evidence collected yet</p>
+            {/if}
           </CardContent>
         </Card>
       {/each}
@@ -1019,6 +1061,32 @@
         {/each}
       {/if}
     </div>
+
+    <!-- Adapter collection health -->
+    {#if adapterHealth.length > 0}
+      <h2 class="text-lg font-semibold mb-3">Adapter Collection Status</h2>
+      <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
+        {#each adapterHealth as adapter}
+          <Card>
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <span class="font-medium text-sm capitalize">{adapter.slug.replace(/-/g, ' ')}</span>
+                {#if adapter.error}
+                  <Badge variant="destructive" class="text-[10px]">Error</Badge>
+                {:else}
+                  <Badge variant="success" class="text-[10px]">{adapter.itemsCount} items</Badge>
+                {/if}
+              </div>
+              {#if adapter.error}
+                <p class="text-[11px] text-destructive mt-1 truncate" title={adapter.error}>{adapter.error}</p>
+              {:else}
+                <p class="text-[11px] text-muted-foreground mt-1">Last collected: {new Date(adapter.collectedAt).toLocaleString()}</p>
+              {/if}
+            </CardContent>
+          </Card>
+        {/each}
+      </div>
+    {/if}
 
     <!-- Score history -->
     <h2 class="text-lg font-semibold mb-3">Score History (30 days)</h2>

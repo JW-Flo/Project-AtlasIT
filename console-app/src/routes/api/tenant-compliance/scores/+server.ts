@@ -2,6 +2,8 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { getWorkerBase, safeProxyFetch } from "../../_proxy-helpers";
 
+type ScoreSource = "evidence" | "self-assessed" | "self-assessed-fallback" | "no-data";
+
 interface FrameworkScore {
   framework: string;
   score: number;
@@ -9,6 +11,7 @@ interface FrameworkScore {
   controlsTotal: number;
   controlsImplemented: number;
   controlsVerified: number;
+  source?: ScoreSource;
 }
 
 const STATUS_WEIGHTS: Record<string, number> = {
@@ -316,16 +319,18 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     for (const ev of evidenceScores) {
       const sa = selfMap.get(ev.framework);
       if (sa) {
-        // Use the higher score — evidence can promote beyond self-assessed
-        // (via adapter pass + verification), and self-assessed shouldn't be
-        // wiped out when adapters aren't connected yet.
-        blended.push(
-          ev.score >= sa.score
-            ? ev
-            : { ...sa, controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal) },
-        );
+        if (ev.score >= sa.score) {
+          blended.push({ ...ev, source: "evidence" });
+        } else {
+          // Self-assessed is higher — evidence was attempted but scored lower
+          blended.push({
+            ...sa,
+            controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal),
+            source: "self-assessed-fallback",
+          });
+        }
       } else {
-        blended.push(ev);
+        blended.push({ ...ev, source: "evidence" });
       }
       selfMap.delete(ev.framework);
     }
@@ -334,16 +339,19 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     for (const fw of frameworks) {
       if (!coveredFrameworks.has(fw)) {
         const sa = selfMap.get(fw);
-        blended.push(
-          sa ?? {
+        if (sa && sa.score > 0) {
+          blended.push({ ...sa, source: "self-assessed" });
+        } else {
+          blended.push({
             framework: fw,
-            score: 0,
-            grade: "F",
-            controlsTotal: 0,
-            controlsImplemented: 0,
-            controlsVerified: 0,
-          },
-        );
+            score: sa?.score ?? 0,
+            grade: sa?.grade ?? "F",
+            controlsTotal: sa?.controlsTotal ?? 0,
+            controlsImplemented: sa?.controlsImplemented ?? 0,
+            controlsVerified: sa?.controlsVerified ?? 0,
+            source: "no-data",
+          });
+        }
       }
     }
 
@@ -353,8 +361,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
   // Use self-assessed scores from controls (primary path when compliance-worker unavailable)
   if (selfScores.length > 0) {
-    await persistScores(db, user.tenantId, selfScores);
-    return json({ scores: selfScores, source: "self-assessed", frameworksConfigured });
+    const tagged = selfScores.map((s) => ({
+      ...s,
+      source: (s.score > 0 ? "self-assessed" : "no-data") as ScoreSource,
+    }));
+    await persistScores(db, user.tenantId, tagged);
+    return json({ scores: tagged, source: "self-assessed", frameworksConfigured });
   }
 
   // No scores available at all — return empty
@@ -365,6 +377,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controlsTotal: 0,
     controlsImplemented: 0,
     controlsVerified: 0,
+    source: "no-data" as ScoreSource,
   }));
   return json({ scores: emptyScores, source: "empty", frameworksConfigured });
 };
@@ -400,9 +413,9 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const { results: prevRows } = await db
     .prepare("SELECT framework, score FROM compliance_scores WHERE tenant_id = ?")
     .bind(user.tenantId)
-    .all<{ framework: string; score: number }>();
+    .all();
   const previousScores: Record<string, number> = {};
-  for (const row of prevRows ?? []) {
+  for (const row of (prevRows ?? []) as any[]) {
     previousScores[row.framework] = row.score;
   }
 
@@ -424,13 +437,17 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     for (const ev of scores) {
       const sa = selfMap.get(ev.framework);
       if (sa) {
-        blended.push(
-          ev.score >= sa.score
-            ? ev
-            : { ...sa, controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal) },
-        );
+        if (ev.score >= sa.score) {
+          blended.push({ ...ev, source: "evidence" });
+        } else {
+          blended.push({
+            ...sa,
+            controlsTotal: Math.max(sa.controlsTotal, ev.controlsTotal),
+            source: "self-assessed-fallback",
+          });
+        }
       } else {
-        blended.push(ev);
+        blended.push({ ...ev, source: "evidence" });
       }
       selfMap.delete(ev.framework);
     }
@@ -438,23 +455,29 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     for (const fw of frameworks) {
       if (!covered.has(fw)) {
         const sa = selfMap.get(fw);
-        blended.push(
-          sa ?? {
+        if (sa && sa.score > 0) {
+          blended.push({ ...sa, source: "self-assessed" });
+        } else {
+          blended.push({
             framework: fw,
-            score: 0,
-            grade: "F",
-            controlsTotal: 0,
-            controlsImplemented: 0,
-            controlsVerified: 0,
-          },
-        );
+            score: sa?.score ?? 0,
+            grade: sa?.grade ?? "F",
+            controlsTotal: sa?.controlsTotal ?? 0,
+            controlsImplemented: sa?.controlsImplemented ?? 0,
+            controlsVerified: sa?.controlsVerified ?? 0,
+            source: "no-data",
+          });
+        }
       }
     }
 
     finalScores = blended;
     source = "evidence";
   } else if (selfScores.length > 0) {
-    finalScores = selfScores;
+    finalScores = selfScores.map((s) => ({
+      ...s,
+      source: (s.score > 0 ? "self-assessed" : "no-data") as ScoreSource,
+    }));
     source = "self-assessed";
   } else {
     finalScores = frameworks.map((fw) => ({
@@ -464,6 +487,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       controlsTotal: 0,
       controlsImplemented: 0,
       controlsVerified: 0,
+      source: "no-data" as ScoreSource,
     }));
     source = "empty";
   }
