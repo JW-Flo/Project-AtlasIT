@@ -5635,6 +5635,224 @@ var AUDIT_EVIDENCE_REGISTRY = [
     description: "Automation rule removed",
     category: "config_mgmt"
   },
+  // ── Directory Sync ────────────────────────────────────────────────────
+  {
+    action: "directory.connect",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory provider connected for identity sync",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory.sync",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory sync executed \u2014 user roster reconciled",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory_user.created",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user provisioned via sync or manual creation",
+    category: "onboarding"
+  },
+  {
+    action: "directory_user.updated",
+    controlRefs: ["ISO-27001-A.9.2.4", "SOC2-CC6.3"],
+    impact: "neutral",
+    description: "Directory user attributes updated",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory_user.deleted",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.6", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user removed \u2014 offboarding triggered",
+    category: "offboarding"
+  },
+  // ── Group-to-App Mappings ──────────────────────────────────────────
+  {
+    action: "mapping.update",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "Group-to-app role mapping updated",
+    category: "access_grant"
+  },
+  {
+    action: "mapping.delete",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+    impact: "positive",
+    description: "Group-to-app role mapping removed",
+    category: "access_revoke"
+  },
+  {
+    action: "mapping.auto_suggest",
+    controlRefs: ["SOC2-CC5.2", "SOC2-CC6.3", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "AI-generated role mapping suggestion applied",
+    category: "access_grant"
+  },
+  // ── Access Reviews (extended) ──────────────────────────────────────
+  {
+    action: "access_review_campaign.status_changed",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC4.2", "ISO-27001-A.9.2.5", "HIPAA-164.312(a)(1)"],
+    impact: "positive",
+    description: "Access review campaign status transitioned",
+    category: "access_review"
+  },
+  // ── Incidents (extended) ───────────────────────────────────────────
+  {
+    action: "incident.assigned",
+    controlRefs: ["SOC2-CC7.3", "SOC2-CC7.4", "ISO-27001-A.16.1.1", "ISO-27001-A.16.1.4"],
+    impact: "positive",
+    description: "Incident assigned to responder",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.escalated",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2", "ISO-27001-A.16.1.4", "NIST-CSF-RS.CO-2"],
+    impact: "positive",
+    description: "Incident escalated per response procedure",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.severity_changed",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Incident severity reclassified",
+    category: "incident_mgmt"
+  },
+  // ── MFA ─────────────────────────────────────────────────────────────
+  {
+    action: "mfa.totp_enabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "positive",
+    description: "User enabled multi-factor authentication (TOTP)",
+    category: "auth_control"
+  },
+  {
+    action: "mfa.totp_disabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "detrimental",
+    description: "User disabled multi-factor authentication (TOTP)",
+    category: "auth_control"
+  },
+  // ── Policy Management ──────────────────────────────────────────────
+  {
+    action: "policy.created",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document created",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.updated",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document revised",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.archived",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1"],
+    impact: "neutral",
+    description: "Policy document archived after supersession",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.submitted_for_review",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC2.1", "ISO-27001-A.5.1.1"],
+    impact: "positive",
+    description: "Policy submitted for management review and approval",
+    category: "policy_mgmt"
+  },
+  // ── Compliance Packs ───────────────────────────────────────────────
+  {
+    action: "compliance_pack.create",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Custom compliance pack created",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.install",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack installed \u2014 controls activated",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.uninstall",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Compliance pack uninstalled",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.update",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack configuration updated",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.delete",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Custom compliance pack deleted",
+    category: "config_mgmt"
+  },
+  // ── Automation Execution ───────────────────────────────────────────
+  {
+    action: "automation.executed",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC5.2", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule executed \u2014 lifecycle action performed",
+    category: "automation"
+  },
+  {
+    action: "automation_rule.duplicate",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule duplicated from existing template",
+    category: "config_mgmt"
+  },
+  // ── Trust Center ───────────────────────────────────────────────────
+  {
+    action: "trust_access_request.approved",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Trust center access request approved \u2014 transparency upheld",
+    category: "config_mgmt"
+  },
+  {
+    action: "trust_access_request.denied",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC6.3"],
+    impact: "positive",
+    description: "Trust center access request denied \u2014 need-to-know enforced",
+    category: "access_revoke"
+  },
+  // ── Support ────────────────────────────────────────────────────────
+  {
+    action: "support.request",
+    controlRefs: ["SOC2-CC2.2", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Support request submitted by user",
+    category: "incident_mgmt"
+  },
   // ── Admin Actions ───────────────────────────────────────────────────
   {
     action: "tenant.impersonate",
