@@ -145,7 +145,7 @@ export async function executeStepTask(
 
 // ── Legacy dispatch (kept for backwards compatibility) ──────────────────────
 
-async function legacyDispatch(
+export async function legacyDispatch(
   handler: string,
   context: Record<string, unknown>,
   tenantId: string,
@@ -243,7 +243,7 @@ function extractUserProfile(context: Record<string, unknown>) {
   };
 }
 
-function parseAdapterUrls(val?: string): Record<string, string> {
+export function parseAdapterUrls(val?: string): Record<string, string> {
   if (!val) return {};
   try {
     return JSON.parse(val) as Record<string, string>;

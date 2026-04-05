@@ -44,6 +44,12 @@ database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 name = "WORKFLOW"
 class_name = "WorkflowDO"
 
+# Cloudflare Workflows — durable step execution (replaces WorkflowDO for new runs)
+[[workflows]]
+name = "atlas-workflow"
+binding = "ATLAS_WORKFLOW"
+class_name = "AtlasWorkflow"
+
 [[durable_objects.bindings]]
 name = "AUTOMATION"
 class_name = "AutomationDO"

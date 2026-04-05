@@ -98,6 +98,7 @@ automationRoutes.post("/evaluate", requireRole("member"), async (c) => {
   })();
   const actionContext: ActionContext = {
     workflow: c.env.WORKFLOW,
+    atlasWorkflow: c.env.ATLAS_WORKFLOW,
     selfUrl: c.env.SELF_URL,
     adapterUrls,
     sharedDb,

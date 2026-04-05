@@ -76,6 +76,8 @@ interface AppAccess {
 export interface JmlContext {
   db: D1Database;
   workflow: DurableObjectNamespace;
+  /** Cloudflare Workflows binding — preferred over WorkflowDO when available */
+  atlasWorkflow?: Workflow;
   adapterUrls: Record<string, string>;
   selfUrl?: string;
   /** Optional R2 bucket for tamper-evident evidence storage */
@@ -328,10 +330,6 @@ async function executeJmlWorkflow(
   const runId = crypto.randomUUID();
   const steps = buildJmlSteps(classification, ctx.adapterUrls, policy);
 
-  // Start WorkflowDO
-  const doId = ctx.workflow.idFromName(runId);
-  const stub = ctx.workflow.get(doId);
-
   const profileContext = classification.profile
     ? {
         userId: classification.profile.id,
@@ -349,29 +347,38 @@ async function executeJmlWorkflow(
       }
     : {};
 
-  await stub.fetch(
-    new Request("http://workflow/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        definition: {
-          id: `jml-${classification.action}-${runId}`,
-          name: `${classification.action} workflow`,
-          steps: steps.main,
-          onFailure: steps.compensation,
-          globalTimeoutMs: 5 * 60_000,
-        },
-        tenantId,
-        correlationId: runId,
-        context: {
-          workflowType: classification.action,
-          trigger: "jml_auto",
-          jmlReason: classification.reason,
-          ...profileContext,
-        },
+  const definition = {
+    id: `jml-${classification.action}-${runId}`,
+    name: `${classification.action} workflow`,
+    steps: steps.main,
+    onFailure: steps.compensation,
+    globalTimeoutMs: 5 * 60_000,
+  };
+
+  const workflowContext = {
+    workflowType: classification.action,
+    trigger: "jml_auto",
+    jmlReason: classification.reason,
+    ...profileContext,
+  };
+
+  // Prefer Cloudflare Workflows when available, fall back to WorkflowDO
+  if (ctx.atlasWorkflow) {
+    await ctx.atlasWorkflow.create({
+      id: runId,
+      params: { definition, tenantId, correlationId: runId, context: workflowContext },
+    });
+  } else {
+    const doId = ctx.workflow.idFromName(runId);
+    const stub = ctx.workflow.get(doId);
+    await stub.fetch(
+      new Request("http://workflow/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ definition, tenantId, correlationId: runId, context: workflowContext }),
       }),
-    }),
-  );
+    );
+  }
 
   // Record in workflow_runs
   await ctx.db

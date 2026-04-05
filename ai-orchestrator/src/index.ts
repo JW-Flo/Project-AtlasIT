@@ -166,6 +166,7 @@ app.route("/api/v1/nhi", nhiRoutes);
 app.route("/api/v1/discovery", discoveryRoutes);
 
 export { WorkflowDO } from "./workflow/workflow-do";
+export { AtlasWorkflow } from "./workflow/atlas-workflow";
 export { AutomationDO } from "./automation/automation-do";
 export { app };
 
@@ -227,6 +228,7 @@ const worker = {
     })();
     const actionContext: ActionContext = {
       workflow: env.WORKFLOW,
+      atlasWorkflow: env.ATLAS_WORKFLOW,
       selfUrl: env.SELF_URL,
       adapterUrls,
       sharedDb,

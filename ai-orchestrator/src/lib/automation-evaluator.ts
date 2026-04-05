@@ -42,7 +42,8 @@ const EVENT_TYPE_MAP: Record<string, TriggerType> = {
 };
 
 export interface ActionContext {
-  workflow?: DurableObjectNamespace; // for run_workflow
+  workflow?: DurableObjectNamespace; // for run_workflow (legacy WorkflowDO)
+  atlasWorkflow?: Workflow; // for run_workflow (Cloudflare Workflows — preferred)
   selfUrl?: string; // for send_notification (self-POST to event bus)
   adapterUrls?: Record<string, string>; // appId → adapter worker base URL
   sharedDb?: D1Database; // for create_incident, update_compliance_status
@@ -313,47 +314,65 @@ async function executeAction(
   switch (action.type) {
     // ── Workflow execution ──────────────────────────────────────────────────
     case "run_workflow": {
-      if (!ctx.workflow) return skip(action.type, "no WORKFLOW binding");
+      if (!ctx.atlasWorkflow && !ctx.workflow) return skip(action.type, "no workflow binding");
       const { workflowType = "joiner" } = config as { workflowType: string };
       const runId = crypto.randomUUID();
-      const doId = ctx.workflow.idFromName(runId);
-      const stub = ctx.workflow.get(doId);
-      await stub.fetch(
-        new Request("http://workflow/start", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            definition: {
-              id: `${workflowType}-${runId}`,
-              name: workflowType,
-              steps: buildWorkflowSteps(workflowType, ctx.adapterUrls ?? {}),
-              globalTimeoutMs: 5 * 60 * 1000,
-            },
+
+      const definition = {
+        id: `${workflowType}-${runId}`,
+        name: workflowType,
+        steps: buildWorkflowSteps(workflowType, ctx.adapterUrls ?? {}),
+        globalTimeoutMs: 5 * 60 * 1000,
+      };
+
+      const workflowContext = {
+        workflowType,
+        triggerEvent: event,
+        ...(profile
+          ? {
+              userId: profile.id,
+              email: profile.email,
+              displayName: profile.displayName,
+              firstName: profile.firstName,
+              lastName: profile.lastName,
+              department: profile.department,
+              title: profile.title,
+              manager: profile.manager,
+              phone: profile.phone,
+              groups: profile.groups,
+              appAccess: profile.appAccess,
+              rawAttributes: profile.rawAttributes,
+            }
+          : {}),
+      };
+
+      // Prefer Cloudflare Workflows when available, fall back to WorkflowDO
+      if (ctx.atlasWorkflow) {
+        await ctx.atlasWorkflow.create({
+          id: runId,
+          params: {
+            definition,
             tenantId: event.tenantId,
             correlationId: runId,
-            context: {
-              workflowType,
-              triggerEvent: event,
-              ...(profile
-                ? {
-                    userId: profile.id,
-                    email: profile.email,
-                    displayName: profile.displayName,
-                    firstName: profile.firstName,
-                    lastName: profile.lastName,
-                    department: profile.department,
-                    title: profile.title,
-                    manager: profile.manager,
-                    phone: profile.phone,
-                    groups: profile.groups,
-                    appAccess: profile.appAccess,
-                    rawAttributes: profile.rawAttributes,
-                  }
-                : {}),
-            },
+            context: workflowContext,
+          },
+        });
+      } else {
+        const doId = ctx.workflow!.idFromName(runId);
+        const stub = ctx.workflow!.get(doId);
+        await stub.fetch(
+          new Request("http://workflow/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              definition,
+              tenantId: event.tenantId,
+              correlationId: runId,
+              context: workflowContext,
+            }),
           }),
-        }),
-      );
+        );
+      }
       return ok(action.type, `${workflowType} workflow started`, { runId });
     }
 

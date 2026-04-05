@@ -85,6 +85,7 @@ jmlRoutes.post("/trigger", requireRole("member"), async (c) => {
     {
       db,
       workflow: c.env.WORKFLOW,
+      atlasWorkflow: c.env.ATLAS_WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
     },

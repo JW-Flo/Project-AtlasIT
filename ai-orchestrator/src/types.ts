@@ -6,6 +6,8 @@ export type Bindings = {
   AI_QUOTA: KVNamespace;
   IDEMPOTENCY_CACHE: KVNamespace;
   WORKFLOW: DurableObjectNamespace;
+  /** Cloudflare Workflows binding — replaces WorkflowDO for new runs */
+  ATLAS_WORKFLOW: Workflow;
   AUTOMATION: DurableObjectNamespace;
   STEP_TASKS: Queue;
   EVIDENCE: R2Bucket;
