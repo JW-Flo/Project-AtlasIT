@@ -1,6 +1,6 @@
-import joinerTemplate from "../../../../fixtures/jml/joiner.json";
-import moverTemplate from "../../../../fixtures/jml/mover.json";
-import leaverTemplate from "../../../../fixtures/jml/leaver.json";
+import joinerTemplate from "../../../../tests/fixtures/jml/joiner.json";
+import moverTemplate from "../../../../tests/fixtures/jml/mover.json";
+import leaverTemplate from "../../../../tests/fixtures/jml/leaver.json";
 
 export type WorkflowType = "joiner" | "mover" | "leaver";
 
