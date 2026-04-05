@@ -100,8 +100,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   if (!orchestratorUrl) {
     return json(
-      { message: "OAuth grant scan not available — orchestrator not configured" },
-      { status: 202 },
+      { error: "OAuth grant scan not available — orchestrator not configured" },
+      { status: 503 },
     );
   }
 

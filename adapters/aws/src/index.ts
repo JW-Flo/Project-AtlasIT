@@ -928,6 +928,22 @@ app.post("/api/nhi/discovery", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// OAuth grant / IAM discovery for Shadow AI detection
+// ---------------------------------------------------------------------------
+app.post("/api/oauth-grants", async (c) => {
+  // AWS doesn't use OAuth grants in the traditional sense. IAM roles, access keys,
+  // and resource policies serve a similar function. Full IAM enumeration requires
+  // the IAM ListUsers/ListRoles APIs which need direct AWS SDK access.
+  // This endpoint returns a minimal response acknowledging the limitation.
+  return c.json({
+    provider: "aws",
+    grants: [],
+    discoveredAt: new Date().toISOString(),
+    note: "AWS IAM discovery requires direct API access via access keys. OAuth grant scanning is not applicable to AWS.",
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {

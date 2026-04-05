@@ -538,6 +538,96 @@ async function fetchServiceApps(
   }
 }
 
+// ── OAuth grant discovery for Shadow AI detection ────────────────────────────
+app.post("/api/oauth-grants", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+
+  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = c.env.OKTA_API_TOKEN;
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+
+  try {
+    // List OAuth apps in the Okta org
+    const appsRes = await fetch(`${orgUrl}/api/v1/apps?limit=200&filter=status eq "ACTIVE"`, {
+      headers: { Authorization: `SSWS ${token}`, Accept: "application/json" },
+    });
+
+    if (!appsRes.ok) {
+      return c.json({ provider: "okta", grants: [], discoveredAt: new Date().toISOString(), error: `Apps API: HTTP ${appsRes.status}` });
+    }
+
+    const apps = (await appsRes.json()) as Array<{
+      id: string;
+      label: string;
+      name: string;
+      signOnMode?: string;
+      credentials?: { oauthClient?: { client_id?: string } };
+      _links?: { appLinks?: Array<{ href?: string }> };
+    }>;
+
+    // Filter to OAuth/OIDC apps
+    const oauthApps = apps.filter(
+      (a) => a.signOnMode === "OPENID_CONNECT" || a.signOnMode === "OAUTH_2_0" || a.name?.includes("oidc"),
+    );
+
+    // For each OAuth app, list assigned users (limited to first 50 users per app)
+    for (const app of oauthApps.slice(0, 30)) {
+      try {
+        const usersRes = await fetch(`${orgUrl}/api/v1/apps/${app.id}/users?limit=50`, {
+          headers: { Authorization: `SSWS ${token}`, Accept: "application/json" },
+        });
+
+        if (!usersRes.ok) continue;
+
+        const appUsers = (await usersRes.json()) as Array<{
+          id: string;
+          credentials?: { userName?: string };
+          profile?: { email?: string };
+          created?: string;
+          lastUpdated?: string;
+          scope?: string;
+        }>;
+
+        for (const u of appUsers) {
+          grants.push({
+            appName: app.label || app.name,
+            clientId: app.credentials?.oauthClient?.client_id || app.id,
+            userEmail: u.credentials?.userName || u.profile?.email || "unknown",
+            scopes: u.scope ? u.scope.split(" ") : [],
+            grantedAt: u.created,
+            lastUsedAt: u.lastUpdated,
+            metadata: { oktaAppId: app.id, signOnMode: app.signOnMode },
+          });
+        }
+      } catch {
+        // continue to next app
+      }
+    }
+  } catch (err) {
+    return c.json({
+      provider: "okta",
+      grants: [],
+      discoveredAt: new Date().toISOString(),
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+
+  return c.json({ provider: "okta", grants, discoveredAt: new Date().toISOString() });
+});
+
 app.post("/api/nhi/discovery", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID");
   if (!tenantId) {

@@ -60,8 +60,8 @@ interface ListOptions {
 const NHI_CAPABLE_ADAPTERS = [
   "github",
   "aws",
-  "google_workspace",
-  "microsoft_365",
+  "google-workspace",
+  "microsoft-365",
   "okta",
 ];
 

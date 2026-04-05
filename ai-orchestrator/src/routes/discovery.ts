@@ -84,14 +84,14 @@ discoveryRoutes.patch("/apps/:id", async (c) => {
   const db = c.env.ATLAS_SHARED_DB;
   const appId = c.req.param("id");
 
-  let body: { risk_tier?: string };
+  let body: { risk_tier?: string; riskTier?: string };
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: "Invalid JSON body", correlationId }, 400);
   }
 
-  const riskTier = body.risk_tier as RiskTier;
+  const riskTier = (body.risk_tier ?? body.riskTier) as RiskTier;
   if (!riskTier || !VALID_RISK_TIERS.includes(riskTier)) {
     return c.json(
       {

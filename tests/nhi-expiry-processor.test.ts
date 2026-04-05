@@ -3,9 +3,11 @@ import { processExpiringNhiCredentials } from "../ai-orchestrator/src/lib/nhi-ex
 
 function createMockDb() {
   const runFn = vi.fn().mockResolvedValue({});
+  const firstFn = vi.fn().mockResolvedValue(null);
   const bindFn = vi.fn().mockReturnValue({
     all: vi.fn().mockResolvedValue({ results: [] }),
     run: runFn,
+    first: firstFn,
   });
   const prepareFn = vi.fn().mockReturnValue({ bind: bindFn });
 
@@ -14,6 +16,7 @@ function createMockDb() {
     prepare: prepareFn,
     bind: bindFn,
     run: runFn,
+    first: firstFn,
   };
 }
 

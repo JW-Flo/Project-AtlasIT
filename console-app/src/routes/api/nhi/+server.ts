@@ -25,6 +25,8 @@ function mapNhiRow(row: Record<string, unknown>): Record<string, unknown> {
 export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(user, ["owner", "admin", "viewer"]);
+  if (guard) return guard;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
@@ -110,8 +112,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   if (!orchestratorUrl) {
     return json(
-      { message: "NHI discovery not available — orchestrator not configured" },
-      { status: 202 },
+      { error: "NHI discovery not available — orchestrator not configured" },
+      { status: 503 },
     );
   }
 

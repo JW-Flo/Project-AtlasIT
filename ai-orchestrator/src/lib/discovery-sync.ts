@@ -56,7 +56,7 @@ const MARKETPLACE_CATALOG_IDS: string[] = [
 
 // ── Adapters that expose /api/oauth-grants ───────────────────────────────────
 
-const OAUTH_GRANT_CAPABLE_ADAPTERS = ["google_workspace", "microsoft_365"];
+const OAUTH_GRANT_CAPABLE_ADAPTERS = ["google-workspace", "microsoft-365", "okta", "github", "aws"];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,12 +99,13 @@ async function fetchOAuthGrants(
     OAUTH_GRANT_CAPABLE_ADAPTERS.filter((slug) => adapterUrls[slug]).map(async (slug) => {
       const url = adapterUrls[slug];
       const res = await fetch(`${url}/api/oauth-grants`, {
-        method: "GET",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Tenant-ID": tenantId,
           "X-Correlation-ID": correlationId,
         },
+        body: JSON.stringify({ tenantId }),
       });
 
       if (!res.ok) {
