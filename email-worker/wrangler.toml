@@ -13,6 +13,10 @@ FROM_EMAIL = "noreply@atlasit.pro"
 FROM_NAME = "AtlasIT"
 ENVIRONMENT = "production"
 
+[[kv_namespaces]]
+binding = "EMAIL_USAGE"
+id = "6a0bbdbdc12040e19feb77ef1ba2543e"
+
 # Secrets (set via wrangler secret put):
 # MAILCHANNELS_API_KEY — MailChannels transactional API key
 # SMTP_HOST — SMTP relay host (alternative to MailChannels)
