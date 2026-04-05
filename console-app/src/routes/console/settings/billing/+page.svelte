@@ -216,22 +216,22 @@
                 <button
                   class="px-3 py-1 rounded-full text-xs font-medium transition-colors {upgradeCycle === 'annual' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}"
                   on:click={() => upgradeCycle = 'annual'}
-                >Annual <Badge variant="success" class="ml-1 text-[10px]">-25%</Badge></button>
+                >Annual <Badge variant="success" class="ml-1 text-[10px]">Save</Badge></button>
               </div>
             </div>
           {/if}
           <div class="flex flex-wrap gap-3">
           {#if billing?.plan === "free"}
             <Button on:click={() => handleUpgrade("starter")} disabled={upgrading}>
-              Upgrade to Starter — {upgradeCycle === 'annual' ? '$2' : '$3'}/user/mo
+              Upgrade to Starter — {upgradeCycle === 'annual' ? '$3' : '$4'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
             <Button variant="outline" on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional — {upgradeCycle === 'annual' ? '$4' : '$5'}/user/mo
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$5' : '$6'}/user/mo
             </Button>
           {:else if billing?.plan === "starter"}
             <Button on:click={() => handleUpgrade("professional")} disabled={upgrading}>
-              Upgrade to Professional — {upgradeCycle === 'annual' ? '$4' : '$5'}/user/mo
+              Upgrade to Professional — {upgradeCycle === 'annual' ? '$5' : '$6'}/user/mo
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
           {/if}

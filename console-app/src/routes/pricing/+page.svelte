@@ -15,6 +15,7 @@
     tagline: string;
     monthlyPrice: number;
     annualPrice: number;
+    minimumMonthly: number;
     features: string[];
     highlighted?: boolean;
     cta: string;
@@ -28,6 +29,7 @@
       tagline: "SaaS discovery & compliance assessment",
       monthlyPrice: 0,
       annualPrice: 0,
+      minimumMonthly: 0,
       cta: "Get started free",
       ctaVariant: "outline",
       features: [
@@ -43,8 +45,9 @@
       id: "starter",
       name: "Starter",
       tagline: "IT ops automation for growing teams",
-      monthlyPrice: 3,
-      annualPrice: 2,
+      monthlyPrice: 4,
+      annualPrice: 3,
+      minimumMonthly: 20,
       cta: "Start 30-day free trial",
       ctaVariant: "outline",
       features: [
@@ -61,8 +64,9 @@
       id: "professional",
       name: "Professional",
       tagline: "Full compliance & governance platform",
-      monthlyPrice: 5,
-      annualPrice: 4,
+      monthlyPrice: 6,
+      annualPrice: 5,
+      minimumMonthly: 30,
       highlighted: true,
       cta: "Start 14-day free trial",
       ctaVariant: "default",
@@ -85,6 +89,7 @@
       tagline: "Custom deployment & dedicated support",
       monthlyPrice: -1,
       annualPrice: -1,
+      minimumMonthly: 0,
       cta: "Contact sales",
       ctaVariant: "outline",
       features: [
@@ -176,7 +181,7 @@
           on:click={() => annual = true}
         >
           Annual
-          <Badge variant="success" class="ml-1.5 text-xs">Save 25%</Badge>
+          <Badge variant="success" class="ml-1.5 text-xs">Save up to 25%</Badge>
         </button>
       </div>
     </div>
@@ -206,6 +211,9 @@
                 <span class="text-sm text-muted-foreground">/user/month</span>
                 {#if annual && plan.monthlyPrice > 0}
                   <div class="text-xs text-muted-foreground mt-1">billed annually</div>
+                {/if}
+                {#if plan.minimumMonthly > 0}
+                  <div class="text-xs text-muted-foreground mt-1">${plan.minimumMonthly}/mo minimum</div>
                 {/if}
               {/if}
             </div>
