@@ -595,6 +595,15 @@
         <slot />
       </div>
       <ToastContainer />
+      <!-- Footer -->
+      <footer class="border-t py-4 px-6 text-center text-xs text-muted-foreground">
+        &copy; {new Date().getFullYear()} AtlasIT &middot;
+        <a href="/privacy" class="hover:text-foreground transition-colors">Privacy</a> &middot;
+        <a href="/privacy/dsar" class="hover:text-foreground transition-colors">Data Requests</a> &middot;
+        <a href="/terms" class="hover:text-foreground transition-colors">Terms</a> &middot;
+        <a href="/support" class="hover:text-foreground transition-colors">Support</a> &middot;
+        <a href="https://status.atlasit.pro" class="hover:text-foreground transition-colors">Status</a>
+      </footer>
     </main>
   </div>
 </div>
