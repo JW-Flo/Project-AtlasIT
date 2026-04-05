@@ -266,7 +266,7 @@
                     <div class="text-xs text-muted-foreground mt-1">billed annually</div>
                   {/if}
                   {#if plan.minimumMonthly > 0}
-                    <div class="text-xs text-muted-foreground mt-1">${plan.minimumMonthly}/mo minimum</div>
+                    <div class="text-xs text-muted-foreground mt-1">5 users minimum</div>
                   {/if}
                 {/if}
               </div>
