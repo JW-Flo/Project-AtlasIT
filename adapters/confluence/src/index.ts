@@ -1,11 +1,7 @@
 import { Hono } from "hono";
 import type { Bindings, Variables, SyncResult } from "./types.js";
 import { validateConfig } from "./config.js";
-import {
-  authMiddleware,
-  getAuthorizationUrl,
-  exchangeCodeForToken,
-} from "./auth.js";
+import { authMiddleware, getAuthorizationUrl, exchangeCodeForToken } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleConfluenceWebhook } from "./webhooks.js";
@@ -25,10 +21,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -48,14 +41,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -99,11 +87,7 @@ app.post("/webhook", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -150,9 +134,7 @@ app.post("/webhook", async (c) => {
 // Trigger a full directory sync (users + groups)
 app.post("/api/sync", async (c) => {
   const correlationId = c.get("correlationId");
-  const body = await c.req
-    .json<{ tenantId: string; scope?: string }>()
-    .catch(() => null);
+  const body = await c.req.json<{ tenantId: string; scope?: string }>().catch(() => null);
 
   if (!body?.tenantId) {
     return c.json({ error: "tenantId is required", correlationId }, 400);
@@ -164,13 +146,7 @@ app.post("/api/sync", async (c) => {
   await c.env.DB.prepare(
     "INSERT INTO sync_jobs (id, tenant_id, connector_slug, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   )
-    .bind(
-      syncId,
-      body.tenantId,
-      "confluence",
-      "running",
-      new Date().toISOString(),
-    )
+    .bind(syncId, body.tenantId, "confluence", "running", new Date().toISOString())
     .run();
 
   console.log(
@@ -194,9 +170,7 @@ app.post("/api/sync", async (c) => {
     .first<{ access_token: string }>();
 
   if (!tokenRow) {
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
     return c.json(
@@ -217,9 +191,7 @@ app.post("/api/sync", async (c) => {
     .first<{ config: string }>();
 
   if (!configRow) {
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
     return c.json(
@@ -232,14 +204,9 @@ app.post("/api/sync", async (c) => {
   }
 
   const config = JSON.parse(configRow.config) as { cloudId: string };
-  const validation = validateConfig(
-    config as unknown as Record<string, unknown>,
-  );
+  const validation = validateConfig(config as unknown as Record<string, unknown>);
   if (!validation.valid) {
-    return c.json(
-      { error: "Invalid config", details: validation.errors, correlationId },
-      400,
-    );
+    return c.json({ error: "Invalid config", details: validation.errors, correlationId }, 400);
   }
 
   try {
@@ -249,12 +216,7 @@ app.post("/api/sync", async (c) => {
     let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
 
     if (scope === "all" || scope === "users") {
-      userResult = await syncUsers(
-        tokenRow.access_token,
-        config.cloudId,
-        c.env.DB,
-        body.tenantId,
-      );
+      userResult = await syncUsers(tokenRow.access_token, config.cloudId, c.env.DB, body.tenantId);
     }
 
     if (scope === "all" || scope === "groups") {
@@ -267,12 +229,7 @@ app.post("/api/sync", async (c) => {
     }
 
     // Update connection status
-    await updateConnectionStatus(
-      c.env.DB,
-      body.tenantId,
-      userResult.total,
-      groupResult.total,
-    );
+    await updateConnectionStatus(c.env.DB, body.tenantId, userResult.total, groupResult.total);
 
     // Mark sync job complete
     await c.env.DB.prepare(
@@ -302,9 +259,7 @@ app.post("/api/sync", async (c) => {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
 
-    await c.env.DB.prepare(
-      "UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2",
-    )
+    await c.env.DB.prepare("UPDATE sync_jobs SET status = 'error', completed_at = ?1 WHERE id = ?2")
       .bind(new Date().toISOString(), syncId)
       .run();
 
@@ -331,10 +286,7 @@ app.get("/api/status", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const connection = await c.env.DB.prepare(
@@ -389,17 +341,11 @@ app.get("/auth/authorize", async (c) => {
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const state = btoa(JSON.stringify({ tenantId, correlationId }));
-  const url = getAuthorizationUrl(
-    c.env as unknown as Record<string, string>,
-    state,
-  );
+  const url = getAuthorizationUrl(c.env as unknown as Record<string, string>, state);
 
   return c.redirect(url);
 });
@@ -412,8 +358,7 @@ app.get("/auth/callback", async (c) => {
   const error = c.req.query("error");
 
   if (error) {
-    const errorDescription =
-      c.req.query("error_description") ?? "Unknown error";
+    const errorDescription = c.req.query("error_description") ?? "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
@@ -427,10 +372,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   if (!code || !state) {
-    return c.json(
-      { error: "Missing code or state parameter", correlationId },
-      400,
-    );
+    return c.json({ error: "Missing code or state parameter", correlationId }, 400);
   }
 
   let stateData: { tenantId: string; correlationId: string };
@@ -444,10 +386,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(
-      c.env as unknown as Record<string, string>,
-      code,
-    );
+    const tokens = await exchangeCodeForToken(c.env as unknown as Record<string, string>, code);
 
     await c.env.DB.prepare(
       `INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at)
@@ -493,6 +432,207 @@ app.get("/auth/callback", async (c) => {
   }
 });
 
+// Provision a user in Confluence (JML: Joiner/Mover)
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req
+    .json<{ tenantId: string; email: string; displayName?: string; groups?: string[] }>()
+    .catch(() => null);
+
+  if (!body?.tenantId || !body?.email) {
+    return c.json({ error: "tenantId and email are required", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'confluence'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth token found for tenant", correlationId }, 400);
+  }
+
+  try {
+    // Get accessible Atlassian sites
+    const sitesRes = await fetch("https://api.atlassian.com/oauth/token/accessible-resources", {
+      headers: { Authorization: `Bearer ${tokenRow.access_token}`, Accept: "application/json" },
+    });
+    if (!sitesRes.ok) {
+      return c.json({ error: "Failed to fetch Atlassian sites", correlationId }, 502);
+    }
+    const sites = (await sitesRes.json()) as Array<{ id: string; name: string }>;
+    if (sites.length === 0) {
+      return c.json({ error: "No accessible Atlassian sites", correlationId }, 400);
+    }
+    const cloudId = sites[0].id;
+
+    // Search for user by email
+    const searchRes = await fetch(
+      `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api/search?cql=${encodeURIComponent(`type=user AND user.email="${body.email}"`)}`,
+      { headers: { Authorization: `Bearer ${tokenRow.access_token}`, Accept: "application/json" } },
+    );
+
+    let userExists = false;
+    if (searchRes.ok) {
+      const searchData = (await searchRes.json()) as { results?: unknown[] };
+      userExists = (searchData.results?.length ?? 0) > 0;
+    }
+
+    // Confluence Cloud doesn't support direct user creation via REST API —
+    // users are managed at the Atlassian org level. We can add to groups if they exist.
+    if (userExists && body.groups?.length) {
+      for (const group of body.groups) {
+        await fetch(
+          `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api/group/${encodeURIComponent(group)}/member`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${tokenRow.access_token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ accountId: body.email }),
+          },
+        );
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        message: userExists
+          ? "User found, groups updated"
+          : "User not found in Confluence (invite required at org level)",
+        email: body.email,
+        tenantId: body.tenantId,
+      }),
+    );
+
+    return c.json({
+      status: userExists ? "provisioned" : "pending_invite",
+      correlationId,
+      email: body.email,
+      message: userExists
+        ? "User access configured in Confluence"
+        : "User not found — invite via Atlassian Admin required",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({ level: "error", correlationId, message: "Provision failed", error: msg }),
+    );
+    return c.json({ error: msg, correlationId }, 500);
+  }
+});
+
+// Deprovision a user from Confluence (JML: Leaver)
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const body = await c.req.json<{ tenantId: string; email: string }>().catch(() => null);
+
+  if (!body?.tenantId || !body?.email) {
+    return c.json({ error: "tenantId and email are required", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'confluence'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(body.tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth token found for tenant", correlationId }, 400);
+  }
+
+  try {
+    const sitesRes = await fetch("https://api.atlassian.com/oauth/token/accessible-resources", {
+      headers: { Authorization: `Bearer ${tokenRow.access_token}`, Accept: "application/json" },
+    });
+    if (!sitesRes.ok) {
+      return c.json({ error: "Failed to fetch Atlassian sites", correlationId }, 502);
+    }
+    const sites = (await sitesRes.json()) as Array<{ id: string }>;
+    if (sites.length === 0) {
+      return c.json({ error: "No accessible Atlassian sites", correlationId }, 400);
+    }
+    const cloudId = sites[0].id;
+
+    // Search for user
+    const searchRes = await fetch(
+      `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api/search?cql=${encodeURIComponent(`type=user AND user.email="${body.email}"`)}`,
+      { headers: { Authorization: `Bearer ${tokenRow.access_token}`, Accept: "application/json" } },
+    );
+
+    if (!searchRes.ok) {
+      return c.json({
+        status: "skipped",
+        correlationId,
+        message: "Could not search for user in Confluence",
+      });
+    }
+
+    const searchData = (await searchRes.json()) as {
+      results?: Array<{ user?: { accountId?: string } }>;
+    };
+    const accountId = searchData.results?.[0]?.user?.accountId;
+
+    // Full user deactivation requires Atlassian Organization Admin API.
+    // We can remove from all groups to revoke Confluence-specific access.
+    if (accountId) {
+      const groupsRes = await fetch(
+        `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api/user/memberof?accountId=${encodeURIComponent(accountId)}`,
+        {
+          headers: { Authorization: `Bearer ${tokenRow.access_token}`, Accept: "application/json" },
+        },
+      );
+      if (groupsRes.ok) {
+        const groupsData = (await groupsRes.json()) as { results?: Array<{ name: string }> };
+        for (const group of groupsData.results ?? []) {
+          await fetch(
+            `https://api.atlassian.com/ex/confluence/${cloudId}/wiki/rest/api/group/${encodeURIComponent(group.name)}/member/${encodeURIComponent(accountId)}`,
+            {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${tokenRow.access_token}` },
+            },
+          );
+        }
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        message: accountId
+          ? "User removed from all Confluence groups"
+          : "User not found in Confluence",
+        email: body.email,
+        tenantId: body.tenantId,
+      }),
+    );
+
+    return c.json({
+      status: accountId ? "deprovisioned" : "not_found",
+      correlationId,
+      email: body.email,
+      message: accountId
+        ? "User removed from all Confluence groups (full deactivation requires Org Admin API)"
+        : "User not found in Confluence",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({ level: "error", correlationId, message: "Deprovision failed", error: msg }),
+    );
+    return c.json({ error: msg, correlationId }, 500);
+  }
+});
+
 // Confluence webhook receiver
 app.post("/webhooks/confluence/events", (c) => handleConfluenceWebhook(c));
 
@@ -520,13 +660,7 @@ async function updateConnectionStatus(
              user_count = ?3, group_count = ?4, updated_at = datetime('now')
          WHERE tenant_id = ?5`,
       )
-      .bind(
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-        tenantId,
-      )
+      .bind(error ? "error" : "active", error ?? null, userCount, groupCount, tenantId)
       .run();
   } else {
     await db

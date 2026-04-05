@@ -105,6 +105,26 @@ function extractUserProfile(context: Record<string, unknown>) {
   };
 }
 
+/**
+ * Pre-flight health check for an adapter. Throws if the adapter's /health
+ * endpoint is unreachable or returns unhealthy, so the step fails fast
+ * instead of sending provision/deprovision to a dead adapter.
+ */
+async function assertAdapterHealthy(appId: string, adapterUrl: string): Promise<void> {
+  try {
+    const res = await fetch(`${adapterUrl}/health`, {
+      method: "GET",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) {
+      throw new Error(`${appId} adapter unhealthy: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`${appId} adapter health check failed: ${msg}`);
+  }
+}
+
 /** Register all built-in step handlers. Call once at worker startup. */
 export function registerBuiltinHandlers(): void {
   // Atlas internal: resolve access bundle
@@ -182,7 +202,8 @@ export function registerBuiltinHandlers(): void {
     "atlas.revoke_nhi_credential",
     async (ctx) => {
       const credentialId = ctx.context.credentialId as string | undefined;
-      if (!credentialId) throw new Error("atlas.revoke_nhi_credential: missing credentialId in context");
+      if (!credentialId)
+        throw new Error("atlas.revoke_nhi_credential: missing credentialId in context");
       if (!ctx.db) return { credentialId, status: "revoked", skipped: true, reason: "no_db" };
 
       await ctx.db
@@ -255,6 +276,9 @@ export function registerBuiltinHandlers(): void {
       const adapterUrl = ctx.adapterUrls[appId];
       if (!adapterUrl) throw new Error(`No adapter URL for "${appId}"`);
 
+      // Health check before dispatching
+      await assertAdapterHealthy(appId, adapterUrl);
+
       const res = await fetch(`${adapterUrl}/api/provision`, {
         method: "POST",
         headers: {
@@ -280,6 +304,9 @@ export function registerBuiltinHandlers(): void {
       const appId = ctx.stepId.replace(/^(revoke_|revoke_old_|deprovision_)/, "");
       const adapterUrl = ctx.adapterUrls[appId];
       if (!adapterUrl) throw new Error(`No adapter URL for "${appId}"`);
+
+      // Health check before dispatching
+      await assertAdapterHealthy(appId, adapterUrl);
 
       const res = await fetch(`${adapterUrl}/api/deprovision`, {
         method: "POST",

@@ -4,10 +4,7 @@ import { requireRole } from "@atlasit/shared";
 import type { AppEnv, AgentSubscription } from "../types";
 import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
-import {
-  evaluateAutomationRules,
-  type ActionContext,
-} from "../lib/automation-evaluator";
+import { evaluateAutomationRules, type ActionContext } from "../lib/automation-evaluator";
 import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
 import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
@@ -20,9 +17,7 @@ const PublishEventSchema = z.object({
 });
 
 /** Parse EVENT_SOURCE_SECRETS env var (JSON map of sourceId → secret). */
-function getSourceSecrets(
-  env: AppEnv["Bindings"],
-): Record<string, string> | null {
+function getSourceSecrets(env: AppEnv["Bindings"]): Record<string, string> | null {
   if (!env.EVENT_SOURCE_SECRETS) return null;
   try {
     return JSON.parse(env.EVENT_SOURCE_SECRETS) as Record<string, string>;
@@ -59,9 +54,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       );
     }
 
-    const source = (body as Record<string, unknown>).source as
-      | string
-      | undefined;
+    const source = (body as Record<string, unknown>).source as string | undefined;
     const secret = source ? sourceSecrets?.[source] : undefined;
 
     if (!secret) {
@@ -151,9 +144,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
 
   // Idempotency check via KV (24h TTL) — namespace by tenantId to prevent cross-tenant collisions
-  const idempotencyCacheKey = idempotencyKey
-    ? `${tenantId}:${idempotencyKey}`
-    : null;
+  const idempotencyCacheKey = idempotencyKey ? `${tenantId}:${idempotencyKey}` : null;
   if (idempotencyCacheKey) {
     const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyCacheKey);
     if (existing) {
@@ -346,10 +337,8 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       externalId: (jmlUser.externalId as string) ?? undefined,
       changeType: jmlChangeType,
       delta:
-        ((jmlUser.delta ?? jmlPayload.delta) as Record<
-          string,
-          { old?: unknown; new?: unknown }
-        >) ?? {},
+        ((jmlUser.delta ?? jmlPayload.delta) as Record<string, { old?: unknown; new?: unknown }>) ??
+        {},
       source,
     };
 
@@ -375,6 +364,101 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       c.executionCtx.waitUntil(jmlPromise);
     } catch {
       // No execution context (tests) — fire and forget
+    }
+  }
+
+  // ── Provisioning event consumer: dispatch to adapter provision/deprovision ──
+  if (type === "provisioning.requested") {
+    const pp = (payload ?? {}) as Record<string, unknown>;
+    const action = pp.action as string; // "provision" or "revoke"
+    const appId = pp.appId as string;
+
+    if (action && appId && adapterUrls[appId]) {
+      const adapterUrl = adapterUrls[appId];
+      const endpoint = action === "revoke" ? "deprovision" : "provision";
+      const email =
+        (pp.email as string) ?? ((pp.triggerPayload as Record<string, unknown>)?.email as string);
+
+      const provisionPromise = (async () => {
+        try {
+          // Check adapter health first
+          const healthRes = await fetch(`${adapterUrl}/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!healthRes.ok) {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                event: "provisioning.adapter_unhealthy",
+                tenantId,
+                appId,
+                status: healthRes.status,
+              }),
+            );
+            return;
+          }
+
+          const res = await fetch(`${adapterUrl}/api/${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Tenant-ID": tenantId },
+            body: JSON.stringify({
+              tenantId,
+              userProfile: { email, ...(pp.triggerPayload as Record<string, unknown>) },
+              config: {},
+            }),
+          });
+
+          if (!res.ok) {
+            const body = await res.text().catch(() => "");
+            console.error(
+              JSON.stringify({
+                level: "error",
+                event: `provisioning.${endpoint}_failed`,
+                tenantId,
+                appId,
+                status: res.status,
+                body: body.slice(0, 200),
+              }),
+            );
+          } else {
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: `provisioning.${endpoint}_success`,
+                tenantId,
+                appId,
+                email,
+              }),
+            );
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              event: `provisioning.${endpoint}_error`,
+              tenantId,
+              appId,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+      })();
+
+      try {
+        c.executionCtx.waitUntil(provisionPromise);
+      } catch {
+        // No execution context (tests)
+      }
+    } else if (appId && !adapterUrls[appId]) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "provisioning.no_adapter_url",
+          tenantId,
+          appId,
+          message: `No adapter URL configured for "${appId}" — provisioning skipped`,
+        }),
+      );
     }
   }
 
@@ -495,9 +579,7 @@ eventRoutes.get("/", async (c) => {
 eventRoutes.get("/:id", async (c) => {
   const tenantId = c.get("tenantId");
   const { id } = c.req.param();
-  const event = await c.env.DB.prepare(
-    "SELECT * FROM events WHERE id = ? AND tenant_id = ?",
-  )
+  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ? AND tenant_id = ?")
     .bind(id, tenantId)
     .first();
 
@@ -514,9 +596,7 @@ eventRoutes.get("/:id", async (c) => {
     );
   }
 
-  const deliveries = await c.env.DB.prepare(
-    "SELECT * FROM event_deliveries WHERE event_id = ?",
-  )
+  const deliveries = await c.env.DB.prepare("SELECT * FROM event_deliveries WHERE event_id = ?")
     .bind(id)
     .all();
 
@@ -592,10 +672,7 @@ async function fanOutToAgents(
         )
           .bind(deliveryId)
           .first();
-        if (
-          delivery &&
-          (delivery.attempts as number) >= (delivery.max_attempts as number)
-        ) {
+        if (delivery && (delivery.attempts as number) >= (delivery.max_attempts as number)) {
           await moveToDeadLetter(env.DB, {
             eventId,
             agentId: agent.agentId,
@@ -625,10 +702,7 @@ async function fanOutToAgents(
       )
         .bind(deliveryId)
         .first();
-      if (
-        delivery &&
-        (delivery.attempts as number) >= (delivery.max_attempts as number)
-      ) {
+      if (delivery && (delivery.attempts as number) >= (delivery.max_attempts as number)) {
         await moveToDeadLetter(env.DB, {
           eventId,
           agentId: agent.agentId,
@@ -660,9 +734,7 @@ async function fanOutToAgents(
   );
   const finalStatus = allDone ? "completed" : "failed";
 
-  await env.DB.prepare(
-    "UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?",
-  )
+  await env.DB.prepare("UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?")
     .bind(finalStatus, eventId)
     .run();
 }
