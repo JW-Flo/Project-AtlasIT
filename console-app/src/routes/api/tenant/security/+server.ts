@@ -73,15 +73,20 @@ export const PUT: RequestHandler = async ({ request, locals, platform }) => {
 
     const current = existing ? JSON.parse(existing.value) : {};
     const merged = resolveSecurityPolicy({ ...current, ...updates });
+    const mergedJson = JSON.stringify(merged);
+    const now = new Date().toISOString();
 
-    await db
-      .prepare(
-        `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
-         VALUES (?, 'security_policy', ?, datetime('now'))
-         ON CONFLICT (tenant_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      )
-      .bind(user!.tenantId, JSON.stringify(merged))
-      .run();
+    // Delete + insert to avoid schema mismatches across environments
+    await db.batch([
+      db
+        .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+        .bind(user!.tenantId, "security_policy"),
+      db
+        .prepare(
+          "INSERT INTO tenant_preferences (tenant_id, key, value, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(user!.tenantId, "security_policy", mergedJson, now),
+    ]);
 
     await writeAudit(db, {
       tenantId: user!.tenantId!,
@@ -94,8 +99,9 @@ export const PUT: RequestHandler = async ({ request, locals, platform }) => {
     });
 
     return json({ policy: merged });
-  } catch (e) {
+  } catch (e: any) {
     console.error("Security policy save error:", e);
-    return json({ error: "Failed to save security policy" }, { status: 500 });
+    const detail = e?.message || String(e);
+    return json({ error: `Failed to save security policy: ${detail}` }, { status: 500 });
   }
 };
