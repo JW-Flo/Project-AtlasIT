@@ -3,16 +3,20 @@
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
   import CardContent from "$lib/components/ui/card-content.svelte";
+  import CardHeader from "$lib/components/ui/card-header.svelte";
+  import CardTitle from "$lib/components/ui/card-title.svelte";
   import Badge from "$lib/components/ui/badge.svelte";
   import Button from "$lib/components/ui/button.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
+  import Progress from "$lib/components/ui/progress.svelte";
   import Tabs from "$lib/components/ui/tabs.svelte";
   import TabsList from "$lib/components/ui/tabs-list.svelte";
   import TabsTrigger from "$lib/components/ui/tabs-trigger.svelte";
   import {
     Activity, AlertTriangle, RotateCw, ChevronDown, ChevronRight,
-    Inbox, CheckCircle, XCircle, Clock,
+    Inbox, CheckCircle, XCircle, Clock, Shield, Zap, Database,
+    HeartPulse, Bell,
   } from "lucide-svelte";
 
   // ── Types ──────────────────────────────────────────────────────────
@@ -45,9 +49,43 @@
     context: string | null;
   }
 
+  interface JmlMetrics {
+    total: number;
+    completed: number;
+    failed: number;
+    running: number;
+    successRate: number;
+    byType: Record<string, { total: number; completed: number; failed: number }>;
+    avgDurationMs: number | null;
+  }
+
+  interface AdapterProvisionMetrics {
+    adapter: string;
+    provisions: number;
+    deprovisions: number;
+    failures: number;
+    failureRate: number;
+    lastActivity: string | null;
+  }
+
+  interface EvidenceHealthItem {
+    adapter: string;
+    totalItems: number;
+    lastCollected: string | null;
+    staleHours: number | null;
+    isStale: boolean;
+  }
+
+  interface AlertItem {
+    severity: "critical" | "warning" | "info";
+    type: string;
+    message: string;
+    detail?: string;
+  }
+
   // ── State ──────────────────────────────────────────────────────────
 
-  let activeTab = "dlq";
+  let activeTab = "dashboard";
 
   let dlqEntries: DlqEntry[] = [];
   let dlqLoading = true;
@@ -59,6 +97,13 @@
   let runsLoading = true;
   let runsError = "";
   let expandedRun: string | null = null;
+
+  let jml: JmlMetrics | null = null;
+  let adapterProvisions: AdapterProvisionMetrics[] = [];
+  let evidenceHealth: EvidenceHealthItem[] = [];
+  let alerts: AlertItem[] = [];
+  let metricsLoading = true;
+  let metricsError = "";
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -170,7 +215,32 @@
     expandedRun = expandedRun === id ? null : id;
   }
 
+  async function loadMetrics() {
+    metricsLoading = true;
+    metricsError = "";
+    try {
+      const res = await fetch("/api/operations/metrics");
+      if (!res.ok) throw new Error(`Failed to load metrics (${res.status})`);
+      const data = await res.json();
+      jml = data.jml ?? null;
+      adapterProvisions = data.adapterProvisions ?? [];
+      evidenceHealth = data.evidenceHealth ?? [];
+      alerts = data.alerts ?? [];
+    } catch (e: any) {
+      metricsError = e?.message || "Failed to load operational metrics";
+    } finally {
+      metricsLoading = false;
+    }
+  }
+
+  function alertSeverityVariant(severity: string): "destructive" | "warning" | "default" {
+    if (severity === "critical") return "destructive";
+    if (severity === "warning") return "warning";
+    return "default";
+  }
+
   onMount(() => {
+    loadMetrics();
     loadDlq();
     loadRuns();
   });
@@ -180,22 +250,247 @@
   <div class="flex items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Operations</h1>
-      <p class="text-sm text-muted-foreground">Monitor dead letter queue and workflow runs</p>
+      <p class="text-sm text-muted-foreground">Pipeline health, workflow runs, and dead letter queue</p>
     </div>
     <div class="flex items-center gap-2 shrink-0">
       <Activity class="h-5 w-5 text-primary" />
     </div>
   </div>
 
+  <!-- Alerts Banner -->
+  {#if alerts.length > 0}
+    <div class="space-y-2">
+      {#each alerts as alert}
+        <Alert variant={alertSeverityVariant(alert.severity)}>
+          <div class="flex items-start gap-2">
+            {#if alert.severity === "critical"}
+              <XCircle class="h-4 w-4 mt-0.5 shrink-0" />
+            {:else}
+              <AlertTriangle class="h-4 w-4 mt-0.5 shrink-0" />
+            {/if}
+            <div class="pl-1">
+              <p class="text-sm font-medium">{alert.message}</p>
+              {#if alert.detail}
+                <p class="text-xs opacity-80 mt-0.5">{alert.detail}</p>
+              {/if}
+            </div>
+          </div>
+        </Alert>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Tabs -->
   <Tabs bind:value={activeTab}>
     <TabsList>
-      <TabsTrigger value="dlq" active={activeTab === "dlq"} on:click={() => activeTab = "dlq"}>Dead Letter Queue</TabsTrigger>
+      <TabsTrigger value="dashboard" active={activeTab === "dashboard"} on:click={() => activeTab = "dashboard"}>Dashboard</TabsTrigger>
+      <TabsTrigger value="evidence" active={activeTab === "evidence"} on:click={() => activeTab = "evidence"}>Evidence Health</TabsTrigger>
       <TabsTrigger value="runs" active={activeTab === "runs"} on:click={() => activeTab = "runs"}>Workflow Runs</TabsTrigger>
+      <TabsTrigger value="dlq" active={activeTab === "dlq"} on:click={() => activeTab = "dlq"}>Dead Letter Queue</TabsTrigger>
     </TabsList>
   </Tabs>
 
-  <!-- Tab 1: Dead Letter Queue -->
+  <!-- Tab: Dashboard (JML Metrics) -->
+  {#if activeTab === "dashboard"}
+    {#if metricsLoading}
+      <div class="grid gap-4 md:grid-cols-4">
+        {#each [1, 2, 3, 4] as _}
+          <Skeleton class="h-24 rounded-lg" />
+        {/each}
+      </div>
+    {:else if metricsError}
+      <Alert variant="destructive">
+        <AlertTriangle class="h-4 w-4" />
+        <p class="pl-7">{metricsError}</p>
+      </Alert>
+    {:else if jml}
+      <!-- Summary Cards -->
+      <div class="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent class="pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">Total Runs</p>
+              <Zap class="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p class="text-2xl font-bold mt-1">{jml.total}</p>
+            <p class="text-xs text-muted-foreground mt-1">{jml.running} currently running</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">Success Rate</p>
+              <CheckCircle class="h-4 w-4 {jml.successRate >= 80 ? 'text-green-500' : jml.successRate >= 50 ? 'text-yellow-500' : 'text-red-500'}" />
+            </div>
+            <p class="text-2xl font-bold mt-1">{jml.successRate}%</p>
+            <Progress value={jml.successRate} max={100} class="mt-2" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">Completed</p>
+              <CheckCircle class="h-4 w-4 text-green-500" />
+            </div>
+            <p class="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{jml.completed}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent class="pt-5">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-muted-foreground">Failed</p>
+              <XCircle class="h-4 w-4 text-red-500" />
+            </div>
+            <p class="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{jml.failed}</p>
+            {#if jml.avgDurationMs}
+              <p class="text-xs text-muted-foreground mt-1">Avg: {jml.avgDurationMs}ms</p>
+            {/if}
+          </CardContent>
+        </Card>
+      </div>
+
+      <!-- By Type Breakdown -->
+      {#if Object.keys(jml.byType).length > 0}
+        <h2 class="text-lg font-semibold">Workflow Types</h2>
+        <div class="grid gap-3 md:grid-cols-3">
+          {#each Object.entries(jml.byType) as [type, stats]}
+            <Card>
+              <CardContent class="pt-4 pb-3">
+                <div class="flex items-center justify-between mb-2">
+                  <Badge variant="outline" class="capitalize">{type}</Badge>
+                  <span class="text-xs text-muted-foreground">{stats.total} runs</span>
+                </div>
+                <div class="flex gap-3 text-xs">
+                  <span class="text-green-600 dark:text-green-400">{stats.completed} passed</span>
+                  <span class="text-red-600 dark:text-red-400">{stats.failed} failed</span>
+                </div>
+                <Progress value={stats.total > 0 ? (stats.completed / stats.total) * 100 : 0} max={100} class="mt-2" />
+              </CardContent>
+            </Card>
+          {/each}
+        </div>
+      {/if}
+
+      <!-- Adapter Provision Metrics -->
+      {#if adapterProvisions.length > 0}
+        <h2 class="text-lg font-semibold">Adapter Provisioning</h2>
+        <Card>
+          <CardContent class="p-0">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                    <th class="px-4 py-3 font-medium">Adapter</th>
+                    <th class="px-4 py-3 font-medium text-center">Provisions</th>
+                    <th class="px-4 py-3 font-medium text-center">Deprovisions</th>
+                    <th class="px-4 py-3 font-medium text-center">Failures</th>
+                    <th class="px-4 py-3 font-medium text-center">Failure Rate</th>
+                    <th class="px-4 py-3 font-medium hidden sm:table-cell">Last Activity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each adapterProvisions as ap}
+                    <tr class="border-t hover:bg-muted/50">
+                      <td class="px-4 py-3 font-medium capitalize">{ap.adapter.replace(/-/g, ' ')}</td>
+                      <td class="px-4 py-3 text-center text-green-600 dark:text-green-400">{ap.provisions}</td>
+                      <td class="px-4 py-3 text-center text-blue-600 dark:text-blue-400">{ap.deprovisions}</td>
+                      <td class="px-4 py-3 text-center text-red-600 dark:text-red-400">{ap.failures}</td>
+                      <td class="px-4 py-3 text-center">
+                        <Badge variant={ap.failureRate > 50 ? 'destructive' : ap.failureRate > 20 ? 'warning' : 'success'}>
+                          {ap.failureRate}%
+                        </Badge>
+                      </td>
+                      <td class="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                        {ap.lastActivity ? timeAgo(ap.lastActivity) : '—'}
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      {/if}
+
+      <div class="flex justify-end">
+        <Button variant="outline" size="sm" on:click={loadMetrics} disabled={metricsLoading}>
+          <RotateCw class="h-3 w-3 mr-1" />
+          Refresh
+        </Button>
+      </div>
+    {:else}
+      <Card>
+        <CardContent class="py-12 text-center">
+          <Activity class="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p class="text-muted-foreground">No operational metrics available yet</p>
+        </CardContent>
+      </Card>
+    {/if}
+  {/if}
+
+  <!-- Tab: Evidence Pipeline Health -->
+  {#if activeTab === "evidence"}
+    {#if metricsLoading}
+      <div class="space-y-3">
+        {#each [1, 2, 3] as _}
+          <Skeleton class="h-20 rounded-lg" />
+        {/each}
+      </div>
+    {:else if evidenceHealth.length === 0}
+      <Card>
+        <CardContent class="py-12 text-center">
+          <Database class="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p class="text-muted-foreground">No evidence collection data available yet</p>
+          <p class="text-xs text-muted-foreground mt-1">Evidence is collected automatically on a 5-minute cron cycle</p>
+        </CardContent>
+      </Card>
+    {:else}
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {#each evidenceHealth as eh}
+          <Card class={eh.isStale ? 'border-amber-500/50' : ''}>
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-medium text-sm capitalize">{eh.adapter.replace(/-/g, ' ')}</span>
+                {#if eh.isStale}
+                  <Badge variant="warning" class="text-[10px] gap-1">
+                    <Clock class="h-3 w-3" />
+                    Stale
+                  </Badge>
+                {:else}
+                  <Badge variant="success" class="text-[10px] gap-1">
+                    <HeartPulse class="h-3 w-3" />
+                    Healthy
+                  </Badge>
+                {/if}
+              </div>
+              <div class="space-y-1 text-xs text-muted-foreground">
+                <p>{eh.totalItems} evidence items collected</p>
+                {#if eh.lastCollected}
+                  <p>Last collection: {timeAgo(eh.lastCollected)}</p>
+                {:else}
+                  <p>Never collected</p>
+                {/if}
+                {#if eh.staleHours !== null && eh.staleHours > 0}
+                  <p class={eh.isStale ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                    {eh.staleHours}h since last update
+                  </p>
+                {/if}
+              </div>
+            </CardContent>
+          </Card>
+        {/each}
+      </div>
+
+      <div class="flex justify-end">
+        <Button variant="outline" size="sm" on:click={loadMetrics} disabled={metricsLoading}>
+          <RotateCw class="h-3 w-3 mr-1" />
+          Refresh
+        </Button>
+      </div>
+    {/if}
+  {/if}
+
+  <!-- Tab: Dead Letter Queue -->
   {#if activeTab === "dlq"}
     {#if dlqError}
       <Alert variant="destructive">
