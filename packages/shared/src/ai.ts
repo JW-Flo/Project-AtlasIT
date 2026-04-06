@@ -25,9 +25,7 @@ export class CloudflareAIProvider implements AIProvider {
     private readonly logger = new Logger({ service: "ai-cf" }),
   ) {}
   async generate(messages: AIMessage[], opts: AIOptions = {}): Promise<string> {
-    const prompt = messages
-      .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
-      .join("\n");
+    const prompt = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
     this.logger.debug("Calling Cloudflare AI", { length: prompt.length });
     // Placeholder: real implementation would call Workers AI fetch binding
     return `cf-ai-response: ${prompt.slice(0, 120)}`;
@@ -93,17 +91,14 @@ export class GroqAIProvider implements AIProvider {
       temperature: opts.temperature ?? 0.7,
     };
     this.logger.debug("Calling Groq", { model, messageCount: messages.length });
-    const response = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
       throw new Error(`Groq API error ${response.status}: ${text.slice(0, 200)}`);
@@ -163,16 +158,13 @@ export class BedrockAIProvider implements AIProvider {
     const endpoint = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(model)}/converse`;
     const payload = JSON.stringify(body);
     const now = new Date();
-    const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 8);
+    const dateStamp = now
+      .toISOString()
+      .replace(/[:-]|\.\d{3}/g, "")
+      .slice(0, 8);
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
 
-    const headers = await this.signRequest(
-      "POST",
-      endpoint,
-      payload,
-      dateStamp,
-      amzDate,
-    );
+    const headers = await this.signRequest("POST", endpoint, payload, dateStamp, amzDate);
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -254,24 +246,26 @@ export class BedrockAIProvider implements AIProvider {
       .join("");
   }
 
-  private async hmac(
-    key: ArrayBuffer,
-    message: string,
-  ): Promise<ArrayBuffer> {
+  private toArrayBuffer(data: ArrayBuffer | Uint8Array): ArrayBuffer {
+    if (data instanceof Uint8Array)
+      return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+    return data;
+  }
+
+  private async hmac(key: ArrayBuffer | Uint8Array, message: string): Promise<ArrayBuffer> {
+    const buf = this.toArrayBuffer(key);
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
-      key,
+      buf,
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"],
     );
-    return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(message));
+    const msgBuf = this.toArrayBuffer(new TextEncoder().encode(message));
+    return crypto.subtle.sign("HMAC", cryptoKey, msgBuf);
   }
 
-  private async hmacHex(
-    key: ArrayBuffer,
-    message: string,
-  ): Promise<string> {
+  private async hmacHex(key: ArrayBuffer | Uint8Array, message: string): Promise<string> {
     const sig = await this.hmac(key, message);
     return Array.from(new Uint8Array(sig))
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -293,10 +287,7 @@ export class BedrockAIProvider implements AIProvider {
   }
 }
 
-export function createAIProvider(
-  env: Record<string, any>,
-  providerName?: string,
-): AIProvider {
+export function createAIProvider(env: Record<string, any>, providerName?: string): AIProvider {
   const provider = providerName || env.AI_PROVIDER || "cloudflare";
   switch (provider) {
     case "together":
