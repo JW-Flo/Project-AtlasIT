@@ -3,6 +3,7 @@
   import WidgetContainer from "./WidgetContainer.svelte";
   import { BarChart3 } from "lucide-svelte";
   import { barRects, shortWeek } from "./utils";
+  import { dashboardContext } from "$lib/stores/dashboard-context";
   import type { WidgetState, EvidenceVolume } from "./types";
 
   let className = "";
@@ -23,7 +24,8 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch("/api/analytics/dashboard");
+      const days = $dashboardContext.dateRange;
+      const res = await fetch(`/api/analytics/dashboard?days=${days}`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
       volume = data.evidenceVolume ?? [];
@@ -34,6 +36,8 @@
       state = "error";
     }
   }
+
+  $: if ($dashboardContext) load();
 
   onMount(load);
 </script>

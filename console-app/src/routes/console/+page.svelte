@@ -26,7 +26,7 @@
     LayoutGrid,
     Settings2,
   } from "lucide-svelte";
-  import { WidgetGrid, WidgetPicker, PRESET_LAYOUTS, type WidgetId, type PresetLayoutId } from "$lib/components/widgets";
+  import { WidgetGrid, WidgetPicker, DateRangePicker, FrameworkFilter, PRESET_LAYOUTS, type WidgetId, type PresetLayoutId } from "$lib/components/widgets";
   import {
     dashboardViews,
     fetchDashboardViews,
@@ -63,6 +63,7 @@
   // Onboarding signals (lightweight — no full tenant fetch needed)
   let directoryConnected: boolean | null = null;
   let connectedAppsCount: number | null = null;
+  let availableFrameworks: string[] = [];
 
   $: showIdpBanner = $page.url.searchParams.get("setup") === "idp";
 
@@ -158,6 +159,10 @@
         const td = await tenantRes.json();
         directoryConnected = td.directory?.connected ?? null;
         connectedAppsCount = td.connectedApps ?? null;
+        // Extract framework names for the filter
+        if (td.compliance?.scores) {
+          availableFrameworks = td.compliance.scores.map((s: any) => s.framework);
+        }
       }
     } catch (e: any) {
       error = e?.message || "Failed to load dashboard";
@@ -436,6 +441,12 @@
           + Save View
         </button>
       {/if}
+    </div>
+
+    <!-- Global filters -->
+    <div class="flex flex-wrap items-center gap-3">
+      <DateRangePicker />
+      <FrameworkFilter frameworks={availableFrameworks} />
     </div>
 
     <!-- Widget grid -->

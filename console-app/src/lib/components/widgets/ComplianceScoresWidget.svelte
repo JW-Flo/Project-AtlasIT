@@ -5,6 +5,7 @@
   import Button from "$lib/components/ui/button.svelte";
   import { Shield, ArrowRight } from "lucide-svelte";
   import { computeGrade, gradeVariant } from "./utils";
+  import { dashboardContext } from "$lib/stores/dashboard-context";
   import type { WidgetState, FrameworkScore } from "./types";
 
   let className = "";
@@ -12,8 +13,16 @@
 
   let state: WidgetState = "loading";
   let error: string | null = null;
-  let scores: FrameworkScore[] = [];
+  let allScores: FrameworkScore[] = [];
   let overallScore = 0;
+
+  // Apply framework filter
+  $: scores = $dashboardContext.frameworkFilter
+    ? allScores.filter((s) => s.framework === $dashboardContext.frameworkFilter)
+    : allScores;
+  $: overallScore = scores.length > 0
+    ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length)
+    : 0;
 
   async function load() {
     state = "loading";
@@ -22,7 +31,7 @@
       const res = await fetch("/api/tenant-compliance/scores");
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
-      scores = (data.scores || []).map((s: any) => ({
+      allScores = (data.scores || []).map((s: any) => ({
         framework: s.framework,
         score: Math.round(s.score ?? 0),
         grade: s.grade || computeGrade(s.score ?? 0),
@@ -31,11 +40,10 @@
         controlsVerified: s.controlsVerified,
         source: s.source,
       }));
-      if (scores.length === 0) {
+      if (allScores.length === 0) {
         state = "empty";
         return;
       }
-      overallScore = Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length);
       state = "ready";
     } catch (e: any) {
       error = e?.message || "Failed to load compliance scores";

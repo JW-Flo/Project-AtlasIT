@@ -4,11 +4,11 @@
   import Badge from "$lib/components/ui/badge.svelte";
   import Button from "$lib/components/ui/button.svelte";
   import { Activity, ArrowRight } from "lucide-svelte";
+  import { sinceDate, dashboardContext } from "$lib/stores/dashboard-context";
   import type { WidgetState, EvidenceFeedItem } from "./types";
 
   let className = "";
   export { className as class };
-  /** Max items to display. */
   export let limit = 8;
 
   let state: WidgetState = "loading";
@@ -20,8 +20,11 @@
     state = "loading";
     error = null;
     try {
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const res = await fetch(`/api/evidence-feed?limit=${limit}&since=${encodeURIComponent(since)}`);
+      const since = $sinceDate;
+      const fw = $dashboardContext.frameworkFilter;
+      let url = `/api/evidence-feed?limit=${limit}&since=${encodeURIComponent(since)}`;
+      if (fw) url += `&framework=${encodeURIComponent(fw)}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
       feed = Array.isArray(data.feed) ? data.feed : [];
@@ -32,6 +35,9 @@
       state = "error";
     }
   }
+
+  // Reload on context changes
+  $: if ($dashboardContext) load();
 
   onMount(load);
 </script>
