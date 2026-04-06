@@ -27,6 +27,15 @@
     Settings2,
   } from "lucide-svelte";
   import { WidgetGrid, WidgetPicker, PRESET_LAYOUTS, type WidgetId, type PresetLayoutId } from "$lib/components/widgets";
+  import {
+    dashboardViews,
+    fetchDashboardViews,
+    saveDashboardViews,
+    setActiveView,
+    upsertView,
+    deleteView,
+    type DashboardView,
+  } from "$lib/stores/dashboard-views";
 
   let loading = true;
   let error: string | null = null;
@@ -43,10 +52,13 @@
   } | null = null;
 
   // ── Widget dashboard state ────────────────────────────────────────────────
-  let activePreset: PresetLayoutId = "executive";
-  let activeWidgets: WidgetId[] = [...PRESET_LAYOUTS.executive.widgets];
   let pickerOpen = false;
   let inviteCopied = false;
+  let savingViewName = false;
+  let newViewName = "";
+
+  $: currentView = $dashboardViews.views.find((v) => v.id === $dashboardViews.activeViewId) || $dashboardViews.views[0];
+  $: activeWidgets = currentView?.widgets ?? [];
 
   // Onboarding signals (lightweight — no full tenant fetch needed)
   let directoryConnected: boolean | null = null;
@@ -54,13 +66,36 @@
 
   $: showIdpBanner = $page.url.searchParams.get("setup") === "idp";
 
-  function selectPreset(id: PresetLayoutId) {
-    activePreset = id;
-    activeWidgets = [...PRESET_LAYOUTS[id].widgets];
+  function switchView(id: string) {
+    setActiveView(id);
+    saveDashboardViews();
   }
 
   function handleWidgetChange(e: CustomEvent<WidgetId[]>) {
-    activeWidgets = e.detail;
+    if (!currentView) return;
+    upsertView({ ...currentView, widgets: e.detail });
+    saveDashboardViews();
+  }
+
+  async function saveAsNewView() {
+    if (!newViewName.trim()) return;
+    const id = `custom-${Date.now()}`;
+    const view: DashboardView = {
+      id,
+      name: newViewName.trim(),
+      widgets: [...activeWidgets],
+    };
+    upsertView(view);
+    setActiveView(id);
+    await saveDashboardViews();
+    newViewName = "";
+    savingViewName = false;
+    pushToast({ message: `View "${view.name}" saved`, variant: "success" });
+  }
+
+  function handleDeleteView(id: string) {
+    deleteView(id);
+    saveDashboardViews();
   }
 
   async function trackGrowthEvent(event: string, inviteId: string) {
@@ -114,8 +149,11 @@
         if (!session.tenantId) return;
       }
 
-      // Lightweight onboarding check (tenant dashboard data)
-      const tenantRes = await fetch("/api/tenant/dashboard");
+      // Load saved views + lightweight onboarding check in parallel
+      const [, tenantRes] = await Promise.all([
+        fetchDashboardViews(),
+        fetch("/api/tenant/dashboard"),
+      ]);
       if (tenantRes.ok) {
         const td = await tenantRes.json();
         directoryConnected = td.directory?.connected ?? null;
@@ -361,22 +399,43 @@
       </Card>
     {/if}
 
-    <!-- Preset layout selector -->
-    <div class="flex items-center gap-2">
+    <!-- View selector -->
+    <div class="flex items-center gap-2 flex-wrap">
       <LayoutGrid class="h-4 w-4 text-muted-foreground" />
-      <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Layout</span>
-      {#each Object.entries(PRESET_LAYOUTS) as [id, preset]}
+      <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">View</span>
+      {#each $dashboardViews.views as view (view.id)}
         <button
-          class="rounded-md px-3 py-1 text-xs font-medium transition-colors
-            {activePreset === id
+          class="group relative rounded-md px-3 py-1 text-xs font-medium transition-colors
+            {$dashboardViews.activeViewId === view.id
               ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'}"
-          on:click={() => selectPreset(id)}
-          title={preset.description}
+          on:click={() => switchView(view.id)}
         >
-          {preset.name}
+          {view.name}
         </button>
       {/each}
+
+      {#if savingViewName}
+        <form class="flex items-center gap-1" on:submit|preventDefault={saveAsNewView}>
+          <input
+            type="text"
+            class="h-6 w-28 rounded border border-border bg-background px-2 text-xs"
+            placeholder="View name..."
+            bind:value={newViewName}
+            autofocus
+          />
+          <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" type="submit">Save</Button>
+          <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" on:click={() => (savingViewName = false)}>Cancel</Button>
+        </form>
+      {:else}
+        <button
+          class="rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          on:click={() => (savingViewName = true)}
+          title="Save current layout as a new view"
+        >
+          + Save View
+        </button>
+      {/if}
     </div>
 
     <!-- Widget grid -->
