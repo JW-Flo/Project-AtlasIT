@@ -75,7 +75,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Adapter Health" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Adapter Health" widgetId="adapter-health" {state} {error} onRetry={load} class={className}>
   <Link slot="icon" class="h-4 w-4 text-primary" />
   <Button slot="actions" href="/console/marketplace" variant="ghost" size="sm" class="h-7 text-xs">
     Manage <ArrowRight class="ml-1 h-3 w-3" />

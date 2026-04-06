@@ -41,7 +41,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Automation Performance" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Automation Performance" widgetId="automation-metrics" {state} {error} onRetry={load} class={className}>
   <Activity slot="icon" class="h-4 w-4 text-violet-500" />
   <Button slot="actions" href="/console/automation" variant="ghost" size="sm" class="h-7 text-xs">
     Rules <ArrowRight class="ml-1 h-3 w-3" />

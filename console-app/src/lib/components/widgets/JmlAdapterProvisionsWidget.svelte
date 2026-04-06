@@ -52,7 +52,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Adapter Provisioning" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Adapter Provisioning" widgetId="jml-adapter-provisions" {state} {error} onRetry={load} class={className}>
   <UserCheck slot="icon" class="h-4 w-4 text-primary" />
 
   <div class="space-y-2">

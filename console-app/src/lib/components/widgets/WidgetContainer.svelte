@@ -6,18 +6,30 @@
   import CardContent from "$lib/components/ui/card-content.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Button from "$lib/components/ui/button.svelte";
-  import { RefreshCw, AlertTriangle } from "lucide-svelte";
+  import { RefreshCw, AlertTriangle, Download } from "lucide-svelte";
   import type { WidgetState } from "./types";
+  import { dashboardContext } from "$lib/stores/dashboard-context";
+  import { get } from "svelte/store";
 
   export let title: string;
   export let state: WidgetState = "ready";
   export let error: string | null = null;
   export let onRetry: (() => void) | null = null;
+  /** Widget ID — when set, enables CSV export button. */
+  export let widgetId: string | null = null;
   /** Hide the header (for compact/inline widgets like alerts-banner). */
   export let headerless = false;
   /** Extra CSS class on the outer card. */
   let className = "";
   export { className as class };
+
+  function exportCSV() {
+    if (!widgetId) return;
+    const ctx = get(dashboardContext);
+    const params = new URLSearchParams({ widget: widgetId, days: ctx.dateRange });
+    if (ctx.frameworkFilter) params.set("framework", ctx.frameworkFilter);
+    window.open(`/api/dashboard/export?${params}`, "_blank");
+  }
 </script>
 
 <Card class={cn("flex flex-col", className)}>
@@ -29,6 +41,11 @@
       </CardTitle>
       <div class="flex items-center gap-1">
         <slot name="actions" />
+        {#if widgetId && state === "ready"}
+          <Button variant="ghost" size="sm" on:click={exportCSV} class="h-7 w-7 p-0" title="Export CSV">
+            <Download class="h-3.5 w-3.5" />
+          </Button>
+        {/if}
         {#if onRetry && state !== "loading"}
           <Button variant="ghost" size="sm" on:click={onRetry} class="h-7 w-7 p-0">
             <RefreshCw class="h-3.5 w-3.5" />

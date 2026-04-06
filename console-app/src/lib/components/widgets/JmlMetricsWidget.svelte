@@ -50,7 +50,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="JML Lifecycle (30 days)" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="JML Lifecycle (30 days)" widgetId="jml-metrics" {state} {error} onRetry={load} class={className}>
   <Users slot="icon" class="h-4 w-4 text-primary" />
   <Button slot="actions" href="/console/workflows" variant="ghost" size="sm" class="h-7 text-xs">
     Workflows <ArrowRight class="ml-1 h-3 w-3" />

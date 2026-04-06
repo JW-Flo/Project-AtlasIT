@@ -49,7 +49,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Workflow Runs" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Workflow Runs" widgetId="workflow-runs" {state} {error} onRetry={load} class={className}>
   <Workflow slot="icon" class="h-4 w-4 text-primary" />
   <Button slot="actions" href="/console/workflows" variant="ghost" size="sm" class="h-7 text-xs">
     All workflows <ArrowRight class="ml-1 h-3 w-3" />

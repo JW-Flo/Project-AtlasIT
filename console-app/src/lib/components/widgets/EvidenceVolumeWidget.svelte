@@ -42,7 +42,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Evidence Volume (Weekly)" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Evidence Volume (Weekly)" widgetId="evidence-volume" {state} {error} onRetry={load} class={className}>
   <BarChart3 slot="icon" class="h-4 w-4 text-blue-500" />
 
   <div class="overflow-hidden rounded-md">

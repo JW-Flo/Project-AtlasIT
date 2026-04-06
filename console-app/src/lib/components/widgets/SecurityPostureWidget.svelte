@@ -37,7 +37,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Security Posture" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Security Posture" widgetId="security-posture" {state} {error} onRetry={load} class={className}>
   <ShieldCheck slot="icon" class="h-4 w-4 text-primary" />
 
   <div class="grid grid-cols-3 gap-4">

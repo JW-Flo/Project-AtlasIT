@@ -33,7 +33,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Recent Automation Runs" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Recent Automation Runs" widgetId="automation-recent" {state} {error} onRetry={load} class={className}>
   <GitBranch slot="icon" class="h-4 w-4 text-primary" />
   <Button slot="actions" href="/console/automation/runs" variant="ghost" size="sm" class="h-7 text-xs">
     View all

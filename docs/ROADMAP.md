@@ -154,7 +154,7 @@ Directory Event / Schedule / Webhook
 - [x] **CDT twin now evaluates all 60 rules** — replaced hardcoded 7-control subset with `ALL_CONTROL_IDS` export
 - [x] **Scheduled evidence collection** — orchestrator cron (Duty 2) collects adapter evidence for all tenants every 5 minutes
 - [x] **CDT twin state bridged to D1** — state transitions now write to `compliance_evidence` via `ATLAS_SHARED_DB`, making twin results visible to the scoring pipeline
-- [ ] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs
+- [x] **Policy evaluation is a stub** — `evaluatePolicy()` hashes the input and returns it; no Rego or Boolean policy logic runs _(resolved in Phase 7.5 P3)_
 
 ## Phase 7.5 — Compliance Integration (Close the Loop) ✅
 
@@ -660,13 +660,14 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **localStorage dual-write** — Instant view restoration on page refresh + server sync for cross-device
 - [x] Files: `console-app/src/lib/stores/dashboard-views.ts`, `console-app/src/routes/api/dashboard/views/+server.ts`
 
-### P3 — Filtering & Time Ranges ✅ (Partial)
+### P3 — Filtering, Time Ranges & Export ✅
 
 - [x] **Global time range** — DateRangePicker (7d/30d/90d/12mo) propagates to all widgets via `dashboardContext` store
 - [x] **Cross-widget filtering** — FrameworkFilter component; click framework to filter evidence-feed, compliance-trend, compliance-scores
-- [ ] **Export** — PDF/CSV export of current dashboard view (deferred)
-- [ ] **Real-time updates** — SSE subscription for evidence-feed and alerts-banner (deferred)
-- [x] Files: `console-app/src/lib/stores/dashboard-context.ts`, `console-app/src/lib/components/widgets/DateRangePicker.svelte`, `console-app/src/lib/components/widgets/FrameworkFilter.svelte`
+- [x] **CSV export** — Per-widget download button (Download icon in widget header when `widgetId` set). Parametric endpoint at `/api/dashboard/export?widget=<id>&days=&framework=`. Shared `$lib/utils/csv.ts` utility with injection-safe escaping.
+- [x] **PDF export** — "Print PDF" button on dashboard triggers `window.print()`. CSS `@media print` styles: hide nav/sidebar, landscape layout, 2-col grid, break-inside-avoid on cards, light background forced.
+- [x] **Real-time updates** — SSE endpoint at `/api/evidence-feed/stream` (single-shot bridge with `retry: 5000` auto-reconnect). EvidenceFeedWidget uses `EventSource`, prepends new items live, shows "Live" indicator badge.
+- [x] Files: `console-app/src/lib/utils/csv.ts`, `console-app/src/routes/api/dashboard/export/+server.ts`, `console-app/src/routes/api/evidence-feed/stream/+server.ts`, `console-app/src/lib/components/widgets/WidgetContainer.svelte`, `console-app/src/lib/components/widgets/EvidenceFeedWidget.svelte`, `console-app/src/app.css`
 
 ## Phase 21 — Audit Deliverable Generation (Close the Auditor Gap)
 

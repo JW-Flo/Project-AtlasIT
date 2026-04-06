@@ -43,7 +43,7 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Compliance Trend" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Compliance Trend" widgetId="compliance-trend" {state} {error} onRetry={load} class={className}>
   <TrendingUp slot="icon" class="h-4 w-4 text-primary" />
 
   <!-- Delta badge -->

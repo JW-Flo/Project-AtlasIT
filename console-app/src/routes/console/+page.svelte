@@ -443,10 +443,15 @@
       {/if}
     </div>
 
-    <!-- Global filters -->
+    <!-- Global filters + export -->
     <div class="flex flex-wrap items-center gap-3">
       <DateRangePicker />
       <FrameworkFilter frameworks={availableFrameworks} />
+      <div class="ml-auto flex items-center gap-2" data-no-print>
+        <Button variant="outline" size="sm" class="h-8 text-xs" on:click={() => window.print()}>
+          Print PDF
+        </Button>
+      </div>
     </div>
 
     <!-- Widget grid -->

@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import WidgetContainer from "./WidgetContainer.svelte";
   import Badge from "$lib/components/ui/badge.svelte";
   import Button from "$lib/components/ui/button.svelte";
-  import { Activity, ArrowRight } from "lucide-svelte";
+  import { Activity, ArrowRight, Radio } from "lucide-svelte";
   import { sinceDate, dashboardContext } from "$lib/stores/dashboard-context";
   import type { WidgetState, EvidenceFeedItem } from "./types";
 
@@ -15,6 +15,8 @@
   let error: string | null = null;
   let feed: EvidenceFeedItem[] = [];
   let totalEvidence = 0;
+  let liveConnected = false;
+  let eventSource: EventSource | null = null;
 
   async function load() {
     state = "loading";
@@ -30,9 +32,40 @@
       feed = Array.isArray(data.feed) ? data.feed : [];
       totalEvidence = data.summary?.totalEvidence ?? 0;
       state = feed.length > 0 ? "ready" : "empty";
+      connectSSE();
     } catch (e: any) {
       error = e?.message || "Failed to load evidence feed";
       state = "error";
+    }
+  }
+
+  function connectSSE() {
+    disconnectSSE();
+    if (typeof EventSource === "undefined") return;
+    const since = feed.length > 0 ? feed[0].createdAt : $sinceDate;
+    eventSource = new EventSource(`/api/evidence-feed/stream?since=${encodeURIComponent(since)}`);
+    eventSource.addEventListener("evidence", (e: MessageEvent) => {
+      try {
+        const item: EvidenceFeedItem = JSON.parse(e.data);
+        // Prepend new item, dedup by id, keep limit
+        const fw = $dashboardContext.frameworkFilter;
+        if (fw && !item.framework?.toLowerCase().startsWith(fw.toLowerCase())) return;
+        feed = [item, ...feed.filter((f) => f.id !== item.id)].slice(0, limit);
+        totalEvidence++;
+        if (state === "empty") state = "ready";
+      } catch {
+        // ignore malformed events
+      }
+    });
+    eventSource.addEventListener("open", () => { liveConnected = true; });
+    eventSource.addEventListener("error", () => { liveConnected = false; });
+  }
+
+  function disconnectSSE() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+      liveConnected = false;
     }
   }
 
@@ -40,11 +73,17 @@
   $: if ($dashboardContext) load();
 
   onMount(load);
+  onDestroy(disconnectSSE);
 </script>
 
-<WidgetContainer title="Live Evidence Stream" {state} {error} onRetry={load} class={className}>
+<WidgetContainer title="Live Evidence Stream" widgetId="evidence-feed" {state} {error} onRetry={load} class={className}>
   <Activity slot="icon" class="h-4 w-4 text-primary" />
   <svelte:fragment slot="actions">
+    {#if liveConnected}
+      <Badge variant="success" class="text-[10px] gap-1">
+        <Radio class="h-3 w-3 animate-pulse" /> Live
+      </Badge>
+    {/if}
     <Badge variant="secondary">{totalEvidence} total</Badge>
     <Button href="/console/compliance/feed" variant="ghost" size="sm" class="h-7 text-xs">
       Full feed <ArrowRight class="ml-1 h-3 w-3" />
