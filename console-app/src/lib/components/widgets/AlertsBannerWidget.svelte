@@ -56,7 +56,8 @@
   onMount(load);
 </script>
 
-<WidgetContainer title="Alerts" {state} {error} onRetry={load} headerless={state === "empty"} class={className}>
+{#if state !== "empty"}
+<WidgetContainer title="Alerts" {state} {error} onRetry={load} class={className}>
   <AlertTriangle slot="icon" class="h-4 w-4 text-orange-500" />
 
   <div class="space-y-2">
@@ -86,3 +87,4 @@
     {/each}
   </div>
 </WidgetContainer>
+{/if}
