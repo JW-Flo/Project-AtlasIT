@@ -274,6 +274,19 @@
 
   let profileOpen = false;
   let mobileMenuOpen = false;
+  let sidebarCollapsed = false;
+
+  // Persist sidebar state in localStorage
+  if (typeof window !== "undefined") {
+    sidebarCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    }
+  }
 
   function closeMobileMenu() {
     mobileMenuOpen = false;
@@ -314,20 +327,22 @@
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
+  <aside class="hidden md:flex flex-col border-r bg-card shrink-0 sidebar-transition {sidebarCollapsed ? 'w-[64px]' : 'w-[240px]'}">
     <!-- Logo -->
-    <a href="/console" class="flex items-center gap-2 px-6 h-16 border-b hover:bg-accent/50 transition-colors">
+    <a href="/console" class="flex items-center gap-2 h-16 border-b hover:bg-accent/50 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-6'}" title={sidebarCollapsed ? (orgName || 'AtlasIT') : ''}>
       {#if logoUrl}
-        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
+        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover shrink-0" />
       {:else}
-        <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center" style={accentColor ? `background-color: ${accentColor}` : ''}>
+        <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0" style={accentColor ? `background-color: ${accentColor}` : ''}>
           <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
         </div>
       {/if}
-      <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+      {#if !sidebarCollapsed}
+        <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+      {/if}
     </a>
 
-    {#if isImpersonating}
+    {#if isImpersonating && !sidebarCollapsed}
       <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
         <span>Viewing as tenant</span>
         <button on:click={exitImpersonation} class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Exit</button>
@@ -335,27 +350,37 @@
     {/if}
 
     <!-- Navigation -->
-    <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+    <nav class="flex-1 overflow-y-auto py-4 {sidebarCollapsed ? 'px-2' : 'px-3'} space-y-6">
       {#each computedSections as section}
         <div>
-          <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {section.title}
-          </div>
+          {#if !sidebarCollapsed}
+            <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {section.title}
+            </div>
+          {/if}
           <div class="space-y-0.5">
             {#each section.items as item}
               {@const active = isActive(item.href, current)}
               <a
                 href={item.href}
+                title={sidebarCollapsed ? item.label : ''}
                 class={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors border-l-2",
+                  "flex items-center rounded-md text-sm font-medium transition-colors",
+                  sidebarCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2 border-l-2",
                   active
-                    ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
+                    ? sidebarCollapsed
+                      ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)]"
+                      : "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                    : sidebarCollapsed
+                      ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                 )}
                 style={active && accentColor ? `color: ${accentColor}` : ""}
               >
                 <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
-                {item.label}
+                {#if !sidebarCollapsed}
+                  {item.label}
+                {/if}
               </a>
             {/each}
           </div>
@@ -363,16 +388,33 @@
       {/each}
     </nav>
 
+    <!-- Collapse toggle -->
+    <div class="border-t {sidebarCollapsed ? 'px-2' : 'px-3'} py-2">
+      <button
+        on:click={toggleSidebar}
+        class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} w-full rounded-md py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        <ChevronDown class="h-4 w-4 shrink-0 {sidebarCollapsed ? 'rotate-[-90deg]' : 'rotate-90'} transition-transform" />
+        {#if !sidebarCollapsed}
+          <span>Collapse</span>
+        {/if}
+      </button>
+    </div>
+
     <!-- User section at bottom -->
-    <div class="border-t p-3">
-      <a href="/console/profile" class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
+    <div class="border-t {sidebarCollapsed ? 'p-2' : 'p-3'}">
+      <a href="/console/profile" class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} rounded-md py-2 hover:bg-accent transition-colors" title={sidebarCollapsed ? userDisplayName : ''}>
         <Avatar {initials} size="sm" />
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
-          {#if userEmail && userEmail !== userDisplayName}
-            <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
-          {/if}
-        </div>
+        {#if !sidebarCollapsed}
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
+            {#if userEmail && userEmail !== userDisplayName}
+              <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
+            {/if}
+          </div>
+        {/if}
       </a>
     </div>
   </aside>
@@ -618,5 +660,8 @@
     color: var(--accent-brand, hsl(var(--primary))) !important;
     border-color: var(--accent-brand, hsl(var(--primary))) !important;
     background-color: color-mix(in srgb, var(--accent-brand, hsl(var(--primary))) 10%, transparent) !important;
+  }
+  .sidebar-transition {
+    transition: width 200ms ease-in-out;
   }
 </style>
