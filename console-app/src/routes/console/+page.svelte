@@ -12,12 +12,8 @@
   import Button from "$lib/components/ui/button.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
-  import Avatar from "$lib/components/ui/avatar.svelte";
   import {
     Users,
-    AppWindow,
-    GitBranch,
-    Lightbulb,
     Building2,
     UserCheck,
     Workflow,
@@ -25,65 +21,18 @@
     Copy,
     ArrowRight,
     AlertTriangle,
-    KeyRound,
-    Siren,
-    ShieldCheck,
     Link,
     Sparkles,
-    Activity,
+    LayoutGrid,
+    Settings2,
   } from "lucide-svelte";
-
-  interface ComplianceScore {
-    framework: string;
-    score: number;
-    grade?: string;
-  }
-
-  interface AccessReviewCampaign {
-    id: string;
-    status: string;
-  }
-
-  interface Incident {
-    id: string;
-    status: string;
-  }
-
-  interface AutomationExecution {
-    id: string;
-    ruleId?: string | null;
-    ruleName: string | null;
-    triggerEvent: unknown;
-    status: string;
-    durationMs: number | null;
-    startedAt: string;
-    completedAt: string | null;
-  }
-
-  interface EvidenceWaterfallItem {
-    id: string;
-    framework: string;
-    controlId: string;
-    impact: "positive" | "detrimental" | "neutral";
-    eventType: string;
-    source: string;
-    actor: string;
-    createdAt: string;
-  }
+  import { WidgetGrid, WidgetPicker, PRESET_LAYOUTS, type WidgetId, type PresetLayoutId } from "$lib/components/widgets";
 
   let loading = true;
   let error: string | null = null;
   let session: any = null;
   let isPlatformOwner = false;
   let showPlatformView = false;
-
-  let connectedAppsCount = 0;
-  let complianceScores: ComplianceScore[] = [];
-  let activeAccessReviews = 0;
-  let openIncidents = 0;
-  let recentAutomationRuns: AutomationExecution[] = [];
-  let evidenceWaterfall: EvidenceWaterfallItem[] = [];
-  let evidenceWaterfallTotal = 0;
 
   let platformData: {
     tenants: { total: number; active: number; disabled: number };
@@ -93,75 +42,25 @@
     workflows: { total: number };
   } | null = null;
 
-  interface ReviewSuggestion {
-    type: string;
-    title: string;
-    description: string;
-    priority: "high" | "medium" | "low";
-  }
-
-  let tenantData: {
-    connectedApps: number;
-    directory: { connected: boolean; provider: string | null; userCount: number; groupCount: number; lastSync: string | null };
-    activeMappings: number;
-    pendingSuggestions: number;
-    recentActivity: any[];
-    workflows: { total: number };
-    compliance?: {
-      scores: Array<{ framework: string; score: number; grade: string; controlsTotal: number; controlsImplemented: number; controlsVerified: number; calculatedAt: string }>;
-      overallScore: number | null;
-      evidenceCount: number;
-    };
-    automation?: {
-      activeRules: number;
-      executions24h: number;
-    };
-    accessReviewSuggestions?: ReviewSuggestion[];
-  } | null = null;
-
+  // ── Widget dashboard state ────────────────────────────────────────────────
+  let activePreset: PresetLayoutId = "executive";
+  let activeWidgets: WidgetId[] = [...PRESET_LAYOUTS.executive.widgets];
+  let pickerOpen = false;
   let inviteCopied = false;
+
+  // Onboarding signals (lightweight — no full tenant fetch needed)
+  let directoryConnected: boolean | null = null;
+  let connectedAppsCount: number | null = null;
 
   $: showIdpBanner = $page.url.searchParams.get("setup") === "idp";
 
-  function gradeFromScore(score: number): string {
-    if (score >= 90) return "A";
-    if (score >= 80) return "B";
-    if (score >= 70) return "C";
-    if (score >= 60) return "D";
-    return "F";
+  function selectPreset(id: PresetLayoutId) {
+    activePreset = id;
+    activeWidgets = [...PRESET_LAYOUTS[id].widgets];
   }
 
-  function scoreBadgeVariant(score: number): "success" | "warning" | "destructive" {
-    if (score >= 80) return "success";
-    if (score >= 60) return "warning";
-    return "destructive";
-  }
-
-  function formatDuration(ms: number | null): string {
-    if (!ms || ms <= 0) return "--";
-    if (ms < 1000) return `${ms}ms`;
-    const sec = Math.round(ms / 1000);
-    return `${sec}s`;
-  }
-
-  function triggerLabel(value: unknown): string {
-    if (!value) return "manual";
-    if (typeof value === "string") return value;
-    if (typeof value === "object") {
-      const obj = value as Record<string, unknown>;
-      return String(obj.type ?? obj.name ?? obj.event ?? "trigger");
-    }
-    return "trigger";
-  }
-
-  function escapeCSV(value: string | number | null | undefined): string {
-    if (value == null) return "";
-    const str = String(value);
-    const safe = /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
-    if (safe.includes(",") || safe.includes('"') || safe.includes("\n") || safe.includes("\r")) {
-      return '"' + safe.replace(/"/g, '""') + '"';
-    }
-    return safe;
+  function handleWidgetChange(e: CustomEvent<WidgetId[]>) {
+    activeWidgets = e.detail;
   }
 
   async function trackGrowthEvent(event: string, inviteId: string) {
@@ -191,59 +90,6 @@
     }
   }
 
-  async function dismissReviewSuggestion(type: string) {
-    try {
-      await fetch("/api/tenant/dashboard/dismiss-review-suggestion", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type }),
-      });
-      if (tenantData?.accessReviewSuggestions) {
-        tenantData.accessReviewSuggestions = tenantData.accessReviewSuggestions.filter(s => s.type !== type);
-      }
-    } catch {
-      pushToast({ message: "Failed to dismiss suggestion", variant: "error" });
-    }
-  }
-
-  function applyPrefetched(pre: any) {
-    if (pre.tenant) {
-      tenantData = pre.tenant;
-      connectedAppsCount = tenantData?.connectedApps ?? 0;
-    }
-    if (pre.scores) {
-      complianceScores = Array.isArray(pre.scores?.scores)
-        ? pre.scores.scores.map((row: any) => ({
-            framework: row.framework,
-            score: Number(row.score ?? 0),
-            grade: row.grade,
-          }))
-        : [];
-    }
-    if (pre.reviews) {
-      const campaigns: AccessReviewCampaign[] = Array.isArray(pre.reviews?.campaigns)
-        ? pre.reviews.campaigns
-        : [];
-      activeAccessReviews = campaigns.filter((c) => c.status === "active").length;
-    }
-    if (pre.incidents) {
-      const items: Incident[] = Array.isArray(pre.incidents?.items)
-        ? pre.incidents.items
-        : [];
-      const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
-      openIncidents = items.filter((i) =>
-        OPEN_INCIDENT_STATUSES.has(String(i.status || "").toLowerCase()),
-      ).length;
-    }
-    if (pre.runs) {
-      recentAutomationRuns = Array.isArray(pre.runs?.executions) ? pre.runs.executions : [];
-    }
-    if (pre.evidence) {
-      evidenceWaterfall = Array.isArray(pre.evidence?.feed) ? pre.evidence.feed : [];
-      evidenceWaterfallTotal = pre.evidence?.summary?.totalEvidence ?? 0;
-    }
-  }
-
   async function load() {
     loading = true;
     error = null;
@@ -258,98 +104,22 @@
         session.superAdmin === true &&
         !session.impersonating;
 
-      // If platform owner but no tenant context, force the platform view
       if (isPlatformOwner && !session.tenantId) {
         showPlatformView = true;
       }
 
-      // Always load platform data for platform owners (used in toggle view)
       if (isPlatformOwner) {
         const res = await fetch("/api/platform/dashboard");
-        if (res.ok) {
-          platformData = await res.json();
-        }
-        // If no tenant context, stop here
+        if (res.ok) platformData = await res.json();
         if (!session.tenantId) return;
       }
 
-      // Use server-prefetched data when available (eliminates client waterfall)
-      const prefetched = $page.data?.prefetched;
-      if (prefetched) {
-        applyPrefetched(prefetched);
-      } else {
-        // Fallback: client-side parallel fetch
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const [tenantRes, scoresRes, reviewsRes, incidentsRes, runsRes, evidenceRes] =
-          await Promise.all([
-            fetch("/api/tenant/dashboard"),
-            fetch("/api/tenant-compliance/scores"),
-            fetch("/api/access-reviews"),
-            fetch("/api/incidents"),
-            fetch("/api/automation/executions?limit=5"),
-            fetch(`/api/evidence-feed?limit=8&since=${encodeURIComponent(since)}`),
-          ]);
-
-        if (!tenantRes.ok) {
-          throw new Error(`Tenant dashboard fetch failed (${tenantRes.status})`);
-        }
-
-        tenantData = await tenantRes.json();
-        connectedAppsCount = tenantData?.connectedApps ?? 0;
-
-        if (scoresRes.ok) {
-          const scoresData = await scoresRes.json();
-          complianceScores = Array.isArray(scoresData?.scores)
-            ? scoresData.scores.map((row: any) => ({
-                framework: row.framework,
-                score: Number(row.score ?? 0),
-                grade: row.grade,
-              }))
-            : [];
-        } else {
-          complianceScores = [];
-        }
-
-        if (reviewsRes.ok) {
-          const reviewsData = await reviewsRes.json();
-          const campaigns: AccessReviewCampaign[] = Array.isArray(reviewsData?.campaigns)
-            ? reviewsData.campaigns
-            : [];
-          activeAccessReviews = campaigns.filter((c) => c.status === "active").length;
-        } else {
-          activeAccessReviews = 0;
-        }
-
-        if (incidentsRes.ok) {
-          const incidentsData = await incidentsRes.json();
-          const incidents: Incident[] = Array.isArray(incidentsData?.items)
-            ? incidentsData.items
-            : [];
-          const OPEN_INCIDENT_STATUSES = new Set(["open", "investigating", "triaged", "active"]);
-          openIncidents = incidents.filter((incident) =>
-            OPEN_INCIDENT_STATUSES.has(String(incident.status || "").toLowerCase()),
-          ).length;
-        } else {
-          openIncidents = 0;
-        }
-
-        if (runsRes.ok) {
-          const runsData = await runsRes.json();
-          recentAutomationRuns = Array.isArray(runsData?.executions)
-            ? runsData.executions
-            : [];
-        } else {
-          recentAutomationRuns = [];
-        }
-
-        if (evidenceRes.ok) {
-          const evidenceData = await evidenceRes.json();
-          evidenceWaterfall = Array.isArray(evidenceData?.feed) ? evidenceData.feed : [];
-          evidenceWaterfallTotal = evidenceData?.summary?.totalEvidence ?? 0;
-        } else {
-          evidenceWaterfall = [];
-          evidenceWaterfallTotal = 0;
-        }
+      // Lightweight onboarding check (tenant dashboard data)
+      const tenantRes = await fetch("/api/tenant/dashboard");
+      if (tenantRes.ok) {
+        const td = await tenantRes.json();
+        directoryConnected = td.directory?.connected ?? null;
+        connectedAppsCount = td.connectedApps ?? null;
       }
     } catch (e: any) {
       error = e?.message || "Failed to load dashboard";
@@ -393,7 +163,7 @@
     </Alert>
 
   {:else if showPlatformView && platformData}
-    <!-- Platform Owner Dashboard -->
+    <!-- ════════ Platform Owner Dashboard (unchanged) ════════ -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">Platform Overview</h1>
@@ -414,7 +184,6 @@
       </div>
     </div>
 
-    <!-- Stat cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <a href="/console/admin" class="no-underline">
         <Card class="hover:border-primary/40 transition-colors cursor-pointer">
@@ -462,7 +231,6 @@
       </a>
     </div>
 
-    <!-- Recent Tenants -->
     {#if platformData.recentTenants.length > 0}
       <Card class="mb-6">
         <CardHeader class="flex-row items-center justify-between">
@@ -507,7 +275,6 @@
       </Card>
     {/if}
 
-    <!-- Recent Activity -->
     {#if platformData.recentActivity.length > 0}
       <Card>
         <CardHeader>
@@ -535,7 +302,7 @@
     {/if}
 
   {:else}
-    <!-- Tenant Dashboard -->
+    <!-- ════════ Tenant Widget Dashboard ════════ -->
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight">
@@ -556,7 +323,10 @@
           <Copy class="h-3.5 w-3.5 mr-1.5" />
           {inviteCopied ? "Invite Link Copied" : "Invite Team"}
         </Button>
-        <Button href="/console/workflows" variant="secondary" size="sm">View Workflows</Button>
+        <Button on:click={() => (pickerOpen = true)} variant="outline" size="sm" title="Customize widgets">
+          <Settings2 class="h-3.5 w-3.5 mr-1.5" />
+          Customize
+        </Button>
         <Button on:click={load} variant="ghost" size="sm">
           <RefreshCw class="h-3.5 w-3.5" />
         </Button>
@@ -564,7 +334,7 @@
     </div>
 
     <!-- Directory setup banner -->
-    {#if tenantData?.directory?.connected === false}
+    {#if directoryConnected === false}
       <div class="bg-warning/10 border border-warning/20 rounded-lg p-4 flex items-center justify-between">
         <div>
           <div class="font-medium text-foreground">Connect your identity provider to get started</div>
@@ -577,7 +347,7 @@
     {/if}
 
     <!-- Getting started empty state -->
-    {#if tenantData?.connectedApps === 0 && !tenantData?.directory?.connected}
+    {#if connectedAppsCount === 0 && directoryConnected === false}
       <Card class="border-dashed">
         <CardContent class="py-8 text-center">
           <Sparkles class="h-12 w-12 mx-auto mb-4 text-muted-foreground/40" />
@@ -591,277 +361,28 @@
       </Card>
     {/if}
 
-    <!-- top KPI tiles -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <a href="/console/marketplace" class="no-underline">
-        <Card class="hover:border-primary/40 transition-colors cursor-pointer">
-          <CardContent class="pt-5">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-medium text-muted-foreground">Connected Apps</div>
-              <AppWindow class="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div class="text-3xl font-bold mt-1">{connectedAppsCount}</div>
-          </CardContent>
-        </Card>
-      </a>
-
-      <a href="/console/directory" class="no-underline">
-        <Card class="hover:border-primary/40 transition-colors cursor-pointer">
-          <CardContent class="pt-5">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-medium text-muted-foreground">Directory Users</div>
-              <Users class="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div class="text-3xl font-bold mt-1">{tenantData?.directory?.userCount ?? 0}</div>
-          </CardContent>
-        </Card>
-      </a>
-
-      <Card>
-        <CardContent class="pt-5">
-          <div class="flex items-center justify-between">
-            <div class="text-sm font-medium text-muted-foreground">Active Access Reviews</div>
-            <KeyRound class="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div class="text-3xl font-bold mt-1">{activeAccessReviews}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent class="pt-5">
-          <div class="flex items-center justify-between">
-            <div class="text-sm font-medium text-muted-foreground">Open Incidents</div>
-            <Siren class="h-4 w-4 text-muted-foreground" />
-          </div>
-          <div class="text-3xl font-bold mt-1">{openIncidents}</div>
-        </CardContent>
-      </Card>
+    <!-- Preset layout selector -->
+    <div class="flex items-center gap-2">
+      <LayoutGrid class="h-4 w-4 text-muted-foreground" />
+      <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Layout</span>
+      {#each Object.entries(PRESET_LAYOUTS) as [id, preset]}
+        <button
+          class="rounded-md px-3 py-1 text-xs font-medium transition-colors
+            {activePreset === id
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted'}"
+          on:click={() => selectPreset(id)}
+          title={preset.description}
+        >
+          {preset.name}
+        </button>
+      {/each}
     </div>
 
-    <!-- Compliance Posture -->
-    {#if tenantData?.compliance}
-      <Card>
-        <CardHeader class="flex-row items-center justify-between">
-          <CardTitle>Compliance Posture</CardTitle>
-          <Button href="/console/compliance" variant="ghost" size="sm">
-            View Details
-            <ArrowRight class="h-3.5 w-3.5 ml-1" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {#if tenantData.compliance.scores.length > 0}
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {#each tenantData.compliance.scores as fw}
-                <div class="flex items-center gap-3 p-3 rounded-lg border">
-                  <div class="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-sm {fw.score >= 80 ? 'bg-green-500/15 text-green-500' : fw.score >= 50 ? 'bg-yellow-500/15 text-yellow-500' : 'bg-red-500/15 text-red-500'}">
-                    {fw.grade}
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium">{fw.framework}</div>
-                    <div class="flex items-center gap-2 mt-1">
-                      <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                        <div class="h-full rounded-full transition-all {fw.score >= 80 ? 'bg-green-500' : fw.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: {fw.score}%"></div>
-                      </div>
-                      <span class="text-xs text-muted-foreground shrink-0">{Math.round(fw.score)}%</span>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-            <div class="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-              <span>{tenantData.compliance.evidenceCount} evidence item{tenantData.compliance.evidenceCount !== 1 ? 's' : ''} collected</span>
-              <span>{tenantData.automation?.activeRules ?? 0} active automation rule{(tenantData.automation?.activeRules ?? 0) !== 1 ? 's' : ''}</span>
-              {#if tenantData.automation?.executions24h}
-                <span>{tenantData.automation.executions24h} execution{tenantData.automation.executions24h !== 1 ? 's' : ''} (24h)</span>
-              {/if}
-            </div>
-          {:else}
-            <div class="text-center py-4">
-              <p class="text-sm text-muted-foreground mb-2">No compliance scores yet. Visit Compliance to evaluate your configuration.</p>
-              <Button href="/console/compliance" variant="outline" size="sm">Evaluate Compliance</Button>
-            </div>
-          {/if}
-        </CardContent>
-      </Card>
-    {:else}
-      <!-- Fallback: compliance tiles from API scores -->
-      <div class="space-y-3">
-        <div class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Compliance by framework</div>
-        {#if complianceScores.length === 0}
-          <Card class="border-dashed">
-            <CardContent class="py-6 text-sm text-muted-foreground">No compliance score data available yet.</CardContent>
-          </Card>
-        {:else}
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {#each complianceScores as score}
-              <Card>
-                <CardContent class="pt-5 space-y-2">
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="text-sm font-medium">{score.framework}</div>
-                    <Badge variant={scoreBadgeVariant(score.score)}>{score.grade || gradeFromScore(score.score)}</Badge>
-                  </div>
-                  <div class="text-3xl font-bold">{Math.round(score.score)}%</div>
-                  <div class="h-2 rounded-full bg-muted overflow-hidden">
-                    <div class="h-full bg-primary" style={`width: ${Math.max(0, Math.min(100, score.score))}%`} />
-                  </div>
-                </CardContent>
-              </Card>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
+    <!-- Widget grid -->
+    <WidgetGrid widgets={activeWidgets} />
 
-    <!-- Evidence Waterfall -->
-    {#if evidenceWaterfall.length > 0}
-      <Card>
-        <CardHeader class="flex-row items-center justify-between">
-          <div class="flex items-center gap-2">
-            <Activity class="h-4 w-4 text-primary" />
-            <CardTitle>Live Evidence Stream</CardTitle>
-            <Badge variant="secondary">{evidenceWaterfallTotal} total</Badge>
-          </div>
-          <Button href="/console/compliance/feed" variant="ghost" size="sm">
-            Full feed
-            <ArrowRight class="h-3.5 w-3.5 ml-1" />
-          </Button>
-        </CardHeader>
-        <CardContent class="p-0">
-          <div class="divide-y">
-            {#each evidenceWaterfall as item}
-              <div class="px-5 py-3 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-2 h-2 rounded-full shrink-0 {item.impact === 'positive' ? 'bg-green-500' : item.impact === 'detrimental' ? 'bg-red-500' : 'bg-gray-400'}"></div>
-                  <div class="min-w-0">
-                    <div class="text-sm font-medium truncate">
-                      {item.eventType || item.source}
-                      <span class="font-normal text-muted-foreground"> → {item.framework} {item.controlId}</span>
-                    </div>
-                    <div class="text-xs text-muted-foreground">{item.actor || "system"} · {item.source}</div>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <Badge variant={item.impact === "positive" ? "success" : item.impact === "detrimental" ? "destructive" : "secondary"}>
-                    {item.impact}
-                  </Badge>
-                  <span class="text-[11px] text-muted-foreground">{new Date(item.createdAt).toLocaleTimeString()}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </CardContent>
-      </Card>
-    {/if}
-
-    <!-- Pending suggestions CTA -->
-    {#if tenantData && tenantData.pendingSuggestions > 0}
-      <Card class="border-primary/20 bg-primary/5">
-        <CardContent class="py-4 flex items-center justify-between">
-          <div>
-            <div class="font-medium">Review {tenantData.pendingSuggestions} suggested app mapping{tenantData.pendingSuggestions !== 1 ? 's' : ''}</div>
-            <div class="text-sm text-muted-foreground mt-1">AtlasIT detected apps that can be mapped to directory groups</div>
-          </div>
-          <Button href="/console/directory?tab=mappings" size="sm">
-            Review Suggestions
-            <ArrowRight class="h-3.5 w-3.5 ml-1" />
-          </Button>
-        </CardContent>
-      </Card>
-    {/if}
-
-    <!-- Access review suggestions -->
-    {#if tenantData?.accessReviewSuggestions && tenantData.accessReviewSuggestions.length > 0}
-      {#each tenantData.accessReviewSuggestions as suggestion (suggestion.type)}
-        <Card class="border-warning/30 bg-warning/5">
-          <CardContent class="py-4 flex items-center justify-between gap-4">
-            <div class="flex items-start gap-3">
-              <UserCheck class="h-5 w-5 text-warning mt-0.5 shrink-0" />
-              <div>
-                <div class="font-medium">{suggestion.title}</div>
-                <div class="text-sm text-muted-foreground mt-0.5">{suggestion.description}</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <Button variant="ghost" size="sm" on:click={() => dismissReviewSuggestion(suggestion.type)}>
-                Dismiss
-              </Button>
-              <Button href="/console/access-reviews" size="sm">
-                Start Review
-                <ArrowRight class="h-3.5 w-3.5 ml-1" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      {/each}
-    {/if}
-
-    <!-- recent automation runs -->
-    <Card>
-      <CardHeader class="flex-row items-center justify-between">
-        <CardTitle>Recent Automation Runs</CardTitle>
-        <Button href="/console/automation/runs" variant="ghost" size="sm">View all</Button>
-      </CardHeader>
-      <CardContent class="p-0">
-        {#if recentAutomationRuns.length === 0}
-          <div class="px-5 py-8 text-sm text-muted-foreground">No recent automation executions found.</div>
-        {:else}
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-5 py-3 font-medium">Rule</th>
-                  <th class="px-5 py-3 font-medium">Trigger</th>
-                  <th class="px-5 py-3 font-medium">Status</th>
-                  <th class="px-5 py-3 font-medium">Duration</th>
-                  <th class="px-5 py-3 font-medium">Started</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each recentAutomationRuns as run}
-                  <tr class="border-t hover:bg-muted/50 cursor-pointer transition-colors" on:click={() => { window.location.href = `/console/automation?tab=history&exec=${run.id}`; }}>
-                    <td class="px-5 py-3 font-medium">{run.ruleName || run.ruleId || "Untitled rule"}</td>
-                    <td class="px-5 py-3 text-muted-foreground">{triggerLabel(run.triggerEvent)}</td>
-                    <td class="px-5 py-3">
-                      <Badge variant={run.status === "success" ? "success" : run.status === "failed" ? "destructive" : "secondary"}>
-                        {run.status}
-                      </Badge>
-                    </td>
-                    <td class="px-5 py-3 text-muted-foreground">{formatDuration(run.durationMs)}</td>
-                    <td class="px-5 py-3 text-muted-foreground">{run.startedAt ? new Date(run.startedAt).toLocaleString() : "--"}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
-      </CardContent>
-    </Card>
-
-    <!-- Recent Activity -->
-    {#if tenantData && tenantData.recentActivity.length > 0}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
-        <CardContent class="p-0">
-          <div class="divide-y">
-            {#each tenantData.recentActivity as entry}
-              <div class="px-5 py-3.5 flex items-center justify-between hover:bg-muted/30 transition-colors">
-                <div class="flex items-center gap-3">
-                  <div class="w-2 h-2 rounded-full bg-primary/60 shrink-0"></div>
-                  <div>
-                    <div class="text-sm">{entry.description || entry.action}</div>
-                    {#if entry.user}
-                      <div class="text-xs text-muted-foreground mt-0.5">{entry.user}</div>
-                    {/if}
-                  </div>
-                </div>
-                <div class="text-xs text-muted-foreground shrink-0 ml-4">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}</div>
-              </div>
-            {/each}
-          </div>
-        </CardContent>
-      </Card>
-    {/if}
+    <!-- Widget picker modal -->
+    <WidgetPicker bind:open={pickerOpen} {activeWidgets} on:change={handleWidgetChange} />
   {/if}
 </div>

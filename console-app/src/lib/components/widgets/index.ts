@@ -27,6 +27,10 @@ export { default as WorkflowRunsWidget } from "./WorkflowRunsWidget.svelte";
 export { default as SecurityPostureWidget } from "./SecurityPostureWidget.svelte";
 export { default as AlertsBannerWidget } from "./AlertsBannerWidget.svelte";
 
+// Layout
+export { default as WidgetGrid } from "./WidgetGrid.svelte";
+export { default as WidgetPicker } from "./WidgetPicker.svelte";
+
 // Types & utilities (re-export for consumers)
 export type {
   WidgetProps,
