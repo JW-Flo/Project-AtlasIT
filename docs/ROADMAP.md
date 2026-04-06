@@ -631,7 +631,7 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **Evidence pipeline health** — New "Evidence Health" tab on Operations page shows per-adapter collection status, staleness detection (>24h), and item counts. Compliance page already had adapter health cards.
 - [x] **Alerting** — Visual alert banners on Operations page for: adapter failure rate >50%, evidence stale >24h, self-assessed score fallback, JML success rate <50%. API at `/api/operations/metrics`.
 
-## Phase 20 — Unified Dashboard (Consolidate Reports & Observability)
+## Phase 20 — Unified Dashboard (Consolidate Reports & Observability) ✅
 
 > **Why now**: Five separate pages display overlapping data — the main Dashboard, Analytics, Operations,
 > Compliance overview, and Evidence Feed. Compliance scores appear in 3 places, evidence data in 4,
@@ -639,68 +639,186 @@ These items from the Codex Review are not yet fully addressed and should be prio
 > complete picture. A single composable dashboard with saveable views eliminates redundancy, reduces
 > API calls, and gives each user the exact layout they need.
 
-### Current Redundancy Map
+### P0 — Widget Component Library ✅
 
-| Data Type             | Pages Displaying It                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------------ |
-| Compliance scores     | Dashboard, Analytics, Compliance                                                                 |
-| Evidence items / feed | Dashboard (waterfall), Compliance (overview tab), Evidence Feed (full), Analytics (volume chart) |
-| Adapter health        | Compliance (adapter cards), Operations (evidence health tab)                                     |
-| Automation metrics    | Dashboard (recent runs), Analytics (rules executed, success rate)                                |
-| Workflow runs         | Operations (runs tab), Dashboard (recent activity)                                               |
-| Incidents / security  | Dashboard (open count), Analytics (security posture)                                             |
-| Access reviews        | Dashboard (active count), Analytics (completion rate)                                            |
+- [x] **Widget container component** — `WidgetContainer.svelte` with title, loading/error/empty states, retry, named slots (icon, actions)
+- [x] **Widget registry** — `WIDGET_REGISTRY` (12 entries with title, category, defaultSize) + `PRESET_LAYOUTS` (executive, operations, evidence)
+- [x] **12 self-contained widgets extracted** — compliance-scores, compliance-trend, evidence-feed, evidence-volume, adapter-health, automation-metrics, automation-recent, jml-metrics, jml-adapter-provisions, workflow-runs, security-posture, alerts-banner
+- [x] Files: `console-app/src/lib/components/widgets/`
 
-### P0 — Widget Component Library
+### P1 — Unified Dashboard Page ✅
 
-> Build the reusable widget system. Each widget is a self-contained Svelte component
-> that fetches its own data and renders in a standard card container.
+- [x] **WidgetGrid** — Responsive CSS grid (1 col mobile, 2 col desktop, lg widgets span 2). Renders widgets from ordered ID array via `svelte:component` + `componentMap`.
+- [x] **3 preset layouts** — Executive, Operations, Evidence
+- [x] **WidgetPicker** — Modal grouped by category from registry, preserves order on apply
+- [x] Files: `console-app/src/routes/console/+page.svelte` (rewritten), `console-app/src/lib/components/widgets/`
 
-- [ ] **Widget container component** — `$lib/components/dashboard/Widget.svelte` with standardized header (title, subtitle, refresh, remove), loading/error states, and resize handles (sm/md/lg/full width)
-- [ ] **Widget registry** — `$lib/components/dashboard/widget-registry.ts` mapping widget IDs to components, default sizes, required API endpoints, and category tags (compliance, jml, evidence, automation, security, system)
-- [ ] **Extract 12 widgets from existing pages:**
-  - `compliance-scores` — Framework score cards with grades (from Dashboard + Analytics + Compliance)
-  - `compliance-trend` — Score history line chart (from Analytics + Compliance)
-  - `evidence-feed` — Recent evidence items with impact badges (from Dashboard + Evidence Feed)
-  - `evidence-volume` — Evidence count bar chart by week (from Analytics)
-  - `adapter-health` — Per-adapter collection status cards (from Compliance + Operations)
-  - `automation-metrics` — Rules executed, success rate, time saved (from Analytics)
-  - `automation-recent` — Recent automation execution list (from Dashboard)
-  - `jml-metrics` — Workflow success/failure rates, avg duration (from Operations)
-  - `jml-adapter-provisions` — Adapter provisioning table (from Operations)
-  - `workflow-runs` — Recent workflow run list (from Operations)
-  - `security-posture` — Open incidents, access reviews, critical count (from Analytics + Dashboard)
-  - `alerts-banner` — Active operational alerts (from Operations)
-- [ ] Files: `console-app/src/lib/components/dashboard/`
+### P2 — Saveable Views & Personalization ✅
 
-### P1 — Unified Dashboard Page
+- [x] **View persistence** — `tenant_preferences` table with key `"dashboard_views"`, scoped by tenantId. API at `/api/dashboard/views` (GET/PUT).
+- [x] **View switcher** — Tab bar in dashboard header, "Save View" flow for custom views
+- [x] **localStorage dual-write** — Instant view restoration on page refresh + server sync for cross-device
+- [x] Files: `console-app/src/lib/stores/dashboard-views.ts`, `console-app/src/routes/api/dashboard/views/+server.ts`
 
-> Replace the current `/console` landing with a composable widget grid.
+### P3 — Filtering & Time Ranges ✅ (Partial)
 
-- [ ] **Dashboard layout engine** — CSS grid layout that renders widgets from a config array. Responsive: 1 col mobile, 2 col tablet, 3-4 col desktop. Widgets reflow based on their size class.
-- [ ] **Default layouts** — Ship 3 preset layouts:
-  - "Executive" — compliance scores, trend chart, security posture, top risks
-  - "Operations" — JML metrics, adapter provisions, workflow runs, alerts, adapter health
-  - "Evidence" — evidence feed, evidence volume, adapter health, compliance trend
-- [ ] **Widget picker** — Modal to add/remove widgets from the current view. Categorized by tag, search-filterable.
-- [ ] Files: `console-app/src/routes/console/+page.svelte` (rewrite), `console-app/src/lib/components/dashboard/DashboardGrid.svelte`
+- [x] **Global time range** — DateRangePicker (7d/30d/90d/12mo) propagates to all widgets via `dashboardContext` store
+- [x] **Cross-widget filtering** — FrameworkFilter component; click framework to filter evidence-feed, compliance-trend, compliance-scores
+- [ ] **Export** — PDF/CSV export of current dashboard view (deferred)
+- [ ] **Real-time updates** — SSE subscription for evidence-feed and alerts-banner (deferred)
+- [x] Files: `console-app/src/lib/stores/dashboard-context.ts`, `console-app/src/lib/components/widgets/DateRangePicker.svelte`, `console-app/src/lib/components/widgets/FrameworkFilter.svelte`
 
-### P2 — Saveable Views & Personalization
+## Phase 21 — Audit Deliverable Generation (Close the Auditor Gap)
 
-> Let users save custom layouts and switch between them.
+> **Competitive context**: EasyAudit generates AI-powered policies tailored to org context. ControlMap
+> auto-generates SSPs, SPRS reports, and RACI matrices from assessment data. Both produce audit-ready
+> deliverables. AtlasIT collects evidence and scores controls but doesn't package anything for auditors.
+> For SMBs pursuing SOC 2 or ISO 27001, the deliverable IS the product — they need documents to hand
+> to their auditor, not a dashboard to stare at.
+>
+> **Why here (not later)**: This is the #1 gap blocking SMBs from completing their compliance journey
+> in-platform. Every competitor — Vanta, Drata, EasyAudit, ControlMap — generates audit artifacts.
+> Without this, users export CSV evidence and manually assemble reports. High churn risk.
 
-- [ ] **View persistence** — Save named dashboard views to `tenant_preferences` table as JSON (`{ name, widgets: [{ id, size, position }] }`). Per-user (keyed by user email) with optional tenant-level defaults.
-- [ ] **View switcher** — Dropdown in dashboard header to switch between saved views and presets. "Save as" and "Reset to default" actions.
-- [ ] **Unified data layer** — Single `$lib/stores/dashboard.ts` store that batches API calls. Widgets subscribe to the store rather than fetching independently. Reduces 8-10 parallel API calls to 2-3 aggregated endpoints.
-- [ ] **Retire redundant pages** — Merge Analytics page content into widgets; redirect `/console/analytics` to `/console?view=analytics`. Operations page becomes a preset view rather than a separate page. Keep Compliance page for control-level detail (not dashboard-level).
-- [ ] Files: `console-app/src/lib/stores/dashboard.ts`, `console-app/src/routes/api/dashboard/views/+server.ts`
+### P0 — AI Policy Generator (Replace Stub)
 
-### P3 — Filtering, Time Ranges & Export
+> The policy evaluation engine exists (Phase 7.5 P3) but only does Boolean allow/deny.
+> The AI policy generator from Phase 13 creates drafts via Groq but they aren't versioned,
+> reviewable, or exportable. This turns policies into real audit deliverables.
 
-- [ ] **Global time range** — Dashboard-level date picker (7d, 30d, 90d, custom) that propagates to all widgets via context.
-- [ ] **Cross-widget filtering** — Click a framework badge in compliance-scores to filter evidence-feed, compliance-trend, and adapter-health to that framework.
-- [ ] **Export** — Export current dashboard view as PDF (server-rendered) or CSV (tabular widgets only).
-- [ ] **Real-time updates** — SSE subscription for evidence-feed and alerts-banner widgets, auto-refresh on new data.
+- [ ] **Policy versioning** — D1 `policy_versions` table (policy_id, version, content_hash, status: draft/review/approved/archived, approved_by, approved_at). Immutable once approved.
+- [ ] **Policy approval workflow** — Assign reviewer, email/Slack notification, approve/reject with comments, audit trail. Maps to Codex §2.5 open item.
+- [ ] **AI policy generation v2** — Context-aware: injects tenant's connected adapters, compliance frameworks, directory size, industry vertical into Groq prompt. Generates policies that reference actual infrastructure, not generic templates.
+- [ ] **Policy export** — PDF export with company letterhead template, version history, approval signatures, effective date. Auditor-ready format.
+- [ ] Files: `console-app/src/routes/api/policies/`, `console-app/src/lib/server/policy-generator.ts`, `migrations/`
+
+### P1 — Compliance Report Builder
+
+> Generate the documents auditors actually request: SOC 2 readiness report, ISO 27001
+> Statement of Applicability, gap analysis report with remediation timeline.
+
+- [ ] **Report templates** — Pre-built templates for: SOC 2 Type II readiness report, ISO 27001 Statement of Applicability (SoA), HIPAA risk assessment summary, NIST CSF profile, GDPR DPIA template
+- [ ] **Auto-populated reports** — Templates pull live data: control statuses, evidence counts, evidence recency, gap counts, framework scores, connected integrations, last review dates
+- [ ] **Evidence appendix** — Attach relevant evidence items per control section, with SHA-256 hashes for tamper detection (leveraging existing R2 content-addressed storage)
+- [ ] **PDF/DOCX export** — Server-rendered reports using Cloudflare Workers with template engine. Include table of contents, section numbering, company branding from tenant settings.
+- [ ] Files: `console-app/src/routes/api/reports/`, `console-app/src/lib/server/report-builder.ts`
+
+### P2 — Remediation Tracking (POAM-style)
+
+> ControlMap's POAM tracking resonates with SMBs who need to show auditors a plan for
+> unresolved findings. Currently, failed controls just show red — no path to resolution.
+
+- [ ] **Remediation plans** — Per-control: owner (assignee), target date, status (open/in-progress/resolved/accepted-risk), notes, linked evidence
+- [ ] **Remediation dashboard widget** — Overdue items, upcoming deadlines, completion rate. Add to widget registry.
+- [ ] **Auditor view** — Read-only remediation timeline visible on Trust Center for NDA-gated visitors
+- [ ] Files: `console-app/src/routes/api/remediation/`, `console-app/src/routes/console/compliance/remediation/`
+
+## Phase 22 — AI Compliance Copilot (Conversational Intelligence)
+
+> **Competitive context**: EasyAudit's #1 differentiator is their "AI Compliance Officer" — an
+> always-available chatbot with CPA-level knowledge that answers compliance questions in context.
+> ControlMap doesn't have this. Vanta/Drata have basic AI assistants but they're glorified search.
+>
+> **AtlasIT's advantage**: We have live operational data (JML events, evidence pipeline, CDT scores,
+> adapter health) that no competitor's AI can access. Our copilot can answer "Am I SOC 2 ready?"
+> with evidence-grounded analysis, not generic guidance.
+>
+> **Why here (after Phase 21)**: The copilot is most valuable when it can reference real audit
+> deliverables, policies, and remediation plans — not just raw scores. Phase 21 gives it artifacts
+> to reason about.
+
+### P0 — Compliance Chat Interface
+
+- [ ] **Chat UI** — Slide-out panel (Cmd+K or dedicated button) with streaming responses. Persistent conversation history per user in `tenant_preferences`.
+- [ ] **Context injection** — Every query automatically includes: tenant's frameworks, current scores, recent evidence, active remediations, connected adapters, open incidents. Scoped by tenant_id.
+- [ ] **Groq-backed responses** — Use existing Groq integration (from Phase 13 policy generator). System prompt grounded in compliance expertise + tenant context.
+- [ ] Files: `console-app/src/lib/components/copilot/`, `console-app/src/routes/api/copilot/chat/+server.ts`
+
+### P1 — Actionable Intelligence
+
+- [ ] **"What should I do next?" flow** — Prioritized action list based on: lowest-scoring controls, stale evidence (>30d), missing policies, overdue remediations, disconnected adapters. Clickable actions that navigate to the relevant page.
+- [ ] **Audit prep mode** — "Prepare me for my SOC 2 audit" generates a checklist: missing evidence, unsigned policies, incomplete controls, stale access reviews. Progress bar tracks completion.
+- [ ] **Natural language rules** — Ask the copilot to create automation rules in plain English (extends Phase 13 NL builder with conversational context).
+
+### P2 — Proactive Notifications
+
+- [ ] **Weekly compliance digest** — AI-generated summary email/Slack: score changes, new evidence, upcoming deadlines, drift alerts. Configurable per user.
+- [ ] **Smart alerts** — Beyond threshold-based: "Your evidence collection stopped 2 days ago — this will affect your SOC 2 CC7.5 score by next week" with recommended action.
+
+## Phase 23 — Framework Deep Dive & Cross-Mapping
+
+> **Competitive context**: EasyAudit supports ISO 42001 (AI management). ControlMap goes deep on
+> CMMC/NIST 800-171 with SPRS scoring. Both EasyAudit and ControlMap automatically cross-map controls
+> across frameworks to eliminate duplicate work. AtlasIT has 5 frameworks but treats them independently —
+> a SOC 2 CC6.1 control and ISO 27001 A.9.2.5 control require separate evidence even though they
+> overlap ~80%.
+>
+> **Why this matters for SMBs**: A 20-person startup pursuing SOC 2 + HIPAA shouldn't do 2x the work.
+> Cross-mapping can reduce their control burden by 30-40%.
+
+### P0 — Framework Cross-Mapping Engine
+
+- [ ] **Control overlap matrix** — Map equivalent controls across frameworks (e.g., SOC2 CC6.1 ↔ ISO27001 A.9.2.5 ↔ NIST CSF PR.AC-1 ↔ HIPAA 164.312(d)). Store in `control_cross_map` table.
+- [ ] **Shared evidence** — Evidence linked to one control automatically satisfies mapped controls. Reduces evidence collection burden by ~35%.
+- [ ] **Cross-map visualization** — UI showing control overlap between tenant's selected frameworks. "Satisfying SOC 2 CC6.1 also covers 3 other controls across your frameworks."
+- [ ] **Multi-framework progress** — Dashboard widget showing: X controls unique to framework A, Y shared across frameworks, Z% overlap reduction.
+
+### P1 — Framework Expansion
+
+> Prioritized by SMB demand, not breadth for breadth's sake.
+
+- [ ] **SOC 2 + ISO 27001 deep mode** — Expand from simplified control sets to full Trust Services Criteria (TSC) and Annex A control sets. Currently 33 SOC2 + 56 ISO27001 controls; full sets are ~65 + ~93.
+- [ ] **ISO 42001 (AI Management System)** — Relevant for SMBs building or deploying AI. EasyAudit has this; we don't. Controls cover AI risk assessment, data governance for ML, model lifecycle.
+- [ ] **PCI DSS 4.0** — Relevant for any SMB processing payments (e-commerce, SaaS with Stripe). Maps heavily to existing access control and encryption evidence.
+- [ ] Files: `packages/shared/src/compliance/framework-cross-map.ts`, `console-app/src/lib/compliance/framework-controls.ts`
+
+## Phase 24 — Guided Onboarding & Command Palette (UX Polish)
+
+> **Competitive context**: EasyAudit positions as "your backend compliance team" — minimal setup,
+> AI does the work. ControlMap targets MSPs with multi-client onboarding. AtlasIT has a setup wizard
+> but new tenants still face 22 nav items, empty dashboards, and unclear next steps.
+>
+> **Why here**: This is a PLG multiplier. Phase 16 added pricing and self-serve signup. But conversion
+> drops if the first 10 minutes feel overwhelming. SMB founders (our target) have zero patience for
+> "figure it out yourself" products.
+
+### P0 — Guided Onboarding Flow
+
+- [ ] **Step-by-step wizard** — 5-step flow replacing scattered CTAs: (1) Select frameworks → (2) Connect identity provider → (3) Install 2-3 apps → (4) Wait for first evidence scan → (5) See first compliance score. Progress persisted in `tenant_preferences`.
+- [ ] **"Time to first score" optimization** — Target: <10 minutes from signup to seeing a real compliance score. Requires: auto-trigger evidence collection on first app connect, skip cron wait.
+- [ ] **Empty state overhaul** — Replace all dashed-border cards with contextual next-step guidance. Each empty state links to the relevant onboarding step.
+- [ ] **Onboarding checklist widget** — Dashboard widget showing setup completion (5 steps). Auto-dismisses when all steps complete.
+
+### P1 — Command Palette (Cmd+K)
+
+- [ ] **Global search** — Search across: nav items (22), compliance controls (139), connected apps, evidence items, automation rules, directory users, policies. Fuzzy matching.
+- [ ] **Quick actions** — "Create automation rule", "Run evidence collection", "Start access review", "Generate policy". Direct shortcuts to common workflows.
+- [ ] **Recent items** — Last 10 visited pages/entities for quick navigation.
+- [ ] Files: `console-app/src/lib/components/command-palette/`, `console-app/src/routes/api/search/+server.ts`
+
+### P2 — Accessibility & Mobile Hardening
+
+- [ ] **Focus trap in dialogs** — Implement proper focus trapping in `dialog.svelte` (Tab key contained within modal)
+- [ ] **Keyboard navigation** — Arrow-key support in tabs, dropdowns, widget picker. Skip-to-content link already exists.
+- [ ] **Toast queue limiting** — Cap visible toasts at 3, queue overflow. Prevent rapid-fire stacking.
+- [ ] **ARIA improvements** — Add `aria-label` to all icon-only buttons, loading skeletons, dropdown toggles.
+
+## Phase 25 — Incident Lifecycle & Response (Complete the Loop)
+
+> **Codex finding (§2.8)**: Incidents exist but lack severity classification, SLA tracking, and
+> response workflows. This is the last major Codex P0 gap. For SMBs facing their first security
+> incident, the platform should guide them through response — not just log it.
+
+### P0 — Incident Management
+
+- [ ] **Severity classification engine** — Auto-classify incidents (P1-P4) based on: affected controls, number of users impacted, data sensitivity, compliance framework mapping. Manual override available.
+- [ ] **Response SLA tracking** — Configurable SLA per severity (e.g., P1: 1hr acknowledge, 4hr resolve). Visual countdown timer on incident detail. Breach → auto-escalation via Slack.
+- [ ] **Incident response playbooks** — Pre-built response templates per incident type (data breach, access violation, compliance drift, adapter failure). Step-by-step with owner assignment and evidence collection prompts.
+
+### P1 — Incident → Evidence → Compliance Loop
+
+- [ ] **Incident resolution evidence** — Closing an incident auto-generates evidence: timeline, actions taken, affected scope, remediation proof. Feeds directly into compliance scoring pipeline.
+- [ ] **Post-incident review** — Template for blameless retrospective with auto-populated timeline from audit log. Generates policy update recommendations.
 
 ## Long-Term Platform Modules
 
@@ -714,11 +832,11 @@ AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
 
 ### Target Market
 
-| Segment                           | Profile                                                                  | Why AtlasIT wins                                                                 |
-| --------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| **Mid-market (100-1000)**         | Outgrown JumpCloud, can't justify $50K+ for Vanta on top of IT ops spend | One platform at half the cost of two specialized tools                           |
-| **Compliance-first SMB (10-100)** | B2B SaaS needing SOC 2 to close enterprise deals                         | Fastest time-to-compliance: connect adapters → evidence generated automatically  |
-| **Security-conscious scaleup**    | Engineering-heavy, 200-500 employees, multi-cloud                        | NHI governance + shadow AI detection in the same platform that provisions access |
+| Segment                          | Profile                                                              | Why AtlasIT wins                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Compliance-first SMB (10-50)** | B2B SaaS needing SOC 2 to close enterprise deals, no compliance hire | Fastest time-to-compliance: connect adapters → evidence + audit deliverables generated automatically |
+| **Growing SMB (50-100)**         | Outgrown spreadsheets for IT ops, first compliance audit approaching | One platform replaces Vanta + JumpCloud at half the cost, AI copilot replaces compliance consultant  |
+| **Mid-market (100-500)**         | Multiple frameworks (SOC 2 + HIPAA), can't justify $50K+ for Vanta   | Cross-framework mapping reduces 2x work to 1.3x, policies generated not templated                    |
 
 ### Competitive Positioning
 
