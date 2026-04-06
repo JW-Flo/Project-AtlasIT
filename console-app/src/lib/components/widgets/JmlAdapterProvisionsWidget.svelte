@@ -16,10 +16,32 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch("/api/workflows/adapter-provisions");
+      const res = await fetch("/api/jml/runs?limit=200");
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
-      provisions = Array.isArray(data.provisions) ? data.provisions : [];
+      const runs: any[] = Array.isArray(data.runs) ? data.runs : [];
+
+      // Aggregate provisioning counts per app from JML run data
+      const appMap = new Map<string, { provisioned: number; deprovisioned: number; pending: number }>();
+      for (const run of runs) {
+        const appName = run.appName || run.appId || "Unknown";
+        if (!appMap.has(appName)) appMap.set(appName, { provisioned: 0, deprovisioned: 0, pending: 0 });
+        const entry = appMap.get(appName)!;
+        if (run.status === "completed" || run.status === "success") {
+          if (run.type === "leaver") entry.deprovisioned++;
+          else entry.provisioned++;
+        } else if (run.status === "pending" || run.status === "in_progress") {
+          entry.pending++;
+        }
+      }
+
+      provisions = Array.from(appMap.entries()).map(([appName, counts]) => ({
+        appName,
+        provisionedCount: counts.provisioned,
+        deprovisionedCount: counts.deprovisioned,
+        pendingCount: counts.pending,
+      }));
+
       state = provisions.length > 0 ? "ready" : "empty";
     } catch (e: any) {
       error = e?.message || "Failed to load provisioning data";

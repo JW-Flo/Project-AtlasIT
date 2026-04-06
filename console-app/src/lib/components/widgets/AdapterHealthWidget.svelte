@@ -31,20 +31,39 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch("/api/tenant/dashboard");
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const data = await res.json();
+      const [connectedRes, healthRes] = await Promise.all([
+        fetch("/api/integrations/connected"),
+        fetch("/api/integrations/health"),
+      ]);
 
-      // Build adapter list from connected apps info
-      const apps: any[] = data.connectedAppsList ?? data.adapters ?? [];
-      adapters = apps.map((a: any) => ({
-        appId: a.appId ?? a.id ?? "",
-        appName: a.appName ?? a.name ?? a.appId ?? "Unknown",
-        connected: a.connected !== false,
-        status: a.status ?? (a.connected !== false ? "healthy" : "down"),
-        lastSyncAt: a.lastSyncAt ?? a.lastSync ?? null,
-        errorCount: a.errorCount ?? 0,
-      }));
+      if (!connectedRes.ok) throw new Error(`Connected apps request failed (${connectedRes.status})`);
+
+      const connectedData = await connectedRes.json();
+      const connectedApps: any[] = Array.isArray(connectedData.apps) ? connectedData.apps : [];
+
+      // Build health lookup from adapter_collection_health
+      const healthMap = new Map<string, any>();
+      if (healthRes.ok) {
+        const healthData = await healthRes.json();
+        const healthList: any[] = Array.isArray(healthData.adapters) ? healthData.adapters : [];
+        for (const h of healthList) {
+          healthMap.set(h.slug, h);
+        }
+      }
+
+      adapters = connectedApps.map((app: any) => {
+        const appId = app.appId ?? app.id ?? "";
+        const health = healthMap.get(appId);
+        const hasError = health?.error != null;
+        return {
+          appId,
+          appName: app.appName ?? app.name ?? appId,
+          connected: true,
+          status: hasError ? "degraded" : "healthy",
+          lastSyncAt: health?.collectedAt ?? null,
+          errorCount: hasError ? 1 : 0,
+        } as AdapterHealth;
+      });
 
       state = adapters.length > 0 ? "ready" : "empty";
     } catch (e: any) {
