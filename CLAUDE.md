@@ -60,11 +60,14 @@ Do not accumulate unbounded work on a branch without checkpointing. This prevent
 
 ### Tool Priority for GitHub Operations
 
-1. **`GH_PAT` + GitHub API** (`curl -H "Authorization: token $GH_PAT"`) — Primary method for PRs, issues, merges, CI status. Export the PAT first: `export GH_PAT=$(op read "op://AWW_SHARED/GH_PAT/credential")` or use the value from 1Password item "GH_PAT" / "GitHub PAT - Atlas IT".
-2. **`gh` CLI** — Use when available and authenticated. Supports workflow runs (`gh run list`, `gh run view`), CI status checks, repo settings, release management.
-3. **MCP GitHub tools** (`mcp__github__*`) — Use when MCP server is connected. These may disconnect mid-session; fall back to `GH_PAT` + API immediately when unavailable.
+1. **MCP GitHub tools** (`mcp__github__*`) — Use for PRs, issues, file operations, comments, merges
+2. **`gh` CLI** — Use for anything MCP tools don't cover: workflow runs (`gh run list`, `gh run view`), CI status checks, repo settings, release management
+3. **`curl` + GitHub API** — Last resort only; requires `GH_PAT` from 1Password which is not exported to shell
 
-When `gh` CLI is not installed or MCP tools disconnect, use `curl` + `$GH_PAT` + GitHub REST API directly — do not skip the step or ask the user.
+When MCP tools are insufficient (e.g., checking GitHub Actions workflow status), fall back to `gh` CLI immediately — do not skip the step or ask the user.
+
+Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
+Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
 
 Full PR workflow:
 

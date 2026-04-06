@@ -23,27 +23,15 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch("/api/jml/runs?limit=200");
+      const res = await fetch("/api/workflows/jml-metrics");
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
-      const runs: Array<{ type: string; status: string; startedAt: string }> = data.runs ?? [];
-
-      // Filter to last 30 days
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      const recent = runs.filter((r) => new Date(r.startedAt).getTime() >= cutoff);
-
-      const joiners = recent.filter((r) => r.type === "joiner");
-      const movers = recent.filter((r) => r.type === "mover");
-      const leavers = recent.filter((r) => r.type === "leaver");
-      const pending = recent.filter((r) => r.status === "pending" || r.status === "running" || r.status === "in_progress");
-      const completed = recent.filter((r) => r.status === "completed" || r.status === "success");
-
       metrics = {
-        joiners30d: joiners.length,
-        movers30d: movers.length,
-        leavers30d: leavers.length,
-        pendingActions: pending.length,
-        automatedRate: recent.length > 0 ? Math.round((completed.length / recent.length) * 100) : 0,
+        joiners30d: data.joiners30d ?? 0,
+        movers30d: data.movers30d ?? 0,
+        leavers30d: data.leavers30d ?? 0,
+        pendingActions: data.pendingActions ?? 0,
+        automatedRate: data.automatedRate ?? 0,
       };
       state = "ready";
     } catch (e: any) {
