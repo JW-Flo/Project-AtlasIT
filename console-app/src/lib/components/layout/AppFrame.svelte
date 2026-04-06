@@ -5,6 +5,7 @@
   import { page } from "$app/stores";
   import { init as initUx } from "../../instrumentation/ux-metrics";
   import ToastContainer from "../feedback/ToastContainer.svelte";
+  import CopilotPanel from "../copilot/CopilotPanel.svelte";
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
@@ -38,6 +39,7 @@
     Search,
     Lightbulb,
     BarChart3,
+    Sparkles,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -275,6 +277,7 @@
   let profileOpen = false;
   let mobileMenuOpen = false;
   let sidebarCollapsed = false;
+  let copilotOpen = false;
 
   // Persist sidebar state in localStorage
   if (typeof window !== "undefined") {
@@ -304,6 +307,13 @@
     }
   }
 
+  function handleCopilotShortcut(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      copilotOpen = !copilotOpen;
+    }
+  }
+
   $: initials = userDisplayName
     ? userDisplayName.split(/[\s@]/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join("")
     : "?";
@@ -319,7 +329,7 @@
   }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window on:click={handleClickOutside} on:keydown={handleCopilotShortcut} />
 
 <div class="flex min-h-dvh bg-background text-foreground">
   <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-primary focus:text-primary-foreground focus:px-3 focus:py-1.5 focus:rounded-md focus:text-sm">
@@ -569,6 +579,16 @@
           </a>
         {/if}
 
+        <!-- Copilot toggle -->
+        <button
+          class="inline-flex items-center justify-center h-9 w-9 rounded-md transition-colors {copilotOpen ? 'bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground hover:text-foreground'}"
+          on:click={() => copilotOpen = !copilotOpen}
+          title="Compliance Copilot (Cmd+K)"
+          aria-label="Toggle compliance copilot"
+        >
+          <Sparkles class="h-[18px] w-[18px]" />
+        </button>
+
         <!-- Theme toggle -->
         <button
           class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
@@ -653,6 +673,9 @@
       </footer>
     </main>
   </div>
+
+  <!-- Copilot Panel -->
+  <CopilotPanel bind:open={copilotOpen} onClose={() => copilotOpen = false} />
 </div>
 
 <style>
