@@ -5,12 +5,14 @@ export interface AIMessage {
   content: string;
 }
 export interface AIOptions {
-  provider?: "cloudflare" | "together" | "openai" | "groq";
+  provider?: "cloudflare" | "together" | "openai" | "groq" | "bedrock";
   model?: string;
   maxTokens?: number;
   temperature?: number;
   deterministic?: boolean; // force deterministic hashing of output (used in tests)
-  fallbackProviders?: ("cloudflare" | "together" | "openai" | "groq")[]; // explicit fallback order override
+  fallbackProviders?: ("cloudflare" | "together" | "openai" | "groq" | "bedrock")[]; // explicit fallback order override
+  /** Enable streaming (provider must support it) */
+  stream?: boolean;
 }
 
 export interface AIProvider {
@@ -117,6 +119,179 @@ export class GroqAIProvider implements AIProvider {
   }
 }
 
+/**
+ * AWS Bedrock AI Provider — uses the Bedrock Runtime Converse API.
+ * Recommended models for AtlasIT:
+ *   - anthropic.claude-3-5-sonnet-20241022-v2:0 (primary — compliance reasoning)
+ *   - anthropic.claude-3-haiku-20240307-v1:0 (fast — daily digests, classification)
+ *   - amazon.nova-lite-v1:0 (cost-optimized — simple tasks)
+ */
+export class BedrockAIProvider implements AIProvider {
+  constructor(
+    private readonly region: string,
+    private readonly accessKeyId: string,
+    private readonly secretAccessKey: string,
+    private readonly logger = new Logger({ service: "ai-bedrock" }),
+  ) {}
+
+  async generate(messages: AIMessage[], opts: AIOptions = {}): Promise<string> {
+    const model = opts.model || "anthropic.claude-3-5-sonnet-20241022-v2:0";
+    this.logger.debug("Calling Bedrock", { model, messageCount: messages.length });
+
+    // Separate system message from conversation messages
+    const systemMessages = messages.filter((m) => m.role === "system");
+    const conversationMessages = messages.filter((m) => m.role !== "system");
+
+    const body: Record<string, unknown> = {
+      modelId: model,
+      messages: conversationMessages.map((m) => ({
+        role: m.role,
+        content: [{ text: m.content }],
+      })),
+      inferenceConfig: {
+        maxTokens: opts.maxTokens || 1024,
+        temperature: opts.temperature ?? 0.7,
+      },
+    };
+
+    if (systemMessages.length > 0) {
+      body.system = systemMessages.map((m) => ({ text: m.content }));
+    }
+
+    // Sign and call Bedrock Converse API using AWS Signature V4
+    const endpoint = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(model)}/converse`;
+    const payload = JSON.stringify(body);
+    const now = new Date();
+    const dateStamp = now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 8);
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+
+    const headers = await this.signRequest(
+      "POST",
+      endpoint,
+      payload,
+      dateStamp,
+      amzDate,
+    );
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: payload,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`Bedrock API error ${response.status}: ${text.slice(0, 200)}`);
+    }
+
+    const data = (await response.json()) as {
+      output?: { message?: { content?: Array<{ text?: string }> } };
+    };
+
+    const content = data.output?.message?.content?.[0]?.text;
+    if (!content) {
+      throw new Error("Bedrock returned empty response");
+    }
+    return content;
+  }
+
+  private async signRequest(
+    method: string,
+    url: string,
+    payload: string,
+    dateStamp: string,
+    amzDate: string,
+  ): Promise<Record<string, string>> {
+    const parsedUrl = new URL(url);
+    const host = parsedUrl.host;
+    const path = parsedUrl.pathname;
+    const service = "bedrock";
+
+    // Create canonical request
+    const payloadHash = await this.sha256Hex(payload);
+    const canonicalHeaders = `content-type:application/json\nhost:${host}\nx-amz-date:${amzDate}\n`;
+    const signedHeaders = "content-type;host;x-amz-date";
+    const canonicalRequest = [
+      method,
+      path,
+      "", // query string
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join("\n");
+
+    // Create string to sign
+    const credentialScope = `${dateStamp}/${this.region}/${service}/aws4_request`;
+    const stringToSign = [
+      "AWS4-HMAC-SHA256",
+      amzDate,
+      credentialScope,
+      await this.sha256Hex(canonicalRequest),
+    ].join("\n");
+
+    // Calculate signature
+    const signingKey = await this.getSignatureKey(dateStamp, this.region, service);
+    const signature = await this.hmacHex(signingKey, stringToSign);
+
+    const authorization = `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    return {
+      "x-amz-date": amzDate,
+      Authorization: authorization,
+    };
+  }
+
+  private async sha256Hex(message: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  private async hmac(
+    key: ArrayBuffer,
+    message: string,
+  ): Promise<ArrayBuffer> {
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      key,
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(message));
+  }
+
+  private async hmacHex(
+    key: ArrayBuffer,
+    message: string,
+  ): Promise<string> {
+    const sig = await this.hmac(key, message);
+    return Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  private async getSignatureKey(
+    dateStamp: string,
+    region: string,
+    service: string,
+  ): Promise<ArrayBuffer> {
+    const kDate = await this.hmac(
+      new TextEncoder().encode(`AWS4${this.secretAccessKey}`),
+      dateStamp,
+    );
+    const kRegion = await this.hmac(kDate, region);
+    const kService = await this.hmac(kRegion, service);
+    return this.hmac(kService, "aws4_request");
+  }
+}
+
 export function createAIProvider(
   env: Record<string, any>,
   providerName?: string,
@@ -129,6 +304,12 @@ export function createAIProvider(
       return new OpenAIAIProvider(env.OPENAI_API_KEY);
     case "groq":
       return new GroqAIProvider(env.GROQ_API_KEY);
+    case "bedrock":
+      return new BedrockAIProvider(
+        env.AWS_REGION || "us-east-1",
+        env.AWS_ACCESS_KEY_ID,
+        env.AWS_SECRET_ACCESS_KEY,
+      );
     default:
       return new CloudflareAIProvider(env.AI_GATEWAY_TOKEN);
   }

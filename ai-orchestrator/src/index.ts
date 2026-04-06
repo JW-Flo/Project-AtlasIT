@@ -1022,6 +1022,113 @@ const worker = {
       );
     }
 
+    // ── Duty 8: AI daily compliance digest ──────────────────────────────
+    //    Once per day (02:00 UTC cron), generate a single AI-powered digest
+    //    per tenant summarizing score changes, new insights, adapter health,
+    //    and prioritized recommendations. Stored in tenant_preferences for
+    //    the copilot and notification system to consume.
+    let digestsGenerated = 0;
+    if (isDaily && (env.AWS_ACCESS_KEY_ID || env.GROQ_API_KEY)) {
+      const { results: digestTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 100")
+        .all<{ id: string; name: string }>();
+
+      const { buildCopilotContext, formatContextForPrompt } = await import("@atlasit/shared");
+
+      const digestSettled = await Promise.allSettled(
+        (digestTenants ?? []).map(async (row) => {
+          try {
+            const ctx = await buildCopilotContext(sharedDb, row.id);
+            const contextBlock = formatContextForPrompt(ctx);
+
+            // Build a concise digest prompt — single AI call per tenant per day
+            const digestPrompt = `You are the AtlasIT Compliance Copilot generating a daily digest for "${ctx.tenantName}".
+
+Based on this tenant's current state, generate a JSON daily digest with:
+1. A 2-3 sentence executive summary of their compliance posture
+2. Up to 5 highlights (score changes, new evidence, drift alerts, gaps, adapter issues)
+3. Up to 3 prioritized recommendations
+
+Tenant data:
+${contextBlock}
+
+Output format (JSON only, no markdown fences):
+{
+  "summary": "...",
+  "highlights": [{"category": "score_change|new_evidence|drift|gap|incident|adapter", "title": "...", "detail": "...", "severity": "info|warning|critical"}],
+  "recommendations": ["...", "..."]
+}`;
+
+            const { generateAI } = await import("@atlasit/shared");
+            const response = await generateAI(
+              [
+                { role: "system", content: digestPrompt },
+                { role: "user", content: "Generate today's compliance digest." },
+              ],
+              env as Record<string, any>,
+              {
+                provider: (env.AI_PROVIDER as any) || "bedrock",
+                model: env.DIGEST_MODEL || "anthropic.claude-3-haiku-20240307-v1:0",
+                temperature: 0.3,
+                maxTokens: 1024,
+                fallbackProviders: ["groq"],
+              },
+            );
+
+            // Parse and store the digest
+            let cleanResponse = response
+              .replace(/<think>[\s\S]*?<\/think>/g, "")
+              .replace(/^```(?:json)?\n?/, "")
+              .replace(/\n?```$/, "")
+              .trim();
+
+            let digest;
+            try {
+              digest = JSON.parse(cleanResponse);
+            } catch {
+              digest = {
+                summary: cleanResponse.slice(0, 500),
+                highlights: [],
+                recommendations: [],
+              };
+            }
+
+            const digestPayload = JSON.stringify({
+              tenantId: row.id,
+              generatedAt: new Date().toISOString(),
+              ...digest,
+            });
+
+            await sharedDb
+              .prepare(
+                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+                 VALUES (?, 'copilot_daily_digest', ?, datetime('now'))
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+              )
+              .bind(row.id, digestPayload, digestPayload)
+              .run();
+
+            return 1;
+          } catch (err) {
+            console.error(
+              JSON.stringify({
+                ts: new Date().toISOString(),
+                level: "warn",
+                event: "duty8.digest_failed",
+                tenantId: row.id,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+            return 0;
+          }
+        }),
+      );
+
+      for (const r of digestSettled) {
+        if (r.status === "fulfilled") digestsGenerated += r.value;
+      }
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -1048,6 +1155,7 @@ const worker = {
         insightsWritten,
         slaBreach,
         autoResolved,
+        digestsGenerated,
         checks,
       }),
     );
