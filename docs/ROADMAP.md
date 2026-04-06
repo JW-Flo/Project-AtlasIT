@@ -631,6 +631,77 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **Evidence pipeline health** — New "Evidence Health" tab on Operations page shows per-adapter collection status, staleness detection (>24h), and item counts. Compliance page already had adapter health cards.
 - [x] **Alerting** — Visual alert banners on Operations page for: adapter failure rate >50%, evidence stale >24h, self-assessed score fallback, JML success rate <50%. API at `/api/operations/metrics`.
 
+## Phase 20 — Unified Dashboard (Consolidate Reports & Observability)
+
+> **Why now**: Five separate pages display overlapping data — the main Dashboard, Analytics, Operations,
+> Compliance overview, and Evidence Feed. Compliance scores appear in 3 places, evidence data in 4,
+> adapter health in 2, automation metrics in 2. Users must context-switch between pages to get a
+> complete picture. A single composable dashboard with saveable views eliminates redundancy, reduces
+> API calls, and gives each user the exact layout they need.
+
+### Current Redundancy Map
+
+| Data Type             | Pages Displaying It                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| Compliance scores     | Dashboard, Analytics, Compliance                                                                 |
+| Evidence items / feed | Dashboard (waterfall), Compliance (overview tab), Evidence Feed (full), Analytics (volume chart) |
+| Adapter health        | Compliance (adapter cards), Operations (evidence health tab)                                     |
+| Automation metrics    | Dashboard (recent runs), Analytics (rules executed, success rate)                                |
+| Workflow runs         | Operations (runs tab), Dashboard (recent activity)                                               |
+| Incidents / security  | Dashboard (open count), Analytics (security posture)                                             |
+| Access reviews        | Dashboard (active count), Analytics (completion rate)                                            |
+
+### P0 — Widget Component Library
+
+> Build the reusable widget system. Each widget is a self-contained Svelte component
+> that fetches its own data and renders in a standard card container.
+
+- [ ] **Widget container component** — `$lib/components/dashboard/Widget.svelte` with standardized header (title, subtitle, refresh, remove), loading/error states, and resize handles (sm/md/lg/full width)
+- [ ] **Widget registry** — `$lib/components/dashboard/widget-registry.ts` mapping widget IDs to components, default sizes, required API endpoints, and category tags (compliance, jml, evidence, automation, security, system)
+- [ ] **Extract 12 widgets from existing pages:**
+  - `compliance-scores` — Framework score cards with grades (from Dashboard + Analytics + Compliance)
+  - `compliance-trend` — Score history line chart (from Analytics + Compliance)
+  - `evidence-feed` — Recent evidence items with impact badges (from Dashboard + Evidence Feed)
+  - `evidence-volume` — Evidence count bar chart by week (from Analytics)
+  - `adapter-health` — Per-adapter collection status cards (from Compliance + Operations)
+  - `automation-metrics` — Rules executed, success rate, time saved (from Analytics)
+  - `automation-recent` — Recent automation execution list (from Dashboard)
+  - `jml-metrics` — Workflow success/failure rates, avg duration (from Operations)
+  - `jml-adapter-provisions` — Adapter provisioning table (from Operations)
+  - `workflow-runs` — Recent workflow run list (from Operations)
+  - `security-posture` — Open incidents, access reviews, critical count (from Analytics + Dashboard)
+  - `alerts-banner` — Active operational alerts (from Operations)
+- [ ] Files: `console-app/src/lib/components/dashboard/`
+
+### P1 — Unified Dashboard Page
+
+> Replace the current `/console` landing with a composable widget grid.
+
+- [ ] **Dashboard layout engine** — CSS grid layout that renders widgets from a config array. Responsive: 1 col mobile, 2 col tablet, 3-4 col desktop. Widgets reflow based on their size class.
+- [ ] **Default layouts** — Ship 3 preset layouts:
+  - "Executive" — compliance scores, trend chart, security posture, top risks
+  - "Operations" — JML metrics, adapter provisions, workflow runs, alerts, adapter health
+  - "Evidence" — evidence feed, evidence volume, adapter health, compliance trend
+- [ ] **Widget picker** — Modal to add/remove widgets from the current view. Categorized by tag, search-filterable.
+- [ ] Files: `console-app/src/routes/console/+page.svelte` (rewrite), `console-app/src/lib/components/dashboard/DashboardGrid.svelte`
+
+### P2 — Saveable Views & Personalization
+
+> Let users save custom layouts and switch between them.
+
+- [ ] **View persistence** — Save named dashboard views to `tenant_preferences` table as JSON (`{ name, widgets: [{ id, size, position }] }`). Per-user (keyed by user email) with optional tenant-level defaults.
+- [ ] **View switcher** — Dropdown in dashboard header to switch between saved views and presets. "Save as" and "Reset to default" actions.
+- [ ] **Unified data layer** — Single `$lib/stores/dashboard.ts` store that batches API calls. Widgets subscribe to the store rather than fetching independently. Reduces 8-10 parallel API calls to 2-3 aggregated endpoints.
+- [ ] **Retire redundant pages** — Merge Analytics page content into widgets; redirect `/console/analytics` to `/console?view=analytics`. Operations page becomes a preset view rather than a separate page. Keep Compliance page for control-level detail (not dashboard-level).
+- [ ] Files: `console-app/src/lib/stores/dashboard.ts`, `console-app/src/routes/api/dashboard/views/+server.ts`
+
+### P3 — Filtering, Time Ranges & Export
+
+- [ ] **Global time range** — Dashboard-level date picker (7d, 30d, 90d, custom) that propagates to all widgets via context.
+- [ ] **Cross-widget filtering** — Click a framework badge in compliance-scores to filter evidence-feed, compliance-trend, and adapter-health to that framework.
+- [ ] **Export** — Export current dashboard view as PDF (server-rendered) or CSV (tabular widgets only).
+- [ ] **Real-time updates** — SSE subscription for evidence-feed and alerts-banner widgets, auto-refresh on new data.
+
 ## Long-Term Platform Modules
 
 AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
