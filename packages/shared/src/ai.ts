@@ -121,10 +121,11 @@ export class GroqAIProvider implements AIProvider {
 
 /**
  * AWS Bedrock AI Provider — uses the Bedrock Runtime Converse API.
+ * Uses inference profiles (us.* prefix) for on-demand access.
  * Recommended models for AtlasIT:
- *   - anthropic.claude-3-5-sonnet-20241022-v2:0 (primary — compliance reasoning)
- *   - anthropic.claude-3-haiku-20240307-v1:0 (fast — daily digests, classification)
- *   - amazon.nova-lite-v1:0 (cost-optimized — simple tasks)
+ *   - us.anthropic.claude-sonnet-4-6 (primary — compliance copilot reasoning)
+ *   - us.anthropic.claude-haiku-4-5-20251001-v1:0 (fast — daily digests, classification)
+ *   - us.anthropic.claude-3-5-haiku-20241022-v1:0 (budget — simple tasks)
  */
 export class BedrockAIProvider implements AIProvider {
   constructor(
@@ -135,7 +136,7 @@ export class BedrockAIProvider implements AIProvider {
   ) {}
 
   async generate(messages: AIMessage[], opts: AIOptions = {}): Promise<string> {
-    const model = opts.model || "anthropic.claude-3-5-sonnet-20241022-v2:0";
+    const model = opts.model || "us.anthropic.claude-sonnet-4-6";
     this.logger.debug("Calling Bedrock", { model, messageCount: messages.length });
 
     // Separate system message from conversation messages
@@ -143,7 +144,6 @@ export class BedrockAIProvider implements AIProvider {
     const conversationMessages = messages.filter((m) => m.role !== "system");
 
     const body: Record<string, unknown> = {
-      modelId: model,
       messages: conversationMessages.map((m) => ({
         role: m.role,
         content: [{ text: m.content }],
@@ -159,6 +159,7 @@ export class BedrockAIProvider implements AIProvider {
     }
 
     // Sign and call Bedrock Converse API using AWS Signature V4
+    // Inference profile IDs (us.anthropic.*) go in the URL path
     const endpoint = `https://bedrock-runtime.${this.region}.amazonaws.com/model/${encodeURIComponent(model)}/converse`;
     const payload = JSON.stringify(body);
     const now = new Date();

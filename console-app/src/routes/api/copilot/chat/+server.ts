@@ -88,7 +88,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   try {
     aiResponse = await generateAI(aiMessages, env, {
       provider: (env.AI_PROVIDER as any) || "bedrock",
-      model: env.COPILOT_MODEL || "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      model: env.COPILOT_MODEL || "us.anthropic.claude-sonnet-4-6",
       temperature: 0.4,
       maxTokens: 2048,
       fallbackProviders: ["groq"],

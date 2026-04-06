@@ -1068,7 +1068,7 @@ Output format (JSON only, no markdown fences):
               env as Record<string, any>,
               {
                 provider: (env.AI_PROVIDER as any) || "bedrock",
-                model: env.DIGEST_MODEL || "anthropic.claude-3-haiku-20240307-v1:0",
+                model: env.DIGEST_MODEL || "us.anthropic.claude-haiku-4-5-20251001-v1:0",
                 temperature: 0.3,
                 maxTokens: 1024,
                 fallbackProviders: ["groq"],
