@@ -16,6 +16,8 @@ export interface DashboardViewsState {
   activeViewId: string;
 }
 
+const LS_KEY = "atlasit:dashboard-views";
+
 const DEFAULT_VIEW: DashboardView = {
   id: "executive",
   name: "Executive",
@@ -23,26 +25,52 @@ const DEFAULT_VIEW: DashboardView = {
   preset: "executive",
 };
 
-const INITIAL_STATE: DashboardViewsState = {
-  views: [
-    DEFAULT_VIEW,
-    {
-      id: "operations",
-      name: "Operations",
-      widgets: [...PRESET_LAYOUTS.operations.widgets],
-      preset: "operations",
-    },
-    {
-      id: "evidence",
-      name: "Evidence",
-      widgets: [...PRESET_LAYOUTS.evidence.widgets],
-      preset: "evidence",
-    },
-  ],
-  activeViewId: "executive",
-};
+const PRESET_VIEWS: DashboardView[] = [
+  DEFAULT_VIEW,
+  {
+    id: "operations",
+    name: "Operations",
+    widgets: [...PRESET_LAYOUTS.operations.widgets],
+    preset: "operations",
+  },
+  {
+    id: "evidence",
+    name: "Evidence",
+    widgets: [...PRESET_LAYOUTS.evidence.widgets],
+    preset: "evidence",
+  },
+];
 
-export const dashboardViews = writable<DashboardViewsState>(INITIAL_STATE);
+/** Restore from localStorage for instant view recovery on page refresh. */
+function loadFromLocalStorage(): DashboardViewsState {
+  const fallback: DashboardViewsState = {
+    views: PRESET_VIEWS,
+    activeViewId: "executive",
+  };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (parsed?.views && Array.isArray(parsed.views) && parsed.activeViewId) {
+      return parsed;
+    }
+  } catch {
+    // corrupt data — fall back
+  }
+  return fallback;
+}
+
+function saveToLocalStorage(state: DashboardViewsState): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  } catch {
+    // quota exceeded — non-critical
+  }
+}
+
+export const dashboardViews = writable<DashboardViewsState>(loadFromLocalStorage());
 export const dashboardViewsLoading = writable(false);
 
 let fetched = false;
@@ -53,25 +81,28 @@ export async function fetchDashboardViews(): Promise<void> {
   dashboardViewsLoading.set(true);
   try {
     const res = await fetch("/api/dashboard/views");
-    if (!res.ok) return; // Fall back to defaults
+    if (!res.ok) return; // Fall back to local/defaults
     const data = await res.json();
     if (data.views && Array.isArray(data.views) && data.views.length > 0) {
-      dashboardViews.set({
+      const state: DashboardViewsState = {
         views: data.views,
         activeViewId: data.activeViewId || data.views[0].id,
-      });
+      };
+      dashboardViews.set(state);
+      saveToLocalStorage(state);
     }
     fetched = true;
   } catch {
-    // Use defaults on error
+    // Use local/defaults on error
   } finally {
     dashboardViewsLoading.set(false);
   }
 }
 
-/** Save current views state to server. */
+/** Save current views state to server + localStorage. */
 export async function saveDashboardViews(): Promise<boolean> {
   const state = get(dashboardViews);
+  saveToLocalStorage(state);
   try {
     const res = await fetch("/api/dashboard/views", {
       method: "PUT",
@@ -92,7 +123,11 @@ export function getActiveView(): DashboardView {
 
 /** Switch to a view by ID. */
 export function setActiveView(id: string): void {
-  dashboardViews.update((s) => ({ ...s, activeViewId: id }));
+  dashboardViews.update((s) => {
+    const next = { ...s, activeViewId: id };
+    saveToLocalStorage(next);
+    return next;
+  });
 }
 
 /** Create or update a custom view. */
@@ -105,7 +140,9 @@ export function upsertView(view: DashboardView): void {
     } else {
       views.push(view);
     }
-    return { ...s, views };
+    const next = { ...s, views };
+    saveToLocalStorage(next);
+    return next;
   });
 }
 
@@ -115,6 +152,8 @@ export function deleteView(id: string): void {
     if (s.views.length <= 1) return s;
     const views = s.views.filter((v) => v.id !== id);
     const activeViewId = s.activeViewId === id ? views[0].id : s.activeViewId;
-    return { views, activeViewId };
+    const next = { views, activeViewId };
+    saveToLocalStorage(next);
+    return next;
   });
 }

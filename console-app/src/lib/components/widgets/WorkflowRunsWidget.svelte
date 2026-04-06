@@ -35,7 +35,7 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch(`/api/jml/runs?limit=${limit}`);
+      const res = await fetch(`/api/workflows/runs?limit=${limit}`);
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
       runs = Array.isArray(data.runs) ? data.runs : [];

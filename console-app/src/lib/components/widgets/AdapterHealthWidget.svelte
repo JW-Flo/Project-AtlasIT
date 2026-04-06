@@ -31,36 +31,20 @@
     state = "loading";
     error = null;
     try {
-      // Fetch connected apps and adapter health in parallel
-      const [connRes, healthRes] = await Promise.all([
-        fetch("/api/integrations/connected"),
-        fetch("/api/integrations/health"),
-      ]);
+      const res = await fetch("/api/tenant/dashboard");
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
 
-      const connData = connRes.ok ? await connRes.json() : { apps: [] };
-      const healthData = healthRes.ok ? await healthRes.json() : { adapters: [] };
-
-      // Build a health lookup by slug
-      const healthMap = new Map<string, any>();
-      for (const h of healthData.adapters ?? []) {
-        healthMap.set(h.slug, h);
-      }
-
-      // Map connected apps to adapter health entries
-      const connApps: Array<{ appId: string }> = connData.apps ?? [];
-      adapters = connApps.map((app) => {
-        const slug = app.appId;
-        const health = healthMap.get(slug);
-        const hasError = !!health?.error;
-        return {
-          appId: slug,
-          appName: slug,
-          connected: true,
-          status: (hasError ? "degraded" : health ? "healthy" : "unknown") as AdapterHealth["status"],
-          lastSyncAt: health?.collectedAt ?? null,
-          errorCount: hasError ? 1 : 0,
-        };
-      });
+      // Build adapter list from connected apps info
+      const apps: any[] = data.connectedAppsList ?? data.adapters ?? [];
+      adapters = apps.map((a: any) => ({
+        appId: a.appId ?? a.id ?? "",
+        appName: a.appName ?? a.name ?? a.appId ?? "Unknown",
+        connected: a.connected !== false,
+        status: a.status ?? (a.connected !== false ? "healthy" : "down"),
+        lastSyncAt: a.lastSyncAt ?? a.lastSync ?? null,
+        errorCount: a.errorCount ?? 0,
+      }));
 
       state = adapters.length > 0 ? "ready" : "empty";
     } catch (e: any) {

@@ -16,34 +16,10 @@
     state = "loading";
     error = null;
     try {
-      const res = await fetch("/api/jml/runs?limit=200");
+      const res = await fetch("/api/workflows/adapter-provisions");
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const data = await res.json();
-      const runs: Array<{ type: string; status: string; appId?: string; appName?: string; startedAt: string }> = data.runs ?? [];
-
-      // Aggregate provisioning counts per app from JML runs
-      const appMap = new Map<string, { appName: string; provisioned: number; deprovisioned: number; pending: number; lastActionAt: string | null }>();
-      for (const run of runs) {
-        const appId = run.appId || "unknown";
-        const appName = run.appName || appId;
-        if (!appMap.has(appId)) {
-          appMap.set(appId, { appName, provisioned: 0, deprovisioned: 0, pending: 0, lastActionAt: null });
-        }
-        const entry = appMap.get(appId)!;
-        if (run.type === "joiner" && (run.status === "completed" || run.status === "success")) entry.provisioned++;
-        else if (run.type === "leaver" && (run.status === "completed" || run.status === "success")) entry.deprovisioned++;
-        else if (run.status === "pending" || run.status === "running" || run.status === "in_progress") entry.pending++;
-        if (!entry.lastActionAt || run.startedAt > entry.lastActionAt) entry.lastActionAt = run.startedAt;
-      }
-
-      provisions = [...appMap.entries()].map(([appId, v]) => ({
-        appId,
-        appName: v.appName,
-        provisionedCount: v.provisioned,
-        deprovisionedCount: v.deprovisioned,
-        pendingCount: v.pending,
-        lastActionAt: v.lastActionAt,
-      }));
+      provisions = Array.isArray(data.provisions) ? data.provisions : [];
       state = provisions.length > 0 ? "ready" : "empty";
     } catch (e: any) {
       error = e?.message || "Failed to load provisioning data";
