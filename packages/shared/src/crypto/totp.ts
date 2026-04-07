@@ -143,16 +143,11 @@ export async function verifyTotp(
 async function deriveKey(secret: string): Promise<CryptoKey> {
   const raw = new TextEncoder().encode(secret);
   const hash = await crypto.subtle.digest("SHA-256", raw);
-  return crypto.subtle.importKey("raw", hash, { name: "AES-GCM" }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+  return crypto.subtle.importKey("raw", hash, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 function toHex(buf: ArrayBuffer): string {
-  return [...new Uint8Array(buf)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function fromHex(hex: string): Uint8Array {
@@ -179,15 +174,16 @@ export async function encryptTotpSecret(
 }
 
 /** Decrypt a stored TOTP secret. */
-export async function decryptTotpSecret(
-  encrypted: string,
-  encryptionKey: string,
-): Promise<string> {
+export async function decryptTotpSecret(encrypted: string, encryptionKey: string): Promise<string> {
   const key = await deriveKey(encryptionKey);
   const [ivHex, ctHex] = encrypted.split(":");
   const iv = fromHex(ivHex);
   const ct = fromHex(ctHex);
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  const pt = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv.buffer as ArrayBuffer },
+    key,
+    ct.buffer as ArrayBuffer,
+  );
   return new TextDecoder().decode(pt);
 }
 
