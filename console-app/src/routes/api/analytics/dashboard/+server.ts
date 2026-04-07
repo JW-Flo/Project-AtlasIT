@@ -105,7 +105,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
         for (const [fw, fwControls] of byFw) {
           const total = fwControls.length;
           const weightSum = fwControls.reduce((s, c) => s + (STATUS_WEIGHTS[c.status] ?? 0), 0);
-          const score = total > 0 ? Math.round((weightSum / total) * 100 * 10) / 10 : 0;
+          const score = total > 0 ? Math.round((weightSum / total) * 100 * 100) / 100 : 0;
           const implemented = fwControls.filter(
             (c) => c.status === "implemented" || c.status === "verified",
           ).length;
@@ -136,8 +136,8 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const overallScore =
     frameworkBreakdown.length > 0
       ? Math.round(
-          (frameworkBreakdown.reduce((s, f) => s + f.score, 0) / frameworkBreakdown.length) * 10,
-        ) / 10
+          (frameworkBreakdown.reduce((s, f) => s + f.score, 0) / frameworkBreakdown.length) * 100,
+        ) / 100
       : 0;
 
   // ── 3. Compliance trend from compliance_history ──────────────────────────────

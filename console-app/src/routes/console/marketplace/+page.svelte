@@ -229,7 +229,7 @@
   <!-- Integration grid -->
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
     {#each filtered as integration}
-      <Card class="{integration.connected ? 'border-green-500/30' : ''}">
+      <Card class="{integration.connected ? 'border-green-500/30' : ''} cursor-pointer hover:shadow-md transition-shadow" on:click={() => { if (!integration.connected && integration.status !== 'planned') openWizard(integration); }}>
         <CardContent class="pt-5 flex flex-col h-full">
           <div class="flex items-start justify-between mb-3">
             <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10">

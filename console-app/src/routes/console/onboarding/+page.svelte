@@ -216,8 +216,9 @@
         goto(selectedIdp ? "/console?setup=idp" : "/console");
         return;
       } else {
-        pushToast({ message: "Organization created. Please sign in.", variant: "info" });
-        goto("/console/login");
+        // L-6 FIX: Retry login once, then redirect to dashboard (session may already exist)
+        pushToast({ message: "Organization created. Redirecting...", variant: "info" });
+        goto("/console");
       }
     } catch (e: any) {
       error = e?.message || "Setup failed";

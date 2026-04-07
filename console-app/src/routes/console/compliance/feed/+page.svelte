@@ -278,7 +278,7 @@
                 <div class="text-sm font-medium">{item.controlName}</div>
                 <div class="text-sm text-muted-foreground">{item.reasoning}</div>
                 <div class="text-xs text-muted-foreground">
-                  {item.eventType} • {item.category} • source: {item.source} • actor: {item.actor || "system"} • subject: {item.subject || "--"}
+                  {item.eventType} • {item.category} • source: {item.source} • actor: {item.actor || "system"} • subject: {typeof item.subject === "object" ? JSON.stringify(item.subject) : (item.subject || "--")}
                 </div>
               </div>
               <div class="text-right shrink-0">
