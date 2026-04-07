@@ -89,3 +89,88 @@ export interface DigestHighlight {
   detail: string;
   severity: "info" | "warning" | "critical";
 }
+
+// ── Weekly Digest ──────────────────────────────────────────────────────
+
+export interface WeeklyDigest {
+  tenantId: string;
+  generatedAt: string;
+  weekStart: string;
+  weekEnd: string;
+  executiveSummary: string;
+  scoreChanges: WeeklyScoreChange[];
+  evidenceSummary: WeeklyEvidenceSummary;
+  driftAlerts: DigestDriftAlert[];
+  upcomingDeadlines: UpcomingDeadline[];
+  recommendations: string[];
+}
+
+export interface WeeklyScoreChange {
+  framework: string;
+  previousScore: number;
+  currentScore: number;
+  delta: number;
+  grade: string;
+}
+
+export interface WeeklyEvidenceSummary {
+  newItems: number;
+  expiredItems: number;
+  totalItems: number;
+  topSources: Array<{ source: string; count: number }>;
+}
+
+export interface DigestDriftAlert {
+  controlId: string;
+  framework: string;
+  title: string;
+  detail: string;
+  severity: "info" | "warning" | "critical";
+  recommendedAction: string;
+}
+
+export interface UpcomingDeadline {
+  type: "remediation" | "policy_review" | "evidence_expiry" | "audit";
+  label: string;
+  dueDate: string;
+  daysRemaining: number;
+}
+
+// ── Smart Alerts ───────────────────────────────────────────────────────
+
+export type SmartAlertType =
+  | "evidence_collection_stopped"
+  | "score_regression_trend"
+  | "adapter_health_degraded"
+  | "remediation_overdue_escalation"
+  | "evidence_gap_detected"
+  | "compliance_drift";
+
+export interface SmartAlert {
+  id: string;
+  tenantId: string;
+  type: SmartAlertType;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+  impact: string;
+  recommendedAction: string;
+  affectedControls: string[];
+  detectedAt: string;
+  acknowledged: boolean;
+}
+
+// ── Notification Preferences ───────────────────────────────────────────
+
+export interface DigestPreferences {
+  weeklyDigestEnabled: boolean;
+  weeklyDigestDay: 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0=Sunday
+  smartAlertsEnabled: boolean;
+  channels: {
+    inApp: boolean;
+    slack: boolean;
+    email: boolean;
+  };
+  /** Minimum severity for smart alerts (info=all, warning=warn+critical, critical=critical only) */
+  smartAlertMinSeverity: "info" | "warning" | "critical";
+}

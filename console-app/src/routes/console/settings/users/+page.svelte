@@ -24,6 +24,7 @@
     { href: "/console/settings/trust", label: "Trust Center" },
     { href: "/console/settings/incidents", label: "Incidents" },
     { href: "/console/settings/security", label: "Security" },
+    { href: "/console/settings/notifications", label: "Notifications" },
   ];
   $: current = $page.url.pathname;
 

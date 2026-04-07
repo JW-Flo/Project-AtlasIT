@@ -6,6 +6,7 @@ const ALLOWED_KEYS = new Set([
   "notification_email_on_sync",
   "notification_email_on_compliance",
   "notification_in_app_alerts",
+  "digest_preferences",
 ]);
 
 export const GET: RequestHandler = async ({ locals, platform }) => {
@@ -71,9 +72,7 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
   for (const [key, value] of entries) {
     if (!ALLOWED_KEYS.has(key)) continue;
     await db
-      .prepare(
-        "INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)",
-      )
+      .prepare("INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)")
       .bind(user.userId, key, String(value))
       .run();
   }
