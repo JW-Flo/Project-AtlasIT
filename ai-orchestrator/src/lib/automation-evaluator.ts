@@ -47,6 +47,7 @@ export interface ActionContext {
   selfUrl?: string; // for send_notification (self-POST to event bus)
   adapterUrls?: Record<string, string>; // appId → adapter worker base URL
   sharedDb?: D1Database; // for create_incident, update_compliance_status
+  internalApiKey?: string; // for authenticated internal service calls
 }
 
 interface EvaluateResult {
@@ -62,14 +63,9 @@ interface EvaluateResult {
 /**
  * Load enabled automation rules for a tenant from D1.
  */
-async function loadTenantRules(
-  db: D1Database,
-  tenantId: string,
-): Promise<AutomationRule[]> {
+async function loadTenantRules(db: D1Database, tenantId: string): Promise<AutomationRule[]> {
   const { results } = await db
-    .prepare(
-      "SELECT * FROM automation_rules WHERE tenant_id = ? AND enabled = 1",
-    )
+    .prepare("SELECT * FROM automation_rules WHERE tenant_id = ? AND enabled = 1")
     .bind(tenantId)
     .all();
 
@@ -116,12 +112,8 @@ export async function evaluateAutomationRules(
   }
 
   // Enrich user profile once for this event if user context is present
-  const userEmail = (payload as Record<string, unknown>)?.email as
-    | string
-    | undefined;
-  const userId = (payload as Record<string, unknown>)?.userId as
-    | string
-    | undefined;
+  const userEmail = (payload as Record<string, unknown>)?.email as string | undefined;
+  const userId = (payload as Record<string, unknown>)?.userId as string | undefined;
   let userProfile: CanonicalUserProfile | null = null;
   if (actionContext?.sharedDb && (userEmail || userId)) {
     userProfile = await enrichUserProfile(actionContext.sharedDb, tenantId, {
@@ -239,9 +231,7 @@ export async function evaluateAutomationRules(
         .bind(
           tenantId,
           isFailed ? "automation.rule_failed" : "automation.rule_fired",
-          isFailed
-            ? `Rule '${rule.name}' failed`
-            : `Rule '${rule.name}' fired`,
+          isFailed ? `Rule '${rule.name}' failed` : `Rule '${rule.name}' fired`,
           isFailed
             ? `Rule execution failed after ${summary.actionsRun} action(s) — ${summary.actionsFailed} failed`
             : `Rule executed successfully: ${summary.actionsRun} action(s) completed`,
@@ -262,8 +252,7 @@ export async function evaluateAutomationRules(
     }
 
     // Update rule stats
-    const statusUpdate =
-      summary.status === "failed" ? ", error_count = error_count + 1" : "";
+    const statusUpdate = summary.status === "failed" ? ", error_count = error_count + 1" : "";
 
     await db
       .prepare(
@@ -380,9 +369,11 @@ async function executeAction(
     case "send_notification": {
       if (!ctx.selfUrl) return skip(action.type, "no SELF_URL configured");
       const { channel = "slack", template, notifyUser, notifyAdmin } = config;
+      const notifHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (ctx.internalApiKey) notifHeaders["x-api-key"] = ctx.internalApiKey;
       await fetch(`${ctx.selfUrl}/api/v1/events`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: notifHeaders,
         body: JSON.stringify({
           tenantId: event.tenantId,
           type: `notification.${template ?? "generic"}`,
@@ -412,11 +403,7 @@ async function executeAction(
     case "create_incident": {
       const db = ctx.sharedDb;
       if (!db) return skip(action.type, "no sharedDb binding");
-      const {
-        severity = "medium",
-        title = "Automation incident",
-        autoResolve = false,
-      } = config;
+      const { severity = "medium", title = "Automation incident", autoResolve = false } = config;
       const id = crypto.randomUUID().replace(/-/g, "");
       const description = profile
         ? `Triggered for ${profile.displayName} (${profile.email}) — ${profile.department ?? ""} ${profile.title ?? ""}`
@@ -443,11 +430,7 @@ async function executeAction(
     case "provision_app_access": {
       const { appId, role } = config as { appId?: string; role?: string };
       const adapterUrl = resolveAdapterUrl(appId, ctx);
-      if (!adapterUrl)
-        return skip(
-          action.type,
-          `no adapter URL for app "${appId ?? "unset"}"`,
-        );
+      if (!adapterUrl) return skip(action.type, `no adapter URL for app "${appId ?? "unset"}"`);
 
       // Okta uses SCIM 2.0
       if (appId === "okta") {
@@ -486,20 +469,13 @@ async function executeAction(
     case "revoke_app_access": {
       const { appId } = config as { appId?: string };
       const adapterUrl = resolveAdapterUrl(appId, ctx);
-      if (!adapterUrl)
-        return skip(
-          action.type,
-          `no adapter URL for app "${appId ?? "unset"}"`,
-        );
+      if (!adapterUrl) return skip(action.type, `no adapter URL for app "${appId ?? "unset"}"`);
 
       if (appId === "okta" && profile?.externalId) {
-        const res = await fetch(
-          `${adapterUrl}/scim/v2/Users/${profile.externalId}`,
-          {
-            method: "DELETE",
-            headers: { "X-Tenant-ID": event.tenantId },
-          },
-        );
+        const res = await fetch(`${adapterUrl}/scim/v2/Users/${profile.externalId}`, {
+          method: "DELETE",
+          headers: { "X-Tenant-ID": event.tenantId },
+        });
         return res.ok
           ? ok(action.type, "User deprovisioned via SCIM")
           : fail(action.type, `SCIM deprovision failed: HTTP ${res.status}`);
@@ -540,10 +516,7 @@ async function executeAction(
           }),
         ),
       );
-      return ok(
-        action.type,
-        `Directory sync dispatched to ${targets.length} adapter(s)`,
-      );
+      return ok(action.type, `Directory sync dispatched to ${targets.length} adapter(s)`);
     }
 
     // ── Role assignment ─────────────────────────────────────────────────────
@@ -648,15 +621,15 @@ async function emitComplianceEvidence(
 
   const timestamp = new Date().toISOString();
   const actor = profile?.email ?? "system";
-  const subject =
-    profile?.email ?? JSON.stringify(event.payload).slice(0, 100);
+  const subject = profile?.email ?? JSON.stringify(event.payload).slice(0, 100);
   const impact = result.status === "success" ? "positive" : "detrimental";
   const metadata = JSON.stringify({
     impact,
-    confidence: result.status === "success" ? 0.95 : 0.80,
-    reasoning: result.status === "success"
-      ? `${actionType} completed successfully — strengthens control`
-      : `${actionType} failed: ${result.message} — gap in control enforcement`,
+    confidence: result.status === "success" ? 0.95 : 0.8,
+    reasoning:
+      result.status === "success"
+        ? `${actionType} completed successfully — strengthens control`
+        : `${actionType} failed: ${result.message} — gap in control enforcement`,
     actionType,
     eventType: event.type,
     eventSource: event.source,
@@ -810,11 +783,7 @@ async function updateControlStatusFromEvidence(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function ok(
-  actionType: string,
-  message: string,
-  details?: Record<string, unknown>,
-): ActionResult {
+function ok(actionType: string, message: string, details?: Record<string, unknown>): ActionResult {
   return {
     actionType: actionType as ActionType,
     status: "success",
@@ -829,10 +798,7 @@ function fail(actionType: string, message: string): ActionResult {
 function skip(actionType: string, message: string): ActionResult {
   return { actionType: actionType as ActionType, status: "skipped", message };
 }
-function resolveAdapterUrl(
-  appId: string | undefined,
-  ctx: ActionContext,
-): string | undefined {
+function resolveAdapterUrl(appId: string | undefined, ctx: ActionContext): string | undefined {
   if (!appId) return undefined;
   // Explicit override wins (custom domains, per-env overrides)
   const override = (ctx.adapterUrls ?? {})[appId];
@@ -855,9 +821,7 @@ function buildScimUser(
       formatted: profile?.displayName ?? "",
     },
     displayName: profile?.displayName,
-    emails: [
-      { value: profile?.email ?? config.email, type: "work", primary: true },
-    ],
+    emails: [{ value: profile?.email ?? config.email, type: "work", primary: true }],
     active: true,
     title: profile?.title,
     department: profile?.department,

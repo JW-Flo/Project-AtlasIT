@@ -271,6 +271,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   const actionContext: ActionContext = {
     workflow: c.env.WORKFLOW,
     atlasWorkflow: c.env.ATLAS_WORKFLOW,
+    internalApiKey: c.env.INTERNAL_API_KEY,
     selfUrl: c.env.SELF_URL,
     adapterUrls,
     sharedDb,
@@ -349,6 +350,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       atlasWorkflow: c.env.ATLAS_WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
+      internalApiKey: c.env.INTERNAL_API_KEY,
       evidenceBucket: c.env.EVIDENCE ?? undefined,
     }).catch((err) => {
       console.error(
