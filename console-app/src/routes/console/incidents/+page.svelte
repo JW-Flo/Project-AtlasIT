@@ -93,11 +93,12 @@
   }
 
   function toggleExpanded(id: string) {
-    if (expandedRows.has(id)) {
-      expandedRows.delete(id);
+    const strId = String(id);
+    if (expandedRows.has(strId)) {
+      expandedRows.delete(strId);
     } else {
-      expandedRows.add(id);
-      loadTimeline(id);
+      expandedRows.add(strId);
+      loadTimeline(strId);
     }
     expandedRows = new Set(expandedRows);
   }
@@ -460,13 +461,13 @@
               </tr>
             </thead>
             <tbody>
-              {#each incidents as incident}
+              {#each incidents as incident (incident.id)}
                 <tr
                   class="border-t hover:bg-muted/50 cursor-pointer transition-colors"
-                  on:click={() => toggleExpanded(incident.id)}
+                  on:click={() => toggleExpanded(String(incident.id))}
                 >
                   <td class="px-4 py-3 text-muted-foreground">
-                    {#if expandedRows.has(incident.id)}
+                    {#if expandedRows.has(String(incident.id))}
                       <ChevronUp class="h-4 w-4" />
                     {:else}
                       <ChevronDown class="h-4 w-4" />
@@ -500,8 +501,8 @@
                   </td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(incident.createdAt).toLocaleString()}</td>
                 </tr>
-                {#if expandedRows.has(incident.id)}
-                  <tr class="border-t bg-muted/30">
+                {#if expandedRows.has(String(incident.id))}
+                  <tr class="border-t bg-muted/30" on:click|stopPropagation>
                     <td colspan="7" class="px-6 py-4">
                       <div class="space-y-4">
                         <!-- Incident details + actions -->
