@@ -758,9 +758,9 @@ These items from the Codex Review are not yet fully addressed and should be prio
 
 ### P1 — Actionable Intelligence
 
-- [ ] **"What should I do next?" flow** — Prioritized action list based on: lowest-scoring controls, stale evidence (>30d), missing policies, overdue remediations, disconnected adapters. Clickable actions that navigate to the relevant page.
-- [ ] **Audit prep mode** — "Prepare me for my SOC 2 audit" generates a checklist: missing evidence, unsigned policies, incomplete controls, stale access reviews. Progress bar tracks completion.
-- [ ] **Natural language rules** — Ask the copilot to create automation rules in plain English (extends Phase 13 NL builder with conversational context).
+- [x] **"What should I do next?" flow** — Prioritized action list based on: lowest-scoring controls, stale evidence (>30d), missing policies, overdue remediations, disconnected adapters. Clickable actions that navigate to the relevant page.
+- [x] **Audit prep mode** — "Prepare me for my SOC 2 audit" generates a checklist: missing evidence, unsigned policies, incomplete controls, stale access reviews. Progress bar tracks completion.
+- [x] **Natural language rules** — Ask the copilot to create automation rules in plain English (extends Phase 13 NL builder with conversational context).
 
 ### P2 — Proactive Notifications
 
@@ -882,16 +882,17 @@ Competitors must stitch together:
 
 ## Cross-Cutting Concerns
 
-| Concern             | Strategy                                                                  |
-| ------------------- | ------------------------------------------------------------------------- |
-| Schema Evolution    | Versioned D1 migrations + idempotent backfills                            |
-| Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
-| Config              | Environment gating via wrangler.toml [env.*] sections                     |
-| Performance         | Precompute aggregates into KV; Queues for heavy ops                       |
-| Testing             | Vitest + Miniflare; 928 tests (103 files), k6 SLO smoke + load baseline   |
-| Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
-| IaC                 | Terraform + OPA policies + daily drift detection                          |
-| Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |
+| Concern             | Strategy                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schema Evolution    | Versioned D1 migrations + idempotent backfills                                                                                                                                                                                        |
+| Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                                                                                                                                                                                   |
+| Config              | Environment gating via wrangler.toml [env.*] sections                                                                                                                                                                                 |
+| Performance         | Precompute aggregates into KV; Queues for heavy ops                                                                                                                                                                                   |
+| Testing             | Vitest + Miniflare; 928 tests (103 files), k6 SLO smoke + load baseline                                                                                                                                                               |
+| Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics                                                                                                                                                             |
+| IaC                 | Terraform + OPA policies + daily drift detection                                                                                                                                                                                      |
+| Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization                                                                                                                                                                  |
+| **Dep Freshness**   | **Stay ≤2 minor versions behind latest on all packages. Monthly `pnpm audit` + `pnpm outdated` sweep. Critical/high CVEs patched within 24h. Override policy: pin `>=patched <next-major` in both npm overrides and pnpm overrides.** |
 
 ## Auto-Update: 2026-03-29
 
