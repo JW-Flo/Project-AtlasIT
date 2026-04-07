@@ -1129,6 +1129,235 @@ Output format (JSON only, no markdown fences):
       }
     }
 
+    // ── Duty 9: Weekly compliance digest ───────────────────────────────
+    //    Runs on Sunday 08:00 UTC cron. AI-generated weekly summary with
+    //    score trends, evidence pipeline stats, drift alerts, and upcoming
+    //    deadlines. Stored in tenant_preferences; delivered via Slack if configured.
+    let weeklyDigestsGenerated = 0;
+    const isWeekly = event.cron === "0 8 * * 0";
+    if (isWeekly && (env.AWS_ACCESS_KEY_ID || env.GROQ_API_KEY)) {
+      const { results: weeklyTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 100")
+        .all<{ id: string; name: string }>();
+
+      const {
+        buildCopilotContext,
+        buildWeeklyDigestContext,
+        formatWeeklyDigestPrompt,
+        assembleWeeklyDigest,
+      } = await import("@atlasit/shared");
+
+      const weeklySettled = await Promise.allSettled(
+        (weeklyTenants ?? []).map(async (row) => {
+          try {
+            const ctx = await buildCopilotContext(sharedDb, row.id);
+            const weeklyCtx = await buildWeeklyDigestContext(sharedDb, row.id, ctx);
+            const messages = formatWeeklyDigestPrompt(weeklyCtx);
+
+            const { generateAI } = await import("@atlasit/shared");
+            const response = await generateAI(messages, env as Record<string, any>, {
+              provider: (env.AI_PROVIDER as any) || "bedrock",
+              model: env.DIGEST_MODEL || "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+              temperature: 0.3,
+              maxTokens: 1024,
+              fallbackProviders: ["groq"],
+            });
+
+            let cleanResponse = response
+              .replace(/<think>[\s\S]*?<\/think>/g, "")
+              .replace(/^```(?:json)?\n?/, "")
+              .replace(/\n?```$/, "")
+              .trim();
+
+            let aiResult;
+            try {
+              aiResult = JSON.parse(cleanResponse);
+            } catch {
+              aiResult = {
+                executiveSummary: cleanResponse.slice(0, 500),
+                recommendations: [],
+              };
+            }
+
+            const digest = assembleWeeklyDigest(weeklyCtx, aiResult);
+            const digestPayload = JSON.stringify(digest);
+
+            await sharedDb
+              .prepare(
+                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+                 VALUES (?, 'copilot_weekly_digest', ?, datetime('now'))
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+              )
+              .bind(row.id, digestPayload, digestPayload)
+              .run();
+
+            // Deliver via Slack if tenant has a webhook configured
+            try {
+              const slackRow = await sharedDb
+                .prepare(
+                  "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'slack_webhook_url'",
+                )
+                .bind(row.id)
+                .first<{ value: string }>();
+
+              if (slackRow?.value) {
+                const slackDigest = formatWeeklyDigestForSlack(digest);
+                await fetch(slackRow.value, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(slackDigest),
+                });
+              }
+            } catch (slackErr) {
+              console.error(
+                JSON.stringify({
+                  ts: new Date().toISOString(),
+                  level: "warn",
+                  event: "duty9.slack_delivery_failed",
+                  tenantId: row.id,
+                  error: slackErr instanceof Error ? slackErr.message : String(slackErr),
+                }),
+              );
+            }
+
+            // Create in-app notification for the digest
+            await sharedDb
+              .prepare(
+                `INSERT INTO notifications (id, tenant_id, type, channel, title, body, severity, source_type, action_url, created_at)
+                 VALUES (?, ?, 'compliance_score_changed', 'in_app', ?, ?, 'info', 'compliance', '/console/compliance', datetime('now'))`,
+              )
+              .bind(
+                crypto.randomUUID(),
+                row.id,
+                "Weekly Compliance Digest Available",
+                digest.executiveSummary.slice(0, 500),
+              )
+              .run();
+
+            return 1;
+          } catch (err) {
+            console.error(
+              JSON.stringify({
+                ts: new Date().toISOString(),
+                level: "warn",
+                event: "duty9.weekly_digest_failed",
+                tenantId: row.id,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+            return 0;
+          }
+        }),
+      );
+
+      for (const r of weeklySettled) {
+        if (r.status === "fulfilled") weeklyDigestsGenerated += r.value;
+      }
+    }
+
+    // ── Duty 10: Smart alerts evaluation ───────────────────────────────
+    //    Runs every 6 hours (0 */6 * * *). Detects predictive alerts:
+    //    evidence collection gaps, score regression trends, adapter health
+    //    degradation, overdue remediation escalation, etc.
+    let smartAlertsCreated = 0;
+    const isSixHourly = event.cron === "0 */6 * * *";
+    if (isSixHourly) {
+      const { results: alertTenants } = await sharedDb
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .all<{ id: string }>();
+
+      const { buildCopilotContext, detectSmartAlerts } = await import("@atlasit/shared");
+
+      const alertSettled = await Promise.allSettled(
+        (alertTenants ?? []).map(async (row) => {
+          try {
+            const ctx = await buildCopilotContext(sharedDb, row.id);
+            const alerts = await detectSmartAlerts(sharedDb, row.id, ctx);
+
+            if (alerts.length === 0) return 0;
+
+            // Store alerts in tenant_preferences
+            const alertsPayload = JSON.stringify({
+              tenantId: row.id,
+              evaluatedAt: new Date().toISOString(),
+              alerts,
+            });
+
+            await sharedDb
+              .prepare(
+                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+                 VALUES (?, 'smart_alerts', ?, datetime('now'))
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+              )
+              .bind(row.id, alertsPayload, alertsPayload)
+              .run();
+
+            // Create in-app notifications for critical/warning alerts
+            for (const alert of alerts.filter((a) => a.severity !== "info")) {
+              await sharedDb
+                .prepare(
+                  `INSERT INTO notifications (id, tenant_id, type, channel, title, body, severity, source_type, action_url, metadata, created_at)
+                   VALUES (?, ?, 'compliance_score_changed', 'in_app', ?, ?, ?, 'compliance', '/console/compliance', ?, datetime('now'))`,
+                )
+                .bind(
+                  alert.id,
+                  row.id,
+                  alert.title,
+                  `${alert.detail} ${alert.impact}`,
+                  alert.severity === "critical" ? "critical" : "warning",
+                  JSON.stringify({
+                    alertType: alert.type,
+                    recommendedAction: alert.recommendedAction,
+                  }),
+                )
+                .run()
+                .catch(() => {}); // Ignore duplicate ID conflicts
+            }
+
+            // Deliver critical alerts via Slack
+            const criticalAlerts = alerts.filter((a) => a.severity === "critical");
+            if (criticalAlerts.length > 0) {
+              try {
+                const slackRow = await sharedDb
+                  .prepare(
+                    "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'slack_webhook_url'",
+                  )
+                  .bind(row.id)
+                  .first<{ value: string }>();
+
+                if (slackRow?.value) {
+                  for (const alert of criticalAlerts) {
+                    await fetch(slackRow.value, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(formatSmartAlertForSlack(alert)),
+                    });
+                  }
+                }
+              } catch {}
+            }
+
+            return alerts.length;
+          } catch (err) {
+            console.error(
+              JSON.stringify({
+                ts: new Date().toISOString(),
+                level: "warn",
+                event: "duty10.smart_alerts_failed",
+                tenantId: row.id,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+            return 0;
+          }
+        }),
+      );
+
+      for (const r of alertSettled) {
+        if (r.status === "fulfilled") smartAlertsCreated += r.value;
+      }
+    }
+
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;
 
     console.log(
@@ -1138,6 +1367,8 @@ Output format (JSON only, no markdown fences):
         event: "cron.complete",
         cron: event.cron,
         isDaily,
+        isWeekly,
+        isSixHourly,
         tenantsEvaluated: results?.length ?? 0,
         automationFailures,
         evidenceCollected,
@@ -1156,6 +1387,8 @@ Output format (JSON only, no markdown fences):
         slaBreach,
         autoResolved,
         digestsGenerated,
+        weeklyDigestsGenerated,
+        smartAlertsCreated,
         checks,
       }),
     );
@@ -1218,5 +1451,105 @@ Output format (JSON only, no markdown fences):
     }
   },
 };
+
+// ── Slack formatting helpers for digests and alerts ─────────────────────
+
+function formatWeeklyDigestForSlack(digest: {
+  executiveSummary: string;
+  scoreChanges: Array<{ framework: string; currentScore: number; delta: number }>;
+  driftAlerts: Array<{ title: string; severity: string }>;
+  recommendations: string[];
+}): { text: string; blocks: Array<Record<string, unknown>> } {
+  const scoreLines = digest.scoreChanges
+    .map((s) => `• *${s.framework}*: ${s.currentScore}% (${s.delta >= 0 ? "+" : ""}${s.delta})`)
+    .join("\n");
+
+  const driftLines =
+    digest.driftAlerts.length > 0
+      ? digest.driftAlerts
+          .map((d) => `• ${d.severity === "critical" ? "🔴" : "🟡"} ${d.title}`)
+          .join("\n")
+      : "None this week ✅";
+
+  const recsLines = digest.recommendations
+    .slice(0, 3)
+    .map((r, i) => `${i + 1}. ${r}`)
+    .join("\n");
+
+  return {
+    text: `Weekly Compliance Digest: ${digest.executiveSummary.slice(0, 150)}`,
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: "📊 Weekly Compliance Digest", emoji: true },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: digest.executiveSummary },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*Score Changes*\n${scoreLines || "No changes"}` },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*Drift Alerts*\n${driftLines}` },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*Recommendations*\n${recsLines || "No recommendations"}` },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `Generated by AtlasIT Copilot • <https://console.atlasit.pro/console/compliance|View Dashboard>`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function formatSmartAlertForSlack(alert: {
+  type: string;
+  severity: string;
+  title: string;
+  detail: string;
+  impact: string;
+  recommendedAction: string;
+}): { text: string; blocks: Array<Record<string, unknown>> } {
+  const emoji = alert.severity === "critical" ? "🚨" : alert.severity === "warning" ? "⚠️" : "ℹ️";
+  return {
+    text: `${emoji} Smart Alert: ${alert.title}`,
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: `${emoji} Smart Alert`, emoji: true },
+      },
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: `*${alert.title}*\n${alert.detail}` },
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*Impact:*\n${alert.impact}` },
+          { type: "mrkdwn", text: `*Action:*\n${alert.recommendedAction}` },
+        ],
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: `Alert type: ${alert.type} • Severity: ${alert.severity} • <https://console.atlasit.pro/console/compliance|Take Action>`,
+          },
+        ],
+      },
+    ],
+  };
+}
 
 export default worker;

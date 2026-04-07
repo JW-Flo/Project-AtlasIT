@@ -21,6 +21,8 @@
     Play, Link2, Upload, Search, Settings, TrendingUp, TrendingDown, Minus,
     ChevronRight,
   } from "lucide-svelte";
+  import WeeklyDigestCard from "$lib/components/notifications/WeeklyDigestCard.svelte";
+  import SmartAlertsPanel from "$lib/components/notifications/SmartAlertsPanel.svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
 
@@ -906,6 +908,12 @@
       </p>
     </Alert>
   {/if}
+
+  <!-- Smart Alerts + Weekly Digest -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <SmartAlertsPanel />
+    <WeeklyDigestCard />
+  </div>
 
   <!-- Tabs -->
   <div class="flex gap-1 mb-6 border-b">
