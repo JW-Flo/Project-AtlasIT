@@ -80,6 +80,8 @@ export interface JmlContext {
   atlasWorkflow?: Workflow;
   adapterUrls: Record<string, string>;
   selfUrl?: string;
+  /** API key for internal service-to-service calls */
+  internalApiKey?: string;
   /** Optional R2 bucket for tamper-evident evidence storage */
   evidenceBucket?: R2Bucket;
 }
@@ -411,10 +413,12 @@ async function executeJmlWorkflow(
 
   // Send notifications if configured
   if (policy.notifyManager && classification.profile?.manager && ctx.selfUrl) {
-    notifyAsync(ctx.selfUrl, tenantId, classification, "manager").catch(() => {});
+    notifyAsync(ctx.selfUrl, tenantId, classification, "manager", ctx.internalApiKey).catch(
+      () => {},
+    );
   }
   if (policy.notifyUser && classification.email && ctx.selfUrl) {
-    notifyAsync(ctx.selfUrl, tenantId, classification, "user").catch(() => {});
+    notifyAsync(ctx.selfUrl, tenantId, classification, "user", ctx.internalApiKey).catch(() => {});
   }
 
   return { runId, skippedAdapters: [...new Set(skippedAdapters)] };
@@ -732,10 +736,13 @@ async function notifyAsync(
   tenantId: string,
   classification: JmlClassification,
   target: "manager" | "user",
+  internalApiKey?: string,
 ): Promise<void> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (internalApiKey) headers["x-api-key"] = internalApiKey;
   await fetch(`${selfUrl}/api/v1/events`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       tenantId,
       type: `notification.jml_${classification.action}`,

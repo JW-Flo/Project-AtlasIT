@@ -37,6 +37,8 @@ export type Bindings = {
   SELF_URL?: string;
   /** Base URL of the compliance-worker for score recalculation */
   COMPLIANCE_WORKER_URL?: string;
+  /** API key for internal service-to-service auth (shared across workers) */
+  INTERNAL_API_KEY?: string;
 };
 
 export type Variables = {

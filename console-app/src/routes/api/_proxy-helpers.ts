@@ -1,7 +1,6 @@
 export function getWorkerBase(platform: any): string {
   const env = (platform?.env as any) || {};
-  const complianceBase: string =
-    env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
+  const complianceBase: string = env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
   return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
 }
 
@@ -15,6 +14,17 @@ export async function proxyFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const env = getEnv(platform);
+  // Inject API key for authenticated inter-service calls
+  const apiKey = env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY || "";
+  if (apiKey && init?.headers) {
+    const headers = new Headers(init.headers);
+    if (!headers.has("x-api-key")) {
+      headers.set("x-api-key", apiKey);
+    }
+    init = { ...init, headers };
+  } else if (apiKey && !init?.headers) {
+    init = { ...init, headers: { "x-api-key": apiKey } };
+  }
   if (env.COMPLIANCE_WORKER) {
     return env.COMPLIANCE_WORKER.fetch(new Request(url, init));
   }
@@ -45,7 +55,7 @@ export async function safeProxyFetch(
     if (!response.ok) {
       let upstreamMessage = "Upstream service error";
       try {
-        const body = await response.json() as Record<string, unknown>;
+        const body = (await response.json()) as Record<string, unknown>;
         upstreamMessage = (body.message ?? body.error ?? upstreamMessage) as string;
       } catch {
         // body wasn't JSON — use default message
