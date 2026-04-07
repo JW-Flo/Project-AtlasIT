@@ -69,24 +69,8 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  // D1-backed auth
+  // D1-backed auth — table created via migration 0048_console_users.sql
   try {
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS console_users (
-           id TEXT PRIMARY KEY,
-           email TEXT NOT NULL UNIQUE,
-           password_hash TEXT NOT NULL,
-           salt TEXT NOT NULL,
-           display_name TEXT,
-           roles TEXT NOT NULL DEFAULT '["admin"]',
-           tenant_id TEXT NOT NULL DEFAULT 'atlasit-prod',
-           created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           last_login TEXT
-         )`,
-      )
-      .run();
-
     const row = await db
       .prepare("SELECT * FROM console_users WHERE email = ? COLLATE NOCASE LIMIT 1")
       .bind(email.toLowerCase())

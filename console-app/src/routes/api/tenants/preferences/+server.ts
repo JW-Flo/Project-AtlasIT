@@ -33,18 +33,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
         .bind(industry || null, companySize || null, tenantId)
         .run();
 
-      // Store framework preferences
-      await db
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS tenant_preferences (
-             tenant_id TEXT NOT NULL,
-             key TEXT NOT NULL,
-             value TEXT NOT NULL,
-             PRIMARY KEY (tenant_id, key)
-           )`,
-        )
-        .run();
-
+      // Table created via migration 0026_tenant_preferences.sql
       if (frameworks && frameworks.length > 0) {
         await db
           .prepare(

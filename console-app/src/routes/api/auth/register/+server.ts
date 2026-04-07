@@ -149,18 +149,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       )
       .run();
 
-    // Ensure preferences table exists
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS tenant_preferences (
-           tenant_id TEXT NOT NULL,
-           key TEXT NOT NULL,
-           value TEXT NOT NULL,
-           PRIMARY KEY (tenant_id, key)
-         )`,
-      )
-      .run();
-
+    // Table created via migration 0026_tenant_preferences.sql
     // Store framework preferences
     if (frameworks && frameworks.length > 0) {
       await db
@@ -214,12 +203,14 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       if (selectedIdp === "okta" && selectedIdpDomain?.trim()) {
         await db
           .prepare(
-            `INSERT OR REPLACE INTO app_credentials (tenant_id, app_id, credentials, created_at)
-             VALUES (?, 'okta', ?, ?)`,
+            `INSERT INTO app_credentials (tenant_id, app_id, credentials, connected_at, updated_at)
+             VALUES (?, 'okta', ?, ?, ?)
+             ON CONFLICT(tenant_id, app_id) DO UPDATE SET credentials = excluded.credentials, updated_at = excluded.updated_at`,
           )
           .bind(
             tenantId,
             JSON.stringify({ domain: selectedIdpDomain.trim() }),
+            now,
             now,
           )
           .run();

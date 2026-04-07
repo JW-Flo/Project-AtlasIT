@@ -515,6 +515,29 @@
           .join("\n\n");
         policy.sizeBytes = new TextEncoder().encode(policy.content).byteLength;
       }
+      // C-7 FIX: If content is still a JSON string, parse and render as markdown
+      if (typeof policy.content === "string") {
+        try {
+          const parsed = JSON.parse(policy.content);
+          if (parsed && typeof parsed === "object") {
+            if (Array.isArray(parsed.sections)) {
+              policy.content = parsed.sections
+                .map((s: any) => `## ${s.title || s.heading || ""}\n\n${s.content || s.body || ""}`)
+                .join("\n\n");
+            } else if (parsed.content) {
+              policy.content = String(parsed.content);
+            } else {
+              // Convert object keys to markdown sections
+              policy.content = Object.entries(parsed)
+                .map(([k, v]) => `## ${k}\n\n${typeof v === "string" ? v : JSON.stringify(v, null, 2)}`)
+                .join("\n\n");
+            }
+            policy.sizeBytes = new TextEncoder().encode(policy.content).byteLength;
+          }
+        } catch {
+          // Not JSON — already a string, keep as-is
+        }
+      }
       generatedPolicy = policy;
       pushToast({
         message: generatedPolicy?.reused ? "Policy retrieved from cache" : "Policy generated",
@@ -683,7 +706,7 @@
                   </Button>
                 </div>
               </div>
-              <pre class="p-4 text-xs leading-relaxed whitespace-pre-wrap font-mono bg-background max-h-64 overflow-y-auto">{generatedPolicy.content}</pre>
+              <div class="p-4 text-sm leading-relaxed bg-background max-h-64 overflow-y-auto prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap">{generatedPolicy.content}</div>
             </div>
           {/if}
         {/if}

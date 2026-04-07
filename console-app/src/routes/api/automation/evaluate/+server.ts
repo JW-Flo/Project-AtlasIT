@@ -25,6 +25,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
   const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
+  const serviceApiKey = ((platform?.env as any)?.ORCHESTRATOR_API_KEY || (platform?.env as any)?.INTERNAL_API_KEY || "") as string;
 
   let event: AutomationEvent;
   try {
@@ -68,6 +69,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
           tenantId,
           payload: event.payload,
           orchestratorUrl,
+          serviceApiKey,
         });
         results.push(result);
       } catch (err: any) {
