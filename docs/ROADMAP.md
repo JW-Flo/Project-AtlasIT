@@ -762,10 +762,11 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **Audit prep mode** — "Prepare me for my SOC 2 audit" generates a checklist: missing evidence, unsigned policies, incomplete controls, stale access reviews. Progress bar tracks completion.
 - [x] **Natural language rules** — Ask the copilot to create automation rules in plain English (extends Phase 13 NL builder with conversational context).
 
-### P2 — Proactive Notifications
+### P2 — Proactive Notifications ✅ (PR #364)
 
-- [ ] **Weekly compliance digest** — AI-generated summary email/Slack: score changes, new evidence, upcoming deadlines, drift alerts. Configurable per user.
-- [ ] **Smart alerts** — Beyond threshold-based: "Your evidence collection stopped 2 days ago — this will affect your SOC 2 CC7.5 score by next week" with recommended action.
+- [x] **Weekly compliance digest** — AI-generated summary (Bedrock Haiku) delivered Sunday 08:00 UTC via orchestrator Duty 9. 7-day score trends, evidence stats, drift alerts, upcoming deadlines, AI recommendations. In-app + Slack delivery. Configurable per user via Settings > Notifications.
+- [x] **Smart alerts** — 6 predictive detectors running every 6h (Duty 10): evidence collection stopped, score regression trend, adapter health degraded, remediation overdue escalation, evidence gap detected, compliance drift. Critical alerts auto-delivered to Slack. Acknowledgeable in SmartAlertsPanel on compliance page.
+- [x] Files: `packages/shared/src/copilot/weekly-digest.ts`, `smart-alerts.ts`, `console-app/src/lib/components/notifications/`, `console-app/src/routes/console/settings/notifications/`
 
 ## Phase 23 — Framework Deep Dive & Cross-Mapping
 
