@@ -36,21 +36,21 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
 
+    // L-5 FIX: Query actual tables (directory_users, app_credentials, compliance_scores)
+    // instead of tables that may be empty (users, integrations, compliance_controls)
     const [userCount, adapterCount, frameworkCount, automationCount] = await Promise.all([
       db
-        .prepare("SELECT COUNT(*) as count FROM users WHERE tenant_id = ? AND status = 'active'")
+        .prepare("SELECT COUNT(*) as count FROM directory_users WHERE tenant_id = ? AND status = 'active'")
         .bind(tenantId)
-        .first(),
+        .first()
+        .catch(() => ({ count: 0 })),
       db
-        .prepare(
-          "SELECT COUNT(*) as count FROM integrations WHERE tenant_id = ? AND status = 'active'",
-        )
+        .prepare("SELECT COUNT(*) as count FROM app_credentials WHERE tenant_id = ?")
         .bind(tenantId)
-        .first(),
+        .first()
+        .catch(() => ({ count: 0 })),
       db
-        .prepare(
-          "SELECT COUNT(DISTINCT framework) as count FROM compliance_controls WHERE tenant_id = ?",
-        )
+        .prepare("SELECT COUNT(DISTINCT framework) as count FROM compliance_scores WHERE tenant_id = ?")
         .bind(tenantId)
         .first()
         .catch(() => ({ count: 0 })),

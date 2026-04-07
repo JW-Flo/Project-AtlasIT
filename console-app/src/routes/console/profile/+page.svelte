@@ -334,5 +334,18 @@
         </div>
       </CardContent>
     </Card>
+
+    <Card>
+      <CardContent class="pt-6 space-y-3">
+        <div class="space-y-1">
+          <h3 class="text-base font-semibold">Multi-Factor Authentication</h3>
+          <p class="text-sm text-muted-foreground">Add an extra layer of security to your account with TOTP-based MFA.</p>
+        </div>
+        <Button variant="outline" href="/console/settings/security">
+          <Shield class="h-4 w-4 mr-1.5" />
+          Manage MFA Settings
+        </Button>
+      </CardContent>
+    </Card>
   {/if}
 </div>

@@ -332,7 +332,7 @@
 
 <svelte:window on:click={handleClickOutside} on:keydown={handleCopilotShortcut} />
 
-<div class="flex min-h-dvh bg-background text-foreground">
+<div class="flex h-dvh bg-background text-foreground overflow-hidden">
   <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-primary focus:text-primary-foreground focus:px-3 focus:py-1.5 focus:rounded-md focus:text-sm">
     Skip to content
   </a>
