@@ -6,10 +6,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173";
 export default defineConfig({
   globalSetup: "./tests/global-setup.js",
   globalTeardown: "./tests/global-teardown.js",
-  reporter: [
-    ["list"],
-    ["html", { outputFolder: "playwright-report", open: "never" }],
-  ],
+  reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   projects: [
     {
       name: "smoke",
@@ -30,6 +27,18 @@ export default defineConfig({
       retries: 0,
       use: {
         baseURL,
+        trace: "retain-on-failure",
+        screenshot: "only-on-failure",
+        video: "retain-on-failure",
+      },
+    },
+    {
+      name: "qa",
+      testDir: "./tests/qa",
+      timeout: 60_000,
+      retries: 0,
+      use: {
+        baseURL: process.env.PLAYWRIGHT_BASE_URL || "https://console.atlasit.pro",
         trace: "retain-on-failure",
         screenshot: "only-on-failure",
         video: "retain-on-failure",
