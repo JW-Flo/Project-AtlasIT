@@ -29,37 +29,12 @@ function computeGrade(score: number): string {
   return "F";
 }
 
-async function ensureScoreTables(db: any): Promise<void> {
+// H-7 FIX: Tables created via migration 0025_compliance_scores.sql
+async function ensureScoreTables(_db: any): Promise<void> {
+  // No-op — tables managed by migrations. Kept as a function to avoid
+  // breaking callers; will be removed in a future cleanup pass.
   try {
-    await db.batch([
-      db.prepare(
-        `CREATE TABLE IF NOT EXISTS compliance_scores (
-        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-        tenant_id TEXT NOT NULL,
-        framework TEXT NOT NULL,
-        score REAL NOT NULL DEFAULT 0,
-        max_score REAL NOT NULL DEFAULT 100,
-        grade TEXT NOT NULL DEFAULT 'F',
-        controls_total INTEGER NOT NULL DEFAULT 0,
-        controls_implemented INTEGER NOT NULL DEFAULT 0,
-        controls_verified INTEGER NOT NULL DEFAULT 0,
-        calculated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(tenant_id, framework)
-      )`,
-      ),
-      db.prepare(
-        `CREATE TABLE IF NOT EXISTS compliance_history (
-        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-        tenant_id TEXT NOT NULL,
-        framework TEXT NOT NULL,
-        score REAL NOT NULL,
-        grade TEXT NOT NULL,
-        recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )`,
-      ),
-    ]);
-  } catch (e) {
-    console.error("ensureScoreTables error:", e);
+    // intentionally empty
   }
 }
 

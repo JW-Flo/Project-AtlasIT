@@ -18,6 +18,8 @@ export interface ActionContext {
   payload: Record<string, unknown>;
   /** Orchestrator URL for forwarding events that need real-time processing */
   orchestratorUrl?: string;
+  /** H-12 FIX: Service API key for inter-service auth */
+  serviceApiKey?: string;
 }
 
 type ActionHandler = (config: Record<string, unknown>, ctx: ActionContext) => Promise<ActionResult>;
@@ -54,6 +56,7 @@ async function forwardToOrchestrator(
   tenantId: string,
   type: string,
   payload: Record<string, unknown>,
+  apiKey?: string,
 ): Promise<void> {
   try {
     const res = await fetch(`${orchestratorUrl}/api/v1/events`, {
@@ -61,6 +64,7 @@ async function forwardToOrchestrator(
       headers: {
         "Content-Type": "application/json",
         "X-Tenant-ID": tenantId,
+        ...(apiKey ? { "X-API-Key": apiKey } : {}),
       },
       body: JSON.stringify({ type, tenantId, payload, source: "console-app" }),
       signal: AbortSignal.timeout(10_000),
@@ -375,6 +379,7 @@ const handleProvisionAppAccess: ActionHandler = async (config, ctx) => {
       ctx.tenantId,
       "provisioning.requested",
       provisionPayload,
+      ctx.serviceApiKey,
     );
   }
 
@@ -426,6 +431,7 @@ const handleRevokeAppAccess: ActionHandler = async (config, ctx) => {
       ctx.tenantId,
       "provisioning.requested",
       revokePayload,
+      ctx.serviceApiKey,
     );
   }
 

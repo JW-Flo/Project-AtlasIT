@@ -32,6 +32,7 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
 
     if (!policy) return json({ error: "Policy not found" }, { status: 404 });
 
+    // C-8 FIX: Sub-queries may fail if tables don't exist yet — handle gracefully
     const [versionsResult, approvalsResult] = await Promise.all([
       db
         .prepare(
@@ -41,7 +42,8 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
            ORDER BY version DESC`,
         )
         .bind(id)
-        .all<any>(),
+        .all<any>()
+        .catch(() => ({ results: [] })),
       db
         .prepare(
           `SELECT id, policy_id, version, reviewer_email, decision, comment, decided_at
@@ -50,7 +52,8 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
            ORDER BY decided_at ASC`,
         )
         .bind(id)
-        .all<any>(),
+        .all<any>()
+        .catch(() => ({ results: [] })),
     ]);
 
     return json({
