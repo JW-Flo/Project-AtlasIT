@@ -5,7 +5,11 @@ import type { PolicyType } from "@atlasit/shared";
 
 const POLICY_TYPE_FALLBACKS: Record<string, PolicyType> = {
   "soc2.demo": "access_control",
+  "soc2.access_control": "access_control",
   "iso27001.isms": "access_control",
+  "nist.csf": "access_control",
+  "hipaa.security": "data_handling",
+  "dataprotection.general": "data_handling",
   access_control: "access_control",
   incident_response: "incident_response",
   data_handling: "data_handling",
@@ -215,6 +219,14 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
     if (res.ok) {
       const data = await res.json();
+      // Ensure content is always a flattened markdown string
+      const policy = data?.data?.policy ?? data;
+      if (!policy.content && policy.sections && Array.isArray(policy.sections)) {
+        policy.content = policy.sections
+          .map((s: { title: string; content: string }) => `## ${s.title}\n\n${s.content}`)
+          .join("\n\n");
+        policy.sizeBytes = new TextEncoder().encode(policy.content).byteLength;
+      }
       if (db) await writeGeneratedPoliciesPreference(db, tenantId, templateKey);
       return new Response(JSON.stringify(data), {
         status: 200,

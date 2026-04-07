@@ -44,10 +44,10 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
         .all<any>(),
       db
         .prepare(
-          `SELECT id, policy_id, reviewer_email, decision, comment, decided_at, created_at
+          `SELECT id, policy_id, version, reviewer_email, decision, comment, decided_at
            FROM policy_approvals
            WHERE policy_id = ?
-           ORDER BY created_at ASC`,
+           ORDER BY decided_at ASC`,
         )
         .bind(id)
         .all<any>(),
@@ -80,11 +80,11 @@ export const GET: RequestHandler = async ({ params, platform, locals }) => {
       approvals: (approvalsResult.results ?? []).map((a: any) => ({
         id: a.id,
         policyId: a.policy_id,
+        version: a.version,
         reviewerEmail: a.reviewer_email,
         decision: a.decision ?? null,
         comment: a.comment ?? null,
         decidedAt: a.decided_at ?? null,
-        createdAt: a.created_at,
       })),
     });
   } catch (e: any) {
@@ -119,19 +119,14 @@ export const PUT: RequestHandler = async ({ params, request, platform, locals })
 
   try {
     const policy = await db
-      .prepare(
-        `SELECT id, version, status FROM policies WHERE id = ? AND tenant_id = ?`,
-      )
+      .prepare(`SELECT id, version, status FROM policies WHERE id = ? AND tenant_id = ?`)
       .bind(id, tenantId)
       .first<any>();
 
     if (!policy) return json({ error: "Policy not found" }, { status: 404 });
 
     if (policy.status !== "draft") {
-      return json(
-        { error: "Policy can only be updated when in draft status" },
-        { status: 422 },
-      );
+      return json({ error: "Policy can only be updated when in draft status" }, { status: 422 });
     }
 
     const newVersion = (policy.version ?? 1) + 1;

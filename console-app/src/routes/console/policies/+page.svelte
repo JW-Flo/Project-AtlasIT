@@ -507,7 +507,15 @@
       }
       const raw = await res.json();
       // API returns { status, data: { policy } } or direct GeneratedPolicy shape
-      generatedPolicy = raw?.data?.policy ?? raw;
+      const policy = raw?.data?.policy ?? raw;
+      // Ensure content is always a markdown string, not raw JSON sections
+      if (!policy.content && policy.sections && Array.isArray(policy.sections)) {
+        policy.content = policy.sections
+          .map((s: { title: string; content: string }) => `## ${s.title}\n\n${s.content}`)
+          .join("\n\n");
+        policy.sizeBytes = new TextEncoder().encode(policy.content).byteLength;
+      }
+      generatedPolicy = policy;
       pushToast({
         message: generatedPolicy?.reused ? "Policy retrieved from cache" : "Policy generated",
         variant: "success",
@@ -528,7 +536,11 @@
       // Map template key to a valid policy type for storage
       const typeMap: Record<string, string> = {
         "soc2.demo": "access_control",
+        "soc2.access_control": "access_control",
         "iso27001.isms": "access_control",
+        "nist.csf": "access_control",
+        "hipaa.security": "data_handling",
+        "dataprotection.general": "data_handling",
         "access_control": "access_control",
         "incident_response": "incident_response",
         "data_handling": "data_handling",

@@ -170,7 +170,8 @@ export async function generateSecurityPolicy(
 
   // In deterministic/test mode or when no AI is configured, use template fallback
   const isDeterministic = env.AI_DETERMINISTIC === "1";
-  if (isDeterministic || (!env.GROQ_API_KEY && !env.OPENAI_API_KEY)) {
+  const hasAI = !!(env.GROQ_API_KEY || env.OPENAI_API_KEY || env.AWS_ACCESS_KEY_ID);
+  if (isDeterministic || !hasAI) {
     return buildTemplateFallback(policyType, tenantContext, basedOn);
   }
 
@@ -182,11 +183,19 @@ export async function generateSecurityPolicy(
     },
   ];
 
+  // Prefer Bedrock (Haiku for fast policy generation), fall back to Groq
+  const provider = env.AWS_ACCESS_KEY_ID ? "bedrock" : "groq";
+  const model =
+    provider === "bedrock"
+      ? (env.DIGEST_MODEL as string) || "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+      : "qwen/qwen3-32b";
+
   const response = await generateAI(messages, env as Record<string, any>, {
-    provider: "groq",
-    model: "qwen/qwen3-32b",
+    provider: provider as any,
+    model,
     temperature: 0.4,
     maxTokens: 4096,
+    fallbackProviders: provider === "bedrock" ? ["groq"] : [],
   });
 
   let jsonStr = response.trim();
