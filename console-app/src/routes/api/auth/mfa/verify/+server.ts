@@ -1,6 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { verifyTotp } from "@atlasit/shared/crypto/totp";
+import { verifyTotp, decryptTotpSecret, isEncryptedSecret } from "@atlasit/shared/crypto/totp";
 import { verifyJwt } from "@atlasit/shared/crypto/jwt";
 import { resolveSecurityPolicy, getSessionTtl } from "@atlasit/shared/security/policies";
 
@@ -8,6 +8,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
   const kv = env.KV_SESSIONS;
+  const encryptionKey: string | undefined = env.CRED_ENCRYPTION_KEY;
   const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET || "atlasit-dev-jwt-secret";
 
   if (!db) return json({ error: "Service unavailable" }, { status: 503 });
@@ -43,7 +44,13 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       return json({ error: "TOTP not configured" }, { status: 400 });
     }
 
-    const result = await verifyTotp(totpRow.secret_encrypted, code);
+    // C-3 FIX: Decrypt secret before verification; support legacy plaintext
+    let totpSecret = totpRow.secret_encrypted;
+    if (encryptionKey && isEncryptedSecret(totpSecret)) {
+      totpSecret = await decryptTotpSecret(totpSecret, encryptionKey);
+    }
+
+    const result = await verifyTotp(totpSecret, code);
     verified = result.valid;
   } else if (recoveryCode) {
     // Recovery code verification

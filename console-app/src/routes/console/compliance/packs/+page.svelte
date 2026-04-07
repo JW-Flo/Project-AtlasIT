@@ -94,9 +94,9 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Install failed");
       packs = packs.map((p) => (p.id === pack.id ? { ...p, installed: true } : p));
-      pushToast({ type: "success", message: `"${pack.name}" installed successfully` });
+      pushToast({ variant: "success", message: `"${pack.name}" installed successfully` });
     } catch (e: any) {
-      pushToast({ type: "error", message: e.message ?? "Failed to install pack" });
+      pushToast({ variant: "error", message: e.message ?? "Failed to install pack" });
     } finally {
       togglingPackId = null;
     }
@@ -113,9 +113,9 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Uninstall failed");
       packs = packs.map((p) => (p.id === pack.id ? { ...p, installed: false } : p));
-      pushToast({ type: "success", message: `"${pack.name}" uninstalled` });
+      pushToast({ variant: "success", message: `"${pack.name}" uninstalled` });
     } catch (e: any) {
-      pushToast({ type: "error", message: e.message ?? "Failed to uninstall pack" });
+      pushToast({ variant: "error", message: e.message ?? "Failed to uninstall pack" });
     } finally {
       togglingPackId = null;
     }
@@ -142,7 +142,7 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Create failed");
-      pushToast({ type: "success", message: `"${newName}" pack created` });
+      pushToast({ variant: "success", message: `"${newName}" pack created` });
       resetCreateForm();
       await loadPacks();
     } catch (e: any) {

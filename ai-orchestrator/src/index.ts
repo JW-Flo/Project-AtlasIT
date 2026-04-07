@@ -253,8 +253,10 @@ const worker = {
     // ── Duty 2: Scheduled evidence collection from adapters ────────────────
     //    Collect compliance evidence from connected adapters for all tenants
     //    and write to compliance_evidence in D1.
+    // H-8 FIX: Wrap duty 2+ in try/catch for isolation
     let evidenceCollected = 0;
-    const adapterErrorList: { adapter: string; controlRef: string; error: string }[] = [];
+    // H-3 FIX: Track errors per-tenant to prevent cross-tenant error leakage
+    const perTenantErrors = new Map<string, { adapter: string; controlRef: string; error: string }[]>();
     // Capture per-tenant evidence for Duty 2.5 CDT payload construction
     const tenantEvidenceMap = new Map<
       string,
@@ -271,7 +273,7 @@ const worker = {
     if (Object.keys(adapterUrls).length > 0) {
       // Get distinct tenant IDs from tenants table
       const { results: tenantRows } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const collectSettled = await Promise.allSettled(
@@ -326,7 +328,8 @@ const worker = {
                         error: msg,
                       }),
                     );
-                    adapterErrorList.push({ adapter: result.slug, controlRef, error: msg });
+                    if (!perTenantErrors.has(row.id)) perTenantErrors.set(row.id, []);
+                    perTenantErrors.get(row.id)!.push({ adapter: result.slug, controlRef, error: msg });
                   }
                 }
               }
@@ -340,26 +343,24 @@ const worker = {
         if (r.status === "fulfilled") evidenceCollected += r.value;
       }
 
-      // Store error summary for UI visibility
-      if (adapterErrorList.length > 0) {
-        for (const row of tenantRows ?? []) {
-          try {
-            const errSummary = JSON.stringify({
-              errors: adapterErrorList.slice(0, 20),
-              timestamp: new Date().toISOString(),
-              total: adapterErrorList.length,
-            });
-            await sharedDb
-              .prepare(
-                `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
-                 VALUES (?, 'last_evidence_errors', ?, datetime('now'))
-                 ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
-              )
-              .bind(row.id, errSummary, errSummary)
-              .run();
-          } catch {
-            /* best-effort */
-          }
+      // H-3 FIX: Store only each tenant's own errors, not a global list
+      for (const [tenantId, errors] of perTenantErrors) {
+        try {
+          const errSummary = JSON.stringify({
+            errors: errors.slice(0, 20),
+            timestamp: new Date().toISOString(),
+            total: errors.length,
+          });
+          await sharedDb
+            .prepare(
+              `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+               VALUES (?, 'last_evidence_errors', ?, datetime('now'))
+               ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+            )
+            .bind(tenantId, errSummary, errSummary)
+            .run();
+        } catch {
+          /* best-effort */
         }
       }
 
@@ -392,7 +393,7 @@ const worker = {
     let platformEvidenceCollected = 0;
     {
       const { results: tenantRows } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const stateSettled = await Promise.allSettled(
@@ -414,9 +415,11 @@ const worker = {
     //    so policy pass/fail affects control status.
     let policyEvalsTriggered = 0;
     const complianceWorkerUrl = env.COMPLIANCE_WORKER_URL;
+    // H-4 FIX: Service API key for compliance worker calls
+    const complianceApiKey = env.COMPLIANCE_API_KEY || env.INTERNAL_API_KEY || "";
     if (complianceWorkerUrl && (evidenceCollected > 0 || event.cron === "0 2 * * *")) {
       const { results: policyTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const policySettled = await Promise.allSettled(
@@ -506,7 +509,11 @@ const worker = {
 
             await fetch(`${complianceWorkerUrl}/api/v1/policies/evaluate-all`, {
               method: "POST",
-              headers: { "x-tenant-id": row.id, "content-type": "application/json" },
+              headers: {
+                "x-tenant-id": row.id,
+                "content-type": "application/json",
+                ...(complianceApiKey ? { "x-api-key": complianceApiKey } : {}),
+              },
               body: JSON.stringify({ input: cdtPayload }),
             });
             return 1;
@@ -530,7 +537,7 @@ const worker = {
     // Trigger recalculation when evidence was collected OR on the daily cron
     if (complianceWorkerUrl && (evidenceCollected > 0 || isDaily)) {
       const { results: allTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const scoringFrameworks = ["SOC2", "ISO27001", "NIST_CSF", "HIPAA", "GDPR"];
@@ -541,7 +548,7 @@ const worker = {
             try {
               await fetch(
                 `${complianceWorkerUrl}/api/v1/cdt/evaluate?framework=${encodeURIComponent(fw)}`,
-                { headers: { "x-tenant-id": row.id } },
+                { headers: { "x-tenant-id": row.id, ...(complianceApiKey ? { "x-api-key": complianceApiKey } : {}) } },
               );
               refreshed++;
             } catch {
@@ -574,14 +581,16 @@ const worker = {
       checks.kv = { status: "fail", ms: Date.now() - kvStart };
     }
 
+    // H-8 FIX: Each duty wrapped in try/catch so failures don't cascade.
+
     // ── Duty 4b: Auto-promote control statuses based on evidence density ───
     //    For each tenant, read compliance_controls from tenant_preferences,
     //    count evidence per framework/control, and promote statuses where
     //    evidence thresholds are met. Never demotes or touches `verified`.
     let controlsPromoted = 0;
-    {
+    try {
       const { results: promotionTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const promotionSettled = await Promise.allSettled(
@@ -684,15 +693,18 @@ const worker = {
           );
         }
       }
+    } catch (err) {
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", event: "duty4b.failed", error: err instanceof Error ? err.message : String(err) }));
     }
 
     // ── Duty 6: Compliance intelligence scan ────────────────────────────
     //    Analyze gaps, detect drift, and surface risk anomalies per tenant.
     //    Runs on daily cron or when fresh evidence was collected.
     let insightsWritten = 0;
+    try {
     if (isDaily || evidenceCollected > 0) {
       const { results: insightTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const scoringFrameworks = ["SOC2", "ISO27001", "NIST_CSF", "HIPAA", "GDPR"];
@@ -825,6 +837,9 @@ const worker = {
         if (r.status === "fulfilled") insightsWritten += r.value;
       }
     }
+    } catch (err) {
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", event: "duty6.failed", error: err instanceof Error ? err.message : String(err) }));
+    }
 
     // ── Duty 5a: NHI credential discovery + sync from adapters ────────────
     //    Discover non-human identities (service accounts, API keys, deploy keys)
@@ -833,7 +848,7 @@ const worker = {
     let nhiSyncErrors = 0;
     try {
       const tenantRows = await sharedDb
-        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 200")
+        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 10000")
         .all<{ tenant_id: string }>();
 
       for (const row of tenantRows.results ?? []) {
@@ -868,7 +883,7 @@ const worker = {
     let discoveryAiTools = 0;
     try {
       const tenantRows = await sharedDb
-        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 200")
+        .prepare("SELECT DISTINCT tenant_id FROM app_credentials LIMIT 10000")
         .all<{ tenant_id: string }>();
 
       for (const row of tenantRows.results ?? []) {
@@ -1028,9 +1043,10 @@ const worker = {
     //    and prioritized recommendations. Stored in tenant_preferences for
     //    the copilot and notification system to consume.
     let digestsGenerated = 0;
+    try {
     if (isDaily && (env.AWS_ACCESS_KEY_ID || env.GROQ_API_KEY)) {
       const { results: digestTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 10000")
         .all<{ id: string; name: string }>();
 
       const { buildCopilotContext, formatContextForPrompt } = await import("@atlasit/shared");
@@ -1128,6 +1144,9 @@ Output format (JSON only, no markdown fences):
         if (r.status === "fulfilled") digestsGenerated += r.value;
       }
     }
+    } catch (err) {
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", event: "duty8.failed", error: err instanceof Error ? err.message : String(err) }));
+    }
 
     // ── Duty 9: Weekly compliance digest ───────────────────────────────
     //    Runs on Sunday 08:00 UTC cron. AI-generated weekly summary with
@@ -1135,9 +1154,10 @@ Output format (JSON only, no markdown fences):
     //    deadlines. Stored in tenant_preferences; delivered via Slack if configured.
     let weeklyDigestsGenerated = 0;
     const isWeekly = event.cron === "0 8 * * 0";
+    try {
     if (isWeekly && (env.AWS_ACCESS_KEY_ID || env.GROQ_API_KEY)) {
       const { results: weeklyTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id, name FROM tenants LIMIT 10000")
         .all<{ id: string; name: string }>();
 
       const {
@@ -1254,6 +1274,9 @@ Output format (JSON only, no markdown fences):
         if (r.status === "fulfilled") weeklyDigestsGenerated += r.value;
       }
     }
+    } catch (err) {
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", event: "duty9.failed", error: err instanceof Error ? err.message : String(err) }));
+    }
 
     // ── Duty 10: Smart alerts evaluation ───────────────────────────────
     //    Runs every 6 hours (0 */6 * * *). Detects predictive alerts:
@@ -1261,9 +1284,10 @@ Output format (JSON only, no markdown fences):
     //    degradation, overdue remediation escalation, etc.
     let smartAlertsCreated = 0;
     const isSixHourly = event.cron === "0 */6 * * *";
+    try {
     if (isSixHourly) {
       const { results: alertTenants } = await sharedDb
-        .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+        .prepare("SELECT DISTINCT id FROM tenants LIMIT 10000")
         .all<{ id: string }>();
 
       const { buildCopilotContext, detectSmartAlerts } = await import("@atlasit/shared");
@@ -1356,6 +1380,9 @@ Output format (JSON only, no markdown fences):
       for (const r of alertSettled) {
         if (r.status === "fulfilled") smartAlertsCreated += r.value;
       }
+    }
+    } catch (err) {
+      console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", event: "duty10.failed", error: err instanceof Error ? err.message : String(err) }));
     }
 
     const automationFailures = automationSettled.filter((r) => r.status === "rejected").length;

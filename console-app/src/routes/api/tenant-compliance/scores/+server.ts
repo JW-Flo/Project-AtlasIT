@@ -499,15 +499,20 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
   await persistScores(db, user.tenantId, finalScores);
 
-  // Emit compliance.score_changed for any framework whose score changed
+  // H-5 FIX: Emit compliance.score_changed with proper service auth headers
   const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+  const serviceApiKey = env.ORCHESTRATOR_API_KEY || env.INTERNAL_API_KEY || "";
   if (orchestratorUrl) {
     for (const fw of finalScores) {
       const previousScore = previousScores[fw.framework];
       if (previousScore !== undefined && previousScore !== fw.score) {
         fetch(`${orchestratorUrl}/api/v1/events`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Tenant-ID": user.tenantId,
+            ...(serviceApiKey ? { "X-API-Key": serviceApiKey } : {}),
+          },
           body: JSON.stringify({
             tenantId: user.tenantId,
             type: "compliance.score_changed",
@@ -524,7 +529,9 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
             },
             idempotencyKey: `score-${user.tenantId}-${fw.framework}-${Date.now()}`,
           }),
-        }).catch(() => {}); // best-effort, non-blocking
+        }).catch((err) => {
+          console.error("[scores] Event delivery failed:", err);
+        });
       }
     }
   }

@@ -12,6 +12,7 @@
   import Label from "$lib/components/ui/label.svelte";
   import { ShieldCheck, Copy, AlertTriangle, Settings, Globe, ExternalLink, Trash2, CheckCircle } from "lucide-svelte";
   import { session } from "$lib/stores/session";
+  import QRCode from "qrcode";
 
   // SSO state
   let ssoLoading = false;
@@ -225,9 +226,17 @@
   let setupStep: "idle" | "qr" | "verify" | "done" = "idle";
   let setupSecret = "";
   let setupUri = "";
+  let qrDataUrl = "";
   let setupRecoveryCodes: string[] = [];
   let verifyCode = "";
   let verifying = false;
+
+  // C-2 FIX: Generate QR code client-side to avoid leaking TOTP secret to third-party service
+  $: if (setupUri) {
+    QRCode.toDataURL(setupUri, { width: 200, margin: 2, errorCorrectionLevel: "M" })
+      .then((url: string) => { qrDataUrl = url; })
+      .catch(() => { qrDataUrl = ""; });
+  }
 
   // Disable flow
   let showDisable = false;
@@ -237,6 +246,7 @@
   // Tenant security policy (owner only)
   let policyLoading = false;
   let policy: any = null;
+  let policyLoadError = "";
   let savingPolicy = false;
 
   $: isOwner = $session?.roles?.includes("owner") || $session?.roles?.includes("super-admin") || $session?.superAdmin;
@@ -348,29 +358,14 @@
         policy = data.policy;
       } else {
         console.error("Failed to load security policy:", res.status);
-        // Still show the card with defaults so the user can configure
-        policy = {
-          mfaRequired: false,
-          sessionTtlSeconds: 604800,
-          mfaSessionTtlSeconds: 604800,
-          maxSessionTtlSeconds: 2592000,
-          idleTimeoutSeconds: 86400,
-          passwordRotationDays: 0,
-          minPasswordLength: 8,
-          mfaRequiredRoles: [],
-        };
+        // H-9 FIX: Fail closed — don't show permissive defaults when policy can't be loaded
+        policy = null;
+        policyLoadError = "Unable to load security policy. Please try again.";
       }
     } catch {
-      policy = {
-        mfaRequired: false,
-        sessionTtlSeconds: 604800,
-        mfaSessionTtlSeconds: 604800,
-        maxSessionTtlSeconds: 2592000,
-        idleTimeoutSeconds: 86400,
-        passwordRotationDays: 0,
-        minPasswordLength: 8,
-        mfaRequiredRoles: [],
-      };
+      // H-9 FIX: Fail closed on network errors
+      policy = null;
+      policyLoadError = "Unable to load security policy. Please try again.";
     }
     policyLoading = false;
   }
@@ -447,11 +442,15 @@
           </p>
 
           <div class="flex justify-center p-4 bg-white rounded-lg border">
-            <img
-              src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={encodeURIComponent(setupUri)}"
-              alt="TOTP QR Code"
-              class="w-48 h-48"
-            />
+            {#if qrDataUrl}
+              <img
+                src={qrDataUrl}
+                alt="TOTP QR Code"
+                class="w-48 h-48"
+              />
+            {:else}
+              <p class="text-sm text-muted-foreground">Generating QR code...</p>
+            {/if}
           </div>
 
           <div class="space-y-2">
@@ -854,7 +853,22 @@
     </Card>
 
   <!-- Tenant Security Policy (owner only) -->
-  {#if isOwner && policy}
+  {#if isOwner && policyLoadError}
+    <Card>
+      <CardHeader>
+        <div class="flex items-center gap-3">
+          <AlertTriangle class="h-5 w-5 text-destructive" />
+          <div>
+            <CardTitle>Organization Security Policy</CardTitle>
+            <p class="text-sm text-destructive mt-1">{policyLoadError}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Button variant="outline" on:click={loadPolicy}>Retry</Button>
+      </CardContent>
+    </Card>
+  {:else if isOwner && policy}
     <Card>
       <CardHeader>
         <div class="flex items-center gap-3">

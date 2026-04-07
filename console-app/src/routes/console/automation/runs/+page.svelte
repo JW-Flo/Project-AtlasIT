@@ -164,7 +164,7 @@
       const res = await fetch(`/api/automation/executions/${run.id}`);
       if (res.ok) {
         const data: any = await res.json();
-        selectedExecution = data.execution;
+        selectedExecution = data.execution ?? data;
       } else {
         pushToast({ message: "Failed to load execution details", variant: "error" });
       }

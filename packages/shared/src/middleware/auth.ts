@@ -69,12 +69,15 @@ export function authMiddleware(
         .filter(Boolean);
 
       if (allowedKeys.length > 0 && allowedKeys.includes(apiKeyHeader)) {
-        const tenantId = c.req.header("X-Tenant-ID") ?? "default";
+        const tenantId = c.req.header("X-Tenant-ID");
+        if (!tenantId) {
+          throw new AuthError(400, "X-Tenant-ID header required for API key auth");
+        }
         const authContext: AuthContext = {
           tenantId,
-          userId: "",
+          userId: "service",
           email: "",
-          roles: ["api-key"],
+          roles: ["api-key", "service", "member"],
           tokenType: "api-key",
         };
 
@@ -106,10 +109,12 @@ export function requireRoles(...roles: string[]): MiddlewareHandler {
 
 /**
  * Hierarchical role check middleware.
- * Role hierarchy: viewer < member < admin
+ * Role hierarchy: viewer < member < admin < service
  * A user with "admin" passes a check for "member" or "viewer".
+ * The "service" role is for service-to-service auth (API keys) and
+ * satisfies all hierarchical checks.
  */
-const ROLE_HIERARCHY = ["viewer", "member", "admin"] as const;
+const ROLE_HIERARCHY = ["viewer", "member", "admin", "service"] as const;
 export type RoleLevel = (typeof ROLE_HIERARCHY)[number];
 
 export function requireRole(role: RoleLevel): MiddlewareHandler {

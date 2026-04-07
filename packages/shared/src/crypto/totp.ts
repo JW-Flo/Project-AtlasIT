@@ -135,6 +135,67 @@ export async function verifyTotp(
   return { valid: false };
 }
 
+// ---------------------------------------------------------------------------
+// TOTP secret encryption at rest (AES-256-GCM)
+// C-3 FIX: Secrets must be encrypted before storage in D1.
+// ---------------------------------------------------------------------------
+
+async function deriveKey(secret: string): Promise<CryptoKey> {
+  const raw = new TextEncoder().encode(secret);
+  const hash = await crypto.subtle.digest("SHA-256", raw);
+  return crypto.subtle.importKey("raw", hash, { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+function toHex(buf: ArrayBuffer): string {
+  return [...new Uint8Array(buf)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+/** Encrypt a TOTP secret for storage. Returns `iv_hex:ciphertext_hex`. */
+export async function encryptTotpSecret(
+  totpSecret: string,
+  encryptionKey: string,
+): Promise<string> {
+  const key = await deriveKey(encryptionKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    new TextEncoder().encode(totpSecret),
+  );
+  return `${toHex(iv.buffer)}:${toHex(ct)}`;
+}
+
+/** Decrypt a stored TOTP secret. */
+export async function decryptTotpSecret(
+  encrypted: string,
+  encryptionKey: string,
+): Promise<string> {
+  const key = await deriveKey(encryptionKey);
+  const [ivHex, ctHex] = encrypted.split(":");
+  const iv = fromHex(ivHex);
+  const ct = fromHex(ctHex);
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
+/** Check if a value looks like an encrypted secret (iv_hex:ct_hex format). */
+export function isEncryptedSecret(value: string): boolean {
+  return /^[a-f0-9]{24}:[a-f0-9]+$/.test(value);
+}
+
 /** Generate recovery codes in xxxx-xxxx format. */
 export function generateRecoveryCodes(count: number = 8): string[] {
   const codes: string[] = [];

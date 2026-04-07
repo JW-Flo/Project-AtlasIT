@@ -110,13 +110,13 @@
         body: JSON.stringify({ controlId: gap.controlId, framework: gap.framework, adapters: adapters.map((a) => a.slug) }),
       });
       if (res.ok) {
-        pushToast({ type: "success", message: `Evidence collection triggered for ${gap.controlId}` });
+        pushToast({ variant: "success", message: `Evidence collection triggered for ${gap.controlId}` });
         await loadGaps();
       } else {
-        pushToast({ type: "error", message: "Evidence collection failed" });
+        pushToast({ variant: "error", message: "Evidence collection failed" });
       }
     } catch {
-      pushToast({ type: "error", message: "Evidence collection request failed" });
+      pushToast({ variant: "error", message: "Evidence collection request failed" });
     }
     collectingGap = null;
   }
@@ -162,7 +162,7 @@
       gapSummary = data.summary;
       gaps = data.gaps ?? [];
     } catch {
-      pushToast({ type: "error", message: "Failed to load compliance gaps" });
+      pushToast({ variant: "error", message: "Failed to load compliance gaps" });
     }
   }
 
@@ -173,7 +173,7 @@
       const data = await res.json();
       driftAlerts = data.alerts ?? [];
     } catch {
-      pushToast({ type: "error", message: "Failed to load drift alerts" });
+      pushToast({ variant: "error", message: "Failed to load drift alerts" });
     }
   }
 
@@ -184,7 +184,7 @@
       const data = await res.json();
       anomalies = data.anomalies ?? [];
     } catch {
-      pushToast({ type: "error", message: "Failed to load anomalies" });
+      pushToast({ variant: "error", message: "Failed to load anomalies" });
     }
   }
 
