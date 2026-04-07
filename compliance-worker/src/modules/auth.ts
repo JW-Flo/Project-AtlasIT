@@ -70,8 +70,20 @@ export async function requireTenant(
       throw new AuthError(403, `Token missing role: ${required}`);
     }
   }
+
+  // Service tokens (tenantId: "*") may operate on behalf of any tenant.
+  // The actual tenant is specified via x-tenant-id header.
+  let resolvedTenantId = token.tenantId;
+  if (resolvedTenantId === "*") {
+    const headerTenant = request.headers.get("x-tenant-id");
+    if (!headerTenant) {
+      throw new AuthError(400, "Service token requires x-tenant-id header");
+    }
+    resolvedTenantId = headerTenant;
+  }
+
   return {
-    tenantId: token.tenantId,
+    tenantId: resolvedTenantId,
     roles,
     tokenHash: hash,
     rawKey: apiKey,

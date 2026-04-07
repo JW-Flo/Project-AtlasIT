@@ -1,5 +1,12 @@
 <script lang="ts">
   import { page } from "$app/stores";
+  import { onMount } from "svelte";
+
+  onMount(() => {
+    if ($page.error) {
+      console.error("[SvelteKit error boundary]", $page.status, $page.error);
+    }
+  });
 </script>
 
 <div class="min-h-screen flex items-center justify-center bg-background">

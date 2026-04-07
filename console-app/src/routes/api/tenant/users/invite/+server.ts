@@ -139,5 +139,5 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     console.warn("Invite email send failed (non-blocking):", err);
   }
 
-  return json({ success: true, tempPassword });
+  return json({ success: true });
 };

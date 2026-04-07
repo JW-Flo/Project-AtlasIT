@@ -215,7 +215,7 @@
             </Badge>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {#each deepHealth.services as svc}
+            {#each (deepHealth.services ?? []) as svc}
               <div class="p-3 rounded border">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="w-2 h-2 rounded-full {svc.reachable ? 'bg-green-500' : 'bg-destructive'}"></span>
@@ -251,7 +251,7 @@
             {/if}
           </div>
           <div class="space-y-2">
-            {#each journeyMetrics.steps as step, i}
+            {#each (journeyMetrics.steps ?? []) as step, i}
               <div class="flex items-center gap-3">
                 <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs {step.completed ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}">{i + 1}</span>
                 <span class="font-medium capitalize {step.completed ? '' : 'text-muted-foreground'}">{step.name.replace(/_/g, " ")}</span>

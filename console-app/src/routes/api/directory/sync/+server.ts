@@ -126,6 +126,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   try {
     const env = (platform?.env as any) || {};
     const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+    // C-6 FIX: Service-to-service API key for orchestrator calls
+    const serviceApiKey = env.ORCHESTRATOR_API_KEY || env.INTERNAL_API_KEY || "";
 
     // If a real provider is connected and orchestrator is available, proxy sync
     // through the orchestrator which dispatches to the correct adapter worker.
@@ -134,7 +136,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-tenant-id": tenantId,
+          "X-Tenant-ID": tenantId,
+          ...(serviceApiKey ? { "X-API-Key": serviceApiKey } : {}),
         },
         body: JSON.stringify({ provider: connection.provider }),
       });
@@ -311,15 +314,25 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
         })),
       ];
 
-      await Promise.allSettled(
+      // C-6 FIX: Include auth headers + log failures instead of silently swallowing
+      const eventResults = await Promise.allSettled(
         eventPayloads.map((evt) =>
           fetch(`${orchestratorUrl}/api/v1/events`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-ID": tenantId,
+              ...(serviceApiKey ? { "X-API-Key": serviceApiKey } : {}),
+            },
             body: JSON.stringify(evt),
           }),
         ),
       );
+      for (const r of eventResults) {
+        if (r.status === "rejected") {
+          console.error("[directory-sync] Event delivery failed:", r.reason);
+        }
+      }
     }
 
     await writeAudit(db, {

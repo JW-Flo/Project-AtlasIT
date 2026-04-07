@@ -85,7 +85,7 @@
       attestations = data.attestations || [];
       availableControls = data.availableControls || {};
     } catch (err: any) {
-      pushToast({ type: "error", message: err.message });
+      pushToast({ variant: "error", message: err.message });
     } finally {
       loading = false;
     }
@@ -116,11 +116,11 @@
         throw new Error(err.error || "Failed to save");
       }
 
-      pushToast({ type: "success", message: "Attestation saved and evidence recorded" });
+      pushToast({ variant: "success", message: "Attestation saved and evidence recorded" });
       resetForm();
       await loadAttestations();
     } catch (err: any) {
-      pushToast({ type: "error", message: err.message });
+      pushToast({ variant: "error", message: err.message });
     } finally {
       saving = false;
     }
@@ -130,10 +130,10 @@
     try {
       const res = await fetch(`/api/tenant-compliance/attestations?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to revoke");
-      pushToast({ type: "success", message: "Attestation revoked" });
+      pushToast({ variant: "success", message: "Attestation revoked" });
       await loadAttestations();
     } catch (err: any) {
-      pushToast({ type: "error", message: err.message });
+      pushToast({ variant: "error", message: err.message });
     }
   }
 

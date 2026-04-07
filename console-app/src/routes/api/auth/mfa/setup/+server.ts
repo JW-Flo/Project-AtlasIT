@@ -4,9 +4,10 @@ import {
   generateTotpSecret,
   generateTotpUri,
   generateRecoveryCodes,
+  encryptTotpSecret,
 } from "@atlasit/shared/crypto/totp";
 
-/** Start TOTP enrollment — generates secret + recovery codes, stores unverified. */
+/** Start TOTP enrollment — generates secret + recovery codes, stores encrypted. */
 export const POST: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
@@ -14,6 +15,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Service unavailable" }, { status: 503 });
+
+  // C-3 FIX: Require encryption key for TOTP secret storage
+  const encryptionKey: string | undefined = env.CRED_ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    return json({ error: "MFA encryption not configured" }, { status: 503 });
+  }
 
   // Check if already enabled
   const existing = await db
@@ -32,20 +39,23 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   // Hash recovery codes for storage
   const codeHashes = await Promise.all(recoveryCodes.map((c) => hashCode(c)));
 
+  // C-3 FIX: Encrypt secret before storing in D1
+  const encryptedSecret = await encryptTotpSecret(secret, encryptionKey);
+
   // Upsert the unverified secret
   if (existing) {
     await db
       .prepare(
         "UPDATE mfa_totp_secrets SET secret_encrypted = ?, verified = 0, enabled_at = NULL WHERE user_id = ?",
       )
-      .bind(secret, user.userId)
+      .bind(encryptedSecret, user.userId)
       .run();
   } else {
     await db
       .prepare(
         "INSERT INTO mfa_totp_secrets (user_id, tenant_id, secret_encrypted, verified) VALUES (?, ?, ?, 0)",
       )
-      .bind(user.userId, user.tenantId, secret)
+      .bind(user.userId, user.tenantId, encryptedSecret)
       .run();
   }
 

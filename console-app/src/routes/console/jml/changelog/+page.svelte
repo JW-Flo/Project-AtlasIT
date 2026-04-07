@@ -215,13 +215,17 @@
       entries = Array.isArray(data.entries) ? data.entries : [];
       total = data.total ?? entries.length;
 
-      await loadEvidenceFeed();
+      // Load evidence feed separately so its failure doesn't wipe the changelog
+      try {
+        await loadEvidenceFeed();
+      } catch {
+        evidenceFeed = [];
+        evidenceSummary = { totalEvidence: 0, controlsCovered: 0 };
+      }
     } catch (e: any) {
       error = e?.message || "Failed to load JML changelog";
       entries = [];
       total = 0;
-      evidenceFeed = [];
-      evidenceSummary = { totalEvidence: 0, controlsCovered: 0 };
     } finally {
       loading = false;
     }

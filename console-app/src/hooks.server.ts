@@ -24,8 +24,8 @@ function isPublicApiRoute(pathname: string): boolean {
 
 let encryptionValidated = false;
 
-/** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
-const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
+/** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 5 min. */
+const SESSION_REFRESH_INTERVAL_MS = 300_000;
 
 /**
  * KV cacheTtl (seconds) — Cloudflare KV caches reads at the edge for this
@@ -123,52 +123,28 @@ export const handle: Handle = async ({ event, resolve }) => {
       }
     }
 
-    // Enrich stale sessions missing tenantId (e.g., created before enrichment was added)
+    // Sessions missing tenantId are invalid — invalidate and force re-login.
+    // Inferring tenant from DB (especially falling back to "first tenant") is a
+    // tenant-isolation risk and is not permitted.
     if (user && !user.tenantId) {
-      try {
-        const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
-        if (db) {
-          // Try console_user_roles first (RBAC table)
-          const roleRow = await db
-            .prepare("SELECT tenant_id FROM console_user_roles WHERE email = ? LIMIT 1")
-            .bind(user.email)
-            .first<{ tenant_id: string }>();
-          if (roleRow?.tenant_id) {
-            user.tenantId = roleRow.tenant_id;
-          }
-          // Then console_users
-          if (!user.tenantId) {
-            const userRow = await db
-              .prepare("SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1")
-              .bind(user.email)
-              .first<{ tenant_id: string }>();
-            if (userRow?.tenant_id) user.tenantId = userRow.tenant_id;
-          }
-          // Then users table (directory users)
-          if (!user.tenantId) {
-            const dirRow = await db
-              .prepare("SELECT tenant_id FROM users WHERE email = ? LIMIT 1")
-              .bind(user.email)
-              .first<{ tenant_id: string }>();
-            if (dirRow?.tenant_id) user.tenantId = dirRow.tenant_id;
-          }
-          // Last resort: first tenant
-          if (!user.tenantId) {
-            const fallback = await db
-              .prepare("SELECT id FROM tenants LIMIT 1")
-              .first<{ id: string }>();
-            if (fallback?.id) user.tenantId = fallback.id;
-          }
-        }
-      } catch (e) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            event: "auth.tenant_enrichment_failed",
-            err: String(e),
-          }),
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auth.session_missing_tenant_id",
+          message: "Session has no tenantId — invalidating",
+          email: user.email,
+        }),
+      );
+      user = null;
+      event.cookies.delete("atlas_session", { path: "/" });
+      const isApiRoute = event.url.pathname.startsWith("/api/");
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Session invalid", code: "session_invalid" }),
+          { status: 401, headers: { "content-type": "application/json" } },
         );
       }
+      throw redirect(302, "/console/login?error=session_invalid");
     }
 
     // Throttle lastSeenAt refresh — only write to KV every 5 minutes
@@ -327,9 +303,22 @@ export const handleError: HandleServerError = ({ error, event }) => {
     }),
   );
 
-  // Expose error details when debug param is present (owner-only troubleshooting)
+  // Expose error details only to super-admins via ?_debug=1.
+  // In production, even super-admins receive only the message — not the stack
+  // trace — to prevent accidental exposure through shared URLs or screenshots.
   const debug = event.url.searchParams.get("_debug") === "1";
-  if (debug) {
+  const user = event.locals.user as UserPrincipal | null | undefined;
+  const isSuperAdmin = Boolean(user?.superAdmin || (user?.roles ?? []).includes("super-admin"));
+  const isProduction = (event.platform?.env as Record<string, string | undefined> | undefined)?.[
+    "NODE_ENV"
+  ] !== "development";
+
+  if (debug && isSuperAdmin) {
+    if (isProduction) {
+      // Production: message only — no stack trace
+      return { message, code: "INTERNAL_ERROR" };
+    }
+    // Non-production: include partial stack for local debugging
     const stack = error instanceof Error ? error.stack : String(error);
     return {
       message: `${message} | ${(stack || "").split("\n").slice(0, 3).join(" ")}`,

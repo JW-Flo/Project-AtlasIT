@@ -374,27 +374,59 @@ async function activityRoutes(ctx: RouteContext): Promise<Response | null> {
 async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, request, env, requestId, headers } = ctx;
 
+  // C-1 FIX: All tenant-scoped evidence routes now require authentication.
+  // Tenant ID is derived exclusively from the validated token context, never from
+  // request params/query/headers, to prevent cross-tenant data access.
+
   if (url.pathname === "/api/compliance/snapshot" && (method === "GET" || method === "HEAD")) {
-    return handleSnapshot(env, url, requestId, headers, method === "HEAD" ? "HEAD" : "GET");
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleSnapshot(env, url, requestId, headers, method === "HEAD" ? "HEAD" : "GET", tenant.tenantId);
   }
 
   if (url.pathname === "/api/evidence/ingest" && method === "POST") {
-    return handleEvidenceIngest(request, env, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceIngest(request, env, requestId, headers, tenant.tenantId);
   }
 
   if (url.pathname === "/api/evidence/search" && method === "GET") {
-    return handleEvidenceSearch(env, url, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceSearch(env, url, requestId, headers, tenant.tenantId);
   }
 
   if (url.pathname.startsWith("/api/evidence/") && method === "GET") {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
     const hash = url.pathname.split("/").pop();
     if (!hash) {
       return errorResponse(400, requestId, headers, "Missing evidence hash");
     }
     if (url.searchParams.get("verify") === "1") {
-      return handleEvidenceVerify(env, hash, requestId, headers);
+      return handleEvidenceVerify(env, hash, requestId, headers, tenant.tenantId);
     }
-    return handleEvidenceGet(env, hash, requestId, headers);
+    return handleEvidenceGet(env, hash, requestId, headers, tenant.tenantId);
   }
 
   // Compatibility path expected by tests: /api/v1/evidence/{hash}/verify
@@ -403,10 +435,17 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     url.pathname.endsWith("/verify") &&
     method === "GET"
   ) {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
     const parts = url.pathname.split("/").filter(Boolean); // [api,v1,evidence,{hash},verify]
     if (parts.length === 5) {
       const hash = parts[3];
-      return handleEvidenceVerify(env, hash, requestId, headers);
+      return handleEvidenceVerify(env, hash, requestId, headers, tenant.tenantId);
     }
     return errorResponse(400, requestId, headers, "Invalid evidence verify path");
   }
@@ -414,10 +453,14 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   // --- v1 tenant-scoped evidence routes ---
 
   if (url.pathname === "/api/v1/evidence" && method === "GET") {
-    const tenantId = url.searchParams.get("tenant_id") || request.headers.get("x-tenant-id");
-    if (!tenantId) {
-      return errorResponse(400, requestId, headers, "tenant_id required");
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
     }
+    const tenantId = tenant.tenantId;
     // Read from shared DB (compliance_evidence) — the canonical evidence table
     // written by automation-evaluator, ai-orchestrator cron, and manual uploads.
     const sharedDb = env.ATLAS_SHARED_DB;
@@ -533,7 +576,14 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   }
 
   if (url.pathname === "/api/v1/evidence" && method === "POST") {
-    return handleEvidenceIngest(request, env, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceIngest(request, env, requestId, headers, tenant.tenantId);
   }
 
   // POST /api/v1/evidence/:id/link — supports both numeric (legacy) and UUID (shared DB) IDs
@@ -2752,8 +2802,8 @@ async function handleSnapshot(
   requestId: string,
   headers: Record<string, string>,
   method: "GET" | "HEAD",
+  tenantId: string,
 ) {
-  const tenantId = url.searchParams.get("tenantId") || DEFAULT_TENANT;
   const start = Date.now();
   try {
     await ensureSchema(env);
@@ -2875,6 +2925,7 @@ async function handleEvidenceIngest(
   env: Env,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId?: string,
 ) {
   const ingestStart = Date.now();
   const bucket = resolveR2(env);
@@ -2919,7 +2970,8 @@ async function handleEvidenceIngest(
     );
   }
 
-  const tenantId = normalizeString(body.tenantId, DEFAULT_TENANT);
+  // C-1 FIX: Use authenticated tenant ID; ignore body.tenantId to prevent cross-tenant writes
+  const tenantId = authenticatedTenantId || normalizeString(body.tenantId, DEFAULT_TENANT);
   const pack = normalizeString(body.pack, DEFAULT_PACK);
   const subject = normalizeString(body.subject, DEFAULT_SUBJECT);
 
@@ -3046,10 +3098,23 @@ async function handleEvidenceGet(
   hash: string,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const bucket = resolveR2(env);
   if (!bucket) {
     return errorResponse(503, requestId, headers, "Evidence store unavailable");
+  }
+
+  // C-1 FIX: Verify evidence belongs to the authenticated tenant before returning
+  const db = resolveD1(env);
+  if (db) {
+    const row = await db
+      .prepare("SELECT tenant_id FROM evidence_index WHERE hash = ? LIMIT 1")
+      .bind(hash)
+      .first<{ tenant_id: string }>();
+    if (row && row.tenant_id !== authenticatedTenantId) {
+      return errorResponse(403, requestId, headers, "Evidence not accessible for this tenant");
+    }
   }
 
   try {
@@ -3093,6 +3158,7 @@ async function handleEvidenceSearch(
   url: URL,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const searchStart = Date.now();
   const db = resolveD1(env);
@@ -3102,7 +3168,8 @@ async function handleEvidenceSearch(
 
   await ensureSchema(env);
 
-  const tenantId = url.searchParams.get("tenantId")?.trim() || undefined;
+  // C-1 FIX: Always scope search to the authenticated tenant
+  const tenantId: string | undefined = authenticatedTenantId;
   const pack = url.searchParams.get("pack")?.trim() || undefined;
   const subject = url.searchParams.get("subject")?.trim() || undefined;
   const limit = parseLimit(url.searchParams.get("limit"));
@@ -3201,6 +3268,7 @@ async function handleEvidenceVerify(
   hash: string,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const verifyStart = Date.now();
   const bucket = resolveR2(env);
@@ -3233,6 +3301,10 @@ async function handleEvidenceVerify(
       )
       .bind(hash)
       .first<Record<string, string>>();
+    // C-1 FIX: Verify evidence belongs to authenticated tenant
+    if (row && row.tenant_id !== authenticatedTenantId) {
+      return errorResponse(403, requestId, headers, "Evidence not accessible for this tenant");
+    }
     const integrity = recomputed === hash;
     const resp = new Response(
       JSON.stringify({
