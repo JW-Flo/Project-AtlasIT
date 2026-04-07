@@ -324,8 +324,9 @@
     location.href = "/console/login";
   }
 
+  const ACRONYMS = new Set(["nhi", "jml", "sso", "mfa", "api", "sla", "ai", "rbac", "oidc", "saml", "scim"]);
   function titleCase(s: string): string {
-    return s.replace(/\b\w/g, c => c.toUpperCase());
+    return s.replace(/\b\w+/g, w => ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1));
   }
 </script>
 

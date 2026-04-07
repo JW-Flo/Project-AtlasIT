@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { session } from "$lib/stores/session";
   import Card from "$lib/components/ui/card.svelte";
   import CardContent from "$lib/components/ui/card-content.svelte";
   import Button from "$lib/components/ui/button.svelte";
@@ -121,7 +122,7 @@
                 settings = { ...settings, isPublic: event.currentTarget.checked };
               }}
             />
-            <span class="text-sm">Expose your Trust Center at <code>/trust/&lt;slug&gt;</code></span>
+            <span class="text-sm">Expose your Trust Center at <code>/trust/{$session?.tenantId ?? "your-org"}</code></span>
           </label>
         </div>
 
