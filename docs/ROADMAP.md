@@ -843,6 +843,61 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [ ] **Incident resolution evidence** — Closing an incident auto-generates evidence: timeline, actions taken, affected scope, remediation proof. Feeds directly into compliance scoring pipeline.
 - [ ] **Post-incident review** — Template for blameless retrospective with auto-populated timeline from audit log. Generates policy update recommendations.
 
+## QA Hardening Sprint ✅ (PRs #369–#372)
+
+> Combined QA + Security Audit identified 39 findings (9 Critical, 12 High, 12 Medium, 6 Low).
+> 38 of 39 remediated same-day across 4 squash-merged PRs.
+
+### Security (Critical)
+- [x] **C-1** Lock down compliance-worker — all evidence routes require `x-api-key` auth; tenant from token only
+- [x] **C-2** Client-side QR generation — TOTP secrets no longer leak to third-party QR service
+- [x] **C-3** TOTP secrets encrypted at rest (AES-256-GCM via `CRED_ENCRYPTION_KEY`)
+- [x] **C-4** 9 crashed pages fixed — toast prop mismatches, null guards, error isolation, redirect pages
+- [x] **C-5** Copilot 403 root cause (missing tenantId) resolved via M-2 session fix
+- [x] **C-6** Joiner workflow auth — service auth headers on directory sync→orchestrator calls
+- [x] **C-7** Policy generation renders markdown, not raw JSON
+- [x] **C-8** Policy detail endpoint gracefully handles missing tables
+- [x] **C-9** Cron tenant limits raised from 100 → 10,000
+
+### Auth & Reliability (High)
+- [x] **H-1** Removed tempPassword from invite response
+- [x] **H-2** Service role in auth hierarchy; API key auth requires X-Tenant-ID
+- [x] **H-3** Per-tenant error tracking (was global cross-tenant leak)
+- [x] **H-4/H-5** Service API key headers on orchestrator↔compliance calls
+- [x] **H-6** Schema drift fixed (register uses correct column names)
+- [x] **H-7** Inline `CREATE TABLE IF NOT EXISTS` removed from 6 handlers; migration 0048 added
+- [x] **H-8** Cron duties wrapped in individual try/catch
+- [x] **H-9** Security settings fail-closed on policy load error
+- [x] **H-10** Compliance score rounding standardized (2 decimal places)
+- [x] **H-12** Automation action forwarding includes `X-API-Key`
+
+### Data Integrity & UX (Medium + Low)
+- [x] **M-1** Debug mode gated behind super-admin; stacks redacted in production
+- [x] **M-2** Unsafe tenant inference fallback removed — sessions invalidated
+- [x] **M-3** Security settings use UPSERT not DELETE+INSERT
+- [x] **M-5** Session refresh throttle fixed to 5 min
+- [x] **M-6** MFA defaults require MFA for owner/admin roles
+- [x] **M-7** Stub AI providers throw instead of returning fake text
+- [x] **M-8** Directory names display correctly (camelCase mapping fix)
+- [x] **M-9** Group count uses actual array length
+- [x] **M-10** Evidence subject renders JSON objects
+- [x] **M-11** Scroll bug fixed (h-dvh overflow-hidden layout)
+- [x] **M-12** Profile security tab links to MFA enrollment
+- [x] **L-1** Breadcrumb acronyms (NHI, JML, SSO, MFA) render uppercase
+- [x] **L-2** Policy title no longer duplicates "Policy" suffix
+- [x] **L-3** Trust Center URL shows tenant ID, not `<slug>` placeholder
+- [x] **L-5** Billing queries actual data tables
+- [x] **L-6** Onboarding redirects to dashboard on auto-login failure
+- [x] **L-7** Marketplace cards clickable for setup wizard
+
+### Infrastructure
+- `INTERNAL_API_KEY` on console-app, orchestrator, compliance-worker
+- `COMPLIANCE_API_KEY` + `API_ALLOWED_KEYS` on orchestrator
+- Service token in `API_TOKENS` KV (tenantId: "*", roles: service/admin/member)
+
+### Remaining
+- [ ] **H-11** Incident detail view — needs live debugging (code structurally correct)
+
 ## Long-Term Platform Modules
 
 AtlasIT evolves into a modular platform — **"stop buying two platforms"**:
