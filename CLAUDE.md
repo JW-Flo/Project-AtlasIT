@@ -39,9 +39,9 @@ Once sufficient work has been completed on a feature branch (typically 3+ commit
 
 1. **Review** — Diff branch against main, verify all changes are intentional and tests pass
 2. **Rebase** — `git fetch origin main && git rebase origin/main` to resolve conflicts early
-3. **PR** — Open a PR with a summary and test plan (`gh pr create` or MCP `create_pull_request`)
-4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --squash` or MCP `merge_pull_request`)
-5. **Validate** — Check CI status (`gh run list --branch main --limit 1`), then smoke-test deployed endpoints (`bash scripts/smoke-test.sh <worker> <url>` for console-app, orchestrator, compliance-worker)
+3. **PR** — Push branch, then open a PR via GitHub API: `curl -X POST .../pulls`
+4. **Merge** — Merge the PR via GitHub API: `curl -X PUT .../pulls/<num>/merge -d '{"merge_method":"squash"}'`
+5. **Validate** — Fetch merged main, verify CI status via GitHub API (`curl .../actions/runs?branch=main&per_page=1`), then smoke-test deployed endpoints (`bash scripts/smoke-test.sh <worker> <url>` for console-app, orchestrator, compliance-worker)
 6. **Continue** — Create a new branch for the next batch of work
 
 **Execute all 6 steps autonomously.** Do not stop after step 3 to ask "want me to merge?" — the SOP is the instruction. Only pause if a step fails (CI red, smoke test failure, merge conflict).
@@ -60,14 +60,16 @@ Do not accumulate unbounded work on a branch without checkpointing. This prevent
 
 ### Tool Priority for GitHub Operations
 
-1. **MCP GitHub tools** (`mcp__github__*`) — Use for PRs, issues, file operations, comments, merges
-2. **`gh` CLI** — Use for anything MCP tools don't cover: workflow runs (`gh run list`, `gh run view`), CI status checks, repo settings, release management
-3. **`curl` + GitHub API** — Last resort only; requires `GH_PAT` from 1Password which is not exported to shell
+1. **`curl` + GitHub API** — Primary method for all GitHub operations (PRs, issues, merges, comments, CI status). Uses `$GH_PAT` env var for authentication.
+2. **MCP GitHub tools** (`mcp__github__*`) — Use when available as an alternative to curl.
+3. **`gh` CLI** — Fallback if installed; not always available in all environments.
 
-When MCP tools are insufficient (e.g., checking GitHub Actions workflow status), fall back to `gh` CLI immediately — do not skip the step or ask the user.
+Use `curl` with `$GH_PAT` for GitHub API calls. Example:
 
-Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
-Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
+```bash
+curl -s -X POST -H "Authorization: token $GH_PAT" -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/JW-Flo/Project-AtlasIT/pulls" -d '{"title":"...","head":"...","base":"main","body":"..."}'
+```
 
 Full PR workflow:
 
@@ -77,9 +79,9 @@ Full PR workflow:
    - Read the full diff (`git diff main..HEAD`) and review every changed file for: bugs, security issues (auth bypass, tenant data leakage, injection), type safety, edge cases, error handling, and consistency with codebase patterns
    - Fix all issues found — this is not optional. Do not merge with known defects.
    - Commit remediation as a separate commit so fixes are visible in history
-4. Push and open PR: `gh pr create --title "..." --body "..."`
-5. Merge: `gh pr merge <num> --squash`
-6. Delete remote branch: `git push origin --delete <branch>`
+4. Push and open PR via GitHub API: `curl -X POST .../pulls`
+5. Merge via GitHub API: `curl -X PUT .../pulls/<num>/merge -d '{"merge_method":"squash"}'`
+6. Delete remote branch: `curl -X DELETE .../git/refs/heads/<branch>` or `git push origin --delete <branch>`
 
 ## CI/CD & Deploy Validation
 
