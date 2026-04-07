@@ -4,6 +4,7 @@ import {
   buildCopilotContext,
   buildSystemPrompt,
   generateAI,
+  buildAutomationFromNL,
   type AIMessage,
   type CopilotMessage,
   type CopilotChatRequest,
@@ -38,7 +39,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const kv = (platform?.env as any)?.KV_CACHE;
   if (kv) {
     const rateKey = `copilot:rate:${tenantId}`;
-    const current = parseInt(await kv.get(rateKey) ?? "0", 10);
+    const current = parseInt((await kv.get(rateKey)) ?? "0", 10);
     if (current >= 30) {
       return json({ error: "Rate limit exceeded. Try again later." }, { status: 429 });
     }
@@ -60,14 +61,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       if (row?.value) {
         history = JSON.parse(row.value);
       }
-    } catch { /* fresh conversation */ }
+    } catch {
+      /* fresh conversation */
+    }
   }
 
   // Build messages for AI
   const systemPrompt = buildSystemPrompt(tenantContext, quickAction, framework);
-  const aiMessages: AIMessage[] = [
-    { role: "system", content: systemPrompt },
-  ];
+  const aiMessages: AIMessage[] = [{ role: "system", content: systemPrompt }];
 
   // Include conversation history (last 10 messages to stay within token limits)
   const recentHistory = history.slice(-10);
@@ -78,10 +79,38 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   }
 
   // Add current user message
-  const userContent = quickAction && !message
-    ? getQuickActionMessage(quickAction, framework)
-    : message;
+  const userContent =
+    quickAction && !message ? getQuickActionMessage(quickAction, framework) : message;
   aiMessages.push({ role: "user", content: userContent });
+
+  // Handle NL rule creation — if the user provides a rule description in conversation,
+  // try to build a structured automation rule via the NL builder
+  let nlRuleResult: any = null;
+  if (quickAction === "create_rule" && message) {
+    try {
+      // Fetch connected apps and existing rules for context
+      const [appsResult, rulesResult] = await Promise.all([
+        db
+          .prepare("SELECT app_id FROM connected_apps WHERE tenant_id = ? AND status = 'active'")
+          .bind(tenantId)
+          .all<{ app_id: string }>(),
+        db
+          .prepare("SELECT name, trigger_type FROM automation_rules WHERE tenant_id = ? LIMIT 20")
+          .bind(tenantId)
+          .all<{ name: string; trigger_type: string }>(),
+      ]);
+
+      nlRuleResult = await buildAutomationFromNL(env, {
+        prompt: message,
+        connectedApps: (appsResult.results ?? []).map((r) => r.app_id),
+        existingRulesSummary: (rulesResult.results ?? []).map(
+          (r) => `${r.name} (${r.trigger_type})`,
+        ),
+      });
+    } catch {
+      // Fall through to normal AI response if NL builder fails
+    }
+  }
 
   // Call AI (Bedrock primary, Groq fallback)
   let aiResponse: string;
@@ -101,8 +130,32 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   // Strip thinking tags if present
   aiResponse = aiResponse.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 
+  // If NL rule was built, append it to the response
+  if (nlRuleResult) {
+    aiResponse += `\n\n---\n**Generated Rule: ${nlRuleResult.rule.name}**\n`;
+    aiResponse += `- Trigger: \`${nlRuleResult.rule.triggerType}\`\n`;
+    aiResponse += `- Actions: ${nlRuleResult.rule.actions.map((a: any) => `\`${a.type}\``).join(", ")}\n`;
+    aiResponse += `- Confidence: ${Math.round(nlRuleResult.confidence * 100)}%\n`;
+    if (nlRuleResult.compliancePreview.length > 0) {
+      aiResponse += `- Compliance coverage: ${nlRuleResult.compliancePreview.map((c: any) => `${c.framework} ${c.controlId}`).join(", ")}\n`;
+    }
+    if (nlRuleResult.possibleDuplicate) {
+      aiResponse += `\n> **Note:** This may overlap with an existing rule. Review before saving.\n`;
+    }
+  }
+
   // Parse any structured actions from the response
   const actions = extractActions(aiResponse);
+
+  // Add rule creation action if NL rule was built
+  if (nlRuleResult) {
+    actions.unshift({
+      type: "create_rule",
+      label: `Create rule: ${nlRuleResult.rule.name}`,
+      href: "/console/automation",
+      payload: { rule: nlRuleResult.rule },
+    });
+  }
 
   const userMsg: CopilotMessage = {
     id: crypto.randomUUID(),
@@ -135,7 +188,9 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
         JSON.stringify(updatedHistory),
       )
       .run();
-  } catch { /* best-effort persistence */ }
+  } catch {
+    /* best-effort persistence */
+  }
 
   return json({
     conversationId: convId,
@@ -187,21 +242,21 @@ function extractActions(response: string): CopilotAction[] {
 
   // Detect page references and create navigation actions
   const pageMap: Record<string, string> = {
-    "compliance": "/console/compliance",
-    "controls": "/console/compliance",
-    "evidence": "/console/compliance/feed",
-    "policies": "/console/policies",
-    "automation": "/console/automation",
-    "rules": "/console/automation",
+    compliance: "/console/compliance",
+    controls: "/console/compliance",
+    evidence: "/console/compliance/feed",
+    policies: "/console/policies",
+    automation: "/console/automation",
+    rules: "/console/automation",
     "access review": "/console/access-reviews",
-    "incidents": "/console/incidents",
-    "directory": "/console/directory",
-    "apps": "/console/apps",
-    "marketplace": "/console/marketplace",
-    "remediation": "/console/compliance",
-    "attestation": "/console/compliance/attestations",
-    "insights": "/console/insights",
-    "settings": "/console/settings",
+    incidents: "/console/incidents",
+    directory: "/console/directory",
+    apps: "/console/apps",
+    marketplace: "/console/marketplace",
+    remediation: "/console/compliance",
+    attestation: "/console/compliance/attestations",
+    insights: "/console/insights",
+    settings: "/console/settings",
   };
 
   const lowerResponse = response.toLowerCase();

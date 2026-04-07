@@ -13,6 +13,7 @@
     RotateCcw,
   } from "lucide-svelte";
   import CopilotMessage from "./CopilotMessage.svelte";
+  import AuditPrepChecklist from "./AuditPrepChecklist.svelte";
 
   export let open = false;
   export let onClose: () => void = () => {};
@@ -30,12 +31,26 @@
     }>;
   }
 
+  interface WhatNextAction {
+    id: string;
+    priority: number;
+    category: string;
+    title: string;
+    description: string;
+    impact: string;
+    href: string;
+    scoreImpact?: number;
+  }
+
   let messages: Message[] = [];
   let inputValue = "";
   let loading = false;
   let conversationId: string | null = null;
   let messagesContainer: HTMLDivElement;
   let inputElement: HTMLTextAreaElement;
+  let showAuditPrep = false;
+  let whatNextActions: WhatNextAction[] = [];
+  let loadingActions = false;
 
   const quickActions = [
     {
@@ -57,6 +72,24 @@
       icon: Zap,
     },
   ];
+
+  async function fetchWhatNext() {
+    loadingActions = true;
+    showAuditPrep = false;
+    try {
+      const res = await fetch("/api/copilot/actions");
+      if (res.ok) {
+        const data = await res.json();
+        whatNextActions = data.actions;
+      }
+    } catch { /* ignore */ }
+    loadingActions = false;
+  }
+
+  function showAuditPrepMode() {
+    showAuditPrep = true;
+    whatNextActions = [];
+  }
 
   async function sendMessage(content?: string, quickAction?: string) {
     const text = content ?? inputValue.trim();
@@ -149,6 +182,8 @@
     messages = [];
     conversationId = null;
     inputValue = "";
+    showAuditPrep = false;
+    whatNextActions = [];
   }
 
   // Focus input when panel opens
@@ -214,7 +249,7 @@
       class="flex-1 overflow-y-auto px-4 py-4 space-y-4"
       bind:this={messagesContainer}
     >
-      {#if messages.length === 0}
+      {#if messages.length === 0 && !showAuditPrep && whatNextActions.length === 0 && !loadingActions}
         <!-- Welcome state -->
         <div class="flex flex-col items-center justify-center h-full text-center px-4">
           <div class="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -227,23 +262,88 @@
 
           <!-- Quick actions -->
           <div class="w-full space-y-2">
-            {#each quickActions as action}
-              <button
-                class="flex items-center gap-3 w-full rounded-lg border px-3 py-3 text-left text-sm hover:bg-accent/50 transition-colors group"
-                on:click={() => sendMessage(undefined, action.id)}
-                disabled={loading}
-              >
-                <div class="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-                  <svelte:component this={action.icon} class="h-4 w-4 text-primary" />
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="font-medium">{action.label}</div>
-                  <div class="text-xs text-muted-foreground">{action.description}</div>
-                </div>
-                <ArrowRight class="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </button>
-            {/each}
+            <button
+              class="flex items-center gap-3 w-full rounded-lg border px-3 py-3 text-left text-sm hover:bg-accent/50 transition-colors group"
+              on:click={fetchWhatNext}
+              disabled={loading}
+            >
+              <div class="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                <Sparkles class="h-4 w-4 text-primary" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium">What should I do next?</div>
+                <div class="text-xs text-muted-foreground">Get prioritized compliance actions</div>
+              </div>
+              <ArrowRight class="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </button>
+            <button
+              class="flex items-center gap-3 w-full rounded-lg border px-3 py-3 text-left text-sm hover:bg-accent/50 transition-colors group"
+              on:click={showAuditPrepMode}
+              disabled={loading}
+            >
+              <div class="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                <ClipboardCheck class="h-4 w-4 text-primary" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium">Prepare for audit</div>
+                <div class="text-xs text-muted-foreground">Generate audit readiness checklist</div>
+              </div>
+              <ArrowRight class="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </button>
+            <button
+              class="flex items-center gap-3 w-full rounded-lg border px-3 py-3 text-left text-sm hover:bg-accent/50 transition-colors group"
+              on:click={() => sendMessage(undefined, "create_rule")}
+              disabled={loading}
+            >
+              <div class="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                <Zap class="h-4 w-4 text-primary" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium">Create automation rule</div>
+                <div class="text-xs text-muted-foreground">Build a rule in plain English</div>
+              </div>
+              <ArrowRight class="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            </button>
           </div>
+        </div>
+      {:else if showAuditPrep}
+        <!-- Audit prep checklist -->
+        <div class="px-1">
+          <AuditPrepChecklist framework="SOC2" />
+        </div>
+      {:else if loadingActions}
+        <div class="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          <span>Analyzing your compliance data...</span>
+        </div>
+      {:else if whatNextActions.length > 0}
+        <!-- What next actions -->
+        <div class="space-y-2">
+          <h3 class="text-sm font-semibold px-1">Prioritized Actions</h3>
+          {#each whatNextActions as action (action.id)}
+            <a
+              href={action.href}
+              class="block rounded-lg border p-3 text-sm hover:bg-accent/30 transition-colors"
+            >
+              <div class="flex items-start gap-2">
+                <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 mt-0.5
+                  {action.impact === 'critical' ? 'bg-red-500/15 text-red-600 dark:text-red-400' :
+                   action.impact === 'high' ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400' :
+                   action.impact === 'medium' ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' :
+                   'bg-blue-500/15 text-blue-600 dark:text-blue-400'}">
+                  {action.impact}
+                </span>
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium">{action.title}</div>
+                  <div class="text-xs text-muted-foreground mt-0.5">{action.description}</div>
+                  {#if action.scoreImpact}
+                    <div class="text-[10px] text-green-600 dark:text-green-400 mt-1">+{action.scoreImpact}% estimated score improvement</div>
+                  {/if}
+                </div>
+                <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              </div>
+            </a>
+          {/each}
         </div>
       {:else}
         {#each messages as msg (msg.id)}

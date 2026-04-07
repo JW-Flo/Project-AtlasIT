@@ -47,6 +47,27 @@ Directory Event / Schedule / Webhook
 
 > Everything in the phases below is infrastructure to make these automations reliable, observable, and trustworthy.
 
+### Competitive Intelligence — ScalePad ControlMap
+
+> **ScalePad ControlMap** (www.scalepad.com) — Direct competitor targeting MSPs/CaaS practices.
+>
+> **Overlap:** Automated risk assessments + real-time compliance monitoring, 40+ integration evidence collection, customizable control/policy/framework templates, end-to-end audit management.
+>
+> **ControlMap strengths:** MSP/CaaS-first positioning (built for consultants managing multiple clients), 40+ integrations, established brand in MSP channel.
+>
+> **AtlasIT differentiators:**
+>
+> - AI Compliance Copilot (Phase 22) — no ControlMap equivalent. Evidence-grounded conversational AI with live operational data.
+> - Daily AI digest — proactive intelligence vs static dashboards.
+> - Self-serve PLG pricing (Phase 16) — ControlMap gates access behind sales forms.
+> - Adapter generation pipeline (Phase 15) — rapid connector expansion via manifest-driven scaffolding.
+> - JML event pipeline + CDT rule engine — deeper operational telemetry than template-based evidence.
+>
+> **Gaps to close:**
+>
+> - MSP/multi-client management UX — AtlasIT is multi-tenant but not marketed for CaaS practices.
+> - Integration count (40 vs 35) — adapter-gen pipeline can close this quickly.
+
 ---
 
 ## Phase 0 — Foundation ✅
@@ -730,10 +751,10 @@ These items from the Codex Review are not yet fully addressed and should be prio
 
 ### P0 — Compliance Chat Interface
 
-- [ ] **Chat UI** — Slide-out panel (Cmd+K or dedicated button) with streaming responses. Persistent conversation history per user in `tenant_preferences`.
-- [ ] **Context injection** — Every query automatically includes: tenant's frameworks, current scores, recent evidence, active remediations, connected adapters, open incidents. Scoped by tenant_id.
-- [ ] **Groq-backed responses** — Use existing Groq integration (from Phase 13 policy generator). System prompt grounded in compliance expertise + tenant context.
-- [ ] Files: `console-app/src/lib/components/copilot/`, `console-app/src/routes/api/copilot/chat/+server.ts`
+- [x] **Chat UI** — Slide-out panel (Cmd+K or dedicated button) with streaming responses. Persistent conversation history per user in `tenant_preferences`.
+- [x] **Context injection** — Every query automatically includes: tenant's frameworks, current scores, recent evidence, active remediations, connected adapters, open incidents. Scoped by tenant_id.
+- [x] **Groq-backed responses** — Use existing Groq integration (from Phase 13 policy generator). System prompt grounded in compliance expertise + tenant context.
+- [x] Files: `console-app/src/lib/components/copilot/`, `console-app/src/routes/api/copilot/chat/+server.ts`
 
 ### P1 — Actionable Intelligence
 
