@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required. Please log out and log back in." }, { status: 403 });
 
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ actions: [] });

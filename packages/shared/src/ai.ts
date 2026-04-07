@@ -25,10 +25,8 @@ export class CloudflareAIProvider implements AIProvider {
     private readonly logger = new Logger({ service: "ai-cf" }),
   ) {}
   async generate(messages: AIMessage[], opts: AIOptions = {}): Promise<string> {
-    const prompt = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
-    this.logger.debug("Calling Cloudflare AI", { length: prompt.length });
-    // Placeholder: real implementation would call Workers AI fetch binding
-    return `cf-ai-response: ${prompt.slice(0, 120)}`;
+    // M-7 FIX: Stub providers must throw so the fallback chain continues to real providers
+    throw new Error("CloudflareAI provider not implemented — configure bedrock or groq as primary");
   }
 }
 
@@ -44,9 +42,8 @@ export class TogetherAIProvider implements AIProvider {
       max_tokens: opts.maxTokens || 512,
       temperature: opts.temperature ?? 0.7,
     };
-    this.logger.debug("Calling Together AI", { body });
-    // Placeholder: would perform fetch
-    return "together-ai-response";
+    // M-7 FIX: Stub providers must throw so the fallback chain continues to real providers
+    throw new Error("TogetherAI provider not implemented — configure bedrock or groq as primary");
   }
 }
 
@@ -62,9 +59,8 @@ export class OpenAIAIProvider implements AIProvider {
       max_tokens: opts.maxTokens || 512,
       temperature: opts.temperature ?? 0.7,
     };
-    this.logger.debug("Calling OpenAI", { body });
-    // Placeholder
-    return "openai-response";
+    // M-7 FIX: Stub providers must throw so the fallback chain continues to real providers
+    throw new Error("OpenAI provider not implemented — configure bedrock or groq as primary");
   }
 }
 

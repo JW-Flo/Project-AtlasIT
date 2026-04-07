@@ -532,7 +532,7 @@
     savingDraft = true;
     try {
       const tpl = templates.find((t) => t.key === selectedTemplate);
-      const title = tpl ? `${tpl.name} Policy` : "Generated Policy";
+      const title = tpl ? (tpl.name.toLowerCase().includes("policy") ? tpl.name : `${tpl.name} Policy`) : "Generated Policy";
       // Map template key to a valid policy type for storage
       const typeMap: Record<string, string> = {
         "soc2.demo": "access_control",

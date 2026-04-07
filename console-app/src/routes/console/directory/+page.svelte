@@ -186,7 +186,7 @@
         const data = await res.json();
         users = (data.users || []).map((u: any) => ({
           ...u,
-          name: u.display_name || u.name || u.email,
+          name: u.displayName || u.display_name || u.name || u.email,
         }));
         usersTotal = data.total || users.length;
       }
@@ -579,8 +579,8 @@
         {#if syncStatus.connected}
           <p class="text-sm text-muted-foreground">
             Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
-            {syncStatus.userCount ?? users.length} users &middot;
-            {syncStatus.groupCount ?? groups.length} groups
+            {usersTotal || users.length} users &middot;
+            {groups.length} groups
           </p>
         {:else}
           <p class="text-sm text-muted-foreground">

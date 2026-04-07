@@ -37,7 +37,7 @@ export const DEFAULT_SECURITY_POLICY: TenantSecurityPolicy = {
   idleTimeoutSeconds: 86400, // 24 hours
   passwordRotationDays: 0,
   minPasswordLength: 8,
-  mfaRequiredRoles: [],
+  mfaRequiredRoles: ["owner", "admin"],
 };
 
 /** Merge stored policy with defaults (partial updates are safe). */
