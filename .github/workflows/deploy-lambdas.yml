@@ -1,0 +1,135 @@
+name: Deploy Lambda Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lambdas/**"
+      - "packages/shared/**"
+      - "scripts/build-lambdas.mjs"
+  workflow_dispatch:
+    inputs:
+      function:
+        description: "Specific function to deploy (blank = all changed)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-lambdas
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: "20"
+
+jobs:
+  detect-changes:
+    name: Detect changed functions
+    runs-on: ubuntu-latest
+    outputs:
+      functions: ${{ steps.changes.outputs.functions }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed Lambda functions
+        id: changes
+        run: |
+          if [ -n "${{ inputs.function }}" ]; then
+            echo "functions=[\"${{ inputs.function }}\"]" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- lambdas/ | cut -d'/' -f2 | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          # If shared packages changed, deploy all functions
+          SHARED_CHANGED=$(git diff --name-only HEAD~1 HEAD -- packages/shared/ | wc -l)
+          if [ "$SHARED_CHANGED" -gt 0 ]; then
+            CHANGED=$(ls lambdas/ | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          fi
+
+          echo "functions=$CHANGED" >> $GITHUB_OUTPUT
+
+  build-and-deploy:
+    name: Deploy ${{ matrix.function }}
+    needs: detect-changes
+    if: needs.detect-changes.outputs.functions != '[]' && needs.detect-changes.outputs.functions != ''
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function: ${{ fromJSON(needs.detect-changes.outputs.functions) }}
+      max-parallel: 5
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Lambda function
+        run: |
+          node scripts/build-lambdas.mjs --function ${{ matrix.function }}
+
+      - name: Package Lambda
+        run: |
+          cd lambdas/${{ matrix.function }}/dist
+          zip -r ../../../${{ matrix.function }}.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to Lambda
+        run: |
+          FUNCTION_NAME="atlasit-${{ matrix.function }}-dev"
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file "fileb://${{ matrix.function }}.zip" \
+            --publish
+
+      - name: Wait for update
+        run: |
+          FUNCTION_NAME="atlasit-${{ matrix.function }}-dev"
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+  smoke-test:
+    name: Post-deploy smoke test
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Health check
+        run: |
+          API_URL=$(aws cloudformation describe-stacks --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" --output text 2>/dev/null || echo "")
+          if [ -n "$API_URL" ]; then
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
+            echo "Health check status: $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "::warning::Health check returned $STATUS"
+            fi
+          else
+            echo "::notice::API URL not yet available — skipping smoke test"
+          fi

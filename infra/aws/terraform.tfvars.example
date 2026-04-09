@@ -1,0 +1,7 @@
+region               = "us-east-1"
+env                  = "dev"
+account_id           = "457335975503"
+oidc_provider_arn    = "arn:aws:iam::457335975503:oidc-provider/token.actions.githubusercontent.com"
+oidc_subject_pattern = "repo:JW-Flo/Project-AtlasIT:*"
+domain               = "atlasit.pro"
+github_repo          = "JW-Flo/Project-AtlasIT"

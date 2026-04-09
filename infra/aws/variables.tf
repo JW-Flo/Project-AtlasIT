@@ -25,3 +25,15 @@ variable "oidc_subject_pattern" {
   type        = string
   default     = "project-atlasit/*"
 }
+
+variable "domain" {
+  description = "Primary domain for AtlasIT"
+  type        = string
+  default     = "atlasit.pro"
+}
+
+variable "github_repo" {
+  description = "GitHub repository in owner/repo format for OIDC trust"
+  type        = string
+  default     = "JW-Flo/Project-AtlasIT"
+}
