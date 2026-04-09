@@ -1,28 +1,51 @@
 #!/usr/bin/env node
 /**
  * Build all Lambda functions in lambdas/ using esbuild.
- * Outputs to lambdas/<name>/dist/handler.js (single-file bundle).
+ * Outputs to lambdas/<name>/dist/handler.js (single-file CJS bundle).
  */
 
 import { readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
-
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import esbuild from "esbuild";
+
+// Plugin: resolve .js imports to .ts source files (TypeScript convention)
+const tsResolvePlugin = {
+  name: "ts-resolve",
+  setup(build) {
+    build.onResolve({ filter: /\.js$/ }, (args) => {
+      if (args.kind !== "import-statement" && args.kind !== "dynamic-import") return;
+      if (!args.resolveDir) return;
+      const tsPath = join(args.resolveDir, args.path.replace(/\.js$/, ".ts"));
+      if (existsSync(tsPath)) {
+        return { path: tsPath };
+      }
+    });
+  },
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const LAMBDAS_DIR = join(__dirname, "..", "lambdas");
+const ROOT_DIR = join(__dirname, "..");
+const LAMBDAS_DIR = join(ROOT_DIR, "lambdas");
+const SHARED_SRC = join(ROOT_DIR, "packages", "shared", "src");
+
 // console-ssr is built by SvelteKit's own pipeline, not esbuild
 const SKIP = new Set(["console-ssr"]);
 const dirs = readdirSync(LAMBDAS_DIR, { withFileTypes: true })
   .filter((d) => d.isDirectory() && !SKIP.has(d.name))
   .map((d) => d.name);
 
-console.log(`Building ${dirs.length} lambdas...`);
+// Allow building a single function via --function flag
+const fnArg = process.argv.find((a) => a.startsWith("--function"));
+const targetFn = fnArg ? process.argv[process.argv.indexOf(fnArg) + 1] : null;
+
+const toBuild = targetFn ? dirs.filter((d) => d === targetFn) : dirs;
+
+console.log(`Building ${toBuild.length} lambdas...`);
 
 let failed = 0;
-for (const name of dirs) {
+for (const name of toBuild) {
   const srcDir = join(LAMBDAS_DIR, name, "src");
   const entry = join(srcDir, "handler.ts");
   const outDir = join(LAMBDAS_DIR, name, "dist");
@@ -33,24 +56,24 @@ for (const name of dirs) {
   }
 
   try {
-    const args = [
-      "esbuild",
-      `"${entry}"`,
-      "--bundle",
-      "--platform=node",
-      "--target=node20",
-      "--format=esm",
-      `--outdir="${outDir}"`,
-      "--sourcemap",
-      "--external:@aws-sdk/*",
-      "--external:@atlasit/*",
-      "--external:pg",
-      "--external:crypto",
-    ].join(" ");
-    execSync(`npx ${args}`, { stdio: "pipe", shell: true });
+    await esbuild.build({
+      entryPoints: [entry],
+      bundle: true,
+      platform: "node",
+      target: "node20",
+      format: "cjs",
+      outdir: outDir,
+      sourcemap: true,
+      external: ["@aws-sdk/*", "crypto", "pg", "pg-native"],
+      alias: {
+        "@atlasit/shared": SHARED_SRC,
+      },
+      resolveExtensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
+      plugins: [tsResolvePlugin],
+    });
     console.log(`  OK   ${name}`);
   } catch (err) {
-    console.error(`  FAIL ${name}: ${(err.stderr || err.stdout || err.message || '').toString().trim().slice(0, 500)}`);
+    console.error(`  FAIL ${name}: ${(err.message || "").slice(0, 500)}`);
     failed++;
   }
 }
