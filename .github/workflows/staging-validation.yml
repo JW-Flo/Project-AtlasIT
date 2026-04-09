@@ -49,7 +49,7 @@ jobs:
           terraform_version: "~> 1.5"
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -reconfigure
 
       - name: Terraform Apply (staging)
         run: terraform apply -var-file=staging.tfvars -auto-approve
