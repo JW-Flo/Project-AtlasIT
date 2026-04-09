@@ -10,10 +10,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
 import { SQSClient } from "@aws-sdk/client-sqs";
 import { EventBridgeClient } from "@aws-sdk/client-eventbridge";
-import {
-  SecretsManagerClient,
-  GetSecretValueCommand,
-} from "@aws-sdk/client-secrets-manager";
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 
 import { DynamoSessionRepo } from "./repos/session-repo.js";
 import { DynamoCacheRepo } from "./repos/cache-repo.js";
@@ -88,19 +85,20 @@ export function bootstrap(): ServiceContainer {
   return _container;
 }
 
-// Secret caching (warm Lambda reuse)
+// Secret caching (warm Lambda reuse) — uses SSM SecureString (free) instead of Secrets Manager ($0.40/secret/mo)
 const _secretCache = new Map<string, string>();
-const smClient = new SecretsManagerClient({});
+const ssmClient = new SSMClient({});
 
 export async function getSecret(name: string): Promise<string> {
   const cached = _secretCache.get(name);
   if (cached) return cached;
 
-  const result = await smClient.send(
-    new GetSecretValueCommand({ SecretId: name }),
+  const prefix = process.env.SSM_PREFIX ?? "/atlasit/dev";
+  const result = await ssmClient.send(
+    new GetParameterCommand({ Name: `${prefix}/secrets/${name}`, WithDecryption: true }),
   );
-  const value = result.SecretString;
-  if (!value) throw new Error(`Secret ${name} has no string value`);
+  const value = result.Parameter?.Value;
+  if (!value) throw new Error(`Secret ${prefix}/secrets/${name} not found in SSM`);
   _secretCache.set(name, value);
   return value;
 }

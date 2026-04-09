@@ -22,7 +22,7 @@ resource "aws_subnet" "private" {
   tags = { Name = "atlasit-private-${count.index}-${var.env}" }
 }
 
-# Public subnets (NAT Gateway)
+# Public subnets (NAT instance)
 resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
@@ -38,16 +38,78 @@ resource "aws_internet_gateway" "main" {
   tags   = { Name = "atlasit-igw-${var.env}" }
 }
 
-resource "aws_eip" "nat" {
-  domain = "vpc"
-  tags   = { Name = "atlasit-nat-${var.env}" }
+# --- NAT instance (t4g.nano, ~$3/mo) replaces managed NAT Gateway ($32/mo) ---
+
+data "aws_ami" "amazon_linux_arm" {
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-arm64"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-  tags          = { Name = "atlasit-nat-${var.env}" }
+resource "aws_instance" "nat" {
+  ami                         = data.aws_ami.amazon_linux_arm.id
+  instance_type               = "t4g.nano"
+  subnet_id                   = aws_subnet.public[0].id
+  source_dest_check           = false
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.nat.id]
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum install -y iptables-services
+    sysctl -w net.ipv4.ip_forward=1
+    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
+    service iptables save
+    systemctl enable iptables
+  EOF
+
+  tags = { Name = "atlasit-nat-${var.env}" }
 }
+
+resource "aws_security_group" "nat" {
+  name_prefix = "atlasit-nat-${var.env}-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["10.0.0.0/24", "10.0.1.0/24"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "atlasit-nat-sg-${var.env}" }
+}
+
+# --- VPC Gateway Endpoints (free — bypass NAT for S3 + DynamoDB) ---
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id          = aws_vpc.main.id
+  service_name    = "com.amazonaws.${var.region}.s3"
+  route_table_ids = [aws_route_table.private.id]
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id          = aws_vpc.main.id
+  service_name    = "com.amazonaws.${var.region}.dynamodb"
+  route_table_ids = [aws_route_table.private.id]
+}
+
+# --- Route tables ---
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -61,8 +123,8 @@ resource "aws_route_table" "public" {
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
+    cidr_block           = "0.0.0.0/0"
+    network_interface_id = aws_instance.nat.primary_network_interface_id
   }
   tags = { Name = "atlasit-private-rt-${var.env}" }
 }
@@ -79,7 +141,7 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# Security groups
+# --- Security groups ---
 
 resource "aws_security_group" "lambda" {
   name_prefix = "atlasit-lambda-${var.env}-"
@@ -109,7 +171,7 @@ resource "aws_security_group" "aurora" {
   tags = { Name = "atlasit-aurora-sg-${var.env}" }
 }
 
-# DB subnet group for Aurora
+# DB subnet group for Aurora/RDS
 resource "aws_db_subnet_group" "main" {
   name       = "atlasit-${var.env}"
   subnet_ids = aws_subnet.private[*].id
