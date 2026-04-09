@@ -327,15 +327,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       tierMinimum?: string;
       killSwitch?: boolean;
     };
+    const now = new Date().toISOString();
     const updated = {
       ...existing,
-      ...b,
       name: key,
+      description: b.description ?? existing.description,
+      enabled: b.enabled ?? existing.enabled,
       rolloutPct: b.rolloutPercentage ?? existing.rolloutPct,
-      updatedAt: new Date().toISOString(),
+      tenantOverrides: b.tenantOverrides ?? existing.tenantOverrides,
+      tierMinimum: b.tierMinimum ?? existing.tierMinimum,
+      killSwitch: b.killSwitch ?? existing.killSwitch,
+      updatedAt: now,
     };
     await svc.flagRepo.set(updated);
-    return ok({ status: "success", data: updated, timestamp: new Date().toISOString() });
+    return ok({ status: "success", data: updated, timestamp: now });
   }
 
   // DELETE /api/v1/flags/:key — delete a feature flag
