@@ -86,6 +86,15 @@ jobs:
 
       - name: Package Lambda
         run: |
+          # Install pg runtime dependency for functions that use it
+          if grep -q 'require.*"pg"' lambdas/${{ matrix.function }}/dist/handler.js 2>/dev/null; then
+            echo "Including pg node_modules..."
+            mkdir -p /tmp/pg-deps && cd /tmp/pg-deps
+            echo '{"dependencies":{"pg":"^8"}}' > package.json
+            npm install --production --silent
+            cp -r node_modules lambdas/${{ matrix.function }}/dist/ 2>/dev/null || true
+            cd -
+          fi
           cd lambdas/${{ matrix.function }}/dist
           zip -r ../../../${{ matrix.function }}.zip .
 
@@ -97,7 +106,9 @@ jobs:
 
       - name: Deploy to Lambda
         run: |
-          FUNCTION_NAME="atlasit-${{ matrix.function }}-dev"
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          FUNCTION_NAME="atlasit-${{ matrix.function }}-${ENV}"
+          echo "Deploying to ${FUNCTION_NAME}..."
           aws lambda update-function-code \
             --function-name "$FUNCTION_NAME" \
             --zip-file "fileb://${{ matrix.function }}.zip" \
@@ -105,7 +116,8 @@ jobs:
 
       - name: Wait for update
         run: |
-          FUNCTION_NAME="atlasit-${{ matrix.function }}-dev"
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          FUNCTION_NAME="atlasit-${{ matrix.function }}-${ENV}"
           aws lambda wait function-updated --function-name "$FUNCTION_NAME"
 
   smoke-test:
@@ -123,13 +135,14 @@ jobs:
 
       - name: Health check
         run: |
-          API_URL=$(aws cloudformation describe-stacks --query "Stacks[0].Outputs[?OutputKey=='ApiGatewayUrl'].OutputValue" --output text 2>/dev/null || echo "")
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          API_URL=$(aws ssm get-parameter --name "/atlasit/${ENV}/api-gateway-url" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
           if [ -n "$API_URL" ]; then
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
-            echo "Health check status: $STATUS"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" --max-time 10 || echo "000")
+            echo "Health check: $API_URL/health → HTTP $STATUS"
             if [ "$STATUS" != "200" ]; then
               echo "::warning::Health check returned $STATUS"
             fi
           else
-            echo "::notice::API URL not yet available — skipping smoke test"
+            echo "::notice::API URL not found in SSM — skipping smoke test"
           fi
