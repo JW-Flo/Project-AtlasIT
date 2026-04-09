@@ -444,17 +444,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const id = crypto.randomUUID();
     // SECURITY WARNING: Base64 is NOT encryption. This is a placeholder implementation.
     // In production, use AWS KMS envelope encryption or similar proper encryption.
-    // The column name 'encrypted_credentials' is misleading — this is just encoded.
-    const encryptedCreds = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
-    await pool.query(
-      `INSERT INTO app_credentials (id, tenant_id, app_id, encrypted_credentials, connected_at, updated_at)
+    const encodedCredentials = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
+    const result = await pool.query<{ id: string }>(
+      `INSERT INTO app_credentials (id, tenant_id, app_id, credentials, connected_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
-       ON CONFLICT (tenant_id, app_id) DO UPDATE SET encrypted_credentials = EXCLUDED.encrypted_credentials, updated_at = NOW()`,
-      [id, b.tenantId, b.appId, encryptedCreds],
+       ON CONFLICT (tenant_id, app_id) DO UPDATE
+         SET credentials = EXCLUDED.credentials, updated_at = NOW()
+       RETURNING id`,
+      [id, b.tenantId, b.appId, encodedCredentials],
     );
+    const persistedId = result.rows[0]?.id ?? id;
     return ok({
       status: "success",
-      data: { id, appId: b.appId, tenantId: b.tenantId },
+      data: { id: persistedId, appId: b.appId, tenantId: b.tenantId },
       timestamp: new Date().toISOString(),
     }, 201);
   }
