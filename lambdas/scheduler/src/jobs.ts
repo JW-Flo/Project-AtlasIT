@@ -42,8 +42,17 @@ const RULE_TO_JOB: Record<string, string[]> = {
   "default": ["daily_etl", "quarter_hour_monitor", "compliance_snapshot_refresh", "discovery_sync"],
 };
 
+/** Extract the EventBridge rule name from the event resource ARN. */
+function ruleNameFromEvent(event: ScheduledEvent): string {
+  // EventBridge scheduled events include a resources array with the rule ARN.
+  // The rule name is the last segment of the ARN: arn:aws:events:…:rule/<name>
+  const resources = (event as unknown as { resources?: string[] }).resources;
+  const arn = Array.isArray(resources) ? resources[0] : undefined;
+  return arn?.split("/").pop() ?? "default";
+}
+
 function resolveJobsForEvent(event: ScheduledEvent): string[] {
-  const ruleName = (event as unknown as { resources?: string[] }).resources?.[0]?.split("/").pop() ?? "default";
+  const ruleName = ruleNameFromEvent(event);
   return RULE_TO_JOB[ruleName] ?? RULE_TO_JOB["default"];
 }
 

@@ -45,6 +45,8 @@ export async function processDlqBatch(event: SQSEvent): Promise<SQSBatchResponse
   for (const record of event.Records) {
     try {
       const task = JSON.parse(record.body) as FailedStepTask;
+      // ApproximateReceiveCount is set by SQS when the event source mapping is configured
+      // with ReportBatchItemFailures; treat as 0 if absent (e.g., manual test invocations).
       const receiveCount = parseInt(
         record.attributes?.ApproximateReceiveCount ?? "0",
         10,

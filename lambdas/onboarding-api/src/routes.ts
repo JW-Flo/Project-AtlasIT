@@ -176,7 +176,7 @@ async function processSubmission(
     `INSERT INTO onboarding_sessions
        (id, tenant_id, status, industry, requirements, generated_config, started_at, completed_at, updated_at)
      VALUES ($1, $2, 'completed', $3, $4, $5, NOW(), NOW(), NOW())
-     ON CONFLICT (tenant_id) DO UPDATE
+     ON CONFLICT (id) DO UPDATE
        SET status = 'completed', generated_config = EXCLUDED.generated_config,
            completed_at = NOW(), updated_at = NOW()`,
     [sessionId, tenantId, industry, JSON.stringify(requirements), JSON.stringify(config)],

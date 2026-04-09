@@ -162,7 +162,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       // Store in S3 evidence bucket
       await svc.evidenceRepo.put(key, canonical, "application/json");
 
-      // Record in PostgreSQL
+      // Record in PostgreSQL. ON CONFLICT (source_id) DO NOTHING implements
+      // idempotent ingest: re-submitting the same content hash is a no-op,
+      // which is the desired behaviour for evidence deduplication.
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO compliance_evidence

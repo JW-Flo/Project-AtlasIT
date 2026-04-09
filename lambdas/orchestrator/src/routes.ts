@@ -63,6 +63,15 @@ function parseBody(event: APIGatewayProxyEventV2): unknown {
   }
 }
 
+function parseAdapterUrls(val?: string): Record<string, string> {
+  if (!val) return {};
+  try {
+    return JSON.parse(val) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
 export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const path = event.rawPath;
   const method = event.requestContext.http.method.toUpperCase();
@@ -543,8 +552,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const b = parseBody(event) as { provider?: string };
     if (!b.provider) return fail(400, "provider is required", "VALIDATION_FAILED");
 
-    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
-    const adapterUrl = adapterUrls[b.provider];
+    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);    const adapterUrl = adapterUrls[b.provider];
     if (!adapterUrl) return fail(501, `No adapter configured for provider: ${b.provider}`, "NOT_IMPLEMENTED");
 
     try {
@@ -598,13 +606,4 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   return fail(404, "Not Found", "NOT_FOUND");
-}
-
-function parseAdapterUrls(val?: string): Record<string, string> {
-  if (!val) return {};
-  try {
-    return JSON.parse(val) as Record<string, string>;
-  } catch {
-    return {};
-  }
 }
