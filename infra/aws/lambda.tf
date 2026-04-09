@@ -24,6 +24,7 @@ locals {
     DATABASE_URL           = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
     JML_WORKFLOW_ARN       = aws_sfn_state_machine.jml_workflow.arn
     AUTOMATION_RULE_ARN    = aws_sfn_state_machine.automation_rule.arn
+    INTERNAL_API_KEY       = aws_secretsmanager_secret.internal_api_key.arn
   }
 
   lambda_vpc_config = {

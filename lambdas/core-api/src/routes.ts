@@ -205,8 +205,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
     if (b.idempotencyKey) {
       const existing = await pool.query<{ id: string; status: string }>(
-        "SELECT id, status FROM events WHERE idempotency_key = $1",
-        [b.idempotencyKey],
+        "SELECT id, status FROM events WHERE idempotency_key = $1 AND tenant_id = $2",
+        [b.idempotencyKey, b.tenantId],
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
