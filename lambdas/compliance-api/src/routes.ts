@@ -563,8 +563,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                   await pool.query(
                     `INSERT INTO compliance_evidence
                        (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-                     ON CONFLICT (source_id) DO NOTHING`,
+                     SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()
+                     WHERE NOT EXISTS (
+                       SELECT 1
+                       FROM compliance_evidence
+                       WHERE tenant_id = $2
+                         AND framework = $3
+                         AND control_id = $4
+                         AND source_id = $8
+                     )`,
                     [
                       crypto.randomUUID(),
                       tenantId,
