@@ -118,7 +118,7 @@ resource "aws_cloudwatch_metric_alarm" "billing_alarm" {
   period              = 21600 # 6 hours
   statistic           = "Maximum"
   threshold           = var.env == "prod" ? 150 : 30
-  alarm_description   = "AWS estimated charges exceeded $${var.env == "prod" ? "150" : "30"} — investigate immediately"
+  alarm_description   = "AWS estimated charges exceeded threshold — investigate immediately"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
