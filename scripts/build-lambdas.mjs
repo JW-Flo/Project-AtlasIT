@@ -6,9 +6,13 @@
 
 import { readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 
-const LAMBDAS_DIR = new URL("../lambdas", import.meta.url).pathname;
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const LAMBDAS_DIR = join(__dirname, "..", "lambdas");
 // console-ssr is built by SvelteKit's own pipeline, not esbuild
 const SKIP = new Set(["console-ssr"]);
 const dirs = readdirSync(LAMBDAS_DIR, { withFileTypes: true })
@@ -29,21 +33,24 @@ for (const name of dirs) {
   }
 
   try {
-    execFileSync("npx", [
+    const args = [
       "esbuild",
-      entry,
+      `"${entry}"`,
       "--bundle",
       "--platform=node",
       "--target=node20",
       "--format=esm",
-      `--outdir=${outDir}`,
+      `--outdir="${outDir}"`,
       "--sourcemap",
       "--external:@aws-sdk/*",
       "--external:@atlasit/*",
-    ], { stdio: "pipe" });
+      "--external:pg",
+      "--external:crypto",
+    ].join(" ");
+    execSync(`npx ${args}`, { stdio: "pipe", shell: true });
     console.log(`  OK   ${name}`);
   } catch (err) {
-    console.error(`  FAIL ${name}: ${err.stderr?.toString().trim()}`);
+    console.error(`  FAIL ${name}: ${(err.stderr || err.stdout || err.message || '').toString().trim().slice(0, 500)}`);
     failed++;
   }
 }

@@ -4,3 +4,7 @@
 .terraform/
 .terraform.*
 crash.log
+tfplan
+plan-output.txt
+placeholder.zip
+*.tfvars.local

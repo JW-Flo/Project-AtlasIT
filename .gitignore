@@ -47,6 +47,10 @@ Prometheus/.env
 terraform.tfstate
 terraform.tfstate.backup
 
+# Lambda build artifacts
+lambdas/*/dist/
+*.zip
+
 # Ignore Python cache files
 __pycache__/
 *.pyc
