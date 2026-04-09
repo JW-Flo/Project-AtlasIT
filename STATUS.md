@@ -23,10 +23,16 @@
 | 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload |
 | 7.5 — Compliance Integration   | ⚠️ In Progress | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls). **Remaining:** policy eval stub |
 | 8 — Access Reviews             | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action |
-| **AWS Migration — Infra**      | ⚠️ In Progress | #376       | Terraform: VPC, CloudFront, WAF, API GW, Lambda (7), Aurora PG, SQS, EventBridge, Route 53, ACM, SSM, Secrets Manager |
-| **AWS Migration — Data**       | ⚠️ In Progress | #376       | PostgreSQL schema (35 tables from D1), migration scripts (KV→DynamoDB, R2→S3, D1→Aurora) |
-| **AWS Migration — Platform**   | ⚠️ In Progress | #376       | Shared AWS SDK: DynamoDB repos (session/cache/flags), S3 evidence, SQS queue, PG audit/tenant, Lambda auth |
-| **AWS Migration — CI/CD**      | ⚠️ In Progress | #376       | Lambda deploy workflow, console S3 deploy workflow, terraform-apply path expansion |
+| **8.5 — AWS Infra**            | ✅ Complete     | #376       | Terraform (19 files): VPC, CloudFront, WAF, API GW, Lambda (7), Aurora PG, SQS, EventBridge, Route 53, ACM, SSM, Secrets Manager |
+| **8.5 — AWS Data**             | ✅ Complete     | #376       | PostgreSQL schema (35 tables), migration scripts (KV→DynamoDB, R2→S3, D1→Aurora) |
+| **8.5 — AWS Platform SDK**     | ✅ Complete     | #376       | DynamoDB repos (session/cache/flags), S3 evidence, SQS queue, PG audit/tenant, Lambda auth |
+| **8.5 — Step Functions**       | ✅ Complete     | #377       | JML workflow + automation rule state machines, SvelteKit adapter-node |
+| **8.5 — Ops Tooling**          | ✅ Complete     | #378       | CF export, DNS cutover (8 phases), AWS smoke tests |
+| **8.5 — Lambda Handlers**      | ✅ Complete     | #379       | 7 Lambda functions ported from CF Workers with CF→AWS binding translations |
+| **8.5 — Security Fixes**       | ✅ Complete     | #381       | x-tenant-id auth bypass, 7 unscoped SQL queries, INTERNAL_API_KEY |
+| **8.5a — Route Completion**    | ⚠️ In Progress | —          | ~60 dropped Worker routes need porting (credentials, flags, automation, JML, etc.) |
+| **8.5b — Staging Validation**  | Pending         | —          | Deploy to staging, data migration, smoke tests, load tests, Step Functions verification |
+| **8.5c — DNS Cutover**         | Pending         | —          | Progressive Route 53 weighted routing, nameserver update, CF decommission |
 
 ## Deployed Workers
 
