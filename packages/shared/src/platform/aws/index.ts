@@ -12,3 +12,4 @@ export type { Tenant, User } from "./repos/tenant-repo.js";
 export { S3EvidenceRepo } from "./repos/evidence-repo.js";
 export { SqsQueueRepo } from "./repos/queue-repo.js";
 export type { StepTask } from "./repos/queue-repo.js";
+export { getPool } from "./repos/pg-pool.js";
