@@ -608,5 +608,327 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: { id, status: "pending" }, timestamp: ts }, 202);
   }
 
+  // ── Events (continued) ─────────────────────────────────────────────────────
+
+  // GET /api/v1/events/:id — get single event
+  const eventByIdMatch = path.match(/^\/api\/v1\/events\/([^/]+)$/);
+  if (eventByIdMatch && method === "GET") {
+    const [, id] = eventByIdMatch;
+    const result = await pool.query(
+      `SELECT id, tenant_id as "tenantId", type, source, payload, status,
+              idempotency_key as "idempotencyKey", created_at as "createdAt"
+       FROM events WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (result.rows.length === 0) return fail(404, "Event not found", "NOT_FOUND");
+    return ok({ status: "success", data: result.rows[0], timestamp: ts });
+  }
+
+  // ── Agents (continued) ─────────────────────────────────────────────────────
+
+  // DELETE /api/v1/agents/:id — deregister agent
+  if (agentByIdMatch && method === "DELETE") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, id] = agentByIdMatch;
+    const existing = await pool.query(
+      "SELECT id FROM agents WHERE id = $1 AND tenant_id = $2",
+      [id, tenantId],
+    );
+    if (existing.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
+    // Delete subscriptions first (cascade), then agent
+    // Use subquery to ensure tenant isolation
+    await pool.query(
+      `DELETE FROM event_subscriptions WHERE agent_id = $1
+       AND agent_id IN (SELECT id FROM agents WHERE tenant_id = $2)`,
+      [id, tenantId],
+    );
+    await pool.query("DELETE FROM agents WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
+    return ok({ status: "success", data: { id, deleted: true }, timestamp: ts });
+  }
+
+  // POST /api/v1/agents/:id/subscriptions — add event subscription
+  const agentSubsMatch = path.match(/^\/api\/v1\/agents\/([^/]+)\/subscriptions$/);
+  if (agentSubsMatch && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, agentId] = agentSubsMatch;
+    const b = parseBody(event) as { eventType?: string; filterExpression?: Record<string, unknown> | null };
+    if (!b.eventType) return fail(400, "eventType is required", "VALIDATION_FAILED");
+    const agent = await pool.query(
+      "SELECT id FROM agents WHERE id = $1 AND tenant_id = $2",
+      [agentId, tenantId],
+    );
+    if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
+    const subId = crypto.randomUUID();
+    // Convert filterExpression to JSONB-compatible format
+    const filterExpr = b.filterExpression ? JSON.stringify(b.filterExpression) : null;
+    try {
+      await pool.query(
+        `INSERT INTO event_subscriptions (id, agent_id, event_type, filter_expression, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [subId, agentId, b.eventType, filterExpr],
+      );
+    } catch (e: unknown) {
+      // Check Postgres error code 23505 for unique violation
+      const pgError = e as { code?: string };
+      if (pgError.code === "23505") {
+        return fail(409, "Already subscribed to this event type", "CONFLICT");
+      }
+      throw e;
+    }
+    return ok({
+      status: "success",
+      data: { id: subId, agentId, eventType: b.eventType },
+      timestamp: ts,
+    }, 201);
+  }
+
+  // POST /api/v1/agents/:id/health — report health check result
+  const agentHealthMatch = path.match(/^\/api\/v1\/agents\/([^/]+)\/health$/);
+  if (agentHealthMatch && method === "POST") {
+    const [, agentId] = agentHealthMatch;
+    const agent = await pool.query(
+      "SELECT id, health_check_url as healthUrl FROM agents WHERE id = $1 AND tenant_id = $2",
+      [agentId, tenantId],
+    );
+    if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
+    let healthStatus = "unhealthy";
+    const healthUrl = agent.rows[0].healthUrl as string | null;
+    if (healthUrl) {
+      // SSRF protection: validate URL scheme and block private IP ranges
+      try {
+        const url = new URL(healthUrl);
+        if (!["http:", "https:"].includes(url.protocol)) {
+          console.warn(`[orchestrator] Blocked health check to non-HTTP URL: ${url.protocol}`);
+        } else {
+          // Block private IPs and localhost (basic SSRF protection)
+          const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+          const isPrivateIP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(url.hostname);
+          if (blockedHosts.includes(url.hostname) || isPrivateIP) {
+            console.warn(`[orchestrator] Blocked health check to private/local address: ${url.hostname}`);
+          } else {
+            const res = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(5000) });
+            healthStatus = res.ok ? "healthy" : "unhealthy";
+          }
+        }
+      } catch {
+        healthStatus = "unhealthy";
+      }
+    }
+    await pool.query(
+      `UPDATE agents SET last_health_check_at = NOW(), last_health_status = $1,
+       status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4`,
+      [healthStatus, healthStatus === "unhealthy" ? "unhealthy" : "active", agentId, tenantId],
+    );
+    return ok({ status: "success", data: { id: agentId, healthStatus }, timestamp: ts });
+  }
+
+  // ── Workflows (continued) ─────────────────────────────────────────────────
+
+  // POST /api/v1/workflows/:id/steps/:stepId/complete — complete a workflow step
+  const stepCompleteMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/steps\/([^/]+)\/complete$/);
+  if (stepCompleteMatch && method === "POST") {
+    const [, workflowId, stepId] = stepCompleteMatch;
+    const stepIndex = parseInt(stepId, 10);
+    if (Number.isNaN(stepIndex) || stepIndex < 0) {
+      return fail(400, "stepId must be a valid non-negative integer", "VALIDATION_FAILED");
+    }
+    const b = parseBody(event) as Record<string, unknown>;
+    // Verify workflow belongs to tenant
+    const wf = await pool.query(
+      "SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2",
+      [workflowId, tenantId],
+    );
+    if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
+    // Enqueue step completion
+    await svc.queueRepo.send({
+      tenantId,
+      workflowRunId: workflowId,
+      stepIndex,
+      action: "step_complete",
+      payload: b,
+    });
+    return ok({ status: "success", data: { workflowId, stepId, status: "completed" }, timestamp: ts });
+  }
+
+  // POST /api/v1/workflows/:id/steps/:stepId/fail — fail a workflow step
+  const stepFailMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/steps\/([^/]+)\/fail$/);
+  if (stepFailMatch && method === "POST") {
+    const [, workflowId, stepId] = stepFailMatch;
+    const stepIndex = parseInt(stepId, 10);
+    if (Number.isNaN(stepIndex) || stepIndex < 0) {
+      return fail(400, "stepId must be a valid non-negative integer", "VALIDATION_FAILED");
+    }
+    const b = parseBody(event) as { error?: string };
+    // Verify workflow belongs to tenant
+    const wf = await pool.query(
+      "SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2",
+      [workflowId, tenantId],
+    );
+    if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
+    // Enqueue step failure
+    await svc.queueRepo.send({
+      tenantId,
+      workflowRunId: workflowId,
+      stepIndex,
+      action: "step_fail",
+      payload: { error: b.error ?? "Unknown error" },
+    });
+    return ok({ status: "success", data: { workflowId, stepId, status: "failed" }, timestamp: ts });
+  }
+
+  // POST /api/v1/workflows/:id/cancel — cancel a workflow
+  // Note: schema constraint allows 'queued|running|completed|failed|compensating', so we use 'failed'
+  // with error text indicating cancellation rather than unsupported 'cancelled' status.
+  const workflowCancelMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/cancel$/);
+  if (workflowCancelMatch && method === "POST") {
+    const [, workflowId] = workflowCancelMatch;
+    // Verify workflow belongs to tenant
+    const wf = await pool.query(
+      "SELECT id, status FROM workflow_runs WHERE id = $1 AND tenant_id = $2",
+      [workflowId, tenantId],
+    );
+    if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
+    await pool.query(
+      `UPDATE workflow_runs SET status = 'failed', error = 'Cancelled by user', completed_at = NOW()
+       WHERE id = $1 AND tenant_id = $2`,
+      [workflowId, tenantId],
+    );
+    return ok({ status: "success", data: { workflowId, status: "cancelled" }, timestamp: ts });
+  }
+
+  // ── Automation routes ─────────────────────────────────────────────────────
+
+  // POST /api/v1/automation/evaluate — evaluate automation rules against an event
+  if (path === "/api/v1/automation/evaluate" && method === "POST") {
+    const b = parseBody(event) as {
+      tenantId?: string;
+      type?: string;
+      source?: string;
+      payload?: Record<string, unknown>;
+    };
+    // Enforce tenant isolation
+    const evTenantId = b.tenantId ?? tenantId;
+    if (auth.role !== "admin" && evTenantId !== tenantId) {
+      return fail(403, "Tenant mismatch", "FORBIDDEN");
+    }
+    if (!b.type || !b.source) return fail(400, "type and source are required", "VALIDATION_FAILED");
+    // Fetch and evaluate automation rules
+    const rules = await pool.query(
+      `SELECT id, name, trigger_type, conditions, actions, enabled FROM automation_rules
+       WHERE tenant_id = $1 AND enabled = true`,
+      [evTenantId],
+    );
+    const matchedRules: Array<{ id: string; name: string }> = [];
+    for (const rule of rules.rows) {
+      // Simple trigger type matching
+      if (rule.trigger_type === b.type || rule.trigger_type === "*") {
+        matchedRules.push({ id: rule.id, name: rule.name });
+      }
+    }
+    return ok({
+      status: "success",
+      data: { evaluated: rules.rows.length, matched: matchedRules.length, rules: matchedRules },
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/automation/rules — list automation rules for tenant
+  if (path === "/api/v1/automation/rules" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT id, name, trigger_type, enabled, run_count, error_count, last_run_at, last_status, created_at
+       FROM automation_rules WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [tenantId],
+    );
+    return ok({ status: "success", data: rows.rows, timestamp: ts });
+  }
+
+  // GET /api/v1/automation/stats — get automation execution stats
+  if (path === "/api/v1/automation/stats" && method === "GET") {
+    const stats = await pool.query(
+      `SELECT
+         COUNT(*) as total_rules,
+         SUM(run_count) as total_runs,
+         SUM(error_count) as total_errors,
+         AVG(run_count) as avg_runs_per_rule
+       FROM automation_rules WHERE tenant_id = $1`,
+      [tenantId],
+    );
+    const recentRuns = await pool.query(
+      `SELECT id, name, last_run_at, last_status FROM automation_rules
+       WHERE tenant_id = $1 AND last_run_at IS NOT NULL ORDER BY last_run_at DESC LIMIT 10`,
+      [tenantId],
+    );
+    return ok({
+      status: "success",
+      data: {
+        summary: stats.rows[0],
+        recentRuns: recentRuns.rows,
+      },
+      timestamp: ts,
+    });
+  }
+
+  // ── JML routes (continued) ────────────────────────────────────────────────
+
+  // GET /api/v1/jml/changelog — list directory change log entries
+  if (path === "/api/v1/jml/changelog" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const action = qs.action ?? undefined; // joiner | leaver | mover | rehire
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (action) {
+      conditions.push(`jml_action = $${params.length + 1}`);
+      params.push(action);
+    }
+    const where = conditions.join(" AND ");
+    const rows = await pool.query(
+      `SELECT id, tenant_id as "tenantId", user_id as "userId", jml_action as "jmlAction",
+              delta, source, created_at as "createdAt"
+       FROM directory_changelog WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    return ok({ status: "success", data: rows.rows, meta: { limit, offset }, timestamp: ts });
+  }
+
+  // GET /api/v1/jml/runs — list JML workflow runs
+  if (path === "/api/v1/jml/runs" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+    const status = qs.status ?? undefined;
+    const type = qs.type ?? undefined;
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (status) {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(status);
+    }
+    if (type) {
+      conditions.push(`type = $${params.length + 1}`);
+      params.push(type);
+    }
+    const where = conditions.join(" AND ");
+    const rows = await pool.query(
+      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", type, status,
+              context, created_at as "createdAt", completed_at as "completedAt"
+       FROM workflow_runs WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1}`,
+      [...params, limit],
+    );
+    return ok({ status: "success", data: rows.rows, timestamp: ts });
+  }
+
+  // GET /api/v1/jml/runs/:id — get workflow run detail
+  const jmlRunMatch = path.match(/^\/api\/v1\/jml\/runs\/([^/]+)$/);
+  if (jmlRunMatch && method === "GET") {
+    const [, runId] = jmlRunMatch;
+    const row = await pool.query(
+      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", type, status,
+              context, created_at as "createdAt", completed_at as "completedAt"
+       FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
+      [runId, tenantId],
+    );
+    if (row.rows.length === 0) return fail(404, "Run not found", "NOT_FOUND");
+    return ok({ status: "success", data: { run: row.rows[0], liveState: null }, timestamp: ts });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
