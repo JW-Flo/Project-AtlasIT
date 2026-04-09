@@ -1,58 +1,68 @@
-import type { AuthContext } from "./types.js";
-import { authenticate, AuthError } from "./middleware.js";
-import { JwtVerifier } from "./jwt-verifier.js";
-import type { AuthRepository } from "../data/interfaces.js";
+/**
+ * Lambda auth — extracts tenant/user identity from API Gateway events.
+ * Replaces CF Access JWT-based auth from the Workers implementation.
+ *
+ * Supports: Bearer token (session-based) and API key auth.
+ */
 
-interface LambdaEvent {
-  headers?: Record<string, string | undefined>;
-  requestContext: Record<string, unknown>;
+import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { LambdaAuthRepo } from "./lambda-auth-repo.js";
+
+export class AuthError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number = 401,
+  ) {
+    super(message);
+    this.name = "AuthError";
+  }
 }
 
-let verifier: JwtVerifier | null = null;
-
-function getVerifier(): JwtVerifier {
-  if (verifier) return verifier;
-  const issuerUrl = process.env.COGNITO_ISSUER_URL ?? "";
-  const audience = process.env.COGNITO_CLIENT_ID ?? "";
-  verifier = new JwtVerifier(issuerUrl, audience);
-  return verifier;
+export interface AuthContext {
+  userId: string;
+  tenantId: string;
+  email: string;
+  role: string;
 }
 
 export async function extractAuth(
-  event: LambdaEvent,
-  authRepo?: AuthRepository,
+  event: APIGatewayProxyEventV2,
+  authRepo: LambdaAuthRepo,
 ): Promise<AuthContext> {
-  // API Gateway Cognito authorizer may have already validated;
-  // check for authorizer claims first
-  const authorizer = event.requestContext.authorizer as
-    | Record<string, unknown>
-    | undefined;
-  const jwtClaims = authorizer?.jwt as
-    | { claims: Record<string, string> }
-    | undefined;
+  const authHeader = event.headers?.authorization ?? event.headers?.Authorization;
 
-  if (jwtClaims?.claims) {
-    const claims = jwtClaims.claims;
-    const roles = claims["custom:roles"]
-      ? claims["custom:roles"].split(",").map((r) => r.trim())
-      : [];
+  if (!authHeader) {
+    // Check x-tenant-id header (service-to-service calls)
+    const tenantId = event.headers?.["x-tenant-id"];
+    if (tenantId) {
+      return {
+        userId: "system",
+        tenantId,
+        email: "system@atlasit.pro",
+        role: "admin",
+      };
+    }
+    throw new AuthError("Missing authorization header");
+  }
+
+  if (authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    const session = await authRepo.validateSession(token);
+    if (!session) throw new AuthError("Invalid or expired session");
     return {
-      tenantId: claims["custom:tenant_id"] ?? "",
-      userId: claims.sub ?? "",
-      email: claims.email ?? "",
-      roles,
-      tokenType: "jwt",
+      userId: session.userId,
+      tenantId: session.tenantId,
+      email: session.email,
+      role: session.role,
     };
   }
 
-  // Fall back to manual token verification
-  const authorization = event.headers?.authorization;
-  const apiKey = event.headers?.["x-api-key"];
+  if (authHeader.startsWith("ApiKey ")) {
+    const apiKey = authHeader.slice(7);
+    const identity = await authRepo.validateApiKey(apiKey);
+    if (!identity) throw new AuthError("Invalid API key");
+    return identity;
+  }
 
-  return authenticate(authorization, apiKey, {
-    jwtVerifier: getVerifier(),
-    authRepo,
-  });
+  throw new AuthError("Unsupported authorization scheme");
 }
-
-export { AuthError };
