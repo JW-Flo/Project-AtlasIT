@@ -89,7 +89,7 @@ resource "aws_ce_anomaly_subscription" "main" {
 
   monitor_arn_list = [aws_ce_anomaly_monitor.main.arn]
 
-  frequency = "DAILY"
+  frequency = "IMMEDIATE"
 
   threshold_expression {
     dimension {
