@@ -13,8 +13,9 @@ resource "aws_sqs_queue" "step_tasks" {
 }
 
 resource "aws_sqs_queue" "step_tasks_dlq" {
-  name                      = "atlasit-step-tasks-dlq-${var.env}"
-  message_retention_seconds = 1209600
+  name                       = "atlasit-step-tasks-dlq-${var.env}"
+  message_retention_seconds  = 1209600
+  visibility_timeout_seconds = 120
 }
 
 # CloudWatch alarm on DLQ depth

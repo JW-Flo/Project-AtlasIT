@@ -113,4 +113,8 @@ resource "aws_security_group" "aurora" {
 resource "aws_db_subnet_group" "main" {
   name       = "atlasit-${var.env}"
   subnet_ids = aws_subnet.private[*].id
+
+  lifecycle {
+    ignore_changes = [subnet_ids]
+  }
 }
