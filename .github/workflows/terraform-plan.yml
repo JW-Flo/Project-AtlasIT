@@ -70,7 +70,7 @@ jobs:
           terraform_version: "~> 1.5"
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -reconfigure
 
       - name: Terraform Validate
         run: terraform validate -no-color
