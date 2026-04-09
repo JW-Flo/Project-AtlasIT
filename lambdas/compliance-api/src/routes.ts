@@ -580,7 +580,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                       controlRef,
                       "adapter_pull",
                       `adapter:${slug}`,
-                      `${slug}:${item.type}`,
+                      `${slug}:${item.type}:${framework}:${controlId}`,
                       "system",
                       `${slug} ${item.type}`,
                       JSON.stringify({
