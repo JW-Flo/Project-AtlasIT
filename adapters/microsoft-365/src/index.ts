@@ -462,6 +462,719 @@ app.post("/webhooks/microsoft/notifications", async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// Token resolution helper — retrieves and auto-refreshes the stored OAuth token
+// ---------------------------------------------------------------------------
+async function resolveAccessToken(
+  db: D1Database,
+  env: Record<string, string>,
+  tenantId: string,
+): Promise<{ accessToken: string } | { error: string; status: 401 }> {
+  const tokenRow = await db
+    .prepare(
+      "SELECT access_token, refresh_token, expires_at FROM connector_tokens WHERE tenant_id = ? AND connector_slug = ?",
+    )
+    .bind(tenantId, "microsoft-365")
+    .first<{ access_token: string; refresh_token: string | null; expires_at: string }>();
+
+  if (!tokenRow) {
+    return { error: "No OAuth tokens found -- connect first via /auth/authorize", status: 401 };
+  }
+
+  let accessToken = tokenRow.access_token;
+
+  const expiresAt = new Date(tokenRow.expires_at).getTime();
+  if (Date.now() >= expiresAt - 60_000) {
+    if (!tokenRow.refresh_token) {
+      return { error: "Access token expired and no refresh token available", status: 401 };
+    }
+
+    const refreshed = await refreshAccessToken(env, tokenRow.refresh_token);
+    accessToken = refreshed.access_token;
+    const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+
+    await db
+      .prepare(
+        `UPDATE connector_tokens
+         SET access_token = ?, expires_at = ?
+         WHERE tenant_id = ? AND connector_slug = ?`,
+      )
+      .bind(accessToken, newExpiresAt, tenantId, "microsoft-365")
+      .run();
+  }
+
+  return { accessToken };
+}
+
+// ---------------------------------------------------------------------------
+// Provision — enable user sign-in via Microsoft Graph
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  type ProvisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<ProvisionBody>().catch((): ProvisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  // Look up the user by email
+  const lookupRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (lookupRes.status === 404) {
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        email,
+        message: "User not found in Microsoft 365 tenant",
+      }),
+    );
+    return c.json({ error: "User not found in Microsoft 365 tenant", correlationId }, 404);
+  }
+
+  if (!lookupRes.ok) {
+    const errText = await lookupRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        message: "Graph API user lookup failed",
+        status: lookupRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Graph API user lookup failed", correlationId }, 502);
+  }
+
+  const user = await lookupRes.json<{ id: string; displayName?: string }>();
+
+  // Enable sign-in
+  const patchRes = await fetch(`https://graph.microsoft.com/v1.0/users/${user.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountEnabled: true }),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API enable account failed",
+        status: patchRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to enable user account", correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      email,
+      userId: user.id,
+      message: "User provisioned (sign-in enabled)",
+    }),
+  );
+
+  return c.json({
+    status: "provisioned",
+    correlationId,
+    userId: user.id,
+    email,
+    displayName: user.displayName ?? body.userProfile?.displayName ?? null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deprovision — block sign-in and revoke sessions via Microsoft Graph
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  type DeprovisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<DeprovisionBody>().catch((): DeprovisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  // Look up the user by email
+  const lookupRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(email)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (lookupRes.status === 404) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        email,
+        message: "User not found in Microsoft 365 tenant; treating as already deprovisioned",
+      }),
+    );
+    return c.json({
+      status: "deprovisioned",
+      correlationId,
+      email,
+      note: "User not found in Microsoft 365 tenant; treating as already deprovisioned",
+    });
+  }
+
+  if (!lookupRes.ok) {
+    const errText = await lookupRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        message: "Graph API user lookup failed",
+        status: lookupRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Graph API user lookup failed", correlationId }, 502);
+  }
+
+  const user = await lookupRes.json<{ id: string; displayName?: string }>();
+
+  // Block sign-in
+  const patchRes = await fetch(`https://graph.microsoft.com/v1.0/users/${user.id}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ accountEnabled: false }),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API disable account failed",
+        status: patchRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to disable user account", correlationId }, 502);
+  }
+
+  // Revoke all active sessions
+  const revokeRes = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${user.id}/revokeSignInSessions`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (!revokeRes.ok) {
+    const errText = await revokeRes.text();
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        email,
+        userId: user.id,
+        message: "Graph API revoke sessions failed",
+        status: revokeRes.status,
+        body: errText,
+      }),
+    );
+    return c.json({ error: "Failed to revoke user sessions", correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      email,
+      userId: user.id,
+      message: "User deprovisioned (sign-in blocked, sessions revoked)",
+    }),
+  );
+
+  return c.json({
+    status: "deprovisioned",
+    correlationId,
+    userId: user.id,
+    email,
+    displayName: user.displayName ?? body.userProfile?.displayName ?? null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NHI discovery — app registrations + service principals
+// ---------------------------------------------------------------------------
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  type GraphApp = {
+    id: string;
+    appId: string;
+    displayName: string;
+    passwordCredentials?: Array<{ endDateTime?: string }>;
+    requiredResourceAccess?: Array<{
+      resourceAccess?: Array<{ id: string; type: string }>;
+    }>;
+    owners?: Array<{ mail?: string; userPrincipalName?: string }>;
+    signInAudience?: string;
+  };
+
+  type GraphSP = {
+    id: string;
+    appId: string;
+    displayName: string;
+    passwordCredentials?: Array<{ endDateTime?: string }>;
+    oauth2PermissionScopes?: Array<{ value: string }>;
+    owners?: Array<{ mail?: string; userPrincipalName?: string }>;
+    signInActivity?: { lastSignInDateTime?: string };
+    servicePrincipalType?: string;
+  };
+
+  const graphFetch = async <T>(path: string): Promise<T | null> => {
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            correlationId,
+            tenantId,
+            message: "Graph API request failed",
+            path,
+            status: res.status,
+          }),
+        );
+        return null;
+      }
+      return res.json() as Promise<T>;
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "Graph API fetch threw",
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return null;
+    }
+  };
+
+  const [appsData, spData] = await Promise.all([
+    graphFetch<{ value: GraphApp[] }>(
+      "/applications?$select=id,appId,displayName,passwordCredentials,requiredResourceAccess,signInAudience&$expand=owners($select=mail,userPrincipalName)",
+    ),
+    graphFetch<{ value: GraphSP[] }>(
+      "/servicePrincipals?$select=id,appId,displayName,passwordCredentials,oauth2PermissionScopes,servicePrincipalType,signInActivity&$expand=owners($select=mail,userPrincipalName)",
+    ),
+  ]);
+
+  type NhiIdentity = {
+    externalId: string;
+    displayName: string;
+    identityType: "service" | "oauth_grant";
+    credentialType: "oauth_app" | "service_account";
+    ownerEmail?: string;
+    scopes?: string[];
+    expiresAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const identities: NhiIdentity[] = [];
+
+  for (const app of appsData?.value ?? []) {
+    const ownerEmail =
+      app.owners?.[0]?.mail ?? app.owners?.[0]?.userPrincipalName ?? undefined;
+
+    const soonest = (app.passwordCredentials ?? [])
+      .map((c) => c.endDateTime)
+      .filter(Boolean)
+      .sort()[0] as string | undefined;
+
+    const scopes = (app.requiredResourceAccess ?? []).flatMap(
+      (r) => (r.resourceAccess ?? []).filter((a) => a.type === "Scope").map((a) => a.id),
+    );
+
+    identities.push({
+      externalId: app.appId ?? app.id,
+      displayName: app.displayName ?? "",
+      identityType: "oauth_grant",
+      credentialType: "oauth_app",
+      ...(ownerEmail && { ownerEmail }),
+      ...(scopes.length > 0 && { scopes }),
+      ...(soonest && { expiresAt: soonest }),
+      metadata: {
+        objectId: app.id,
+        signInAudience: app.signInAudience,
+      },
+    });
+  }
+
+  for (const sp of spData?.value ?? []) {
+    const ownerEmail =
+      sp.owners?.[0]?.mail ?? sp.owners?.[0]?.userPrincipalName ?? undefined;
+
+    const soonest = (sp.passwordCredentials ?? [])
+      .map((c) => c.endDateTime)
+      .filter(Boolean)
+      .sort()[0] as string | undefined;
+
+    const scopes = (sp.oauth2PermissionScopes ?? []).map((s) => s.value).filter(Boolean);
+
+    identities.push({
+      externalId: sp.appId ?? sp.id,
+      displayName: sp.displayName ?? "",
+      identityType: "service",
+      credentialType: "service_account",
+      ...(ownerEmail && { ownerEmail }),
+      ...(scopes.length > 0 && { scopes }),
+      ...(soonest && { expiresAt: soonest }),
+      ...(sp.signInActivity?.lastSignInDateTime && {
+        lastUsedAt: sp.signInActivity.lastSignInDateTime,
+      }),
+      metadata: {
+        objectId: sp.id,
+        servicePrincipalType: sp.servicePrincipalType,
+      },
+    });
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "NHI discovery completed",
+      appRegistrations: appsData?.value?.length ?? 0,
+      servicePrincipals: spData?.value?.length ?? 0,
+    }),
+  );
+
+  return c.json({
+    provider: "microsoft_365",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth Grants — POST /api/oauth-grants
+// Returns delegated OAuth2 permission grants and app role assignments, with
+// app display names resolved from service principals.
+// ---------------------------------------------------------------------------
+app.post("/api/oauth-grants", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID") ?? "";
+
+  if (!tenantId) {
+    return c.json({ error: "X-Tenant-ID header is required", correlationId }, 400);
+  }
+
+  const resolved = await resolveAccessToken(
+    c.env.DB,
+    c.env as unknown as Record<string, string>,
+    tenantId,
+  );
+
+  if ("error" in resolved) {
+    return c.json({ error: resolved.error, correlationId }, resolved.status);
+  }
+
+  const { accessToken } = resolved;
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+
+  // Helper to call Graph API
+  const graphGet = async <T>(path: string): Promise<T | null> => {
+    try {
+      const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            correlationId,
+            tenantId,
+            message: "oauth-grants: Graph API request failed",
+            path,
+            status: res.status,
+          }),
+        );
+        return null;
+      }
+      return res.json() as Promise<T>;
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          correlationId,
+          tenantId,
+          message: "oauth-grants: Graph API fetch threw",
+          path,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return null;
+    }
+  };
+
+  // Build a service principal display name map (appId → displayName)
+  const spData = await graphGet<{
+    value: Array<{ appId: string; id: string; displayName: string }>;
+  }>("/servicePrincipals?$select=id,appId,displayName&$top=999");
+
+  const spById = new Map<string, { appId: string; displayName: string }>();
+  const spByAppId = new Map<string, { id: string; displayName: string }>();
+  for (const sp of spData?.value ?? []) {
+    spById.set(sp.id, { appId: sp.appId, displayName: sp.displayName });
+    spByAppId.set(sp.appId, { id: sp.id, displayName: sp.displayName });
+  }
+
+  // --- 1. Delegated grants (oauth2PermissionGrants) -------------------------
+  // Each grant has: clientId (SP object ID), principalId (user object ID),
+  // resourceId, scope (space-separated list).
+  type PermissionGrant = {
+    id: string;
+    clientId: string;
+    principalId: string | null;
+    resourceId: string;
+    scope: string | null;
+    consentType: string;
+    startTime?: string;
+    expiryTime?: string;
+  };
+
+  const grantsData = await graphGet<{ value: PermissionGrant[] }>(
+    "/oauth2PermissionGrants?$top=999",
+  );
+
+  // Collect unique principalIds to resolve user UPNs in one batch
+  const principalIds = new Set<string>();
+  for (const g of grantsData?.value ?? []) {
+    if (g.principalId) principalIds.add(g.principalId);
+  }
+
+  // Resolve user UPNs via /users?$filter=id in (...)
+  // Graph doesn't support IN filter on id directly, so resolve individually
+  // but cap at 100 to avoid quota issues.
+  const userUpnMap = new Map<string, string>();
+  const uniquePrincipals = [...principalIds].slice(0, 100);
+
+  await Promise.all(
+    uniquePrincipals.map(async (pid) => {
+      const userData = await graphGet<{ userPrincipalName?: string; mail?: string }>(
+        `/users/${pid}?$select=id,userPrincipalName,mail`,
+      );
+      if (userData) {
+        userUpnMap.set(pid, userData.userPrincipalName ?? userData.mail ?? pid);
+      }
+    }),
+  );
+
+  for (const grant of grantsData?.value ?? []) {
+    const clientSp = spById.get(grant.clientId);
+    const appName = clientSp?.displayName ?? grant.clientId;
+    const clientId = clientSp?.appId ?? grant.clientId;
+    const userEmail = grant.principalId
+      ? (userUpnMap.get(grant.principalId) ?? grant.principalId)
+      : "(all users)";
+    const scopes = (grant.scope ?? "").split(" ").filter(Boolean);
+
+    grants.push({
+      appName,
+      clientId,
+      userEmail,
+      scopes,
+      ...(grant.startTime && { grantedAt: grant.startTime }),
+      ...(grant.expiryTime && { lastUsedAt: grant.expiryTime }),
+      metadata: {
+        grantId: grant.id,
+        consentType: grant.consentType,
+        resourceId: grant.resourceId,
+        resourceDisplayName: spById.get(grant.resourceId)?.displayName,
+      },
+    });
+  }
+
+  // --- 2. App role assignments (application permissions) --------------------
+  // Fetch per service principal that has app roles granted.
+  // List appRoleAssignedTo on each SP to find tenant-wide app permissions.
+  type AppRoleAssignment = {
+    id: string;
+    appRoleId: string;
+    principalId: string;
+    principalDisplayName?: string;
+    principalType?: string;
+    resourceId: string;
+    resourceDisplayName?: string;
+    createdDateTime?: string;
+  };
+
+  // Use /servicePrincipalCreatedObjects or /appRoleAssignments (tenant-wide)
+  // The tenant-wide endpoint is /servicePrincipals/{id}/appRoleAssignments for
+  // each SP. Instead, use the resource-centric endpoint on well-known resources.
+  // Iterate over all SPs that expose app roles and fetch their assignments.
+  for (const sp of spData?.value ?? []) {
+    const assignmentsData = await graphGet<{ value: AppRoleAssignment[] }>(
+      `/servicePrincipals/${sp.id}/appRoleAssignedTo?$top=100`,
+    );
+
+    for (const assignment of assignmentsData?.value ?? []) {
+      // Only include ServicePrincipal principals (application permissions),
+      // skip User/Group principals which are covered by delegated grants above.
+      if (assignment.principalType !== "ServicePrincipal") continue;
+
+      const assigneeSp = spById.get(assignment.principalId);
+      const appName = assigneeSp?.displayName ?? assignment.principalDisplayName ?? assignment.principalId;
+      const clientId = assigneeSp?.appId ?? assignment.principalId;
+
+      grants.push({
+        appName,
+        clientId,
+        userEmail: "(application)",
+        scopes: [assignment.appRoleId],
+        ...(assignment.createdDateTime && { grantedAt: assignment.createdDateTime }),
+        metadata: {
+          assignmentId: assignment.id,
+          principalType: assignment.principalType,
+          resourceId: assignment.resourceId,
+          resourceDisplayName: assignment.resourceDisplayName ?? sp.displayName,
+        },
+      });
+    }
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "oauth-grants discovery completed",
+      grantCount: grants.length,
+    }),
+  );
+
+  return c.json({
+    provider: "microsoft_365",
+    grants,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {

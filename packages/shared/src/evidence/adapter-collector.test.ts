@@ -52,26 +52,16 @@ describe("collectAdapterEvidence", () => {
   });
 
   it("returns empty items when adapter returns non-OK status", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({ ok: false, status: 500 }),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
 
-    const result = await collectAdapterEvidence(
-      "https://broken.example.com",
-      "okta",
-      "tenant-456",
-    );
+    const result = await collectAdapterEvidence("https://broken.example.com", "okta", "tenant-456");
 
     expect(result.slug).toBe("okta");
     expect(result.items).toEqual([]);
   });
 
   it("returns empty items when fetch throws (network error)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockRejectedValue(new Error("Network error")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
 
     const result = await collectAdapterEvidence(
       "https://unreachable.example.com",
@@ -93,11 +83,7 @@ describe("collectAdapterEvidence", () => {
       }),
     );
 
-    const result = await collectAdapterEvidence(
-      "https://weird.example.com",
-      "aws",
-      "tenant-abc",
-    );
+    const result = await collectAdapterEvidence("https://weird.example.com", "aws", "tenant-abc");
 
     expect(result.items).toEqual([]);
   });
@@ -187,17 +173,20 @@ describe("collectAllAdapterEvidence", () => {
 });
 
 describe("ADAPTER_EVIDENCE_REGISTRY", () => {
-  it("contains 6 adapters", () => {
-    expect(ADAPTER_EVIDENCE_REGISTRY).toHaveLength(6);
+  it("contains 9 adapters (6 live + 3 pending)", () => {
+    expect(ADAPTER_EVIDENCE_REGISTRY).toHaveLength(9);
   });
 
-  it("has github, okta, google_workspace, microsoft_365, aws, slack", () => {
+  it("has all 9 registered adapter slugs", () => {
     const slugs = ADAPTER_EVIDENCE_REGISTRY.map((c) => c.slug).sort();
     expect(slugs).toEqual([
       "aws",
+      "bamboohr",
+      "confluence",
       "github",
-      "google_workspace",
-      "microsoft_365",
+      "google-workspace",
+      "jira",
+      "microsoft-365",
       "okta",
       "slack",
     ]);

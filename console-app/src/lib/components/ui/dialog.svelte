@@ -52,7 +52,7 @@
     <div
       bind:this={dialogEl}
       class={cn(
-        "relative z-50 w-full max-w-lg mx-4 rounded-lg border bg-card p-6 shadow-lg max-h-[85vh] overflow-y-auto",
+        "relative z-50 w-full max-w-lg mx-3 sm:mx-4 rounded-lg border bg-card p-4 sm:p-6 shadow-lg max-h-[90vh] sm:max-h-[85vh] overflow-y-auto",
         className,
       )}
     >

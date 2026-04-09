@@ -1,11 +1,11 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { requireTenantRole } from "$lib/server/guards";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
-  const user = locals.user;
-  if (!user) {
-    return json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
@@ -29,29 +29,16 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   if (db) {
     try {
       await db
-        .prepare(
-          `UPDATE tenants SET industry = ?, size = ? WHERE id = ?`
-        )
+        .prepare(`UPDATE tenants SET industry = ?, size = ? WHERE id = ?`)
         .bind(industry || null, companySize || null, tenantId)
         .run();
 
-      // Store framework preferences
-      await db
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS tenant_preferences (
-             tenant_id TEXT NOT NULL,
-             key TEXT NOT NULL,
-             value TEXT NOT NULL,
-             PRIMARY KEY (tenant_id, key)
-           )`
-        )
-        .run();
-
+      // Table created via migration 0026_tenant_preferences.sql
       if (frameworks && frameworks.length > 0) {
         await db
           .prepare(
             `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
-             VALUES (?, 'frameworks', ?)`
+             VALUES (?, 'frameworks', ?)`,
           )
           .bind(tenantId, JSON.stringify(frameworks))
           .run();

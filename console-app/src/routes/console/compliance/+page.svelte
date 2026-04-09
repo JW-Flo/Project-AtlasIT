@@ -1,6 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
+  import { session } from "$lib/stores/session";
+  import { CONTROL_TO_CDT_PREFIXES, FRAMEWORK_CONTROLS } from "$lib/compliance/framework-controls";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -15,7 +19,10 @@
   import {
     AlertTriangle, ShieldCheck, FileText, ClipboardCheck, Download,
     Play, Link2, Upload, Search, Settings, TrendingUp, TrendingDown, Minus,
+    ChevronRight,
   } from "lucide-svelte";
+  import WeeklyDigestCard from "$lib/components/notifications/WeeklyDigestCard.svelte";
+  import SmartAlertsPanel from "$lib/components/notifications/SmartAlertsPanel.svelte";
 
   type ControlStatus = "not_started" | "in_progress" | "implemented" | "verified";
 
@@ -27,6 +34,8 @@
     notes: string;
   }
 
+  type ScoreSource = "evidence" | "self-assessed" | "self-assessed-fallback" | "no-data";
+
   interface FrameworkScore {
     framework: string;
     score: number;
@@ -34,6 +43,7 @@
     controlsTotal: number;
     controlsImplemented: number;
     controlsVerified: number;
+    source?: ScoreSource;
   }
 
   interface FrameworkSummary {
@@ -85,9 +95,37 @@
   let controls: Control[] = [];
   let scores: FrameworkScore[] = [];
   let evidenceCounts: Record<string, number> = {};
-  let activeTab: "overview" | "controls" | "evidence" = "overview";
+  let rawCdtCounts: Record<string, number> = {};
+  const VALID_TABS = ["overview", "controls", "evidence"] as const;
+  type TabKey = (typeof VALID_TABS)[number];
+
+  function tabFromHash(): TabKey {
+    if (typeof window === "undefined") return "overview";
+    const h = window.location.hash.replace("#", "");
+    return VALID_TABS.includes(h as TabKey) ? (h as TabKey) : "overview";
+  }
+
+  let activeTab: TabKey = "overview";
+
+  function setTab(tab: TabKey) {
+    activeTab = tab;
+    goto(`#${tab}`, { replaceState: true, noScroll: true });
+  }
+
+  // Collapsed control rows — expand to show details
+  let expandedRows: Set<string> = new Set();
+  function toggleRow(controlId: string) {
+    if (expandedRows.has(controlId)) {
+      expandedRows.delete(controlId);
+    } else {
+      expandedRows.add(controlId);
+    }
+    expandedRows = expandedRows; // trigger reactivity
+  }
   let filterFramework = "all";
   let filterStatus = "all";
+  let frameworksConfigured = true;
+  let totalEvidenceFromDb = 0;
   let history: FrameworkHistory[] = [];
   let historyError: string | null = null;
   let evidenceFeedSummary: EvidenceFeedSummary = {
@@ -99,6 +137,14 @@
   };
   let evidenceFeedPreview: EvidenceFeedPreviewItem[] = [];
   let evidenceFeedError: string | null = null;
+
+  interface AdapterHealth {
+    slug: string;
+    collectedAt: string;
+    itemsCount: number;
+    error: string | null;
+  }
+  let adapterHealth: AdapterHealth[] = [];
 
   const STATUS_LABELS: Record<ControlStatus, string> = {
     not_started: "Not Started",
@@ -126,12 +172,11 @@
   $: controlsWithEvidence = Object.keys(evidenceCounts).length;
   $: evidenceByFramework = (() => {
     const byFw: Record<string, number> = {};
-    for (const [controlId, count] of Object.entries(evidenceCounts)) {
-      // Derive framework from the control ID prefix pattern
+    for (const [controlId, count] of Object.entries(rawCdtCounts)) {
       let fw = "Other";
       if (controlId.startsWith("CC") || controlId.startsWith("cc")) fw = "SOC2";
       else if (controlId.startsWith("A.")) fw = "ISO27001";
-      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.")) fw = "NIST CSF";
+      else if (controlId.startsWith("PR.") || controlId.startsWith("RS.") || controlId.startsWith("DE.") || controlId.startsWith("ID.")) fw = "NIST CSF";
       else if (controlId.startsWith("164.")) fw = "HIPAA";
       else if (controlId.startsWith("Art.")) fw = "GDPR";
       byFw[fw] = (byFw[fw] || 0) + count;
@@ -209,21 +254,35 @@
       .join(" ");
   }
 
+  function sourceLabel(source?: ScoreSource): string {
+    if (source === "evidence") return "Evidence-grounded";
+    if (source === "self-assessed" || source === "self-assessed-fallback") return "Self-assessed";
+    return "No data";
+  }
+
+  function sourceVariant(source?: ScoreSource): "success" | "warning" | "secondary" | "destructive" {
+    if (source === "evidence") return "success";
+    if (source === "self-assessed" || source === "self-assessed-fallback") return "warning";
+    return "secondary";
+  }
+
   function evidenceImpactVariant(impact: "positive" | "detrimental" | "neutral"): "success" | "destructive" | "secondary" {
     if (impact === "positive") return "success";
     if (impact === "detrimental") return "destructive";
     return "secondary";
   }
-  async function loadScores(notify = false) {
+  async function loadScores(notify = false, forceRecalculate = false) {
     const previousOverall = scores.length > 0
       ? Math.round(scores.reduce((sum, s) => sum + s.score, 0) / scores.length * 100) / 100
       : 0;
 
     try {
-      const res = await fetch("/api/tenant-compliance/scores");
+      const res = forceRecalculate
+        ? await fetch("/api/tenant-compliance/scores", { method: "POST" })
+        : await fetch("/api/tenant-compliance/scores");
       if (res.ok) {
         const data = await res.json();
-        scores = data.scores || [];
+        scores = (data.scores || []).map((s: any) => ({ ...s, source: s.source }));
       }
     } catch {}
 
@@ -289,21 +348,35 @@
     }
   }
 
+  async function loadAdapterHealth() {
+    try {
+      const res = await fetch("/api/integrations/health");
+      if (res.ok) {
+        const data = await res.json();
+        adapterHealth = data.adapters || [];
+      }
+    } catch { /* best-effort */ }
+  }
+
   async function loadData() {
     loading = true;
     error = null;
     try {
       const [controlsRes] = await Promise.all([
         fetch("/api/tenant-compliance/controls"),
-        loadScores(),
+        loadScores(false, true),
         loadHistory(),
         loadEvidenceFeedPreview(),
+        loadAdapterHealth(),
       ]);
       if (!controlsRes.ok) throw new Error(`Failed to load compliance data (${controlsRes.status})`);
       const data = await controlsRes.json();
       frameworks = data.frameworks || [];
       controls = data.controls || [];
       evidenceCounts = data.evidenceCounts || {};
+      rawCdtCounts = data.rawCdtCounts || {};
+      totalEvidenceFromDb = data.totalEvidenceCount || 0;
+      frameworksConfigured = data.frameworksConfigured !== false;
     } catch (e: any) {
       error = e?.message || "Failed to load compliance data";
     } finally {
@@ -321,7 +394,7 @@
       });
       if (!res.ok) throw new Error(`Save failed (${res.status})`);
       pushToast({ message: "Control statuses saved", variant: "success" });
-      await loadScores(true);
+      await loadScores(true, true);
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save", variant: "error" });
     } finally {
@@ -356,6 +429,9 @@
   let evaluating = false;
   let lastEvaluation: { tenantState: Record<string, unknown>; evaluations: any[] } | null = null;
 
+  // Evidence locker expand
+  let expandedEvidenceId: string | null = null;
+
   // Control → Evidence drill-down
   let expandedControlId: string | null = null;
   let controlEvidence: EvidenceFeedPreviewItem[] = [];
@@ -369,6 +445,7 @@
     if (verifyingControlId === control.id) {
       // Already showing form — submit it
       verifyingControlId = null;
+      const attestedBy = $session?.email || "unknown";
       try {
         const res = await fetch("/api/tenant-compliance/evidence", {
           method: "POST",
@@ -377,7 +454,7 @@
             payload: {
               controlId: control.id,
               framework: control.framework,
-              attestedBy: "current_user",
+              attestedBy,
               notes: verifyNotes,
               type: "verification_attestation",
             },
@@ -390,6 +467,7 @@
         pushToast({ message: `${control.id} verified. Score updated.`, variant: "success" });
         verifyNotes = "";
         await saveControls();
+        await loadScores(true);
       } catch (e: any) {
         pushToast({ message: e?.message || "Verification failed", variant: "error" });
       }
@@ -408,7 +486,11 @@
     expandedControlId = controlId;
     controlEvidenceLoading = true;
     try {
-      const params = new URLSearchParams({ controlId, framework, limit: "10" });
+      const params = new URLSearchParams({ controlId, framework, limit: "20" });
+      const cdtPrefixes = CONTROL_TO_CDT_PREFIXES[controlId];
+      if (cdtPrefixes && cdtPrefixes.length > 0) {
+        params.set("controlPrefixes", cdtPrefixes.join(","));
+      }
       const res = await fetch(`/api/evidence-feed?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -439,41 +521,57 @@
   let evidenceItems: EvidenceItem[] = [];
   let evidenceLoading = false;
   let evidenceError: string | null = null;
+  let evidencePageSize = 20;
+  let evidenceCursor: string | null = null;
+  let evidenceNextCursor: string | null = null;
+  let evidencePrevCursors: string[] = [];
+  let evidenceTotalCount = 0;
   let showRecordForm = false;
   let recordingEvidence = false;
   let newEvidenceDescription = "";
   let newEvidencePack = "manual";
-  let linkingEvidenceId: number | null = null;
+  let newEvidenceFile: File | null = null;
+  let newEvidenceControlId = "";
+  let newEvidenceAppId = "";
+  let linkingEvidenceId: number | string | null = null;
   let linkControlKey = "";
+  let connectedApps: Array<{ id: string; connected: boolean }> = [];
 
-  const INTERNAL_CONTROLS = [
-    { key: "SOC2_CC1.1", framework: "SOC2", title: "Control environment" },
-    { key: "SOC2_CC2.2", framework: "SOC2", title: "Communication and information" },
-    { key: "SOC2_CC6.1", framework: "SOC2", title: "Logical access" },
-    { key: "ISO27001_A.8", framework: "ISO27001", title: "Asset management" },
-    { key: "ISO27001_A.9", framework: "ISO27001", title: "Access control" },
-    { key: "ISO27001_A.10", framework: "ISO27001", title: "Cryptography" },
-    { key: "ISO27001_A.16", framework: "ISO27001", title: "Incident management" },
-    { key: "NIST_ID", framework: "NIST CSF", title: "Identify" },
-    { key: "NIST_PR", framework: "NIST CSF", title: "Protect" },
-    { key: "NIST_DE", framework: "NIST CSF", title: "Detect" },
-    { key: "NIST_RS", framework: "NIST CSF", title: "Respond" },
-    { key: "NIST_RC", framework: "NIST CSF", title: "Recover" },
-  ];
+  // Build evidence control dropdown scoped to the tenant's selected frameworks.
+  // Keys use the CDT control ID prefix (e.g. CC1.1, A.9.2.2, ID.AM, 164.308(a)(1), Art.5)
+  $: INTERNAL_CONTROLS = (() => {
+    const result: { key: string; framework: string; title: string }[] = [];
+    const selectedFws = frameworks.length > 0 ? frameworks : Object.keys(FRAMEWORK_CONTROLS);
+    for (const fw of selectedFws) {
+      const defs = FRAMEWORK_CONTROLS[fw];
+      if (!defs) continue;
+      for (const def of defs) {
+        const cdtId = def.name.split(" - ")[0].trim();
+        result.push({ key: cdtId, framework: fw, title: def.name });
+      }
+    }
+    return result;
+  })();
 
   function shortHash(hash: string): string {
     if (!hash || hash.length <= 16) return hash;
     return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
   }
 
-  async function loadEvidence() {
+  async function loadEvidence(cursor?: string | null) {
     evidenceLoading = true;
     evidenceError = null;
     try {
-      const res = await fetch("/api/tenant-compliance/evidence");
+      // Request more raw items to account for grouping (multiple control refs per evidence event)
+      const rawLimit = Math.min(evidencePageSize * 5, 200);
+      const params = new URLSearchParams({ limit: String(rawLimit) });
+      if (cursor) params.set("cursor", cursor);
+      const res = await fetch(`/api/tenant-compliance/evidence?${params}`);
       if (!res.ok) throw new Error(`Failed to load evidence (${res.status})`);
       const data = await res.json();
       evidenceItems = data.items || [];
+      evidenceNextCursor = data.nextCursor || data.cursor || null;
+      evidenceTotalCount = data.total ?? evidenceItems.length;
     } catch (e: any) {
       evidenceError = e?.message || "Failed to load evidence";
     } finally {
@@ -481,28 +579,89 @@
     }
   }
 
+  function evidenceNextPage() {
+    if (!evidenceNextCursor) return;
+    evidencePrevCursors = [...evidencePrevCursors, evidenceCursor || ""];
+    evidenceCursor = evidenceNextCursor;
+    loadEvidence(evidenceCursor);
+  }
+
+  function evidencePrevPage() {
+    if (evidencePrevCursors.length === 0) return;
+    const prev = evidencePrevCursors[evidencePrevCursors.length - 1];
+    evidencePrevCursors = evidencePrevCursors.slice(0, -1);
+    evidenceCursor = prev || null;
+    loadEvidence(evidenceCursor);
+  }
+
+  function changeEvidencePageSize(size: number) {
+    evidencePageSize = size;
+    evidenceCursor = null;
+    evidenceNextCursor = null;
+    evidencePrevCursors = [];
+    loadEvidence();
+  }
+
+  function handleFileSelect(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    newEvidenceFile = input.files?.[0] ?? null;
+  }
+
   async function recordEvidence() {
-    if (!newEvidenceDescription.trim()) return;
+    if (!newEvidenceDescription.trim() && !newEvidenceFile) return;
     recordingEvidence = true;
     try {
+      let fileData: string | null = null;
+      let fileName: string | null = null;
+      let fileSize: number | null = null;
+      let fileType: string | null = null;
+
+      if (newEvidenceFile) {
+        const buf = await newEvidenceFile.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        fileData = btoa(binary);
+        fileName = newEvidenceFile.name;
+        fileSize = newEvidenceFile.size;
+        fileType = newEvidenceFile.type || "application/octet-stream";
+      }
+
+      const payloadObj: Record<string, unknown> = { description: newEvidenceDescription };
+      if (fileData) {
+        payloadObj.file = { name: fileName, size: fileSize, type: fileType, data: fileData };
+      }
+      if (newEvidenceControlId) {
+        const ctrl = INTERNAL_CONTROLS.find((c) => c.key === newEvidenceControlId);
+        payloadObj.controlId = newEvidenceControlId;
+        if (ctrl) payloadObj.framework = ctrl.framework;
+      }
+      if (newEvidenceAppId) {
+        payloadObj.appId = newEvidenceAppId;
+      }
+
       const encoder = new TextEncoder();
-      const data = encoder.encode(newEvidenceDescription);
-      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashInput = encoder.encode(newEvidenceDescription + (fileName || ""));
+      const hashBuffer = await crypto.subtle.digest("SHA-256", hashInput);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      payloadObj.hash = hashHex;
 
       const res = await fetch("/api/tenant-compliance/evidence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          payload: { description: newEvidenceDescription, hash: hashHex },
+          payload: payloadObj,
           pack: newEvidencePack,
-          subject: "manual-upload",
+          subject: newEvidenceAppId || "manual-upload",
         }),
       });
       if (!res.ok) throw new Error(`Failed to record evidence (${res.status})`);
-      pushToast({ message: "Evidence recorded", variant: "success" });
+      pushToast({ message: "Evidence recorded" + (fileName ? ` (${fileName})` : ""), variant: "success" });
       newEvidenceDescription = "";
+      newEvidenceFile = null;
+      newEvidenceControlId = "";
+      newEvidenceAppId = "";
       showRecordForm = false;
       await loadEvidence();
     } catch (e: any) {
@@ -524,11 +683,12 @@
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Link failed (${res.status})`);
       }
-      pushToast({ message: `Evidence linked to ${linkControlKey}`, variant: "success" });
+      const linkedKey = linkControlKey;
+      pushToast({ message: `Evidence linked to ${linkedKey}`, variant: "success" });
       linkingEvidenceId = null;
       linkControlKey = "";
       const item = evidenceItems.find((e) => e.id === evidenceId);
-      if (item) item.linkedControl = linkControlKey;
+      if (item) item.linkedControl = linkedKey;
       evidenceItems = [...evidenceItems];
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to link evidence", variant: "error" });
@@ -642,14 +802,83 @@
     }
   }
 
+  // Group evidence items by subject+pack to avoid duplicate rows when the same
+  // logical evidence maps to multiple control refs (e.g. A.9.2.2, PR.AC-4, CC6.3).
+  interface GroupedEvidenceItem {
+    id: number | string;
+    hash: string;
+    tenantId: string;
+    pack: string;
+    subject: string | null;
+    createdAt: string;
+    controls: Array<{ key: string; framework?: string | null; controlName?: string | null }>;
+    source?: string;
+  }
+
+  $: groupedEvidenceItems = (() => {
+    const map = new Map<string, GroupedEvidenceItem>();
+    for (const item of evidenceItems) {
+      const groupKey = `${item.subject ?? ""}||${item.pack ?? ""}`;
+      if (map.has(groupKey)) {
+        const existing = map.get(groupKey)!;
+        if (item.linkedControl) {
+          const already = existing.controls.some((c) => c.key === item.linkedControl);
+          if (!already) {
+            existing.controls.push({
+              key: item.linkedControl,
+              framework: item.framework,
+              controlName: item.controlName,
+            });
+          }
+        }
+      } else {
+        map.set(groupKey, {
+          id: item.id,
+          hash: item.hash,
+          tenantId: item.tenantId,
+          pack: item.pack,
+          subject: item.subject,
+          createdAt: item.createdAt,
+          source: item.source,
+          controls: item.linkedControl
+            ? [{ key: item.linkedControl, framework: item.framework, controlName: item.controlName }]
+            : [],
+        });
+      }
+    }
+    return Array.from(map.values());
+  })();
+
   $: if (activeTab === "evidence" && evidenceItems.length === 0 && !evidenceLoading && !evidenceError) {
     loadEvidence();
   }
 
+  async function loadConnectedApps() {
+    try {
+      const res = await fetch("/api/apps/status");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.applications || []).filter((a: any) => a.connected);
+      }
+    } catch {}
+  }
+
   onMount(() => {
+    // Restore active tab from URL hash
+    const hash = window.location.hash.replace("#", "");
+    if (VALID_TABS.includes(hash as TabKey)) {
+      activeTab = hash as TabKey;
+    }
+
     loadData();
-    loadEvidence();
+    loadEvidence().then(() => {
+      // Deep-link: auto-expand evidence item from URL hash
+      if (hash.startsWith("evidence=")) {
+        expandedEvidenceId = hash.slice("evidence=".length);
+      }
+    });
     loadTenantTags();
+    loadConnectedApps();
     // Auto-evaluate configuration on page load (non-blocking, silent)
     runEvaluation().catch(() => {});
   });
@@ -657,17 +886,33 @@
 
 <div>
   <!-- Header -->
-  <div class="flex items-center justify-between mb-6">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Compliance Manager</h1>
       <p class="text-sm text-muted-foreground">Track frameworks, controls, and overall compliance posture.</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <Button size="sm" on:click={runEvaluation} disabled={evaluating}>
         <Play class="h-3.5 w-3.5 mr-1.5" />
         {evaluating ? "Evaluating..." : "Evaluate Configuration"}
       </Button>
     </div>
+  </div>
+
+  {#if !frameworksConfigured}
+    <Alert variant="warning" class="mb-4">
+      <Settings class="h-4 w-4" />
+      <p class="pl-7">
+        No compliance frameworks configured for your tenant. Showing defaults (SOC 2, ISO 27001, NIST CSF).
+        <a href="/console/settings" class="underline font-medium">Configure your frameworks in Settings</a> to match your organization's requirements.
+      </p>
+    </Alert>
+  {/if}
+
+  <!-- Smart Alerts + Weekly Digest -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <SmartAlertsPanel />
+    <WeeklyDigestCard />
   </div>
 
   <!-- Tabs -->
@@ -682,7 +927,7 @@
           {activeTab === tab.key
           ? 'text-foreground border-b-2 border-primary'
           : 'text-muted-foreground hover:text-foreground'}"
-        on:click={() => (activeTab = tab.key)}
+        on:click={() => setTab(tab.key)}
       >
         {tab.label}
       </button>
@@ -821,7 +1066,10 @@
           <CardContent class="pt-5">
             <div class="flex items-center justify-between mb-2">
               <h3 class="font-semibold">{fw.framework}</h3>
-              <Badge variant={GRADE_VARIANTS[fw.grade] || "destructive"}>{fw.grade}</Badge>
+              <div class="flex items-center gap-1.5">
+                <Badge variant={sourceVariant(fw.source)} class="text-[10px] px-1.5 py-0">{sourceLabel(fw.source)}</Badge>
+                <Badge variant={GRADE_VARIANTS[fw.grade] || "destructive"}>{fw.grade}</Badge>
+              </div>
             </div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm text-muted-foreground">{fw.score}%</span>
@@ -831,6 +1079,11 @@
             <p class="text-xs text-muted-foreground mt-2">
               {fw.controlsVerified} verified, {fw.controlsImplemented} implemented
             </p>
+            {#if fw.source === "self-assessed" || fw.source === "self-assessed-fallback"}
+              <p class="text-[11px] text-amber-600 dark:text-amber-400 mt-1">Connect adapters to get evidence-based scores</p>
+            {:else if fw.source === "no-data"}
+              <p class="text-[11px] text-muted-foreground mt-1">No evidence collected yet</p>
+            {/if}
           </CardContent>
         </Card>
       {/each}
@@ -849,6 +1102,32 @@
         {/each}
       {/if}
     </div>
+
+    <!-- Adapter collection health -->
+    {#if adapterHealth.length > 0}
+      <h2 class="text-lg font-semibold mb-3">Adapter Collection Status</h2>
+      <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
+        {#each adapterHealth as adapter}
+          <Card>
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <span class="font-medium text-sm capitalize">{adapter.slug.replace(/-/g, ' ')}</span>
+                {#if adapter.error}
+                  <Badge variant="destructive" class="text-[10px]">Error</Badge>
+                {:else}
+                  <Badge variant="success" class="text-[10px]">{adapter.itemsCount} items</Badge>
+                {/if}
+              </div>
+              {#if adapter.error}
+                <p class="text-[11px] text-destructive mt-1 truncate" title={adapter.error}>{adapter.error}</p>
+              {:else}
+                <p class="text-[11px] text-muted-foreground mt-1">Last collected: {new Date(adapter.collectedAt).toLocaleString()}</p>
+              {/if}
+            </CardContent>
+          </Card>
+        {/each}
+      </div>
+    {/if}
 
     <!-- Score history -->
     <h2 class="text-lg font-semibold mb-3">Score History (30 days)</h2>
@@ -951,7 +1230,7 @@
           </CardContent>
         </Card>
       </a>
-      <button on:click={() => (activeTab = "controls")} class="text-left">
+      <button on:click={() => setTab("controls")} class="text-left">
         <Card class="hover:border-primary/40 transition-colors cursor-pointer group">
           <CardContent class="pt-5">
             <div class="flex items-center gap-3">
@@ -985,15 +1264,15 @@
 
   {:else if activeTab === "controls"}
     <!-- Evidence coverage summary -->
-    {#if totalEvidenceItems > 0}
+    {#if totalEvidenceFromDb > 0}
       <div class="mb-4 rounded-lg border bg-card p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-6">
             <div class="flex items-center gap-2">
               <ShieldCheck class="h-4 w-4 text-green-500" />
-              <span class="text-sm font-medium">{controlsWithEvidence} controls with evidence</span>
+              <span class="text-sm font-medium">{Object.keys(evidenceCounts).length} controls with evidence</span>
             </div>
-            <span class="text-sm text-muted-foreground">{totalEvidenceItems} total evidence items</span>
+            <span class="text-sm text-muted-foreground">{totalEvidenceFromDb} total evidence items</span>
             {#each Object.entries(evidenceByFramework) as [fw, count]}
               <Badge variant="outline">{fw}: {count}</Badge>
             {/each}
@@ -1001,15 +1280,20 @@
         </div>
       </div>
     {:else}
-      <Alert class="mb-4">
+      <Alert class="mb-4" variant="default">
         <AlertTriangle class="h-4 w-4" />
-        <span class="text-sm">No compliance evidence collected yet. Connect directory sync and adapters to start generating evidence automatically.</span>
+        <span class="text-sm">No automated evidence collected yet. Control statuses below reflect your self-assessment. Connect directory sync and adapters to generate evidence automatically.</span>
       </Alert>
     {/if}
 
+    <!-- Evidence coverage count -->
+    <p class="text-sm text-muted-foreground mb-3">
+      {Object.keys(evidenceCounts).length} of {controls.length} controls have evidence
+    </p>
+
     <!-- Controls tab -->
-    <div class="flex items-center justify-between mb-4">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-2 sm:gap-3">
         <select
           id="fw-filter"
           bind:value={filterFramework}
@@ -1031,142 +1315,194 @@
           <option value="verified">Verified</option>
         </select>
       </div>
-      <Button size="sm" on:click={saveControls} disabled={saving}>
+      <Button size="sm" class="shrink-0 self-start sm:self-auto" on:click={saveControls} disabled={saving}>
         {saving ? "Saving..." : "Save Changes"}
       </Button>
     </div>
 
     <Card>
-      <CardContent class="p-0">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-              <th class="px-4 py-3 font-medium w-[180px]">Control</th>
-              <th class="px-4 py-3 font-medium">Description</th>
-              <th class="px-4 py-3 font-medium w-[100px]">Framework</th>
-              <th class="px-4 py-3 font-medium w-[80px]">Evidence</th>
-              <th class="px-4 py-3 font-medium w-[140px]">Status</th>
-              <th class="px-4 py-3 font-medium">Notes</th>
-              <th class="px-4 py-3 font-medium w-[80px]">Verify</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each statusFilteredControls as control (control.id)}
-              <tr class="border-t hover:bg-muted/50 cursor-pointer" on:click={() => toggleControlEvidence(control.id, control.framework)}>
-                <td class="px-4 py-3">
-                  <div class="font-medium flex items-center gap-1.5">
-                    {control.name}
-                    <span class="text-[10px] text-muted-foreground">{expandedControlId === control.id ? '▼' : '▶'}</span>
-                  </div>
-                  {#if control.automatable}
-                    <span class="text-[10px] text-primary font-medium uppercase tracking-wider">Auto</span>
-                  {/if}
-                </td>
-                <td class="px-4 py-3 text-muted-foreground text-xs">{control.description || ""}</td>
-                <td class="px-4 py-3">
-                  <Badge variant="outline">{control.framework}</Badge>
-                </td>
-                <td class="px-4 py-3">
-                  {@const count = evidenceCounts[control.id] || evidenceCounts[control.name] || 0}
-                  {#if count > 0}
-                    <Badge variant="success">{count}</Badge>
-                  {:else}
-                    <span class="text-xs text-muted-foreground">Gap</span>
-                  {/if}
-                </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
-                  <select
-                    value={control.status}
-                    on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
-                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full"
-                  >
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="implemented">Implemented</option>
-                    <option value="verified">Verified</option>
-                  </select>
-                </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
-                  <input
-                    type="text"
-                    value={control.notes}
-                    on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
-                    placeholder="Add notes..."
-                    class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
-                  />
-                </td>
-                <td class="px-4 py-3" on:click|stopPropagation>
-                  {#if control.status === "verified"}
-                    <Badge variant="success">Verified</Badge>
-                  {:else if control.status === "implemented"}
-                    <Button size="sm" variant="outline" on:click={() => submitVerification(control)}>
-                      {verifyingControlId === control.id ? "Confirm" : "Verify"}
-                    </Button>
-                  {:else}
-                    <span class="text-xs text-muted-foreground">—</span>
-                  {/if}
-                </td>
-              </tr>
-              {#if verifyingControlId === control.id}
-                <tr class="bg-green-500/5">
-                  <td colspan="7" class="px-4 py-3">
-                    <div class="flex items-center gap-3">
-                      <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
-                      <input
-                        type="text"
-                        bind:value={verifyNotes}
-                        placeholder="e.g. Reviewed by Jane Smith on 2026-03-20"
-                        class="flex-1 h-8 rounded-md border border-input bg-background px-3 text-xs"
-                        on:keydown={(e) => { if (e.key === "Enter") submitVerification(control); }}
-                      />
-                      <Button size="sm" variant="success" on:click={() => submitVerification(control)}>Submit Verification</Button>
-                      <Button size="sm" variant="ghost" on:click={() => { verifyingControlId = null; verifyNotes = ""; }}>Cancel</Button>
-                    </div>
-                  </td>
-                </tr>
+      <CardContent class="p-0 divide-y">
+        {#if statusFilteredControls.length === 0}
+          <div class="px-4 py-10 text-center">
+            <p class="text-sm text-muted-foreground mb-3">No controls match the selected filters.</p>
+            <Button size="sm" variant="outline" on:click={() => { filterFramework = "all"; filterStatus = "all"; }}>Clear filters</Button>
+          </div>
+        {/if}
+        {#each statusFilteredControls as control (control.id)}
+          {@const evCount = evidenceCounts[control.id] || evidenceCounts[control.name] || 0}
+          {@const isExpanded = expandedRows.has(control.id)}
+          <!-- Collapsed row: single line -->
+          <div class="hover:bg-muted/50 transition-colors">
+            <button
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-left"
+              on:click={() => toggleRow(control.id)}
+            >
+              <ChevronRight class="h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform {isExpanded ? 'rotate-90' : ''}" />
+              <span class="text-sm font-medium truncate min-w-0 flex-1">{control.name}</span>
+              {#if control.automatable}
+                <span class="text-[10px] text-primary font-medium uppercase tracking-wider shrink-0">Auto</span>
               {/if}
-              {#if expandedControlId === control.id}
-                <tr class="bg-muted/20">
-                  <td colspan="7" class="px-4 py-3">
-                    {#if controlEvidenceLoading}
-                      <div class="text-xs text-muted-foreground py-2">Loading evidence...</div>
-                    {:else if controlEvidence.length === 0}
-                      <div class="text-xs text-muted-foreground py-2">No evidence found for this control. Evidence is collected automatically from lifecycle events.</div>
+              <Badge variant="outline" class="text-[10px] shrink-0">{control.framework}</Badge>
+              {#if evCount > 0}
+                <Badge variant="success" class="text-[10px] shrink-0">{evCount}</Badge>
+              {:else}
+                <span class="text-[10px] text-muted-foreground shrink-0">Gap</span>
+              {/if}
+              <span class="shrink-0 w-[90px] text-right">
+                <span class="inline-block text-[10px] px-1.5 py-0.5 rounded font-medium
+                  {control.status === 'verified' ? 'bg-emerald-500/10 text-emerald-500' :
+                   control.status === 'implemented' ? 'bg-blue-500/10 text-blue-500' :
+                   control.status === 'in_progress' ? 'bg-amber-500/10 text-amber-500' :
+                   'bg-muted text-muted-foreground'}">
+                  {control.status === 'not_started' ? 'Not Started' :
+                   control.status === 'in_progress' ? 'In Progress' :
+                   control.status === 'implemented' ? 'Implemented' : 'Verified'}
+                </span>
+              </span>
+            </button>
+
+            <!-- Expanded details -->
+            {#if isExpanded}
+              <div class="px-4 pb-4 pt-1 ml-7 border-l-2 border-primary/20 space-y-3">
+                {#if control.description}
+                  <p class="text-xs text-muted-foreground">{control.description}</p>
+                {/if}
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="flex items-center gap-2" on:click|stopPropagation>
+                    <label class="text-xs font-medium text-muted-foreground shrink-0">Status:</label>
+                    <select
+                      value={control.status}
+                      on:change={(e) => updateControlStatus(control.id, e.currentTarget.value)}
+                      class="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      <option value="not_started">Not Started</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="implemented">Implemented</option>
+                      <option value="verified">Verified</option>
+                    </select>
+                  </div>
+
+                  <div class="flex-1 min-w-[200px]" on:click|stopPropagation>
+                    <input
+                      type="text"
+                      value={control.notes}
+                      on:blur={(e) => updateControlNotes(control.id, e.currentTarget.value)}
+                      placeholder="Add notes..."
+                      class="w-full bg-transparent border-b border-input text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary py-1"
+                    />
+                  </div>
+
+                  <div class="flex items-center gap-2 shrink-0" on:click|stopPropagation>
+                    {#if control.status === "verified"}
+                      <Badge variant="success">Verified</Badge>
+                    {:else if control.status === "implemented"}
+                      <Button size="sm" variant="outline" on:click={() => submitVerification(control)}>
+                        {verifyingControlId === control.id ? "Confirm" : "Verify"}
+                      </Button>
                     {:else}
-                      <div class="text-xs font-medium text-muted-foreground mb-2">{controlEvidence.length} evidence item{controlEvidence.length !== 1 ? 's' : ''} for {control.id}</div>
-                      <div class="space-y-1.5">
+                      <a
+                        href="/console/automation?tab=rules&controlId={encodeURIComponent(control.id)}&framework={encodeURIComponent(control.framework)}"
+                        class="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                      >
+                        <Play size={11} />
+                        Create Rule
+                      </a>
+                    {/if}
+                    <button
+                      class="text-xs text-primary hover:underline font-medium"
+                      on:click|stopPropagation={() => toggleControlEvidence(control.id, control.framework)}
+                    >
+                      {expandedControlId === control.id ? 'Hide' : 'View'} Evidence
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Verification form -->
+                {#if verifyingControlId === control.id}
+                  <div class="flex items-center gap-3 bg-green-500/5 rounded-lg p-3">
+                    <span class="text-xs font-medium text-muted-foreground shrink-0">Attestation notes:</span>
+                    <input
+                      type="text"
+                      bind:value={verifyNotes}
+                      placeholder="e.g. Reviewed by Jane Smith on 2026-03-20"
+                      class="flex-1 h-8 rounded-md border border-input bg-background px-3 text-xs"
+                      on:keydown={(e) => { if (e.key === "Enter") submitVerification(control); }}
+                    />
+                    <Button size="sm" variant="success" on:click={() => submitVerification(control)}>Submit</Button>
+                    <Button size="sm" variant="ghost" on:click={() => { verifyingControlId = null; verifyNotes = ""; }}>Cancel</Button>
+                  </div>
+                {/if}
+
+                <!-- Evidence panel -->
+                {#if expandedControlId === control.id}
+                  <div class="rounded-lg border bg-muted/20 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                      <h4 class="text-sm font-semibold flex items-center gap-2">
+                        <FileText class="h-4 w-4 text-primary" />
+                        Evidence for {control.name}
+                      </h4>
+                      <div class="flex items-center gap-2">
+                        <button
+                          class="text-xs text-primary hover:underline font-medium"
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; setTab("evidence"); }}
+                        >
+                          + Add evidence
+                        </button>
+                        <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline">View full feed →</a>
+                      </div>
+                    </div>
+                    {#if controlEvidenceLoading}
+                      <div class="space-y-2">
+                        <Skeleton class="h-10 rounded" />
+                        <Skeleton class="h-10 rounded" />
+                      </div>
+                    {:else if controlEvidence.length === 0}
+                      <div class="rounded-lg border border-dashed bg-background px-4 py-6 text-center">
+                        <Upload class="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                        <p class="text-xs text-muted-foreground">No evidence found for this control.</p>
+                        <button
+                          class="text-xs text-primary hover:underline mt-1 font-medium"
+                          on:click|stopPropagation={() => { newEvidenceControlId = control.id; showRecordForm = true; setTab("evidence"); }}
+                        >
+                          Upload evidence now
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="rounded-lg border bg-background divide-y">
                         {#each controlEvidence as ev}
-                          <div class="flex items-center justify-between gap-3 rounded border bg-background px-3 py-2">
-                            <div>
-                              <span class="text-xs font-medium">{ev.eventType || ev.source}</span>
-                              <span class="text-[11px] text-muted-foreground ml-2">{ev.actor || "system"}</span>
+                          <div class="flex items-center justify-between gap-3 px-3 py-2.5">
+                            <div class="min-w-0">
+                              <div class="flex items-center gap-2">
+                                <span class="text-xs font-medium">{ev.eventType || ev.source}</span>
+                                <span class="text-[11px] text-muted-foreground">{ev.actor || "system"}</span>
+                              </div>
                               {#if ev.reasoning}
-                                <div class="text-[11px] text-muted-foreground mt-0.5">{ev.reasoning}</div>
+                                <p class="text-[11px] text-muted-foreground mt-0.5 truncate">{ev.reasoning}</p>
                               {/if}
                             </div>
                             <div class="flex items-center gap-2 shrink-0">
                               <Badge variant={evidenceImpactVariant(ev.impact)}>{ev.impact}</Badge>
-                              <span class="text-[10px] text-muted-foreground">{new Date(ev.createdAt).toLocaleDateString()}</span>
+                              <span class="text-[10px] text-muted-foreground whitespace-nowrap">{new Date(ev.createdAt).toLocaleDateString()}</span>
                             </div>
                           </div>
                         {/each}
                       </div>
-                      <a href="/console/compliance/feed?controlId={control.id}&framework={control.framework}" class="text-xs text-primary hover:underline mt-2 inline-block">View all evidence for this control →</a>
                     {/if}
-                  </td>
-                </tr>
-              {/if}
-            {/each}
-          </tbody>
-        </table>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/each}
       </CardContent>
     </Card>
 
   {:else if activeTab === "evidence"}
     <!-- Evidence tab -->
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
       <h2 class="text-lg font-semibold">Evidence Locker</h2>
-      <Button size="sm" variant={showRecordForm ? "outline" : "default"} on:click={() => (showRecordForm = !showRecordForm)}>
+      <Button size="sm" class="shrink-0 self-start sm:self-auto" variant={showRecordForm ? "outline" : "default"} on:click={() => (showRecordForm = !showRecordForm)}>
         <Upload class="h-3.5 w-3.5 mr-1.5" />
         {showRecordForm ? "Cancel" : "Record Evidence"}
       </Button>
@@ -1179,6 +1515,19 @@
         </CardHeader>
         <CardContent class="space-y-3">
           <div class="space-y-1.5">
+            <Label htmlFor="ev-file">File Attachment</Label>
+            <input
+              id="ev-file"
+              type="file"
+              on:change={handleFileSelect}
+              accept=".pdf,.png,.jpg,.jpeg,.csv,.xlsx,.xls,.doc,.docx,.txt,.json,.xml,.zip"
+              class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-sm file:font-medium file:text-primary hover:file:bg-primary/20"
+            />
+            {#if newEvidenceFile}
+              <p class="text-xs text-muted-foreground">{newEvidenceFile.name} ({(newEvidenceFile.size / 1024).toFixed(1)} KB)</p>
+            {/if}
+          </div>
+          <div class="space-y-1.5">
             <Label htmlFor="ev-desc">Description</Label>
             <textarea
               id="ev-desc"
@@ -1188,21 +1537,49 @@
               class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
             ></textarea>
           </div>
-          <div class="space-y-1.5">
-            <Label htmlFor="ev-pack">Evidence Pack</Label>
-            <select
-              id="ev-pack"
-              bind:value={newEvidencePack}
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="manual">Manual Upload</option>
-              <option value="access-review">Access Review</option>
-              <option value="config-snapshot">Configuration Snapshot</option>
-              <option value="audit-log">Audit Log</option>
-              <option value="policy-doc">Policy Document</option>
-            </select>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-pack">Evidence Pack</Label>
+              <select
+                id="ev-pack"
+                bind:value={newEvidencePack}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="manual">Manual Upload</option>
+                <option value="access-review">Access Review</option>
+                <option value="config-snapshot">Configuration Snapshot</option>
+                <option value="audit-log">Audit Log</option>
+                <option value="policy-doc">Policy Document</option>
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-control">Link to Control</Label>
+              <select
+                id="ev-control"
+                bind:value={newEvidenceControlId}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">None</option>
+                {#each INTERNAL_CONTROLS.filter(c => frameworks.length === 0 || frameworks.includes(c.framework)) as ctrl}
+                  <option value={ctrl.key}>{ctrl.framework} {ctrl.key} — {ctrl.title.includes(" - ") ? ctrl.title.split(" - ").slice(1).join(" - ") : ctrl.title}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <Label htmlFor="ev-app">Link to Application</Label>
+              <select
+                id="ev-app"
+                bind:value={newEvidenceAppId}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">None</option>
+                {#each connectedApps as app}
+                  <option value={app.id}>{app.id}</option>
+                {/each}
+              </select>
+            </div>
           </div>
-          <Button variant="success" size="sm" on:click={recordEvidence} disabled={recordingEvidence || !newEvidenceDescription.trim()}>
+          <Button variant="success" size="sm" on:click={recordEvidence} disabled={recordingEvidence || (!newEvidenceDescription.trim() && !newEvidenceFile)}>
             {recordingEvidence ? "Recording..." : "Submit Evidence"}
           </Button>
         </CardContent>
@@ -1245,9 +1622,17 @@
               </tr>
             </thead>
             <tbody>
-              {#each evidenceItems as item (item.id)}
-                <tr class="border-t hover:bg-muted/50">
+              {#each groupedEvidenceItems as item (item.id)}
+                <tr class="border-t hover:bg-muted/50 cursor-pointer transition-colors"
+                    on:click={() => {
+                      const id = String(item.id);
+                      expandedEvidenceId = expandedEvidenceId === id ? null : id;
+                      if (typeof window !== "undefined") {
+                        window.location.hash = expandedEvidenceId ? `evidence=${expandedEvidenceId}` : "";
+                      }
+                    }}>
                   <td class="px-4 py-3">
+                    <span class="text-[10px] text-muted-foreground mr-1">{expandedEvidenceId === String(item.id) ? '▼' : '▶'}</span>
                     <span class="font-mono text-xs" title={item.hash}>{shortHash(item.hash || String(item.id))}</span>
                   </td>
                   <td class="px-4 py-3">
@@ -1256,18 +1641,31 @@
                   <td class="px-4 py-3 text-muted-foreground text-xs">{item.subject || "-"}</td>
                   <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(item.createdAt).toLocaleString()}</td>
                   <td class="px-4 py-3">
-                    {#if item.linkedControl}
-                      <Badge variant="success">{item.linkedControl}</Badge>
+                    {#if item.controls.length > 0}
+                      <div class="flex flex-wrap gap-1">
+                        {#each item.controls as ctrl}
+                          <Badge variant="success" title={ctrl.controlName || ctrl.key}>{ctrl.key}</Badge>
+                        {/each}
+                      </div>
                     {:else if linkingEvidenceId === item.id}
                       <div class="flex items-center gap-2">
                         <select
                           bind:value={linkControlKey}
                           class="h-7 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                         >
-                          <option value="">Select control...</option>
-                          {#each INTERNAL_CONTROLS as ctrl}
-                            <option value={ctrl.key}>{ctrl.key} - {ctrl.title}</option>
-                          {/each}
+                          <option value="">Select control or app...</option>
+                          <optgroup label="Controls">
+                            {#each INTERNAL_CONTROLS.filter(c => frameworks.length === 0 || frameworks.includes(c.framework)) as ctrl}
+                              <option value={ctrl.key}>{ctrl.framework} {ctrl.key} — {ctrl.title.includes(" - ") ? ctrl.title.split(" - ").slice(1).join(" - ") : ctrl.title}</option>
+                            {/each}
+                          </optgroup>
+                          {#if connectedApps.length > 0}
+                            <optgroup label="Connected Applications">
+                              {#each connectedApps as app}
+                                <option value="app:{app.id}">{app.id}</option>
+                              {/each}
+                            </optgroup>
+                          {/if}
                         </select>
                         <Button size="sm" variant="default" on:click={() => linkEvidence(item.id)} disabled={!linkControlKey}>Link</Button>
                         <Button size="sm" variant="ghost" on:click={() => { linkingEvidenceId = null; linkControlKey = ""; }}>Cancel</Button>
@@ -1305,11 +1703,88 @@
                     {/if}
                   </td>
                 </tr>
+                {#if expandedEvidenceId === String(item.id)}
+                  <tr class="bg-muted/20 border-l-4 border-l-primary/40">
+                    <td colspan="6" class="px-4 py-4" on:click|stopPropagation>
+                      <div class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Full Hash</span>
+                            <div class="font-mono mt-1 break-all bg-muted rounded px-2 py-1">{item.hash || "—"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Source</span>
+                            <div class="mt-1">{item.source || "manual upload"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Evidence Pack</span>
+                            <div class="mt-1">{item.pack || "manual"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Subject</span>
+                            <div class="mt-1">{item.subject || "—"}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Created</span>
+                            <div class="mt-1">{new Date(item.createdAt).toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span class="font-semibold text-muted-foreground uppercase tracking-wide">Tenant</span>
+                            <div class="mt-1 font-mono">{item.tenantId}</div>
+                          </div>
+                        </div>
+                        {#if item.controls.length > 0}
+                          <div>
+                            <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Linked Controls</span>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                              {#each item.controls as ctrl}
+                                <div class="flex items-center gap-1 rounded border px-2 py-1 text-xs bg-background">
+                                  <Badge variant="success" class="text-[10px]">{ctrl.key}</Badge>
+                                  {#if ctrl.framework}
+                                    <span class="text-muted-foreground">{ctrl.framework}</span>
+                                  {/if}
+                                  {#if ctrl.controlName}
+                                    <span class="text-muted-foreground">— {ctrl.controlName}</span>
+                                  {/if}
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+                        {/if}
+                      </div>
+                    </td>
+                  </tr>
+                {/if}
               {/each}
             </tbody>
           </table>
         </CardContent>
       </Card>
+
+      <!-- Pagination controls -->
+      <div class="flex items-center justify-between mt-4">
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted-foreground">Rows per page:</span>
+          {#each [20, 50, 100] as size}
+            <button
+              type="button"
+              class="px-2 py-1 text-sm rounded-md border {evidencePageSize === size ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background hover:bg-muted'}"
+              on:click={() => changeEvidencePageSize(size)}
+            >{size}</button>
+          {/each}
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-muted-foreground">
+            Showing {groupedEvidenceItems.length} items{evidenceTotalCount > 0 ? ` of ${evidenceTotalCount}` : ""}
+          </span>
+          <Button size="sm" variant="outline" disabled={evidencePrevCursors.length === 0} on:click={evidencePrevPage}>
+            Previous
+          </Button>
+          <Button size="sm" variant="outline" disabled={!evidenceNextCursor} on:click={evidenceNextPage}>
+            Next
+          </Button>
+        </div>
+      </div>
     {/if}
   {/if}
 </div>

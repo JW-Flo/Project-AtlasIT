@@ -28,14 +28,19 @@ function createMockDb(options: {
   };
 }
 
-// Helper to build a mock DB that returns specific results for the 3 parallel queries
+// Helper to build a mock DB that returns specific results for the 4 parallel queries
 function buildMockDb(
   evidenceRows: Array<{ control_id: string; cnt: number; last_at: string | null }>,
   verifiedRows: Array<{ control_id: string; verified_at: string }>,
   adapterRows: Array<{ control_id: string; metadata: string; created_at: string }>,
 ) {
   let callCount = 0;
-  const results = [{ results: evidenceRows }, { results: verifiedRows }, { results: adapterRows }];
+  const results = [
+    { results: evidenceRows },
+    { results: verifiedRows },
+    { results: adapterRows },
+    { results: [] },
+  ];
 
   const mockAll = vi.fn().mockImplementation(async () => {
     const idx = callCount;

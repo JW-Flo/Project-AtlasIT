@@ -28,6 +28,7 @@ export interface Integration {
   auth: AuthModel;
   tier: string;
   connected?: boolean;
+  healthy?: boolean;
   /** Fields the tenant must fill in. Empty for platform_oauth apps. */
   credentialFields: CredentialField[];
   /** Brief description of what connecting this app enables */

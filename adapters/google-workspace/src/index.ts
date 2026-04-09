@@ -770,4 +770,365 @@ app.post("/api/evidence", async (c) => {
   return c.json({ items });
 });
 
+// ---------------------------------------------------------------------------
+// NHI Discovery — POST /api/nhi/discovery
+// Discovers non-human identities: service accounts, OAuth grants, and
+// domain-wide delegation entries in Google Workspace.
+// ---------------------------------------------------------------------------
+app.post("/api/nhi/discovery", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(tenantId, "google-workspace")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth tokens found for tenant" }, 401);
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  type NhiIdentity = {
+    externalId: string;
+    displayName: string;
+    identityType: "service" | "oauth_grant";
+    credentialType: "service_account" | "oauth_app";
+    ownerEmail?: string;
+    scopes?: string[];
+    expiresAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const identities: NhiIdentity[] = [];
+
+  // --- 1. Service accounts via Admin Directory API (customer-level) ----------
+  try {
+    const saRes = await fetch(
+      "https://www.googleapis.com/admin/directory/v1/customer/my_customer/roles/ALL/roleassignments?maxResults=200",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (saRes.ok) {
+      const data = (await saRes.json()) as {
+        items?: Array<{
+          assignedTo?: string;
+          assigneeType?: string;
+          roleId?: string;
+          orgUnitId?: string;
+        }>;
+      };
+
+      for (const item of data.items ?? []) {
+        if (item.assigneeType === "serviceAccount" && item.assignedTo) {
+          identities.push({
+            externalId: item.assignedTo,
+            displayName: item.assignedTo,
+            identityType: "service",
+            credentialType: "service_account",
+            metadata: {
+              roleId: item.roleId,
+              orgUnitId: item.orgUnitId,
+              source: "admin_directory_role_assignments",
+            },
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        message: "NHI discovery: failed to list service account role assignments",
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // --- 2. OAuth grants — tokens issued to third-party apps for users ---------
+  // List users first (up to 500), then query tokens for each (capped at 20 users
+  // to avoid exhausting the quota on large tenants).
+  try {
+    const usersRes = await fetch(
+      "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=500&fields=users(id,primaryEmail)",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (usersRes.ok) {
+      const usersData = (await usersRes.json()) as {
+        users?: Array<{ id?: string; primaryEmail?: string }>;
+      };
+
+      const users = (usersData.users ?? []).slice(0, 20);
+
+      await Promise.all(
+        users.map(async (user) => {
+          if (!user.id) return;
+          try {
+            const tokensRes = await fetch(
+              `https://www.googleapis.com/admin/directory/v1/users/${encodeURIComponent(user.id)}/tokens`,
+              { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+
+            if (!tokensRes.ok) return;
+
+            const tokensData = (await tokensRes.json()) as {
+              items?: Array<{
+                clientId?: string;
+                displayText?: string;
+                scopes?: string[];
+                anonymous?: boolean;
+                nativeApp?: boolean;
+                userKey?: string;
+              }>;
+            };
+
+            for (const token of tokensData.items ?? []) {
+              if (!token.clientId) continue;
+              identities.push({
+                externalId: `oauth:${token.clientId}:${user.id}`,
+                displayName: token.displayText ?? token.clientId,
+                identityType: "oauth_grant",
+                credentialType: "oauth_app",
+                ownerEmail: user.primaryEmail,
+                scopes: token.scopes ?? [],
+                metadata: {
+                  clientId: token.clientId,
+                  anonymous: token.anonymous,
+                  nativeApp: token.nativeApp,
+                  userKey: token.userKey,
+                  source: "admin_directory_tokens",
+                },
+              });
+            }
+          } catch (err) {
+            console.error(
+              JSON.stringify({
+                level: "warn",
+                message: "NHI discovery: failed to list tokens for user",
+                tenantId,
+                userId: user.id,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
+        }),
+      );
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        message: "NHI discovery: failed to list users for OAuth grant scan",
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // --- 3. Domain-wide delegation — service accounts with DWD enabled ---------
+  // The Admin SDK Reports API exposes DWD-enabled service accounts via the
+  // audit log; fall back to a best-effort list from the customer SA endpoint.
+  try {
+    const dwdRes = await fetch(
+      "https://www.googleapis.com/admin/reports/v1/activity/users/all/applications/admin?eventName=AUTHORIZE_API_CLIENT_ACCESS&maxResults=200",
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+
+    if (dwdRes.ok) {
+      const dwdData = (await dwdRes.json()) as {
+        items?: Array<{
+          id?: { uniqueQualifier?: string; time?: string };
+          actor?: { email?: string };
+          events?: Array<{
+            parameters?: Array<{ name: string; value?: string }>;
+          }>;
+        }>;
+      };
+
+      for (const item of dwdData.items ?? []) {
+        const params: Record<string, string> = {};
+        for (const event of item.events ?? []) {
+          for (const p of event.parameters ?? []) {
+            if (p.name && p.value !== undefined) params[p.name] = p.value;
+          }
+        }
+
+        const clientId = params["CLIENT_ID"] ?? params["client_id"];
+        const scopes = params["SCOPE"]
+          ? params["SCOPE"].split(" ").filter(Boolean)
+          : params["scope"]
+            ? params["scope"].split(" ").filter(Boolean)
+            : [];
+
+        if (!clientId) continue;
+
+        identities.push({
+          externalId: `dwd:${clientId}`,
+          displayName: `DWD Service Account ${clientId}`,
+          identityType: "service",
+          credentialType: "service_account",
+          ownerEmail: item.actor?.email,
+          scopes,
+          lastUsedAt: item.id?.time,
+          metadata: {
+            clientId,
+            source: "admin_reports_authorize_api_client_access",
+            uniqueQualifier: item.id?.uniqueQualifier,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        message: "NHI discovery: failed to fetch domain-wide delegation events",
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  return c.json({
+    provider: "google_workspace",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth Grants — POST /api/oauth-grants
+// Returns a complete view of all OAuth grants across all users (up to 50 at a
+// time to stay within Admin SDK quota). Unlike /api/nhi/discovery which caps
+// at 20 users and aggregates NHI types, this endpoint is focused purely on
+// OAuth grants with a normalized grant shape.
+// ---------------------------------------------------------------------------
+app.post("/api/oauth-grants", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    "SELECT access_token FROM app_oauth_tokens WHERE tenant_id = ? AND app_id = ?",
+  )
+    .bind(tenantId, "google-workspace")
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No OAuth tokens found for tenant" }, 401);
+  }
+
+  const accessToken = await decryptValue(
+    tokenRow.access_token,
+    c.env.CRED_ENCRYPTION_KEY,
+  );
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+
+  // List up to 500 users, then process the first 50 to stay within quota
+  const usersRes = await fetch(
+    "https://www.googleapis.com/admin/directory/v1/users?customer=my_customer&maxResults=500&fields=users(id,primaryEmail)",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+
+  if (!usersRes.ok) {
+    const errText = await usersRes.text().catch(() => "Unknown error");
+    return c.json(
+      { error: `Failed to list users: ${errText}` },
+      (usersRes.status >= 400 && usersRes.status < 600 ? usersRes.status : 500) as
+        | 400
+        | 401
+        | 403
+        | 500,
+    );
+  }
+
+  const usersData = (await usersRes.json()) as {
+    users?: Array<{ id?: string; primaryEmail?: string }>;
+  };
+
+  const users = (usersData.users ?? []).slice(0, 50);
+
+  await Promise.all(
+    users.map(async (user) => {
+      if (!user.id || !user.primaryEmail) return;
+      try {
+        const tokensRes = await fetch(
+          `https://www.googleapis.com/admin/directory/v1/users/${encodeURIComponent(user.id)}/tokens`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+
+        if (!tokensRes.ok) return;
+
+        const tokensData = (await tokensRes.json()) as {
+          items?: Array<{
+            clientId?: string;
+            displayText?: string;
+            scopes?: string[];
+            anonymous?: boolean;
+            nativeApp?: boolean;
+            userKey?: string;
+          }>;
+        };
+
+        for (const token of tokensData.items ?? []) {
+          if (!token.clientId) continue;
+
+          grants.push({
+            appName: token.displayText ?? token.clientId,
+            clientId: token.clientId,
+            userEmail: user.primaryEmail!,
+            scopes: token.scopes ?? [],
+            metadata: {
+              anonymous: token.anonymous,
+              nativeApp: token.nativeApp,
+              userKey: token.userKey,
+            },
+          });
+        }
+      } catch (err) {
+        console.error(
+          JSON.stringify({
+            level: "warn",
+            message: "oauth-grants: failed to fetch tokens for user",
+            tenantId,
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+    }),
+  );
+
+  return c.json({
+    provider: "google_workspace",
+    grants,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
 export default app;
+
+

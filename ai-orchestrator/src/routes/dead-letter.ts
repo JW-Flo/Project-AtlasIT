@@ -5,9 +5,13 @@ import { replayDeadLetter } from "../lib/dead-letter";
 
 export const deadLetterRoutes = new Hono<AppEnv>();
 
-// GET /api/v1/dead-letter — list dead letter entries
-deadLetterRoutes.get("/", async (c) => {
-  const tenantId = c.req.query("tenantId");
+// GET /api/v1/dead-letter — list dead letter entries (tenant-scoped)
+deadLetterRoutes.get("/", requireRole("member"), async (c) => {
+  const auth = c.get("auth") as { tenantId?: string } | undefined;
+  const tenantId = auth?.tenantId ?? c.req.query("tenantId");
+  if (!tenantId) {
+    return c.json({ status: "error", code: "FORBIDDEN", message: "Tenant context required" }, 403);
+  }
   const agentId = c.req.query("agentId");
   const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 100);
   const offset = parseInt(c.req.query("offset") ?? "0", 10) || 0;
@@ -22,8 +26,7 @@ deadLetterRoutes.get("/", async (c) => {
     conditions.push("agent_id = ?");
     params.push(agentId);
   }
-  const where =
-    conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const results = await c.env.DB.prepare(
     `SELECT * FROM dead_letter_queue ${where} ORDER BY dead_lettered_at DESC LIMIT ? OFFSET ?`,
@@ -46,8 +49,8 @@ deadLetterRoutes.get("/", async (c) => {
   });
 });
 
-// GET /api/v1/dead-letter/stats/summary — DLQ depth and stats
-deadLetterRoutes.get("/stats/summary", async (c) => {
+// GET /api/v1/dead-letter/stats/summary — DLQ depth and stats (tenant-scoped)
+deadLetterRoutes.get("/stats/summary", requireRole("member"), async (c) => {
   const total = await c.env.DB.prepare(
     "SELECT COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL",
   ).first<{ count: number }>();
@@ -70,12 +73,10 @@ deadLetterRoutes.get("/stats/summary", async (c) => {
   });
 });
 
-// GET /api/v1/dead-letter/:id — get single entry
-deadLetterRoutes.get("/:id", async (c) => {
+// GET /api/v1/dead-letter/:id — get single entry (auth required)
+deadLetterRoutes.get("/:id", requireRole("member"), async (c) => {
   const { id } = c.req.param();
-  const entry = await c.env.DB.prepare(
-    "SELECT * FROM dead_letter_queue WHERE id = ?",
-  )
+  const entry = await c.env.DB.prepare("SELECT * FROM dead_letter_queue WHERE id = ?")
     .bind(id)
     .first();
   if (!entry) {
@@ -137,9 +138,7 @@ deadLetterRoutes.post("/replay-all", requireRole("admin"), async (c) => {
   }
   const where = `WHERE ${conditions.join(" AND ")}`;
 
-  const entries = await c.env.DB.prepare(
-    `SELECT id FROM dead_letter_queue ${where} LIMIT 100`,
-  )
+  const entries = await c.env.DB.prepare(`SELECT id FROM dead_letter_queue ${where} LIMIT 100`)
     .bind(...params)
     .all();
 
@@ -148,11 +147,7 @@ deadLetterRoutes.post("/replay-all", requireRole("admin"), async (c) => {
   let failed = 0;
 
   for (const entry of entries.results) {
-    const result = await replayDeadLetter(
-      c.env.DB,
-      entry.id as string,
-      orchestratorUrl,
-    );
+    const result = await replayDeadLetter(c.env.DB, entry.id as string, orchestratorUrl);
     if (result.success) replayed++;
     else failed++;
   }

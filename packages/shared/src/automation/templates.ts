@@ -5,8 +5,7 @@ export const ruleTemplates: RuleTemplate[] = [
   {
     id: "auto-provision-on-group-join",
     name: "Auto-provision app on group join",
-    description:
-      "Automatically grant app access when a user joins a mapped directory group",
+    description: "Automatically grant app access when a user joins a mapped directory group",
     category: "provisioning",
     triggerType: "user_joined_group",
     triggerConfig: {},
@@ -31,8 +30,7 @@ export const ruleTemplates: RuleTemplate[] = [
   {
     id: "auto-revoke-on-group-leave",
     name: "Auto-revoke app on group leave",
-    description:
-      "Automatically revoke app access when a user leaves a mapped directory group",
+    description: "Automatically revoke app access when a user leaves a mapped directory group",
     category: "provisioning",
     triggerType: "user_left_group",
     triggerConfig: {},
@@ -70,11 +68,10 @@ export const ruleTemplates: RuleTemplate[] = [
         order: 1,
       },
       {
-        type: "create_incident",
+        type: "send_notification",
         config: {
-          severity: "low",
-          title: "User offboarded: {{user.email}}",
-          autoResolve: true,
+          channel: "ops",
+          message: "User offboarded: {{email}}",
         },
         order: 2,
       },
@@ -110,8 +107,7 @@ export const ruleTemplates: RuleTemplate[] = [
   {
     id: "health-degradation-alert",
     name: "Alert on app health degradation",
-    description:
-      "Create an incident and notify admins when a connected app becomes unhealthy",
+    description: "Create an incident and notify admins when a connected app becomes unhealthy",
     category: "security",
     triggerType: "app_health_changed",
     triggerConfig: {},
@@ -139,8 +135,7 @@ export const ruleTemplates: RuleTemplate[] = [
   {
     id: "compliance-score-drop",
     name: "Alert on compliance score drop",
-    description:
-      "Notify when a compliance framework score drops below threshold",
+    description: "Notify when a compliance framework score drops below threshold",
     category: "compliance",
     triggerType: "compliance_score_changed",
     triggerConfig: { threshold: 70, direction: "below" },

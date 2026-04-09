@@ -40,10 +40,22 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/health") {
+      return new Response(
+        JSON.stringify({
+          status: "healthy",
+          service: "slack-notification-agent",
+          timestamp: new Date().toISOString(),
+          configured: Boolean(env.SLACK_WEBHOOK_URL && env.AGENT_SECRET),
+        }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
     if (!env.SLACK_WEBHOOK_URL || !env.SLACK_WEBHOOK_URL.startsWith("http"))
-      throw new Error("Missing or invalid required env: SLACK_WEBHOOK_URL");
+      return new Response(JSON.stringify({ error: "SLACK_WEBHOOK_URL not configured" }), { status: 503, headers: { "Content-Type": "application/json" } });
     if (!env.AGENT_SECRET)
-      throw new Error("Missing required env: AGENT_SECRET");
+      return new Response(JSON.stringify({ error: "AGENT_SECRET not configured" }), { status: 503, headers: { "Content-Type": "application/json" } });
     const app = buildApp(env);
     return app.fetch(request, undefined, ctx);
   },

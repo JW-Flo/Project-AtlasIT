@@ -42,23 +42,49 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   const connectedApps = await listConnectedApps(platform, tenantId);
+  const env = (platform?.env as any) || {};
+  let adapterUrls: Record<string, string> = {};
+  try {
+    adapterUrls = JSON.parse(env.ADAPTER_URLS || "{}");
+  } catch { /* fall through */ }
+
   const results = [];
 
   for (const app of connectedApps) {
     const start = Date.now();
-    // Simulate health check — in production this calls the adapter's health endpoint
-    const healthy = app.healthy;
+    let healthy = false;
+    let details: Record<string, unknown> = { lastSync: app.updated_at };
+
+    // Attempt to ping the adapter's health endpoint
+    const adapterUrl = adapterUrls[app.app_id];
+    if (adapterUrl) {
+      try {
+        const res = await fetch(`${adapterUrl}/health`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        healthy = res.ok;
+        details.adapterStatus = res.status;
+      } catch (e: any) {
+        healthy = false;
+        details.error = e?.message || "Adapter unreachable";
+      }
+    } else {
+      // No adapter URL configured — assume healthy if previously connected
+      healthy = true;
+      details.note = "No adapter URL configured; assumed healthy";
+    }
+
     const responseMs = Date.now() - start;
 
     await recordHealthCheck(db, tenantId, {
       appId: app.app_id,
       healthy,
       responseMs,
-      details: {
-        lastSync: app.updated_at,
-        lastTestAt: app.last_test_at,
-      },
+      details,
     });
+
+    // Update the app_credentials healthy flag
+    await updateTestStatus(platform, app.app_id, healthy, tenantId);
 
     results.push({
       appId: app.app_id,

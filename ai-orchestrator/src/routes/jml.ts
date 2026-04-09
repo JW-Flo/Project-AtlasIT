@@ -85,8 +85,10 @@ jmlRoutes.post("/trigger", requireRole("member"), async (c) => {
     {
       db,
       workflow: c.env.WORKFLOW,
+      atlasWorkflow: c.env.ATLAS_WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
+      internalApiKey: c.env.INTERNAL_API_KEY,
     },
   );
 
@@ -196,10 +198,7 @@ jmlRoutes.get("/runs/:id", async (c) => {
     .first();
 
   if (!run) {
-    return c.json(
-      { status: "error", code: "NOT_FOUND", message: "Run not found" },
-      404,
-    );
+    return c.json({ status: "error", code: "NOT_FOUND", message: "Run not found" }, 404);
   }
 
   // Live state from WorkflowDO

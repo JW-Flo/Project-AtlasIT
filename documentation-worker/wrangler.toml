@@ -10,15 +10,12 @@ binding = "DOCS"
 id = "88514b613c2e4721a358352752580d65"
 preview_id = "f8c916deeae240f0825097e3b7d17214"
 
-# TODO: create KV namespace and update ID
-[[kv_namespaces]]
-binding = "KV_DOCS"
-id = "TBD"
 
 # Production environment
 [env.production]
-# Route for documentation worker
-route = "docs.atlasit.workers.dev/*"
+routes = [
+  { pattern = "docs.atlasit.pro/*", zone_name = "atlasit.pro" },
+]
 usage_model = "bundled"
 
 [env.production.vars]

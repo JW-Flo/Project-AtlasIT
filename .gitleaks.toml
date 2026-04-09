@@ -1,0 +1,74 @@
+title = "AtlasIT Gitleaks Configuration"
+
+# Extend the default ruleset
+[extend]
+useDefault = true
+
+# Project-specific rules
+[[rules]]
+id = "atlasit-admin-token"
+description = "AtlasIT admin token"
+regex = '''(?i)(DISPATCH_ADMIN_TOKEN|ADMIN_BEARER|ADMIN_TOKEN)\s*[:=]\s*["']?[A-Fa-f0-9]{32,}["']?'''
+tags = ["secret", "atlasit"]
+
+[[rules]]
+id = "atlasit-debug-key"
+description = "AtlasIT debug/scheduler key with value"
+regex = '''(?i)(SCHEDULER_DEBUG_KEY|DEBUG_KEY)\s*[:=]\s*["']?[A-Za-z0-9_-]{8,}["']?'''
+tags = ["secret", "atlasit"]
+
+[[rules]]
+id = "plaintext-hex-secret-file"
+description = "Standalone file containing only a hex secret"
+regex = '''^[0-9a-f]{32,}$'''
+path = '''(?i)\.(token|secret|key|password)$'''
+tags = ["secret"]
+
+[[rules]]
+id = "cloudflare-api-token"
+description = "Cloudflare API token"
+regex = '''(?i)CLOUDFLARE_API_TOKEN\s*[:=]\s*["']?[A-Za-z0-9_-]{40,}["']?'''
+tags = ["secret", "cloudflare"]
+
+# Allowlist paths that are known to contain example/fake tokens
+[allowlist]
+paths = [
+  '''\.test\.(ts|js)$''',
+  '''\.spec\.(ts|js)$''',
+  '''\.env\.example$''',
+  '''docs/''',
+  '''documentation-worker/''',
+  '''pnpm-lock\.yaml$''',
+  '''package-lock\.json$''',
+  '''artifacts/schema\.hash$''',
+  '''shared/integrations/''',
+  '''packages/connector-schema/''',
+  '''adapters/''',
+  '''scripts/scan-secrets\.js$''',
+  '''console-app/src/lib/data/integrations\.ts$''',
+  '''CLAUDE\.md$''',
+  '''onboarding/src/bundled-worker.*\.mjs$''',
+]
+# Placeholder patterns like "sk_live_..." are documentation, not real secrets
+regexes = [
+  '''(?i)sk_(live|test)_\.\.\.''',
+  '''(?i)pk_(live|test)_\.\.\.''',
+  '''(?i)whsec_\.\.\.''',
+  '''(?i)price_\.\.\.''',
+  '''REPLACE_WITH''',
+]
+stopwords = [
+  "sk_live_...",
+  "sk_test_...",
+  "pk_live_...",
+  "pk_test_...",
+  "whsec_...",
+  "price_...",
+  "REPLACE_WITH",
+  "placeholder",
+]
+# Known-good commits with placeholder Stripe docs (not real secrets)
+commits = [
+  "97829b62d0ed81e52fd54ac7b392618fc31c2bb8",
+  "06bf872c0ee85974603c8b01f9d01e7f5d7f402a",
+]

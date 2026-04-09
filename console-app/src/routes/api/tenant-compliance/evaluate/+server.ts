@@ -68,10 +68,15 @@ async function evaluateTenantState(db: any, tenantId: string): Promise<TenantSta
     // Check connected apps (with IDs)
     db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
 
-    // Check incidents
+    // Check incidents — configured means incidents exist OR automation rules create them
     db
-      .prepare("SELECT COUNT(*) as count FROM incidents WHERE tenant_id = ?")
-      .bind(tenantId)
+      .prepare(
+        `SELECT (
+           (SELECT COUNT(*) FROM incidents WHERE tenant_id = ?) +
+           (SELECT COUNT(*) FROM automation_rules WHERE tenant_id = ? AND actions LIKE '%create_incident%')
+         ) as count`,
+      )
+      .bind(tenantId, tenantId)
       .first(),
 
     // Check policies
@@ -82,9 +87,9 @@ async function evaluateTenantState(db: any, tenantId: string): Promise<TenantSta
       .bind(tenantId)
       .first(),
 
-    // Check workflows
+    // Check workflows (via automation_rules — workflows table does not exist)
     db
-      .prepare("SELECT COUNT(*) as count FROM workflows WHERE tenant_id = ?")
+      .prepare("SELECT COUNT(*) as count FROM automation_rules WHERE tenant_id = ?")
       .bind(tenantId)
       .first(),
 
@@ -187,8 +192,13 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   }
   if (frameworks.length === 0) frameworks = ["SOC2", "ISO27001", "NIST CSF"];
 
-  // Read current controls
+  const frameworkSet = new Set(frameworks);
+
+  // Read current controls, scoped to selected frameworks.
+  // Keep the full stored list so we can merge updates back without dropping
+  // controls that belong to frameworks outside the current selection.
   let controls: Control[] = [];
+  let allStoredControls: Control[] = [];
   try {
     const row = await db
       .prepare(
@@ -196,7 +206,10 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       )
       .bind(tenantId)
       .first();
-    if (row?.value) controls = JSON.parse(row.value as string);
+    if (row?.value) {
+      allStoredControls = JSON.parse(row.value as string);
+      controls = allStoredControls.filter((c) => frameworkSet.has(c.framework));
+    }
   } catch {
     /* no controls */
   }
@@ -282,19 +295,24 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     }
   }
 
-  // Apply all status updates atomically after the loop completes
+  // Apply all status updates atomically after the loop completes.
+  // Merge back into the full stored controls so that controls for frameworks
+  // outside the current selection are preserved.
   const updated = statusUpdates.size > 0;
   if (updated) {
-    const updatedControls = controls.map((c) => {
-      const newStatus = statusUpdates.get(c.id);
-      return newStatus ? { ...c, status: newStatus } : c;
-    });
+    const updatedScopedMap = new Map(
+      controls.map((c) => {
+        const newStatus = statusUpdates.get(c.id);
+        return [c.id, newStatus ? { ...c, status: newStatus } : c];
+      }),
+    );
+    const mergedControls = allStoredControls.map((c) => updatedScopedMap.get(c.id) ?? c);
     await db
       .prepare(
         `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
          VALUES (?, 'compliance_controls', ?)`,
       )
-      .bind(tenantId, JSON.stringify(updatedControls))
+      .bind(tenantId, JSON.stringify(mergedControls))
       .run();
   }
 

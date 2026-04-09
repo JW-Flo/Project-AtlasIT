@@ -226,11 +226,275 @@ export const AUDIT_EVIDENCE_REGISTRY: AuditEvidenceMapping[] = [
     category: "config_mgmt",
   },
   {
+    action: "security_policy.updated",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    impact: "positive",
+    description: "Organization security policy updated (MFA, session, password controls)",
+    category: "auth_control",
+  },
+  {
     action: "trust_center_settings.updated",
     controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
     impact: "positive",
     description: "Trust center transparency settings updated",
     category: "config_mgmt",
+  },
+
+  // ── Automation Rules ───────────────────────────────────────────────
+  {
+    action: "automation_rule.create",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule created for lifecycle management",
+    category: "config_mgmt",
+  },
+  {
+    action: "automation_rule.update",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule updated or enabled",
+    category: "config_mgmt",
+  },
+  {
+    action: "automation_rule.delete",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule removed",
+    category: "config_mgmt",
+  },
+
+  // ── Directory Sync ────────────────────────────────────────────────────
+  {
+    action: "directory.connect",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory provider connected for identity sync",
+    category: "identity_mgmt",
+  },
+  {
+    action: "directory.sync",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory sync executed — user roster reconciled",
+    category: "identity_mgmt",
+  },
+  {
+    action: "directory_user.created",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user provisioned via sync or manual creation",
+    category: "onboarding",
+  },
+  {
+    action: "directory_user.updated",
+    controlRefs: ["ISO-27001-A.9.2.4", "SOC2-CC6.3"],
+    impact: "neutral",
+    description: "Directory user attributes updated",
+    category: "identity_mgmt",
+  },
+  {
+    action: "directory_user.deleted",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.6", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user removed — offboarding triggered",
+    category: "offboarding",
+  },
+
+  // ── Group-to-App Mappings ──────────────────────────────────────────
+  {
+    action: "mapping.update",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "Group-to-app role mapping updated",
+    category: "access_grant",
+  },
+  {
+    action: "mapping.delete",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+    impact: "positive",
+    description: "Group-to-app role mapping removed",
+    category: "access_revoke",
+  },
+  {
+    action: "mapping.auto_suggest",
+    controlRefs: ["SOC2-CC5.2", "SOC2-CC6.3", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "AI-generated role mapping suggestion applied",
+    category: "access_grant",
+  },
+
+  // ── Access Reviews (extended) ──────────────────────────────────────
+  {
+    action: "access_review_campaign.status_changed",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC4.2", "ISO-27001-A.9.2.5", "HIPAA-164.312(a)(1)"],
+    impact: "positive",
+    description: "Access review campaign status transitioned",
+    category: "access_review",
+  },
+
+  // ── Incidents (extended) ───────────────────────────────────────────
+  {
+    action: "incident.assigned",
+    controlRefs: ["SOC2-CC7.3", "SOC2-CC7.4", "ISO-27001-A.16.1.1", "ISO-27001-A.16.1.4"],
+    impact: "positive",
+    description: "Incident assigned to responder",
+    category: "incident_mgmt",
+  },
+  {
+    action: "incident.escalated",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2", "ISO-27001-A.16.1.4", "NIST-CSF-RS.CO-2"],
+    impact: "positive",
+    description: "Incident escalated per response procedure",
+    category: "incident_mgmt",
+  },
+  {
+    action: "incident.severity_changed",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Incident severity reclassified",
+    category: "incident_mgmt",
+  },
+
+  // ── MFA ─────────────────────────────────────────────────────────────
+  {
+    action: "mfa.totp_enabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    impact: "positive",
+    description: "User enabled multi-factor authentication (TOTP)",
+    category: "auth_control",
+  },
+  {
+    action: "mfa.totp_disabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    impact: "detrimental",
+    description: "User disabled multi-factor authentication (TOTP)",
+    category: "auth_control",
+  },
+
+  // ── Policy Management ──────────────────────────────────────────────
+  {
+    action: "policy.created",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document created",
+    category: "policy_mgmt",
+  },
+  {
+    action: "policy.updated",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document revised",
+    category: "policy_mgmt",
+  },
+  {
+    action: "policy.archived",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1"],
+    impact: "neutral",
+    description: "Policy document archived after supersession",
+    category: "policy_mgmt",
+  },
+  {
+    action: "policy.submitted_for_review",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC2.1", "ISO-27001-A.5.1.1"],
+    impact: "positive",
+    description: "Policy submitted for management review and approval",
+    category: "policy_mgmt",
+  },
+
+  // ── Compliance Packs ───────────────────────────────────────────────
+  {
+    action: "compliance_pack.create",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Custom compliance pack created",
+    category: "config_mgmt",
+  },
+  {
+    action: "compliance_pack.install",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack installed — controls activated",
+    category: "config_mgmt",
+  },
+  {
+    action: "compliance_pack.uninstall",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Compliance pack uninstalled",
+    category: "config_mgmt",
+  },
+  {
+    action: "compliance_pack.update",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack configuration updated",
+    category: "config_mgmt",
+  },
+  {
+    action: "compliance_pack.delete",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Custom compliance pack deleted",
+    category: "config_mgmt",
+  },
+
+  // ── Automation Execution ───────────────────────────────────────────
+  {
+    action: "automation.executed",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC5.2", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule executed — lifecycle action performed",
+    category: "automation",
+  },
+  {
+    action: "automation_rule.duplicate",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule duplicated from existing template",
+    category: "config_mgmt",
+  },
+
+  // ── Trust Center ───────────────────────────────────────────────────
+  {
+    action: "trust_access_request.approved",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Trust center access request approved — transparency upheld",
+    category: "config_mgmt",
+  },
+  {
+    action: "trust_access_request.denied",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC6.3"],
+    impact: "positive",
+    description: "Trust center access request denied — need-to-know enforced",
+    category: "access_revoke",
+  },
+
+  // ── Support ────────────────────────────────────────────────────────
+  {
+    action: "support.request",
+    controlRefs: ["SOC2-CC2.2", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Support request submitted by user",
+    category: "incident_mgmt",
   },
 
   // ── Admin Actions ───────────────────────────────────────────────────
@@ -368,5 +632,140 @@ export const PLATFORM_STATE_PROBES: PlatformStateProbe[] = [
     description: "Credential rotation occurring within policy window",
     category: "credential_mgmt",
     query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action = 'user.password_changed' AND created_at >= datetime('now', '-90 days')`,
+  },
+  // ── P1-4 expanded probes ────────────────────────────────────────────
+  {
+    id: "rbac_role_entitlements_configured",
+    controlRefs: ["SOC2-CC5.2", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    description: "RBAC roles with app entitlements configured (enforces segregation of duties)",
+    category: "access_control",
+    query: `SELECT COUNT(*) AS result FROM role_entitlements WHERE tenant_id = ?`,
+  },
+  {
+    id: "encryption_evidence_present",
+    controlRefs: ["SOC2-CC6.7", "HIPAA-164.312(a)(2)(iv)", "GDPR-Art.5(1)(f)"],
+    description: "Encryption-related evidence collected from adapters",
+    category: "data_protection",
+    query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND (control_id LIKE 'CC6.7%' OR evidence_type = 'encryption_status' OR evidence_type = 'encryption_at_rest') AND created_at >= datetime('now', '-30 days')`,
+  },
+  {
+    id: "directory_sync_recent",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    description: "Directory sync has run recently (within 24 hours)",
+    category: "identity_mgmt",
+    query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action IN ('directory.synced', 'directory_sync.completed') AND created_at >= datetime('now', '-24 hours')`,
+  },
+  {
+    id: "automation_rules_active",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC8.1", "ISO-27001-A.12.6.1", "NIST-CSF-PR.IP-3"],
+    description: "Active automation rules configured for lifecycle management",
+    category: "config_mgmt",
+    query: `SELECT COUNT(*) AS result FROM automation_rules WHERE tenant_id = ? AND enabled = 1`,
+  },
+  {
+    id: "nhi_credentials_managed",
+    controlRefs: ["SOC2-CC6.1", "SOC2-CC6.7", "ISO-27001-A.9.4.2"],
+    description: "Non-human identity credentials tracked and managed",
+    category: "credential_mgmt",
+    query: `SELECT COUNT(*) AS result FROM nhi_credentials WHERE tenant_id = ? AND status = 'active'`,
+  },
+  {
+    id: "policies_uploaded",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    description: "Security policies uploaded to evidence locker",
+    category: "policy_mgmt",
+    query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND evidence_type = 'policy' AND created_at >= datetime('now', '-365 days')`,
+  },
+  {
+    id: "mfa_enforced",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7",
+    ],
+    description: "MFA required for all users via organization security policy",
+    category: "auth_control",
+    query: `SELECT COUNT(*) AS result FROM tenant_preferences WHERE tenant_id = ? AND key = 'security_policy' AND json_extract(value, '$.mfaRequired') = true`,
+  },
+
+  // ── Extended probes for partial/gap controls ────────────────────────
+  {
+    id: "incident_response_plan_uploaded",
+    controlRefs: ["SOC2-CC7.3", "SOC2-CC7.5", "ISO-27001-A.16.1.1"],
+    description: "Incident response plan uploaded as policy evidence",
+    category: "incident_mgmt",
+    query: `SELECT COUNT(*) AS result FROM compliance_evidence WHERE tenant_id = ? AND evidence_type = 'policy' AND (control_name LIKE '%incident%' OR subject LIKE '%incident%response%') AND created_at >= datetime('now', '-365 days')`,
+  },
+  {
+    id: "continuous_monitoring_active",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC7.1", "NIST-CSF-DE.CM-1"],
+    description: "Continuous monitoring active — automation rules and audit logging running",
+    category: "monitoring",
+    query: `SELECT CASE WHEN (SELECT COUNT(*) FROM automation_rules WHERE tenant_id = ? AND enabled = 1) > 0 AND (SELECT COUNT(*) FROM audit_log WHERE tenant_id = ? AND created_at >= datetime('now', '-24 hours')) > 0 THEN 1 ELSE 0 END AS result`,
+  },
+  {
+    id: "access_request_approval_enforced",
+    controlRefs: ["ISO-27001-A.9.2.2", "SOC2-CC6.3"],
+    description: "Access requests require approval before fulfillment",
+    category: "access_control",
+    query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action = 'access_request.approved' AND created_at >= datetime('now', '-90 days')`,
+  },
+  {
+    id: "offboarding_within_sla",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+    description: "User offboarding events completed within SLA window",
+    category: "offboarding",
+    query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action IN ('user.deleted', 'group_member.removed') AND created_at >= datetime('now', '-90 days')`,
+  },
+  {
+    id: "incident_resolution_tracked",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.4", "NIST-CSF-RS.CO-2"],
+    description: "Incidents resolved with documented timelines",
+    category: "incident_mgmt",
+    query: `SELECT COUNT(*) AS result FROM incidents WHERE tenant_id = ? AND status = 'resolved' AND resolved_at IS NOT NULL`,
+  },
+  {
+    id: "session_timeout_configured",
+    controlRefs: ["HIPAA-164.312(a)(2)(ii)", "SOC2-CC6.7"],
+    description: "Session auto-logoff timeout configured in security policy",
+    category: "auth_control",
+    query: `SELECT COUNT(*) AS result FROM tenant_preferences WHERE tenant_id = ? AND key = 'security_policy' AND json_extract(value, '$.sessionTimeoutMins') IS NOT NULL`,
+  },
+  {
+    id: "audit_log_retention_configured",
+    controlRefs: ["HIPAA-164.312(b)", "GDPR-Art.5(1)(e)", "GDPR-Art.5(2)"],
+    description: "Audit log retention policy configured",
+    category: "data_lifecycle",
+    query: `SELECT COUNT(*) AS result FROM tenant_preferences WHERE tenant_id = ? AND key IN ('data_retention', 'audit_retention')`,
+  },
+  {
+    id: "idp_connected",
+    controlRefs: ["NIST-CSF-PR.AC-1", "SOC2-CC6.2", "ISO-27001-A.9.2.1"],
+    description: "Identity provider connected for federated authentication",
+    category: "identity_mgmt",
+    query: `SELECT COUNT(*) AS result FROM integrations WHERE tenant_id = ? AND status = 'connected' AND slug IN ('okta', 'azure-ad', 'google-workspace', 'auth0', 'onelogin', 'jumpcloud', 'ping-identity')`,
+  },
+  {
+    id: "change_management_tracked",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC5.3"],
+    description: "Change management tracked via automation rule audit trail",
+    category: "config_mgmt",
+    query: `SELECT COUNT(*) AS result FROM audit_log WHERE tenant_id = ? AND action IN ('automation_rule.create', 'automation_rule.update', 'automation_rule.delete') AND created_at >= datetime('now', '-90 days')`,
+  },
+  {
+    id: "trust_center_configured",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
+    description: "Trust center configured for stakeholder transparency",
+    category: "config_mgmt",
+    query: `SELECT COUNT(*) AS result FROM tenant_preferences WHERE tenant_id = ? AND key = 'trust_center_settings'`,
+  },
+  {
+    id: "security_events_reported",
+    controlRefs: ["ISO-27001-A.16.1.2", "SOC2-CC7.3", "NIST-CSF-RS.CO-2"],
+    description: "Security events reported through incident management",
+    category: "incident_mgmt",
+    query: `SELECT COUNT(*) AS result FROM incidents WHERE tenant_id = ? AND created_at >= datetime('now', '-365 days')`,
   },
 ];

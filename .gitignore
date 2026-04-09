@@ -19,7 +19,16 @@ env/
 
 # Ignore virtual environments
 .venv/
+.mistral-venv/
 venv/
+
+# Ignore generated/temporary directories
+backups/
+Logs/
+test-results/
+qwen_eval_out/
+issues/
+context/
 
 # Ignore keys and private certificates
 Keys/
@@ -49,6 +58,12 @@ __pycache__/
 # ai-agent/
 *.bak
 *.tmp
+
+# Plaintext token/secret files — never commit
+.dispatch_admin_token
+*_admin_token
+*_secret_key
+credentials.json
 
 # infra/
 #   terraform/
@@ -116,3 +131,8 @@ packages/shared/dist/
 docs/**/package-lock.json
 docs/**/uv.lock
 context/**/package-lock.json
+
+# Project uses pnpm — prevent stale npm lockfiles from generating alerts
+package-lock.json
+**/package-lock.json
+!pnpm-lock.yaml

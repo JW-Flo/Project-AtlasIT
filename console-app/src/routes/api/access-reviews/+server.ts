@@ -47,15 +47,21 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     createdBy: user.email,
   });
 
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId ?? "unknown",
-    actorEmail: user.email ?? "unknown",
-    action: "access_review_campaign.created",
-    targetType: "access_review_campaign",
-    targetId: campaign.id,
-    detail: JSON.stringify({ name: campaign.name, scope: campaign.scope }),
-  });
+  // Non-blocking audit — writeAudit already catches internally,
+  // but wrap to be safe so audit failure never blocks campaign creation
+  try {
+    await writeAudit(db, {
+      tenantId,
+      actorUserId: user.userId ?? "unknown",
+      actorEmail: user.email ?? "unknown",
+      action: "access_review.campaign_created",
+      targetType: "access_review_campaign",
+      targetId: campaign.id,
+      detail: JSON.stringify({ name: campaign.name, scope: campaign.scope }),
+    });
+  } catch {
+    // Non-fatal: audit failure should not break campaign creation
+  }
 
   return json({ campaign }, { status: 201 });
 };

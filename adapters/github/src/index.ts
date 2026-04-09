@@ -548,6 +548,79 @@ app.post("/api/compliance/check", async (c) => {
   });
 });
 
+// ── OAuth grant discovery for Shadow AI detection ────────────────────────────
+app.post("/api/oauth-grants", async (c) => {
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) return c.json({ error: "Missing X-Tenant-ID header" }, 400);
+
+  type OAuthGrant = {
+    appName: string;
+    appDomain?: string;
+    clientId: string;
+    userEmail: string;
+    scopes: string[];
+    grantedAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const grants: OAuthGrant[] = [];
+  const org = c.env.GITHUB_ORG;
+  const token = c.env.GITHUB_TOKEN;
+
+  try {
+    // List GitHub App installations on the org
+    const installationsRes = await fetch(
+      `https://api.github.com/orgs/${encodeURIComponent(org)}/installations?per_page=100`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+    );
+
+    if (installationsRes.ok) {
+      const data = (await installationsRes.json()) as {
+        installations?: Array<{
+          id: number;
+          app_slug: string;
+          app_id: number;
+          account?: { login?: string };
+          permissions?: Record<string, string>;
+          created_at?: string;
+          updated_at?: string;
+        }>;
+      };
+
+      for (const inst of data.installations ?? []) {
+        const scopes = Object.entries(inst.permissions ?? {}).map(
+          ([k, v]) => `${k}:${v}`,
+        );
+        grants.push({
+          appName: inst.app_slug,
+          clientId: String(inst.app_id),
+          userEmail: inst.account?.login ?? org,
+          scopes,
+          grantedAt: inst.created_at,
+          lastUsedAt: inst.updated_at,
+          metadata: { installationId: inst.id, type: "github_app" },
+        });
+      }
+    }
+  } catch (err) {
+    return c.json({
+      provider: "github",
+      grants: [],
+      discoveredAt: new Date().toISOString(),
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+
+  return c.json({ provider: "github", grants, discoveredAt: new Date().toISOString() });
+});
+
 // ── Adapter evidence collection ──────────────────────────────────────────────
 // POST /api/evidence — return compliance evidence items for this tenant's GitHub org.
 app.post("/api/evidence", async (c) => {
@@ -741,6 +814,423 @@ app.post("/api/evidence", async (c) => {
   ];
 
   return c.json({ items });
+});
+
+// ── User provisioning ────────────────────────────────────────────────────────
+// POST /api/provision — invite a user to the GitHub org
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const body = await c.req
+    .json<{ userProfile?: { email?: string; login?: string } }>()
+    .catch(() => ({})) as { userProfile?: { email?: string; login?: string } };
+
+  const email = body?.userProfile?.email;
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
+  }
+
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+
+  try {
+    const inviteRes = await fetch(
+      `https://api.github.com/orgs/${config.orgName}/invitations`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `token ${tokenRow.access_token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      },
+    );
+
+    if (!inviteRes.ok) {
+      const errText = await inviteRes.text().catch(() => "Unknown error");
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "GitHub invite failed",
+          status: inviteRes.status,
+          error: errText,
+        }),
+      );
+      return c.json(
+        { error: `GitHub API error: ${errText}`, correlationId },
+        (inviteRes.status >= 400 && inviteRes.status < 600 ? inviteRes.status : 500) as 400 | 401 | 403 | 422 | 500,
+      );
+    }
+
+    return c.json({ success: true, status: "provisioned", correlationId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "GitHub API request failed",
+        error: errorMsg,
+      }),
+    );
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+// ── User deprovisioning ──────────────────────────────────────────────────────
+// POST /api/deprovision — remove a user from the GitHub org
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const body = await c.req
+    .json<{ userProfile?: { email?: string; login?: string } }>()
+    .catch(() => ({})) as { userProfile?: { email?: string; login?: string } };
+
+  const email = body?.userProfile?.email;
+  if (!email) {
+    return c.json({ error: "userProfile.email is required", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
+  }
+
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+
+  const apiHeaders = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  try {
+    // Search for GitHub account by email
+    const searchRes = await fetch(
+      `https://api.github.com/search/users?q=${encodeURIComponent(email)}+in:email`,
+      { headers: apiHeaders },
+    );
+
+    if (!searchRes.ok) {
+      const errText = await searchRes.text().catch(() => "Unknown error");
+      return c.json({ error: `GitHub search failed: ${errText}`, correlationId }, 502);
+    }
+
+    const searchData = (await searchRes.json()) as { total_count: number; items: Array<{ login: string }> };
+
+    if (searchData.total_count === 0 || searchData.items.length === 0) {
+      return c.json({
+        success: true,
+        status: "deprovisioned",
+        correlationId,
+        note: "No GitHub account found for email; treating as already removed",
+      });
+    }
+
+    const login = searchData.items[0].login;
+
+    // Remove user from org
+    const removeRes = await fetch(
+      `https://api.github.com/orgs/${config.orgName}/members/${login}`,
+      { method: "DELETE", headers: apiHeaders },
+    );
+
+    // 404 means user is not an org member — already removed, treat as success
+    if (!removeRes.ok && removeRes.status !== 404) {
+      const errText = await removeRes.text().catch(() => "Unknown error");
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "GitHub remove member failed",
+          status: removeRes.status,
+          error: errText,
+        }),
+      );
+      return c.json(
+        { error: `GitHub API error: ${errText}`, correlationId },
+        (removeRes.status >= 400 && removeRes.status < 600 ? removeRes.status : 500) as 400 | 401 | 403 | 500,
+      );
+    }
+
+    return c.json({ success: true, status: "deprovisioned", correlationId });
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "GitHub API request failed",
+        error: errorMsg,
+      }),
+    );
+    return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+// ── NHI Discovery ────────────────────────────────────────────────────────────
+// POST /api/nhi/discovery — discover non-human identities (deploy keys, app
+// installations, bot users) for the tenant's GitHub org.
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'github'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ error: "No GitHub token for tenant", correlationId }, 401);
+  }
+
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'github' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ error: "No connector config found for tenant", correlationId }, 400);
+  }
+
+  const config = JSON.parse(configRow.config) as { orgName: string };
+  const org = config.orgName;
+
+  const apiHeaders = {
+    Authorization: `token ${tokenRow.access_token}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  type NhiIdentity = {
+    externalId: string;
+    displayName: string;
+    identityType: "api_key" | "bot" | "service";
+    credentialType: "deploy_key" | "bot_token" | "oauth_app";
+    ownerEmail?: string;
+    scopes?: string[];
+    expiresAt?: string;
+    lastUsedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+
+  const identities: NhiIdentity[] = [];
+
+  // 1. Deploy keys — one API call per repo (first page of repos only)
+  try {
+    const reposRes = await fetch(
+      `https://api.github.com/orgs/${org}/repos?per_page=100&sort=updated`,
+      { headers: apiHeaders },
+    );
+    if (reposRes.ok) {
+      const repos = (await reposRes.json()) as Array<{ name: string; full_name: string }>;
+      for (const repo of repos) {
+        try {
+          const keysRes = await fetch(
+            `https://api.github.com/repos/${org}/${repo.name}/keys`,
+            { headers: apiHeaders },
+          );
+          if (!keysRes.ok) continue;
+          const keys = (await keysRes.json()) as Array<{
+            id: number;
+            key: string;
+            title: string;
+            read_only: boolean;
+            created_at: string;
+            last_used?: string;
+          }>;
+          for (const key of keys) {
+            identities.push({
+              externalId: `deploy_key:${repo.full_name}:${key.id}`,
+              displayName: key.title || `Deploy key ${key.id} (${repo.name})`,
+              identityType: "api_key",
+              credentialType: "deploy_key",
+              lastUsedAt: key.last_used ?? undefined,
+              metadata: {
+                repo: repo.full_name,
+                keyId: key.id,
+                readOnly: key.read_only,
+                createdAt: key.created_at,
+                keyFingerprint: key.key.slice(0, 40),
+              },
+            });
+          }
+        } catch {
+          // skip individual repo key failures
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: deploy keys fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // 2. App installations
+  try {
+    const installationsRes = await fetch(
+      `https://api.github.com/orgs/${org}/installations`,
+      { headers: apiHeaders },
+    );
+    if (installationsRes.ok) {
+      const data = (await installationsRes.json()) as {
+        total_count: number;
+        installations: Array<{
+          id: number;
+          app_id: number;
+          app_slug: string;
+          created_at: string;
+          updated_at: string;
+          permissions: Record<string, string>;
+          events: string[];
+          repository_selection: string;
+        }>;
+      };
+      for (const installation of data.installations ?? []) {
+        identities.push({
+          externalId: `app_installation:${org}:${installation.id}`,
+          displayName: installation.app_slug ?? `App installation ${installation.id}`,
+          identityType: "service",
+          credentialType: "oauth_app",
+          scopes: installation.events,
+          lastUsedAt: installation.updated_at,
+          metadata: {
+            appId: installation.app_id,
+            installationId: installation.id,
+            repositorySelection: installation.repository_selection,
+            permissions: installation.permissions,
+            createdAt: installation.created_at,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: app installations fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  // 3. Bot users — org members whose type is "Bot"
+  try {
+    const membersRes = await fetch(
+      `https://api.github.com/orgs/${org}/members?per_page=100`,
+      { headers: apiHeaders },
+    );
+    if (membersRes.ok) {
+      const members = (await membersRes.json()) as Array<{
+        id: number;
+        login: string;
+        type: string;
+        avatar_url: string;
+      }>;
+      for (const member of members) {
+        if (member.type !== "Bot") continue;
+        identities.push({
+          externalId: `bot:${org}:${member.id}`,
+          displayName: member.login,
+          identityType: "bot",
+          credentialType: "bot_token",
+          metadata: {
+            githubId: member.id,
+            login: member.login,
+            org,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: bot users fetch failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+
+  return c.json({
+    provider: "github",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
 });
 
 export default app;

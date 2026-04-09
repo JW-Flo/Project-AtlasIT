@@ -18,7 +18,12 @@ CREATE TABLE IF NOT EXISTS event_deliveries_new (
   FOREIGN KEY (agent_id) REFERENCES agent_registry(id) ON DELETE CASCADE
 );
 
-INSERT OR IGNORE INTO event_deliveries_new SELECT * FROM event_deliveries;
+-- Explicit column mapping: old schema (0008) had max_attempts + last_error;
+-- new schema replaces with error_message + response_status + response_body.
+INSERT OR IGNORE INTO event_deliveries_new
+  (id, event_id, agent_id, status, attempts, last_attempt_at, next_retry_at, error_message, created_at)
+  SELECT id, event_id, agent_id, status, attempts, last_attempt_at, next_retry_at, last_error, created_at
+  FROM event_deliveries;
 DROP TABLE IF EXISTS event_deliveries;
 ALTER TABLE event_deliveries_new RENAME TO event_deliveries;
 

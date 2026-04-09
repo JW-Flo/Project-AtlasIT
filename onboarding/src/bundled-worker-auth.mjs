@@ -5046,6 +5046,364 @@ var SecurityHeadersConfigSchema = external_exports.object({
 var HKDF_SALT = new TextEncoder().encode("atlasit-credential-vault-v1");
 var HKDF_INFO = new TextEncoder().encode("credential-encryption");
 
+// ../packages/shared/src/automation/compliance-mapping.ts
+var ACTION_COMPLIANCE_MAP = {
+  provision_app_access: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Logical access provisioning",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.2",
+      controlName: "MFA enforced at provisioning",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.2",
+      controlName: "User access provisioning",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.3",
+      controlName: "Management of privileged access rights",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-1",
+      controlName: "Identities and credentials managed",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(a)(1)",
+      controlName: "Unique user identification",
+      evidenceType: "access_grant"
+    }
+  ],
+  revoke_app_access: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Logical access removal",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.3",
+      controlName: "Offboarding access removal",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.6",
+      controlName: "Removal of access rights",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-1",
+      controlName: "Identities and credentials managed",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(a)(2)(i)",
+      controlName: "Unique user identification",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "GDPR",
+      controlId: "Art.5(1)(f)",
+      controlName: "Integrity and confidentiality",
+      evidenceType: "access_revoke"
+    }
+  ],
+  run_workflow: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.3",
+      controlName: "Offboarding / role change procedures",
+      evidenceType: "offboarding"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC8.1",
+      controlName: "Authorized change execution",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.7.3.1",
+      controlName: "Termination responsibilities",
+      evidenceType: "offboarding"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.IP-3",
+      controlName: "Configuration change control processes",
+      evidenceType: "audit_log"
+    }
+  ],
+  create_incident: [
+    {
+      framework: "SOC2",
+      controlId: "CC7.4",
+      controlName: "Incident response procedures",
+      evidenceType: "incident"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC7.3",
+      controlName: "Incident response plan tested",
+      evidenceType: "incident"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.16.1.2",
+      controlName: "Reporting information security events",
+      evidenceType: "incident"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.16.1.4",
+      controlName: "Assessment and decision on events",
+      evidenceType: "incident"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "RS.CO-2",
+      controlName: "Incidents reported",
+      evidenceType: "incident"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(b)",
+      controlName: "Audit controls \u2014 security event log",
+      evidenceType: "incident"
+    }
+  ],
+  assign_role: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Role-based access control",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.3",
+      controlName: "Management of privileged access rights",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.4.1",
+      controlName: "Information access restriction by role",
+      evidenceType: "access_grant"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-4",
+      controlName: "Access permissions managed (least priv)",
+      evidenceType: "access_grant"
+    }
+  ],
+  remove_role: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Privileged access removal",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.3",
+      controlName: "Management of privileged access rights",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-4",
+      controlName: "Access permissions managed (least priv)",
+      evidenceType: "access_revoke"
+    }
+  ],
+  sync_directory: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Directory synchronization audit",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.1",
+      controlName: "User registration and de-registration",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-1",
+      controlName: "Identities and credentials managed",
+      evidenceType: "audit_log"
+    }
+  ],
+  update_compliance_status: [
+    {
+      framework: "SOC2",
+      controlId: "CC4.1",
+      controlName: "Monitoring of controls",
+      evidenceType: "policy_change"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC4.2",
+      controlName: "Independent evaluation of controls",
+      evidenceType: "policy_change"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.18.2.1",
+      controlName: "Independent review of information security",
+      evidenceType: "policy_change"
+    }
+  ],
+  send_notification: [
+    {
+      framework: "SOC2",
+      controlId: "CC2.1",
+      controlName: "Security policies communicated",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.16.1.2",
+      controlName: "Reporting information security events",
+      evidenceType: "audit_log"
+    }
+  ],
+  request_access_review: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "Periodic access review initiated",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.3",
+      controlName: "Access review for role/termination changes",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.5",
+      controlName: "Review of user access rights",
+      evidenceType: "audit_log"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(a)(1)",
+      controlName: "Access control review",
+      evidenceType: "audit_log"
+    }
+  ],
+  rotate_nhi_credential: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "NHI credential lifecycle management",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.6",
+      controlName: "System operations credential management",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.3",
+      controlName: "Management of secret authentication info",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.6",
+      controlName: "Removal or adjustment of access rights",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-1",
+      controlName: "NHI credential rotation",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(d)",
+      controlName: "Person or entity authentication",
+      evidenceType: "access_revoke"
+    }
+  ],
+  revoke_nhi_token: [
+    {
+      framework: "SOC2",
+      controlId: "CC6.1",
+      controlName: "NHI token revocation",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.3",
+      controlName: "NHI offboarding access removal",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "SOC2",
+      controlId: "CC6.6",
+      controlName: "System credential decommissioning",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "ISO27001",
+      controlId: "A.9.2.6",
+      controlName: "Removal of NHI access rights",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-1",
+      controlName: "NHI credential revocation",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "NIST_CSF",
+      controlId: "PR.AC-3",
+      controlName: "Remote access managed",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "HIPAA",
+      controlId: "164.312(d)",
+      controlName: "Person or entity authentication",
+      evidenceType: "access_revoke"
+    },
+    {
+      framework: "GDPR",
+      controlId: "Art.5(1)(f)",
+      controlName: "Integrity and confidentiality",
+      evidenceType: "access_revoke"
+    }
+  ]
+};
+
 // ../packages/shared/src/evidence/platform-evidence.ts
 var AUDIT_EVIDENCE_REGISTRY = [
   // ── Access Management ───────────────────────────────────────────────
@@ -5236,11 +5594,264 @@ var AUDIT_EVIDENCE_REGISTRY = [
     category: "config_mgmt"
   },
   {
+    action: "security_policy.updated",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "positive",
+    description: "Organization security policy updated (MFA, session, password controls)",
+    category: "auth_control"
+  },
+  {
     action: "trust_center_settings.updated",
     controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
     impact: "positive",
     description: "Trust center transparency settings updated",
     category: "config_mgmt"
+  },
+  // ── Automation Rules ───────────────────────────────────────────────
+  {
+    action: "automation_rule.create",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule created for lifecycle management",
+    category: "config_mgmt"
+  },
+  {
+    action: "automation_rule.update",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC6.1", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule updated or enabled",
+    category: "config_mgmt"
+  },
+  {
+    action: "automation_rule.delete",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule removed",
+    category: "config_mgmt"
+  },
+  // ── Directory Sync ────────────────────────────────────────────────────
+  {
+    action: "directory.connect",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory provider connected for identity sync",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory.sync",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory sync executed \u2014 user roster reconciled",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory_user.created",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user provisioned via sync or manual creation",
+    category: "onboarding"
+  },
+  {
+    action: "directory_user.updated",
+    controlRefs: ["ISO-27001-A.9.2.4", "SOC2-CC6.3"],
+    impact: "neutral",
+    description: "Directory user attributes updated",
+    category: "identity_mgmt"
+  },
+  {
+    action: "directory_user.deleted",
+    controlRefs: ["SOC2-CC6.2", "ISO-27001-A.9.2.6", "NIST-CSF-PR.AC-1"],
+    impact: "positive",
+    description: "Directory user removed \u2014 offboarding triggered",
+    category: "offboarding"
+  },
+  // ── Group-to-App Mappings ──────────────────────────────────────────
+  {
+    action: "mapping.update",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.2", "NIST-CSF-PR.AC-4"],
+    impact: "positive",
+    description: "Group-to-app role mapping updated",
+    category: "access_grant"
+  },
+  {
+    action: "mapping.delete",
+    controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.2.6"],
+    impact: "positive",
+    description: "Group-to-app role mapping removed",
+    category: "access_revoke"
+  },
+  {
+    action: "mapping.auto_suggest",
+    controlRefs: ["SOC2-CC5.2", "SOC2-CC6.3", "ISO-27001-A.9.2.2"],
+    impact: "positive",
+    description: "AI-generated role mapping suggestion applied",
+    category: "access_grant"
+  },
+  // ── Access Reviews (extended) ──────────────────────────────────────
+  {
+    action: "access_review_campaign.status_changed",
+    controlRefs: ["SOC2-CC4.1", "SOC2-CC4.2", "ISO-27001-A.9.2.5", "HIPAA-164.312(a)(1)"],
+    impact: "positive",
+    description: "Access review campaign status transitioned",
+    category: "access_review"
+  },
+  // ── Incidents (extended) ───────────────────────────────────────────
+  {
+    action: "incident.assigned",
+    controlRefs: ["SOC2-CC7.3", "SOC2-CC7.4", "ISO-27001-A.16.1.1", "ISO-27001-A.16.1.4"],
+    impact: "positive",
+    description: "Incident assigned to responder",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.escalated",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2", "ISO-27001-A.16.1.4", "NIST-CSF-RS.CO-2"],
+    impact: "positive",
+    description: "Incident escalated per response procedure",
+    category: "incident_mgmt"
+  },
+  {
+    action: "incident.severity_changed",
+    controlRefs: ["SOC2-CC7.4", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Incident severity reclassified",
+    category: "incident_mgmt"
+  },
+  // ── MFA ─────────────────────────────────────────────────────────────
+  {
+    action: "mfa.totp_enabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "positive",
+    description: "User enabled multi-factor authentication (TOTP)",
+    category: "auth_control"
+  },
+  {
+    action: "mfa.totp_disabled",
+    controlRefs: [
+      "SOC2-CC6.1",
+      "SOC2-CC6.2",
+      "ISO-27001-A.9.4.2",
+      "HIPAA-164.312(d)",
+      "NIST-CSF-PR.AC-7"
+    ],
+    impact: "detrimental",
+    description: "User disabled multi-factor authentication (TOTP)",
+    category: "auth_control"
+  },
+  // ── Policy Management ──────────────────────────────────────────────
+  {
+    action: "policy.created",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document created",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.updated",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Security/compliance policy document revised",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.archived",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.5.1.1"],
+    impact: "neutral",
+    description: "Policy document archived after supersession",
+    category: "policy_mgmt"
+  },
+  {
+    action: "policy.submitted_for_review",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC2.1", "ISO-27001-A.5.1.1"],
+    impact: "positive",
+    description: "Policy submitted for management review and approval",
+    category: "policy_mgmt"
+  },
+  // ── Compliance Packs ───────────────────────────────────────────────
+  {
+    action: "compliance_pack.create",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Custom compliance pack created",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.install",
+    controlRefs: ["SOC2-CC5.1", "SOC2-CC3.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack installed \u2014 controls activated",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.uninstall",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Compliance pack uninstalled",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.update",
+    controlRefs: ["SOC2-CC5.1", "ISO-27001-A.9.1.1"],
+    impact: "positive",
+    description: "Compliance pack configuration updated",
+    category: "config_mgmt"
+  },
+  {
+    action: "compliance_pack.delete",
+    controlRefs: ["SOC2-CC5.1"],
+    impact: "neutral",
+    description: "Custom compliance pack deleted",
+    category: "config_mgmt"
+  },
+  // ── Automation Execution ───────────────────────────────────────────
+  {
+    action: "automation.executed",
+    controlRefs: ["SOC2-CC8.1", "SOC2-CC5.2", "ISO-27001-A.9.2.2", "NIST-CSF-PR.IP-3"],
+    impact: "positive",
+    description: "Automation rule executed \u2014 lifecycle action performed",
+    category: "automation"
+  },
+  {
+    action: "automation_rule.duplicate",
+    controlRefs: ["SOC2-CC8.1", "NIST-CSF-PR.IP-3"],
+    impact: "neutral",
+    description: "Automation rule duplicated from existing template",
+    category: "config_mgmt"
+  },
+  // ── Trust Center ───────────────────────────────────────────────────
+  {
+    action: "trust_access_request.approved",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC2.2", "GDPR-Art.5(2)"],
+    impact: "positive",
+    description: "Trust center access request approved \u2014 transparency upheld",
+    category: "config_mgmt"
+  },
+  {
+    action: "trust_access_request.denied",
+    controlRefs: ["SOC2-CC2.1", "SOC2-CC6.3"],
+    impact: "positive",
+    description: "Trust center access request denied \u2014 need-to-know enforced",
+    category: "access_revoke"
+  },
+  // ── Support ────────────────────────────────────────────────────────
+  {
+    action: "support.request",
+    controlRefs: ["SOC2-CC2.2", "ISO-27001-A.16.1.2"],
+    impact: "neutral",
+    description: "Support request submitted by user",
+    category: "incident_mgmt"
   },
   // ── Admin Actions ───────────────────────────────────────────────────
   {
@@ -5262,6 +5873,22 @@ var AUDIT_EVIDENCE_INDEX = /* @__PURE__ */ new Map();
 for (const m of AUDIT_EVIDENCE_REGISTRY) {
   AUDIT_EVIDENCE_INDEX.set(m.action, m);
 }
+
+// ../packages/shared/src/compliance-intelligence/gap-analyzer.ts
+function buildReverseControlMap() {
+  const reverseMap = /* @__PURE__ */ new Map();
+  for (const [actionType, controls] of Object.entries(ACTION_COMPLIANCE_MAP)) {
+    for (const ctrl of controls) {
+      const existing = reverseMap.get(ctrl.controlId) ?? [];
+      if (!existing.includes(actionType)) {
+        existing.push(actionType);
+      }
+      reverseMap.set(ctrl.controlId, existing);
+    }
+  }
+  return reverseMap;
+}
+var REVERSE_CONTROL_MAP = buildReverseControlMap();
 
 // dist/onboarding/src/index.js
 var envValidated = false;

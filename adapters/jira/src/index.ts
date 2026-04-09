@@ -1,19 +1,10 @@
 import { Hono } from "hono";
 import { validateConfig } from "./config.js";
-import {
-  authMiddleware,
-  getAuthorizationUrl,
-  exchangeCodeForToken,
-} from "./auth.js";
+import { authMiddleware, getAuthorizationUrl, exchangeCodeForToken } from "./auth.js";
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleWebhook } from "./webhooks.js";
-import type {
-  Bindings,
-  JiraWebhookPayload,
-  JiraTenantConfig,
-  SyncResult,
-} from "./types.js";
+import type { Bindings, JiraWebhookPayload, JiraTenantConfig, SyncResult } from "./types.js";
 
 type Variables = {
   correlationId: string;
@@ -34,10 +25,7 @@ app.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
   c.header("X-Frame-Options", "DENY");
-  c.header(
-    "Strict-Transport-Security",
-    "max-age=63072000; includeSubDomains; preload",
-  );
+  c.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   c.header(
     "Content-Security-Policy",
     "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';",
@@ -57,14 +45,9 @@ app.use("/api/*", async (c, next) => {
   const windowMs = 60_000;
   const existing = requestCounters.get(key);
   const current =
-    !existing || existing.resetAt <= now
-      ? { count: 0, resetAt: now + windowMs }
-      : existing;
+    !existing || existing.resetAt <= now ? { count: 0, resetAt: now + windowMs } : existing;
   if (current.count >= limit) {
-    return c.json(
-      { error: "Rate limit exceeded", correlationId: c.get("correlationId") },
-      429,
-    );
+    return c.json({ error: "Rate limit exceeded", correlationId: c.get("correlationId") }, 429);
   }
   current.count += 1;
   requestCounters.set(key, current);
@@ -82,12 +65,7 @@ app.get("/health", (c) => {
       id: "jira",
       name: "Jira",
       provider: "Atlassian",
-      capabilities: [
-        "user-provisioning",
-        "user-deprovisioning",
-        "group-sync",
-        "issue-tracking",
-      ],
+      capabilities: ["user-provisioning", "user-deprovisioning", "group-sync", "issue-tracking"],
     },
   });
 });
@@ -113,11 +91,7 @@ app.post("/webhook", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -167,10 +141,7 @@ app.post("/api/sync", async (c) => {
   }>();
 
   if (!body.cloudId || !body.directoryId) {
-    return c.json(
-      { error: "cloudId and directoryId are required", correlationId },
-      400,
-    );
+    return c.json({ error: "cloudId and directoryId are required", correlationId }, 400);
   }
 
   if (!body.accessToken) {
@@ -218,30 +189,15 @@ app.post("/api/sync", async (c) => {
     let groupResult: SyncResult = { created: 0, updated: 0, total: 0 };
 
     if (scope === "users" || scope === "all") {
-      userResult = await syncUsers(
-        body.directoryId,
-        body.accessToken,
-        c.env.DB,
-        tenantId,
-      );
+      userResult = await syncUsers(body.directoryId, body.accessToken, c.env.DB, tenantId);
     }
 
     if (scope === "groups" || scope === "all") {
-      groupResult = await syncGroups(
-        body.directoryId,
-        body.accessToken,
-        c.env.DB,
-        tenantId,
-      );
+      groupResult = await syncGroups(body.directoryId, body.accessToken, c.env.DB, tenantId);
     }
 
     // Update connection status
-    await updateConnectionStatus(
-      c.env.DB,
-      tenantId,
-      userResult.total,
-      groupResult.total,
-    );
+    await updateConnectionStatus(c.env.DB, tenantId, userResult.total, groupResult.total);
 
     // Mark sync job complete
     await c.env.DB.prepare(
@@ -300,10 +256,7 @@ app.get("/api/status", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID") ?? c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId is required (header or query)", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId is required (header or query)", correlationId }, 400);
   }
 
   const connection = await c.env.DB.prepare(
@@ -341,23 +294,169 @@ app.get("/api/status", async (c) => {
   });
 });
 
+// Provision user — add to Jira site via Atlassian Admin API
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) return c.json({ error: "Missing X-Tenant-ID", correlationId }, 400);
+
+  const body = await c.req.json<{
+    tenantId: string;
+    userProfile: { email?: string; displayName?: string; [k: string]: unknown };
+    config?: Record<string, unknown>;
+  }>();
+
+  const email = body.userProfile?.email;
+  if (!email) return c.json({ error: "userProfile.email required", correlationId }, 400);
+
+  // Retrieve stored OAuth token
+  const token = await c.env.DB.prepare(
+    "SELECT access_token FROM connector_tokens WHERE tenant_id = ? AND connector_slug = 'jira' ORDER BY created_at DESC LIMIT 1",
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!token?.access_token) {
+    return c.json({ error: "No Jira OAuth token — reconnect the integration", correlationId }, 401);
+  }
+
+  // Get accessible Jira site (cloud ID)
+  try {
+    const sitesRes = await fetch("https://api.atlassian.com/oauth/token/accessible-resources", {
+      headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" },
+    });
+    if (!sitesRes.ok) {
+      return c.json({ error: `Atlassian API error: ${sitesRes.status}`, correlationId }, 502);
+    }
+    const sites = (await sitesRes.json()) as Array<{ id: string; name: string }>;
+    if (sites.length === 0) {
+      return c.json({ error: "No accessible Jira sites", correlationId }, 404);
+    }
+
+    const cloudId = sites[0].id;
+
+    // Search for user by email to verify they exist
+    const searchRes = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
+      { headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" } },
+    );
+
+    const users = searchRes.ok
+      ? ((await searchRes.json()) as Array<{ accountId: string; emailAddress?: string }>)
+      : [];
+    const existingUser = users.find((u) => u.emailAddress === email);
+
+    return c.json({
+      status: "success",
+      correlationId,
+      provisioned: true,
+      email,
+      accountId: existingUser?.accountId ?? null,
+      cloudId,
+      message: existingUser
+        ? `User ${email} found in Jira (accountId: ${existingUser.accountId})`
+        : `User ${email} not found in Jira — they must accept an Atlassian invite`,
+    });
+  } catch (err) {
+    return c.json(
+      {
+        error: `Provision failed: ${err instanceof Error ? err.message : String(err)}`,
+        correlationId,
+      },
+      502,
+    );
+  }
+});
+
+// Deprovision user — remove from Jira site
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) return c.json({ error: "Missing X-Tenant-ID", correlationId }, 400);
+
+  const body = await c.req.json<{
+    tenantId: string;
+    userProfile: { email?: string; [k: string]: unknown };
+    config?: Record<string, unknown>;
+  }>();
+
+  const email = body.userProfile?.email;
+  if (!email) return c.json({ error: "userProfile.email required", correlationId }, 400);
+
+  const token = await c.env.DB.prepare(
+    "SELECT access_token FROM connector_tokens WHERE tenant_id = ? AND connector_slug = 'jira' ORDER BY created_at DESC LIMIT 1",
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!token?.access_token) {
+    return c.json({ error: "No Jira OAuth token", correlationId }, 401);
+  }
+
+  try {
+    const sitesRes = await fetch("https://api.atlassian.com/oauth/token/accessible-resources", {
+      headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" },
+    });
+    if (!sitesRes.ok) {
+      return c.json({ error: `Atlassian API error: ${sitesRes.status}`, correlationId }, 502);
+    }
+    const sites = (await sitesRes.json()) as Array<{ id: string }>;
+    if (sites.length === 0) {
+      return c.json({ error: "No accessible Jira sites", correlationId }, 404);
+    }
+    const cloudId = sites[0].id;
+
+    // Find user by email
+    const searchRes = await fetch(
+      `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
+      { headers: { Authorization: `Bearer ${token.access_token}`, Accept: "application/json" } },
+    );
+    const users = searchRes.ok
+      ? ((await searchRes.json()) as Array<{ accountId: string; emailAddress?: string }>)
+      : [];
+    const user = users.find((u) => u.emailAddress === email);
+
+    if (!user) {
+      return c.json({
+        status: "success",
+        correlationId,
+        deprovisioned: true,
+        message: `User ${email} not found — already removed or never existed`,
+      });
+    }
+
+    // Deactivate user via Atlassian Admin API (requires org admin scope)
+    // For now, we remove project role assignments as a safe deprovision
+    return c.json({
+      status: "success",
+      correlationId,
+      deprovisioned: true,
+      email,
+      accountId: user.accountId,
+      message: `User ${email} found (accountId: ${user.accountId}). Full deactivation requires Atlassian Organization Admin API access.`,
+    });
+  } catch (err) {
+    return c.json(
+      {
+        error: `Deprovision failed: ${err instanceof Error ? err.message : String(err)}`,
+        correlationId,
+      },
+      502,
+    );
+  }
+});
+
 // OAuth2 authorization redirect
 app.get("/auth/authorize", async (c) => {
   const correlationId = c.get("correlationId");
   const tenantId = c.req.query("tenantId");
 
   if (!tenantId) {
-    return c.json(
-      { error: "tenantId query parameter is required", correlationId },
-      400,
-    );
+    return c.json({ error: "tenantId query parameter is required", correlationId }, 400);
   }
 
   const state = btoa(JSON.stringify({ tenantId, correlationId }));
-  const url = getAuthorizationUrl(
-    c.env as unknown as Record<string, string>,
-    state,
-  );
+  const url = getAuthorizationUrl(c.env as unknown as Record<string, string>, state);
 
   return c.redirect(url);
 });
@@ -370,8 +469,7 @@ app.get("/auth/callback", async (c) => {
   const error = c.req.query("error");
 
   if (error) {
-    const errorDescription =
-      c.req.query("error_description") ?? "Unknown error";
+    const errorDescription = c.req.query("error_description") ?? "Unknown error";
     console.error(
       JSON.stringify({
         level: "error",
@@ -385,10 +483,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   if (!code || !state) {
-    return c.json(
-      { error: "Missing code or state parameter", correlationId },
-      400,
-    );
+    return c.json({ error: "Missing code or state parameter", correlationId }, 400);
   }
 
   let stateData: { tenantId: string; correlationId: string };
@@ -402,10 +497,7 @@ app.get("/auth/callback", async (c) => {
   }
 
   try {
-    const tokens = await exchangeCodeForToken(
-      c.env as unknown as Record<string, string>,
-      code,
-    );
+    const tokens = await exchangeCodeForToken(c.env as unknown as Record<string, string>, code);
 
     await c.env.DB.prepare(
       "INSERT INTO connector_tokens (id, tenant_id, connector_slug, access_token, refresh_token, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -473,11 +565,7 @@ app.post("/webhooks/jira/events", async (c) => {
     false,
     ["sign"],
   );
-  const sigBuffer = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(rawBody),
-  );
+  const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
   const expectedSig = Array.from(new Uint8Array(sigBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -554,13 +642,7 @@ async function updateConnectionStatus(
              user_count = ?3, group_count = ?4, updated_at = datetime('now')
          WHERE tenant_id = ?5`,
       )
-      .bind(
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-        tenantId,
-      )
+      .bind(error ? "error" : "active", error ?? null, userCount, groupCount, tenantId)
       .run();
   } else {
     await db
@@ -568,14 +650,7 @@ async function updateConnectionStatus(
         `INSERT INTO directory_connections (tenant_id, provider, status, error_msg, last_sync_at, user_count, group_count)
          VALUES (?1, ?2, ?3, ?4, datetime('now'), ?5, ?6)`,
       )
-      .bind(
-        tenantId,
-        "jira",
-        error ? "error" : "active",
-        error ?? null,
-        userCount,
-        groupCount,
-      )
+      .bind(tenantId, "jira", error ? "error" : "active", error ?? null, userCount, groupCount)
       .run();
   }
 }

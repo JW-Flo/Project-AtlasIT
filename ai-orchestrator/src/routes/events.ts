@@ -4,10 +4,7 @@ import { requireRole } from "@atlasit/shared";
 import type { AppEnv, AgentSubscription } from "../types";
 import { signPayload, verifySignature } from "../lib/hmac";
 import { moveToDeadLetter } from "../lib/dead-letter";
-import {
-  evaluateAutomationRules,
-  type ActionContext,
-} from "../lib/automation-evaluator";
+import { evaluateAutomationRules, type ActionContext } from "../lib/automation-evaluator";
 import { classifyAndExecute, type DirectoryChange } from "../lib/jml-engine";
 import { classifyEvent, storeEvidence } from "@atlasit/shared";
 
@@ -20,9 +17,7 @@ const PublishEventSchema = z.object({
 });
 
 /** Parse EVENT_SOURCE_SECRETS env var (JSON map of sourceId → secret). */
-function getSourceSecrets(
-  env: AppEnv["Bindings"],
-): Record<string, string> | null {
+function getSourceSecrets(env: AppEnv["Bindings"]): Record<string, string> | null {
   if (!env.EVENT_SOURCE_SECRETS) return null;
   try {
     return JSON.parse(env.EVENT_SOURCE_SECRETS) as Record<string, string>;
@@ -59,9 +54,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       );
     }
 
-    const source = (body as Record<string, unknown>).source as
-      | string
-      | undefined;
+    const source = (body as Record<string, unknown>).source as string | undefined;
     const secret = source ? sourceSecrets?.[source] : undefined;
 
     if (!secret) {
@@ -151,9 +144,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   const { tenantId, type, source, payload, idempotencyKey } = parsed.data;
 
   // Idempotency check via KV (24h TTL) — namespace by tenantId to prevent cross-tenant collisions
-  const idempotencyCacheKey = idempotencyKey
-    ? `${tenantId}:${idempotencyKey}`
-    : null;
+  const idempotencyCacheKey = idempotencyKey ? `${tenantId}:${idempotencyKey}` : null;
   if (idempotencyCacheKey) {
     const existing = await c.env.IDEMPOTENCY_CACHE.get(idempotencyCacheKey);
     if (existing) {
@@ -279,6 +270,8 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
   })();
   const actionContext: ActionContext = {
     workflow: c.env.WORKFLOW,
+    atlasWorkflow: c.env.ATLAS_WORKFLOW,
+    internalApiKey: c.env.INTERNAL_API_KEY,
     selfUrl: c.env.SELF_URL,
     adapterUrls,
     sharedDb,
@@ -346,18 +339,18 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
       externalId: (jmlUser.externalId as string) ?? undefined,
       changeType: jmlChangeType,
       delta:
-        ((jmlUser.delta ?? jmlPayload.delta) as Record<
-          string,
-          { old?: unknown; new?: unknown }
-        >) ?? {},
+        ((jmlUser.delta ?? jmlPayload.delta) as Record<string, { old?: unknown; new?: unknown }>) ??
+        {},
       source,
     };
 
     const jmlPromise = classifyAndExecute(tenantId, jmlChange, {
       db: sharedDb,
       workflow: c.env.WORKFLOW,
+      atlasWorkflow: c.env.ATLAS_WORKFLOW,
       adapterUrls,
       selfUrl: c.env.SELF_URL,
+      internalApiKey: c.env.INTERNAL_API_KEY,
       evidenceBucket: c.env.EVIDENCE ?? undefined,
     }).catch((err) => {
       console.error(
@@ -378,6 +371,111 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     }
   }
 
+  // ── Provisioning event consumer: dispatch to adapter provision/deprovision ──
+  if (type === "provisioning.requested") {
+    const pp = (payload ?? {}) as Record<string, unknown>;
+    const action = pp.action as string; // "provision" or "revoke"
+    const appId = pp.appId as string;
+
+    if (action && appId && adapterUrls[appId]) {
+      const adapterUrl = adapterUrls[appId];
+      const endpoint = action === "revoke" ? "deprovision" : "provision";
+      const email =
+        (pp.email as string) ?? ((pp.triggerPayload as Record<string, unknown>)?.email as string);
+
+      const provisionPromise = (async () => {
+        try {
+          // Check adapter health first
+          const healthRes = await fetch(`${adapterUrl}/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!healthRes.ok) {
+            console.warn(
+              JSON.stringify({
+                level: "warn",
+                event: "provisioning.adapter_unhealthy",
+                tenantId,
+                appId,
+                status: healthRes.status,
+              }),
+            );
+            return;
+          }
+
+          const res = await fetch(`${adapterUrl}/api/${endpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Tenant-ID": tenantId },
+            body: JSON.stringify({
+              tenantId,
+              userProfile: { email, ...(pp.triggerPayload as Record<string, unknown>) },
+              config: {},
+            }),
+          });
+
+          if (!res.ok) {
+            const body = await res.text().catch(() => "");
+            console.error(
+              JSON.stringify({
+                level: "error",
+                event: `provisioning.${endpoint}_failed`,
+                tenantId,
+                appId,
+                status: res.status,
+                body: body.slice(0, 200),
+              }),
+            );
+            // Record failure as evidence
+            recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "fail", email, {
+              status: res.status,
+            });
+          } else {
+            console.log(
+              JSON.stringify({
+                level: "info",
+                event: `provisioning.${endpoint}_success`,
+                tenantId,
+                appId,
+                email,
+              }),
+            );
+            // Record success as evidence
+            recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "pass", email, {});
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({
+              level: "error",
+              event: `provisioning.${endpoint}_error`,
+              tenantId,
+              appId,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+          // Record error as evidence
+          recordProvisioningEvidence(sharedDb, tenantId, appId, endpoint, "fail", email, {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })();
+
+      try {
+        c.executionCtx.waitUntil(provisionPromise);
+      } catch {
+        // No execution context (tests)
+      }
+    } else if (appId && !adapterUrls[appId]) {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "provisioning.no_adapter_url",
+          tenantId,
+          appId,
+          message: `No adapter URL configured for "${appId}" — provisioning skipped`,
+        }),
+      );
+    }
+  }
+
   // ── Zero-config compliance evidence: write directly when adapters emit evidence ──
   if (type === "compliance.evidence.collected") {
     const ep = (payload ?? {}) as {
@@ -394,7 +492,7 @@ eventRoutes.post("/", requireRole("member"), async (c) => {
     if (ep.controlId && ep.framework) {
       const evidencePromise = sharedDb
         .prepare(
-          `INSERT INTO compliance_evidence
+          `INSERT OR IGNORE INTO compliance_evidence
              (id, tenant_id, framework, framework_id, control_id, control_name,
               evidence_type, source, source_id, actor, subject, metadata, created_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -495,9 +593,7 @@ eventRoutes.get("/", async (c) => {
 eventRoutes.get("/:id", async (c) => {
   const tenantId = c.get("tenantId");
   const { id } = c.req.param();
-  const event = await c.env.DB.prepare(
-    "SELECT * FROM events WHERE id = ? AND tenant_id = ?",
-  )
+  const event = await c.env.DB.prepare("SELECT * FROM events WHERE id = ? AND tenant_id = ?")
     .bind(id, tenantId)
     .first();
 
@@ -514,9 +610,7 @@ eventRoutes.get("/:id", async (c) => {
     );
   }
 
-  const deliveries = await c.env.DB.prepare(
-    "SELECT * FROM event_deliveries WHERE event_id = ?",
-  )
+  const deliveries = await c.env.DB.prepare("SELECT * FROM event_deliveries WHERE event_id = ?")
     .bind(id)
     .all();
 
@@ -592,10 +686,7 @@ async function fanOutToAgents(
         )
           .bind(deliveryId)
           .first();
-        if (
-          delivery &&
-          (delivery.attempts as number) >= (delivery.max_attempts as number)
-        ) {
+        if (delivery && (delivery.attempts as number) >= (delivery.max_attempts as number)) {
           await moveToDeadLetter(env.DB, {
             eventId,
             agentId: agent.agentId,
@@ -625,10 +716,7 @@ async function fanOutToAgents(
       )
         .bind(deliveryId)
         .first();
-      if (
-        delivery &&
-        (delivery.attempts as number) >= (delivery.max_attempts as number)
-      ) {
+      if (delivery && (delivery.attempts as number) >= (delivery.max_attempts as number)) {
         await moveToDeadLetter(env.DB, {
           eventId,
           agentId: agent.agentId,
@@ -660,9 +748,52 @@ async function fanOutToAgents(
   );
   const finalStatus = allDone ? "completed" : "failed";
 
-  await env.DB.prepare(
-    "UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?",
-  )
+  await env.DB.prepare("UPDATE events SET status = ?, processed_at = datetime('now') WHERE id = ?")
     .bind(finalStatus, eventId)
     .run();
+}
+
+/**
+ * Record provisioning/deprovisioning outcomes as compliance evidence.
+ * Maps to access lifecycle controls across frameworks.
+ */
+function recordProvisioningEvidence(
+  db: D1Database,
+  tenantId: string,
+  appId: string,
+  operation: string,
+  status: "pass" | "fail",
+  email: string | undefined,
+  details: Record<string, unknown>,
+): void {
+  const id = `provisioning-${tenantId}-${appId}-${operation}-${Date.now()}`;
+  const controlId = operation === "provision" ? "CC6.2" : "CC6.3";
+  const metadata = JSON.stringify({
+    status,
+    operation,
+    appId,
+    email,
+    details,
+    recordedAt: new Date().toISOString(),
+  });
+
+  db.prepare(
+    `INSERT INTO compliance_evidence
+     (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+     VALUES (?, ?, 'SOC2', ?, ?, 'provisioning_event', 'orchestrator', ?, 'system', ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata, created_at = excluded.created_at`,
+  )
+    .bind(
+      id,
+      tenantId,
+      controlId,
+      `${appId}.${operation}`,
+      `orchestrator:${appId}:${operation}`,
+      appId,
+      metadata,
+    )
+    .run()
+    .catch(() => {
+      /* best-effort — never block provisioning */
+    });
 }

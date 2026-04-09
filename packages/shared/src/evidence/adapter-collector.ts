@@ -21,6 +21,8 @@ export interface AdapterEvidenceResult {
   slug: string;
   collectedAt: string;
   items: AdapterEvidenceItem[];
+  /** Non-null when the adapter returned an error or was unreachable */
+  error?: string;
 }
 
 export interface AdapterEvidenceItem {
@@ -76,7 +78,7 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
     ],
   },
   {
-    slug: "google_workspace",
+    slug: "google-workspace",
     evidenceTypes: [
       {
         type: "mfa_enforcement",
@@ -96,7 +98,7 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
     ],
   },
   {
-    slug: "microsoft_365",
+    slug: "microsoft-365",
     evidenceTypes: [
       {
         type: "mfa_enforcement",
@@ -150,6 +152,39 @@ export const ADAPTER_EVIDENCE_REGISTRY: AdapterEvidenceConfig[] = [
       },
     ],
   },
+  // TODO: jira adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "jira",
+    evidenceTypes: [
+      {
+        type: "project_permissions",
+        controlRefs: ["SOC2-CC6.3", "SOC2-CC8.1", "ISO-27001-A.9.1.2"],
+        description: "Project permission schemes and change management",
+      },
+    ],
+  },
+  // TODO: confluence adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "confluence",
+    evidenceTypes: [
+      {
+        type: "space_permissions",
+        controlRefs: ["SOC2-CC6.3", "ISO-27001-A.9.1.2", "GDPR-Art.5(1)(f)"],
+        description: "Space permissions and page restrictions",
+      },
+    ],
+  },
+  // TODO: bamboohr adapter lacks /api/evidence endpoint — registry entry ready for when it's added
+  {
+    slug: "bamboohr",
+    evidenceTypes: [
+      {
+        type: "employee_lifecycle",
+        controlRefs: ["ISO-27001-A.9.2.1", "SOC2-CC6.2", "NIST-CSF-PR.AC-1"],
+        description: "Employee lifecycle event tracking",
+      },
+    ],
+  },
 ];
 
 /**
@@ -172,13 +207,18 @@ export async function collectAdapterEvidence(
     });
 
     if (!res.ok) {
-      return { slug, collectedAt, items: [] };
+      const body = await res.text().catch(() => "");
+      const error = `${slug} returned ${res.status}: ${body.slice(0, 200)}`;
+      console.warn(`[evidence] ${error}`);
+      return { slug, collectedAt, items: [], error };
     }
 
     const data = (await res.json()) as { items?: AdapterEvidenceItem[] };
     return { slug, collectedAt, items: data.items ?? [] };
-  } catch {
-    return { slug, collectedAt, items: [] };
+  } catch (err) {
+    const error = `${slug} unreachable: ${err instanceof Error ? err.message : String(err)}`;
+    console.warn(`[evidence] ${error}`);
+    return { slug, collectedAt, items: [], error };
   }
 }
 

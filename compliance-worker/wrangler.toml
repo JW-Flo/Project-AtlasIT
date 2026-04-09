@@ -1,14 +1,14 @@
 name = "atlasit-compliance-worker"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
-workers_dev = true
+workers_dev = false
 compatibility_flags = ["nodejs_compat"]
 account_id = "620865722bd88ef0a77dbbb60c91392e"
 
 [vars]
-ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
-ENVIRONMENT = "development"
-ADAPTER_URLS = '{"github":"https://atlasit-github.workers.dev","okta":"https://atlasit-okta.workers.dev","google_workspace":"https://atlasit-google-workspace.workers.dev","microsoft_365":"https://atlasit-microsoft-365.workers.dev","aws":"https://atlasit-aws.workers.dev","slack":"https://atlasit-slack.workers.dev"}'
+ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
+ENVIRONMENT = "development" # Override via [env.production]
+ADAPTER_URLS = '{"github":"https://atlasit-adapter-github.kd8jc7v8cd.workers.dev","okta":"https://atlasit-okta-connector.kd8jc7v8cd.workers.dev","google_workspace":"https://atlasit-google-workspace.kd8jc7v8cd.workers.dev","microsoft_365":"https://atlasit-adapter-microsoft-365.kd8jc7v8cd.workers.dev","aws":"https://atlasit-adapter-aws.kd8jc7v8cd.workers.dev","slack":"https://atlasit-adapter-slack.kd8jc7v8cd.workers.dev","adp":"https://atlasit-adapter-adp.kd8jc7v8cd.workers.dev","auth0":"https://atlasit-adapter-auth0.kd8jc7v8cd.workers.dev","azure":"https://atlasit-adapter-azure.kd8jc7v8cd.workers.dev","bamboohr":"https://atlasit-adapter-bamboohr.kd8jc7v8cd.workers.dev","crowdstrike":"https://atlasit-adapter-crowdstrike.kd8jc7v8cd.workers.dev","discord":"https://atlasit-adapter-discord.kd8jc7v8cd.workers.dev","gcp":"https://atlasit-adapter-gcp.kd8jc7v8cd.workers.dev","quickbooks":"https://atlasit-adapter-quickbooks.kd8jc7v8cd.workers.dev","stripe":"https://atlasit-adapter-stripe.kd8jc7v8cd.workers.dev","teams":"https://atlasit-adapter-teams.kd8jc7v8cd.workers.dev","workday":"https://atlasit-adapter-workday.kd8jc7v8cd.workers.dev","xero":"https://atlasit-adapter-xero.kd8jc7v8cd.workers.dev","zoom":"https://atlasit-adapter-zoom.kd8jc7v8cd.workers.dev","zscaler":"https://atlasit-adapter-zscaler.kd8jc7v8cd.workers.dev","jira":"https://atlasit-adapter-jira.kd8jc7v8cd.workers.dev","confluence":"https://atlasit-adapter-confluence.kd8jc7v8cd.workers.dev"}'
 # WEBHOOK_SECRET — set via `wrangler secret put WEBHOOK_SECRET`
 
 [[d1_databases]]
@@ -34,6 +34,9 @@ id = "3c5284c47e2e43dc8166fd53f2d35166"
 # Secret bindings (set via `wrangler secret put GROQ_API_KEY`)
 # GROQ_API_KEY — Groq API key for AI-powered policy generation
 
+[triggers]
+crons = ["*/5 * * * *"]
+
 [observability.logs]
 enabled = true
 
@@ -56,7 +59,7 @@ routes = [
 [env.production.vars]
 ENVIRONMENT = "production"
 ORCHESTRATOR_URL = "https://ai-orchestrator.atlasit.pro"
-ADAPTER_URLS = '{"github":"https://atlasit-github.atlasit.pro","okta":"https://atlasit-okta.atlasit.pro","google_workspace":"https://atlasit-google-workspace.atlasit.pro","microsoft_365":"https://atlasit-microsoft-365.atlasit.pro","aws":"https://atlasit-aws.atlasit.pro","slack":"https://atlasit-slack.atlasit.pro"}'
+ADAPTER_URLS = '{"github":"https://adapter-github.atlasit.pro","okta":"https://adapter-okta.atlasit.pro","google_workspace":"https://adapter-google-workspace.atlasit.pro","microsoft_365":"https://adapter-microsoft-365.atlasit.pro","aws":"https://adapter-aws.atlasit.pro","slack":"https://adapter-slack.atlasit.pro","adp":"https://adapter-adp.atlasit.pro","auth0":"https://adapter-auth0.atlasit.pro","azure":"https://adapter-azure.atlasit.pro","bamboohr":"https://adapter-bamboohr.atlasit.pro","crowdstrike":"https://adapter-crowdstrike.atlasit.pro","discord":"https://adapter-discord.atlasit.pro","gcp":"https://adapter-gcp.atlasit.pro","quickbooks":"https://adapter-quickbooks.atlasit.pro","stripe":"https://adapter-stripe.atlasit.pro","teams":"https://adapter-teams.atlasit.pro","workday":"https://adapter-workday.atlasit.pro","xero":"https://adapter-xero.atlasit.pro","zoom":"https://adapter-zoom.atlasit.pro","zscaler":"https://adapter-zscaler.atlasit.pro","jira":"https://adapter-jira.atlasit.pro","confluence":"https://adapter-confluence.atlasit.pro"}'
 
 [[env.production.d1_databases]]
 binding = "D1_COMPLIANCE"
@@ -75,6 +78,9 @@ bucket_name = "atlasit-evidence"
 [[env.production.kv_namespaces]]
 binding = "API_TOKENS"
 id = "3c5284c47e2e43dc8166fd53f2d35166"
+
+[env.production.triggers]
+crons = ["*/5 * * * *"]
 
 [env.production.observability.logs]
 enabled = true

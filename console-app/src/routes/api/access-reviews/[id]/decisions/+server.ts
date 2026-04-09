@@ -2,10 +2,12 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { getCampaign, submitDecision } from "$lib/server/access-reviews";
 import { writeAudit } from "$lib/server/audit";
+import { requireTenantRole } from "$lib/server/guards";
 
 export const POST: RequestHandler = async ({ params, request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
@@ -55,9 +57,8 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
   // Emit compliance evidence for the access review decision
   const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
   if (orchestratorUrl) {
-    const eventType = decision === "revoked"
-      ? "access_review.completed"
-      : "access_review.completed";
+    const eventType =
+      decision === "revoked" ? "access_review.completed" : "access_review.completed";
     fetch(`${orchestratorUrl}/api/v1/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

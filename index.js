@@ -1,10 +1,7 @@
 import registry from "./adapters/registry.json";
 import { traceFetch } from "./src/lib/trace.js";
 import { buildBaseHealth, finalizeHealth } from "./shared/health-schema.ts";
-import {
-  summarizeIntegrations,
-  listIntegrations,
-} from "./shared/integrations/registry.js";
+import { summarizeIntegrations, listIntegrations } from "./shared/integrations/registry.js";
 import { probeIntegrations } from "./shared/integrations/health.js";
 import {
   buildLifecycleWorkflowsForApp,
@@ -19,8 +16,7 @@ const LIFECYCLE_EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 function isFeatureEnabled(env, flag) {
   if (!flag) return false;
   const raw = env?.[flag];
-  if (typeof raw === "string")
-    return raw === "1" || raw.toLowerCase() === "true";
+  if (typeof raw === "string") return raw === "1" || raw.toLowerCase() === "true";
   if (typeof raw === "number") return raw === 1;
   return !!raw;
 }
@@ -45,8 +41,7 @@ async function handleDiagnostics(env) {
     "atlas_artifacts",
   ];
   const missing = expected.filter((k) => !(k in env));
-  if (missing.length)
-    console.warn("[bindings.missing]", JSON.stringify({ missing }));
+  if (missing.length) console.warn("[bindings.missing]", JSON.stringify({ missing }));
   env.__BINDING_DIAGNOSTICS_EMITTED = true;
 }
 
@@ -84,31 +79,26 @@ async function handleHealth(url, env, correlationId, baseHeaders) {
 function handleAdminLogs(url, request, env, correlationId, baseHeaders) {
   if (url.pathname !== "/api/v1/admin/logs/recent") return null;
   const adminToken = env.ADMIN_BEARER || env.ADMIN_TOKEN;
-  if (adminToken) {
-    const provided = request.headers.get("authorization") || "";
-    const token = provided.startsWith("Bearer ") ? provided.slice(7) : provided;
-    if (token !== adminToken) {
-      return new Response(
-        JSON.stringify({ error: "unauthorized", correlationId }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json", ...baseHeaders },
-        },
-      );
-    }
-  }
-  const limit = Math.min(
-    200,
-    parseInt(url.searchParams.get("limit") || "50", 10),
-  );
-  const level = url.searchParams.get("level") || undefined;
-  return new Response(
-    JSON.stringify({ logs: getRecentLogs(limit, level), limit, correlationId }),
-    {
-      status: 200,
+  if (!adminToken) {
+    return new Response(JSON.stringify({ error: "admin auth not configured", correlationId }), {
+      status: 503,
       headers: { "Content-Type": "application/json", ...baseHeaders },
-    },
-  );
+    });
+  }
+  const provided = request.headers.get("authorization") || "";
+  const token = provided.startsWith("Bearer ") ? provided.slice(7) : provided;
+  if (token !== adminToken) {
+    return new Response(JSON.stringify({ error: "unauthorized", correlationId }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...baseHeaders },
+    });
+  }
+  const limit = Math.min(200, parseInt(url.searchParams.get("limit") || "50", 10));
+  const level = url.searchParams.get("level") || undefined;
+  return new Response(JSON.stringify({ logs: getRecentLogs(limit, level), limit, correlationId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json", ...baseHeaders },
+  });
 }
 
 // Apps sub-handlers to reduce complexity
@@ -148,8 +138,7 @@ async function appsList(env, state, correlationId, baseHeaders) {
 
 async function appsConnect(request, state, correlationId, baseHeaders) {
   const id = (await request.json().catch(() => ({}))).id;
-  if (!id)
-    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  if (!id) return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
   state.connected.add(id);
   log("info", "apps.connect", { id, correlationId });
   return appsJson(baseHeaders, { connected: true, id, correlationId });
@@ -157,8 +146,7 @@ async function appsConnect(request, state, correlationId, baseHeaders) {
 
 async function appsDisconnect(request, state, correlationId, baseHeaders) {
   const id = (await request.json().catch(() => ({}))).id;
-  if (!id)
-    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  if (!id) return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
   state.connected.delete(id);
   log("info", "apps.disconnect", { id, correlationId });
   return appsJson(baseHeaders, { connected: false, id, correlationId });
@@ -175,64 +163,35 @@ function appsStatus(state, correlationId, baseHeaders) {
 
 async function appsSync(request, state, correlationId, baseHeaders) {
   const id = (await request.json().catch(() => ({}))).id;
-  if (!id)
-    return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
+  if (!id) return appsJson(baseHeaders, { error: "id required", correlationId }, 400);
   if (!state.connected.has(id))
-    return appsJson(
-      baseHeaders,
-      { error: "not connected", id, correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "not connected", id, correlationId }, 400);
   const syncId = "sync-" + Date.now();
   state.lastSync.set(id, new Date().toISOString());
   log("info", "apps.sync", { id, syncId, correlationId });
   return appsJson(baseHeaders, { syncId, id, correlationId }, 202);
 }
 
-async function appsLifecycleMovement(
-  request,
-  state,
-  correlationId,
-  baseHeaders,
-) {
+async function appsLifecycleMovement(request, state, correlationId, baseHeaders) {
   const payload = await request.json().catch(() => ({}));
   if (!payload || typeof payload !== "object") {
-    return appsJson(
-      baseHeaders,
-      { error: "json payload required", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "json payload required", correlationId }, 400);
   }
 
-  const type =
-    typeof payload.type === "string" ? payload.type.toLowerCase().trim() : "";
+  const type = typeof payload.type === "string" ? payload.type.toLowerCase().trim() : "";
   const email =
-    typeof payload?.user?.email === "string"
-      ? payload.user.email.trim().toLowerCase()
-      : "";
+    typeof payload?.user?.email === "string" ? payload.user.email.trim().toLowerCase() : "";
 
   if (!["joiner", "mover", "leaver"].includes(type)) {
-    return appsJson(
-      baseHeaders,
-      { error: "invalid lifecycle type", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "invalid lifecycle type", correlationId }, 400);
   }
   if (!LIFECYCLE_EMAIL_RE.test(email)) {
-    return appsJson(
-      baseHeaders,
-      { error: "valid user.email required", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "valid user.email required", correlationId }, 400);
   }
 
   const idpSource = normalizeIdpSource(payload.idpSource || "okta");
   if (!idpSource) {
-    return appsJson(
-      baseHeaders,
-      { error: "unsupported idpSource", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "unsupported idpSource", correlationId }, 400);
   }
 
   const catalog = new Map(listIntegrations().map((app) => [app.id, app]));
@@ -240,11 +199,7 @@ async function appsLifecycleMovement(
     (id, idx, arr) => arr.indexOf(id) === idx,
   );
   if (requested.length === 0) {
-    return appsJson(
-      baseHeaders,
-      { error: "no lifecycle targets resolved", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "no lifecycle targets resolved", correlationId }, 400);
   }
 
   const unknownTargets = requested.filter((id) => !catalog.has(id));
@@ -304,34 +259,20 @@ async function appsLifecycleMovement(
   );
 }
 
-async function appsLifecycleWorkflows(
-  request,
-  state,
-  correlationId,
-  baseHeaders,
-) {
+async function appsLifecycleWorkflows(request, state, correlationId, baseHeaders) {
   let payload;
   try {
     payload = await request.json();
   } catch (_) {
-    return appsJson(
-      baseHeaders,
-      { error: "invalid JSON payload", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "invalid JSON payload", correlationId }, 400);
   }
 
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return appsJson(
-      baseHeaders,
-      { error: "payload must be a JSON object", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "payload must be a JSON object", correlationId }, 400);
   }
 
   const hasExplicitTargets =
-    (Array.isArray(payload.apps) && payload.apps.length > 0) ||
-    typeof payload.scope === "string";
+    (Array.isArray(payload.apps) && payload.apps.length > 0) || typeof payload.scope === "string";
 
   if (!hasExplicitTargets) {
     return appsJson(
@@ -343,11 +284,7 @@ async function appsLifecycleWorkflows(
 
   const idpSource = normalizeIdpSource(payload.idpSource || "okta");
   if (!idpSource) {
-    return appsJson(
-      baseHeaders,
-      { error: "unsupported idpSource", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "unsupported idpSource", correlationId }, 400);
   }
 
   const catalog = new Map(listIntegrations().map((app) => [app.id, app]));
@@ -355,11 +292,7 @@ async function appsLifecycleWorkflows(
     (id, idx, arr) => arr.indexOf(id) === idx,
   );
   if (requested.length === 0) {
-    return appsJson(
-      baseHeaders,
-      { error: "no lifecycle targets resolved", correlationId },
-      400,
-    );
+    return appsJson(baseHeaders, { error: "no lifecycle targets resolved", correlationId }, 400);
   }
   const unknownTargets = requested.filter((id) => !catalog.has(id));
   if (unknownTargets.length > 0) {
@@ -480,8 +413,9 @@ function handleSimpleEndpoints(url, request, env, correlationId, baseHeaders) {
     });
   }
   if (url.pathname === "/api/last-slack-status") {
-    const slackUrl = env.SLACK_WEBHOOK_URL || "dummy";
-    return new Response(JSON.stringify({ slack: slackUrl, correlationId }), {
+    const slackConfigured =
+      typeof env.SLACK_WEBHOOK_URL === "string" && env.SLACK_WEBHOOK_URL.trim().length > 0;
+    return new Response(JSON.stringify({ slackConfigured, correlationId }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -489,14 +423,7 @@ function handleSimpleEndpoints(url, request, env, correlationId, baseHeaders) {
   return null;
 }
 
-async function handleDispatch(
-  url,
-  request,
-  env,
-  ctx,
-  correlationId,
-  baseHeaders,
-) {
+async function handleDispatch(url, request, env, ctx, correlationId, baseHeaders) {
   const pathParts = url.pathname.split("/").filter(Boolean);
   const subWorkerName = pathParts[0] || "customer-worker-1";
   if (!env.dispatcher) {
@@ -531,13 +458,11 @@ async function handleDispatch(
 
 // ---------- Main Fetch -----------------------------------------------------
 async function handleFetch(request, env, ctx) {
-  const correlationId =
-    request.headers.get("x-correlation-id") || generateCorrelationId();
+  const correlationId = request.headers.get("x-correlation-id") || generateCorrelationId();
   const url = new URL(request.url);
   const host = url.host;
   const isLegacyHost =
-    host.includes("project-ignite.workers.dev") ||
-    host.includes("project-ignite."); // legacy host detection kept for deprecation redirect
+    host.includes("project-ignite.workers.dev") || host.includes("project-ignite."); // legacy host detection kept for deprecation redirect
   const deprecationHeaders = isLegacyHost
     ? {
         Deprecation: "true",
@@ -560,14 +485,7 @@ async function handleFetch(request, env, ctx) {
     if (res) return res;
   }
   try {
-    return await handleDispatch(
-      url,
-      request,
-      env,
-      ctx,
-      correlationId,
-      baseHeaders,
-    );
+    return await handleDispatch(url, request, env, ctx, correlationId, baseHeaders);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     ctx?.trace?.log("dispatch.error", { message, correlationId });

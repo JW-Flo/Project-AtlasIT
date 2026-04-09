@@ -39,6 +39,127 @@ export interface ControlEvaluation {
   description: string;
 }
 
+// ── SOC2 CC1.x — Control Environment ────────────────────────────────────────
+
+const SOC2_CC1: ControlDefinition[] = [
+  {
+    controlId: "CC1.1",
+    controlName: "COSO principle 1 — integrity and ethical values",
+    framework: "SOC2",
+    description:
+      "The entity demonstrates a commitment to integrity and ethical values via documented access policies.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "CC1.2",
+    controlName: "COSO principle 2 — board oversight",
+    framework: "SOC2",
+    description:
+      "The board of directors demonstrates independence from management and exercises oversight of internal control.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "CC1.3",
+    controlName: "COSO principle 3 — organizational structure",
+    framework: "SOC2",
+    description:
+      "Management establishes an organizational structure, reporting lines, and appropriate authorities.",
+    evidenceSources: ["policy_change"],
+  },
+];
+
+// ── SOC2 CC2.x — Communication ──────────────────────────────────────────────
+
+const SOC2_CC2: ControlDefinition[] = [
+  {
+    controlId: "CC2.1",
+    controlName: "Internal communication of policies",
+    framework: "SOC2",
+    description:
+      "The entity internally communicates, including objectives and responsibilities for internal control.",
+    evidenceSources: ["policy_change", "automated"],
+  },
+  {
+    controlId: "CC2.2",
+    controlName: "Deficiency reporting",
+    framework: "SOC2",
+    description:
+      "The entity communicates with external parties regarding matters affecting the functioning of internal control.",
+    evidenceSources: ["incident", "policy_change"],
+  },
+];
+
+// ── SOC2 CC3.x — Risk Assessment ───────────────────────────────────────────
+
+const SOC2_CC3: ControlDefinition[] = [
+  {
+    controlId: "CC3.1",
+    controlName: "Risk assessment process",
+    framework: "SOC2",
+    description:
+      "The entity specifies objectives with sufficient clarity to enable the identification and assessment of risks.",
+    evidenceSources: ["policy_change", "audit_log"],
+  },
+  {
+    controlId: "CC3.2",
+    controlName: "Vendor risk assessment",
+    framework: "SOC2",
+    description:
+      "The entity identifies risks to the achievement of its objectives and analyzes risks as a basis for determining how they should be managed.",
+    evidenceSources: ["policy_change"],
+  },
+];
+
+// ── SOC2 CC4.x — Monitoring ────────────────────────────────────────────────
+
+const SOC2_CC4: ControlDefinition[] = [
+  {
+    controlId: "CC4.1",
+    controlName: "Continuous monitoring",
+    framework: "SOC2",
+    description:
+      "The entity selects, develops, and performs ongoing evaluations to ascertain whether the components of internal control are present and functioning.",
+    evidenceSources: ["automated", "audit_log"],
+  },
+  {
+    controlId: "CC4.2",
+    controlName: "Internal audit",
+    framework: "SOC2",
+    description:
+      "The entity evaluates and communicates internal control deficiencies in a timely manner.",
+    evidenceSources: ["audit_log", "policy_change"],
+  },
+];
+
+// ── SOC2 CC5.x — Control Activities ────────────────────────────────────────
+
+const SOC2_CC5: ControlDefinition[] = [
+  {
+    controlId: "CC5.1",
+    controlName: "Control activities documentation",
+    framework: "SOC2",
+    description:
+      "The entity selects and develops control activities that contribute to the mitigation of risks.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "CC5.2",
+    controlName: "Automated controls coverage",
+    framework: "SOC2",
+    description:
+      "The entity selects and develops general control activities over technology to support the achievement of objectives.",
+    evidenceSources: ["automated"],
+  },
+  {
+    controlId: "CC5.3",
+    controlName: "Change management approval",
+    framework: "SOC2",
+    description:
+      "The entity deploys control activities through policies that establish what is expected and procedures that put policies into action.",
+    evidenceSources: ["automated", "audit_log"],
+  },
+];
+
 // ── SOC2 CC6.x — Logical and Physical Access Controls ───────────────────────
 
 const SOC2_CC6: ControlDefinition[] = [
@@ -150,6 +271,40 @@ const SOC2_CC7: ControlDefinition[] = [
     description:
       "The entity identifies, develops, and implements activities to recover from identified security incidents.",
     evidenceSources: ["incident", "policy_change"],
+  },
+];
+
+// ── SOC2 CC8.x — Change Management ─────────────────────────────────────────
+
+const SOC2_CC8: ControlDefinition[] = [
+  {
+    controlId: "CC8.1",
+    controlName: "Change authorization and testing",
+    framework: "SOC2",
+    description:
+      "The entity authorizes, designs, develops or acquires, configures, documents, tests, approves, and implements changes to meet its objectives.",
+    evidenceSources: ["automated", "audit_log"],
+  },
+];
+
+// ── SOC2 CC9.x — Risk Mitigation ──────────────────────────────────────────
+
+const SOC2_CC9: ControlDefinition[] = [
+  {
+    controlId: "CC9.1",
+    controlName: "Unmitigated risk management",
+    framework: "SOC2",
+    description:
+      "The entity identifies, selects, and develops risk mitigation activities for risks arising from potential business disruptions.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "CC9.2",
+    controlName: "Business continuity and disaster recovery",
+    framework: "SOC2",
+    description:
+      "The entity assesses and manages risks associated with vendors and business partners.",
+    evidenceSources: ["policy_change"],
   },
 ];
 
@@ -266,6 +421,56 @@ const ISO27001_A9: ControlDefinition[] = [
   },
 ];
 
+// ── ISO 27001 A.12/A.13 — Operations & Network Security ──────────────────────
+
+const ISO27001_OPS: ControlDefinition[] = [
+  {
+    controlId: "A.12.6.1",
+    controlName: "Management of technical vulnerabilities",
+    framework: "ISO27001",
+    description:
+      "Information about technical vulnerabilities of information systems is obtained, exposure evaluated, and appropriate measures taken.",
+    evidenceSources: ["automated"],
+  },
+  {
+    controlId: "A.13.1.1",
+    controlName: "Network controls",
+    framework: "ISO27001",
+    description:
+      "Networks are managed and controlled to protect information in systems and applications.",
+    evidenceSources: ["automated"],
+  },
+];
+
+// ── ISO 27001 A.16 — Incident Management ──────────────────────────────────────
+
+const ISO27001_A16: ControlDefinition[] = [
+  {
+    controlId: "A.16.1.1",
+    controlName: "Incident management procedures",
+    framework: "ISO27001",
+    description:
+      "Management responsibilities and procedures are established to ensure an effective response to information security incidents.",
+    evidenceSources: ["incident", "policy_change"],
+  },
+  {
+    controlId: "A.16.1.2",
+    controlName: "Reporting information security events",
+    framework: "ISO27001",
+    description:
+      "Information security events are reported through appropriate management channels as quickly as possible.",
+    evidenceSources: ["incident"],
+  },
+  {
+    controlId: "A.16.1.4",
+    controlName: "Assessment and decision on events",
+    framework: "ISO27001",
+    description:
+      "Information security events are assessed and decided if they are to be classified as information security incidents.",
+    evidenceSources: ["incident"],
+  },
+];
+
 // ── NIST CSF — Protect / Respond ─────────────────────────────────────────────
 
 const NIST_CSF: ControlDefinition[] = [
@@ -278,12 +483,28 @@ const NIST_CSF: ControlDefinition[] = [
     evidenceSources: ["onboarding", "access_grant", "directory_sync"],
   },
   {
+    controlId: "PR.AC-3",
+    controlName: "Remote access management",
+    framework: "NIST_CSF",
+    description:
+      "Remote access is managed via VPN/ZTNA and access policies are enforced for remote connections.",
+    evidenceSources: ["access_grant", "automated"],
+  },
+  {
     controlId: "PR.AC-4",
     controlName: "Least privilege and separation of duties",
     framework: "NIST_CSF",
     description:
       "Access permissions and authorizations are managed, incorporating the principles of least privilege and separation of duties.",
     evidenceSources: ["access_grant", "access_revoke", "role_change"],
+  },
+  {
+    controlId: "DE.CM-1",
+    controlName: "Network monitoring for cybersecurity events",
+    framework: "NIST_CSF",
+    description:
+      "The network is monitored to detect potential cybersecurity events, including anomalous activity and logging.",
+    evidenceSources: ["audit_log", "automated"],
   },
   {
     controlId: "RS.CO-2",
@@ -305,35 +526,123 @@ const HIPAA_CONTROLS: ControlDefinition[] = [
       "Implement technical policies and procedures for systems that maintain ePHI to allow access only to authorized persons or software programs.",
     evidenceSources: ["access_grant", "access_revoke", "access_review"],
   },
+  {
+    controlId: "164.312(a)(2)(i)",
+    controlName: "Emergency access procedure",
+    framework: "HIPAA",
+    description:
+      "Establish and implement procedures for obtaining necessary ePHI during an emergency.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "164.312(a)(2)(ii)",
+    controlName: "Automatic logoff",
+    framework: "HIPAA",
+    description:
+      "Implement electronic procedures that terminate a session after a predetermined time of inactivity.",
+    evidenceSources: ["automated"],
+  },
+  {
+    controlId: "164.312(b)",
+    controlName: "Audit controls",
+    framework: "HIPAA",
+    description:
+      "Implement hardware, software, and procedural mechanisms to record and examine activity in systems that contain or use ePHI.",
+    evidenceSources: ["audit_log", "automated"],
+  },
+  {
+    controlId: "164.312(c)(1)",
+    controlName: "Integrity controls",
+    framework: "HIPAA",
+    description:
+      "Implement policies and procedures to protect ePHI from improper alteration or destruction.",
+    evidenceSources: ["automated"],
+  },
+  {
+    controlId: "164.312(d)",
+    controlName: "Person or entity authentication",
+    framework: "HIPAA",
+    description:
+      "Implement procedures to verify that a person or entity seeking access to ePHI is the one claimed.",
+    evidenceSources: ["automated", "access_grant"],
+  },
 ];
 
 // ── GDPR — Integrity, Confidentiality, Erasure ─────────────────────────────
 
 const GDPR_CONTROLS: ControlDefinition[] = [
   {
+    controlId: "Art.5(1)(a)",
+    controlName: "Lawfulness, fairness, and transparency",
+    framework: "GDPR",
+    description:
+      "Personal data shall be processed lawfully, fairly, and in a transparent manner in relation to the data subject.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "Art.5(1)(b)",
+    controlName: "Purpose limitation",
+    framework: "GDPR",
+    description:
+      "Personal data shall be collected for specified, explicit, and legitimate purposes and not further processed in a manner incompatible with those purposes.",
+    evidenceSources: ["policy_change"],
+  },
+  {
+    controlId: "Art.5(1)(c)",
+    controlName: "Data minimisation",
+    framework: "GDPR",
+    description:
+      "Personal data shall be adequate, relevant, and limited to what is necessary in relation to the purposes for which they are processed.",
+    evidenceSources: ["policy_change", "access_revoke"],
+  },
+  {
+    controlId: "Art.5(1)(d)",
+    controlName: "Accuracy",
+    framework: "GDPR",
+    description: "Personal data shall be accurate and, where necessary, kept up to date.",
+    evidenceSources: ["directory_sync", "automated"],
+  },
+  {
+    controlId: "Art.5(1)(e)",
+    controlName: "Storage limitation",
+    framework: "GDPR",
+    description:
+      "Personal data shall be kept in a form which permits identification of data subjects for no longer than is necessary.",
+    evidenceSources: ["automated", "policy_change"],
+  },
+  {
     controlId: "Art.5(1)(f)",
     controlName: "Integrity and confidentiality",
     framework: "GDPR",
     description:
       "Personal data shall be processed in a manner that ensures appropriate security, including protection against unauthorized or unlawful processing and against accidental loss, destruction, or damage.",
-    evidenceSources: ["offboarding", "access_revoke"],
+    evidenceSources: ["offboarding", "access_revoke", "automated"],
   },
   {
-    controlId: "Art.17",
-    controlName: "Right to erasure",
+    controlId: "Art.5(2)",
+    controlName: "Accountability",
     framework: "GDPR",
     description:
-      "The data subject shall have the right to obtain from the controller the erasure of personal data concerning them without undue delay.",
-    evidenceSources: ["offboarding"],
+      "The controller shall be responsible for, and be able to demonstrate compliance with, data protection principles.",
+    evidenceSources: ["audit_log", "automated"],
   },
 ];
 
 // ── All controls ────────────────────────────────────────────────────────────
 
 export const ALL_CONTROLS: ControlDefinition[] = [
+  ...SOC2_CC1,
+  ...SOC2_CC2,
+  ...SOC2_CC3,
+  ...SOC2_CC4,
+  ...SOC2_CC5,
   ...SOC2_CC6,
   ...SOC2_CC7,
+  ...SOC2_CC8,
+  ...SOC2_CC9,
   ...ISO27001_A9,
+  ...ISO27001_OPS,
+  ...ISO27001_A16,
   ...NIST_CSF,
   ...HIPAA_CONTROLS,
   ...GDPR_CONTROLS,
@@ -364,6 +673,12 @@ interface AdapterEvidenceRow {
   created_at: string;
 }
 
+interface PolicyEvalRow {
+  control_id: string;
+  metadata: string;
+  created_at: string;
+}
+
 /**
  * Evaluate all controls for a tenant against collected evidence.
  *
@@ -384,8 +699,11 @@ export async function evaluateControls(
   const controlIds = controls.map((c) => c.controlId);
   const placeholders = controlIds.map(() => "?").join(",");
 
-  // Fetch evidence stats, verification attestations, and adapter pass/fail in parallel
-  const [evidenceResult, verifiedResult, adapterResult] = await Promise.all([
+  // Fetch evidence stats, verification attestations, adapter pass/fail, and policy eval in parallel
+  // Each query is individually wrapped to prevent a single D1 transient failure from crashing the
+  // entire evaluation — a failed query simply returns empty results for that dimension.
+  const emptyAll = { results: [] as any[] };
+  const [evidenceResult, verifiedResult, adapterResult, policyEvalResult] = await Promise.all([
     db
       .prepare(
         `SELECT control_id,
@@ -396,9 +714,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<EvidenceRow>(),
-    // Verification attestations — explicit manual sign-off stored as evidence
-    // with evidence_type = 'verification_attestation'
+      .all<EvidenceRow>()
+      .catch(() => emptyAll as D1Result<EvidenceRow>),
     db
       .prepare(
         `SELECT control_id, MAX(created_at) AS verified_at
@@ -408,8 +725,8 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<VerifiedRow>(),
-    // Latest adapter evidence per control — carries pass/fail status from real config checks
+      .all<VerifiedRow>()
+      .catch(() => emptyAll as D1Result<VerifiedRow>),
     db
       .prepare(
         `SELECT control_id, metadata, MAX(created_at) AS created_at
@@ -419,7 +736,19 @@ export async function evaluateControls(
          GROUP BY control_id`,
       )
       .bind(tenantId, ...controlIds)
-      .all<AdapterEvidenceRow>(),
+      .all<AdapterEvidenceRow>()
+      .catch(() => emptyAll as D1Result<AdapterEvidenceRow>),
+    db
+      .prepare(
+        `SELECT control_id, metadata, MAX(created_at) AS created_at
+         FROM compliance_evidence
+         WHERE tenant_id = ? AND control_id IN (${placeholders})
+           AND evidence_type = 'policy_evaluation'
+         GROUP BY control_id`,
+      )
+      .bind(tenantId, ...controlIds)
+      .all<PolicyEvalRow>()
+      .catch(() => emptyAll as D1Result<PolicyEvalRow>),
   ]);
 
   // Index evidence by control_id for O(1) lookup
@@ -441,6 +770,19 @@ export async function evaluateControls(
       const meta = JSON.parse(row.metadata);
       if (meta.status === "pass" || meta.status === "fail") {
         adapterStatusMap.set(row.control_id, meta.status);
+      }
+    } catch {
+      // Malformed metadata — skip
+    }
+  }
+
+  // Index policy evaluation pass/fail status
+  const policyStatusMap = new Map<string, "pass" | "fail" | "unknown">();
+  for (const row of policyEvalResult.results ?? []) {
+    try {
+      const meta = JSON.parse(row.metadata);
+      if (meta.status === "pass" || meta.status === "fail") {
+        policyStatusMap.set(row.control_id, meta.status);
       }
     } catch {
       // Malformed metadata — skip
@@ -474,6 +816,14 @@ export async function evaluateControls(
     // fails should not be marked "implemented".
     const adapterStatus = adapterStatusMap.get(control.controlId);
     if (adapterStatus === "fail" && status === "implemented") {
+      status = "in_progress";
+    }
+
+    // Cap at in_progress if the latest policy evaluation says the control fails.
+    // CDT boolean rule checks (least-privilege, SLA thresholds, etc.) override
+    // the recency heuristic — same pattern as adapter evidence.
+    const policyStatus = policyStatusMap.get(control.controlId);
+    if (policyStatus === "fail" && status === "implemented") {
       status = "in_progress";
     }
 

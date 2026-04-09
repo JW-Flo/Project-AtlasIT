@@ -52,11 +52,28 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     }
   }
 
-  return new Response(
-    JSON.stringify({ success: true, connected: false, id: appId }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  // Notify about app disconnection
+  if (db) {
+    try {
+      const { notify } = await import("$lib/server/notifications");
+      await notify(db, platform, {
+        tenantId,
+        type: "app_disconnected",
+        title: `App disconnected: ${appId}`,
+        body: `${appId} was disconnected by ${user.email}`,
+        severity: "warning",
+        sourceType: "app",
+        sourceId: appId,
+        sourceLabel: appId,
+        actionUrl: `/console/directory`,
+      });
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  return new Response(JSON.stringify({ success: true, connected: false, id: appId }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 };

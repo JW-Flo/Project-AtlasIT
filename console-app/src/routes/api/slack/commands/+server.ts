@@ -1,5 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { requireSlackSignature } from "$lib/server/slack-verify";
+import { resolveSlackTenant } from "$lib/server/slack/resolve-tenant";
+import { handleAtlasCommand, handleEvidenceCommand } from "$lib/server/slack/command-handlers";
 
 export const POST: RequestHandler = async ({ request, platform }) => {
   const env = platform?.env as Record<string, unknown> | undefined;
@@ -13,9 +15,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   const params = new URLSearchParams(result.body);
   const command = params.get("command");
   const text = params.get("text") ?? "";
-  const userId = params.get("user_id");
-  const teamId = params.get("team_id");
-  const responseUrl = params.get("response_url");
+  const userId = params.get("user_id") ?? "";
+  const teamId = params.get("team_id") ?? "";
 
   console.log(
     JSON.stringify({
@@ -28,28 +29,21 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     }),
   );
 
-  // --- /atlas command ---
+  const db = (env.ATLAS_SHARED_DB as D1Database) ?? null;
+  const tenantId = db && teamId ? await resolveSlackTenant(db, teamId) : null;
+
   if (command === "/atlas") {
-    // TODO: route subcommands (e.g. "help", "status", task dispatch)
-    return new Response(
-      JSON.stringify({
-        response_type: "ephemeral",
-        text: `AtlasIT received: \`/atlas ${text}\`\nThis command is being set up — stay tuned.`,
-      }),
-      { headers: { "content-type": "application/json" } },
-    );
+    const response = await handleAtlasCommand(text, userId, db, tenantId);
+    return new Response(JSON.stringify(response), {
+      headers: { "content-type": "application/json" },
+    });
   }
 
-  // --- /evidence command ---
   if (command === "/evidence") {
-    // TODO: look up evidence by trace_id
-    return new Response(
-      JSON.stringify({
-        response_type: "ephemeral",
-        text: `Evidence lookup for: \`${text || "(no trace_id)"}\`\nThis command is being set up — stay tuned.`,
-      }),
-      { headers: { "content-type": "application/json" } },
-    );
+    const response = await handleEvidenceCommand(text.trim(), db, tenantId);
+    return new Response(JSON.stringify(response), {
+      headers: { "content-type": "application/json" },
+    });
   }
 
   return new Response(

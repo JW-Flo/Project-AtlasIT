@@ -37,3 +37,13 @@ export {
 } from "./platform-evidence";
 
 export { collectPlatformStateEvidence, type StateEvidenceResult } from "./platform-state-collector";
+
+export {
+  isEvidenceDeletionAllowed,
+  enforceRetentionPolicy,
+  type RetentionResult,
+} from "./retention";
+
+export { buildCdtPayloadFromEvidence, flattenAdapterResults } from "./cdt-field-mapper";
+
+export { computeAuditMetrics, type ComputedMetrics } from "./computed-metrics";

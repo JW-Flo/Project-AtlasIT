@@ -186,6 +186,74 @@ export async function storeEvidence(
     }
   }
 
+  // Auto-tag system-generated evidence (P1-2)
+  if (!alreadyExists && d1RowsWritten > 0) {
+    try {
+      const tagBatch: D1PreparedStatement[] = [];
+      const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+
+      // Determine auto-tags: framework, impact, category, source
+      const autoTags: { tag: string; tagType: string; color: string }[] = [];
+
+      // Framework tags
+      const frameworks = [...new Set(evidence.controls.map((c) => c.framework))];
+      for (const fw of frameworks) {
+        autoTags.push({ tag: fw, tagType: "framework", color: "#3b82f6" });
+      }
+
+      // Impact tag
+      const primaryImpact = evidence.controls[0]?.impact ?? "neutral";
+      const impactColors: Record<string, string> = {
+        positive: "#22c55e",
+        detrimental: "#ef4444",
+        neutral: "#6b7280",
+      };
+      autoTags.push({
+        tag: primaryImpact,
+        tagType: "impact",
+        color: impactColors[primaryImpact] ?? "#6b7280",
+      });
+
+      // Category tag from evidence type
+      if (evidence.controls[0]?.category) {
+        autoTags.push({
+          tag: evidence.controls[0].category.replace(/_/g, " "),
+          tagType: "category",
+          color: "#8b5cf6",
+        });
+      }
+
+      // Source tag
+      autoTags.push({ tag: evidence.source, tagType: "source", color: "#f59e0b" });
+
+      for (const at of autoTags) {
+        tagBatch.push(
+          deps.db
+            .prepare(
+              `INSERT OR IGNORE INTO evidence_tags (id, tenant_id, evidence_id, tag, tag_type, color, created_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              crypto.randomUUID(),
+              evidence.tenantId,
+              id,
+              at.tag,
+              at.tagType,
+              at.color,
+              "system",
+              now,
+            ),
+        );
+      }
+
+      if (tagBatch.length > 0) {
+        await deps.db.batch(tagBatch);
+      }
+    } catch {
+      // Non-fatal — evidence is stored, tags are optional
+    }
+  }
+
   // Trigger score refresh for affected frameworks (non-blocking)
   if (!alreadyExists && d1RowsWritten > 0 && deps.onEvidenceStored) {
     const frameworks = [...new Set(evidence.controls.map((c) => c.framework))];

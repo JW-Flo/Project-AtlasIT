@@ -60,7 +60,7 @@ export async function collectPlatformStateEvidence(
               `INSERT INTO compliance_evidence
                (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(id) DO NOTHING`,
+               ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata`,
             )
             .bind(
               `state-${tenantId}-${probe.id}-${controlRef}`.replace(/[^a-zA-Z0-9-_.]/g, "_"),

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import {
     integrations as allIntegrations,
@@ -57,13 +58,24 @@
         const data: any = await res.json();
         const statusApps: any[] = data.applications || [];
         const connected: Record<string, boolean> = {};
+        const healthy: Record<string, boolean> = {};
         for (const sa of statusApps) {
           connected[sa.id] = !!sa.connected;
+          if (sa.healthy !== undefined) healthy[sa.id] = sa.healthy;
         }
-        apps = apps.map((a) => ({ ...a, connected: !!connected[a.id] }));
+        apps = apps.map((a) => ({ ...a, connected: !!connected[a.id], healthy: healthy[a.id] }));
       }
     } catch {
       // Status fetch failed -- apps show as not connected
+    }
+
+    const oauthError = $page.url.searchParams.get("error");
+    if (oauthError) {
+      pushToast({ title: "Connection Failed", description: decodeURIComponent(oauthError), variant: "destructive" });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      url.searchParams.delete("appId");
+      window.history.replaceState({}, "", url.toString());
     }
   });
 
@@ -217,7 +229,7 @@
   <!-- Integration grid -->
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
     {#each filtered as integration}
-      <Card class="{integration.connected ? 'border-green-500/30' : ''}">
+      <Card class="{integration.connected ? 'border-green-500/30' : ''} cursor-pointer hover:shadow-md transition-shadow" on:click={() => { if (!integration.connected && integration.status !== 'planned') openWizard(integration); }}>
         <CardContent class="pt-5 flex flex-col h-full">
           <div class="flex items-start justify-between mb-3">
             <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-primary/10">
@@ -230,7 +242,12 @@
             </Badge>
           </div>
 
-          <h3 class="text-sm font-semibold mb-1">{integration.name}</h3>
+          <h3 class="text-sm font-semibold mb-1 flex items-center gap-1.5">
+            {integration.name}
+            {#if integration.connected}
+              <span class="inline-block w-2 h-2 rounded-full {integration.healthy === true ? 'bg-green-500' : integration.healthy === false ? 'bg-red-500' : 'bg-gray-400'}" title="{integration.healthy === true ? 'Healthy' : integration.healthy === false ? 'Unhealthy' : 'Not tested'}"></span>
+            {/if}
+          </h3>
           <div class="text-xs text-muted-foreground mb-1">
             {integration.category} &middot; {authLabel(integration.auth)} &middot; {integration.tier}
           </div>

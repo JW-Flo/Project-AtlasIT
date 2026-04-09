@@ -21,8 +21,11 @@
     ownerEmail: string;
     user_count: number;
     status: string;
+    tier: string;
     createdAt: string;
   }
+
+  const tierOptions = ["free", "starter", "professional", "enterprise"];
 
   let tenants: Tenant[] = [];
   let loading = true;
@@ -30,6 +33,12 @@
 
   let deleteModalOpen = false;
   let tenantToDelete: Tenant | null = null;
+
+  let disableModalOpen = false;
+  let tenantToToggle: Tenant | null = null;
+
+  let impersonateModalOpen = false;
+  let tenantToImpersonate: Tenant | null = null;
 
   async function loadTenants() {
     loading = true;
@@ -45,8 +54,21 @@
     }
   }
 
-  async function toggleStatus(tenant: Tenant) {
+  function confirmToggleStatus(tenant: Tenant) {
+    tenantToToggle = tenant;
+    disableModalOpen = true;
+  }
+
+  function closeDisableModal() {
+    disableModalOpen = false;
+    tenantToToggle = null;
+  }
+
+  async function toggleStatus() {
+    if (!tenantToToggle) return;
+    const tenant = tenantToToggle;
     const newStatus = tenant.status === "active" ? "disabled" : "active";
+    closeDisableModal();
     try {
       const res = await fetch(`/api/admin/tenants/${tenant.id}`, {
         method: "PATCH",
@@ -85,7 +107,36 @@
     }
   }
 
-  async function impersonate(tenant: Tenant) {
+  function confirmImpersonate(tenant: Tenant) {
+    tenantToImpersonate = tenant;
+    impersonateModalOpen = true;
+  }
+
+  function closeImpersonateModal() {
+    impersonateModalOpen = false;
+    tenantToImpersonate = null;
+  }
+
+  async function changeTier(tenant: Tenant, newTier: string) {
+    try {
+      const res = await fetch(`/api/admin/tenants/${tenant.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tier: newTier }),
+      });
+      if (!res.ok) throw new Error("Failed to update tier");
+      tenant.tier = newTier;
+      tenants = tenants;
+      pushToast({ message: `Tier updated to ${newTier}`, variant: "success" });
+    } catch (e: any) {
+      pushToast({ message: e?.message || "Failed to update tier", variant: "error" });
+    }
+  }
+
+  async function impersonate() {
+    if (!tenantToImpersonate) return;
+    const tenant = tenantToImpersonate;
+    closeImpersonateModal();
     try {
       const res = await fetch(`/api/admin/tenants/${tenant.id}/impersonate`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to impersonate tenant");
@@ -99,12 +150,12 @@
 </script>
 
 <div class="space-y-6">
-  <div class="flex items-center justify-between">
+  <div class="flex items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Platform Administration</h1>
       <p class="text-sm text-muted-foreground">Manage tenants across the platform</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <Shield class="h-5 w-5 text-primary" />
     </div>
   </div>
@@ -129,36 +180,51 @@
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                <th class="px-4 py-3 font-medium">Org Name</th>
-                <th class="px-4 py-3 font-medium">Owner Email</th>
-                <th class="px-4 py-3 font-medium">Users</th>
-                <th class="px-4 py-3 font-medium">Status</th>
-                <th class="px-4 py-3 font-medium">Created</th>
-                <th class="px-4 py-3 font-medium">Actions</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Org Name</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Owner Email</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Users</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Tier</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Created</th>
+                <th class="px-3 sm:px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {#each tenants as tenant}
                 <tr class="border-t hover:bg-muted/50">
-                  <td class="px-4 py-3 font-medium">{tenant.name}</td>
-                  <td class="px-4 py-3 text-muted-foreground">{tenant.ownerEmail}</td>
-                  <td class="px-4 py-3 text-muted-foreground">{tenant.user_count}</td>
-                  <td class="px-4 py-3">
+                  <td class="px-3 sm:px-4 py-3">
+                    <div class="font-medium">{tenant.name}</div>
+                    <div class="text-xs text-muted-foreground sm:hidden">{tenant.ownerEmail}</div>
+                  </td>
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{tenant.ownerEmail}</td>
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{tenant.user_count}</td>
+                  <td class="px-3 sm:px-4 py-3 hidden sm:table-cell">
+                    <select
+                      class="text-xs border rounded px-2 py-1 bg-background"
+                      value={tenant.tier || "free"}
+                      on:change={(e) => changeTier(tenant, e.currentTarget.value)}
+                    >
+                      {#each tierOptions as t}
+                        <option value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      {/each}
+                    </select>
+                  </td>
+                  <td class="px-3 sm:px-4 py-3">
                     <Badge variant={tenant.status === 'active' ? 'success' : 'destructive'}>
                       {tenant.status}
                     </Badge>
                   </td>
-                  <td class="px-4 py-3 text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</td>
-                  <td class="px-4 py-3">
-                    <div class="flex gap-2">
+                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{new Date(tenant.createdAt).toLocaleDateString()}</td>
+                  <td class="px-3 sm:px-4 py-3">
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2">
                       <Button
                         size="sm"
                         variant={tenant.status === 'active' ? 'outline' : 'success'}
-                        on:click={() => toggleStatus(tenant)}
+                        on:click={() => confirmToggleStatus(tenant)}
                       >
                         {tenant.status === "active" ? "Disable" : "Enable"}
                       </Button>
-                      <Button size="sm" variant="secondary" on:click={() => impersonate(tenant)}>
+                      <Button size="sm" variant="secondary" on:click={() => confirmImpersonate(tenant)}>
                         <Eye class="h-3 w-3 mr-1" />
                         Impersonate
                       </Button>
@@ -171,7 +237,7 @@
                 </tr>
               {:else}
                 <tr>
-                  <td colspan="6" class="px-4 py-6 text-center text-muted-foreground">No tenants found</td>
+                  <td colspan="7" class="px-4 py-6 text-center text-muted-foreground">No tenants found</td>
                 </tr>
               {/each}
             </tbody>
@@ -192,5 +258,45 @@
   <DialogFooter>
     <Button variant="outline" on:click={closeDeleteModal}>Cancel</Button>
     <Button variant="destructive" on:click={deleteTenant}>Delete</Button>
+  </DialogFooter>
+</Dialog>
+
+<Dialog open={disableModalOpen} onClose={closeDisableModal}>
+  <DialogHeader>
+    <DialogTitle>{tenantToToggle?.status === "active" ? "Disable" : "Enable"} Tenant</DialogTitle>
+  </DialogHeader>
+  <p class="text-sm text-muted-foreground">
+    Are you sure you want to {tenantToToggle?.status === "active" ? "disable" : "enable"} tenant
+    <strong class="text-foreground">{tenantToToggle?.name}</strong>?
+    {#if tenantToToggle?.status === "active"}
+      All users will lose access immediately.
+    {/if}
+  </p>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeDisableModal}>Cancel</Button>
+    <Button variant={tenantToToggle?.status === "active" ? "destructive" : "default"} on:click={toggleStatus}>
+      {tenantToToggle?.status === "active" ? "Disable" : "Enable"}
+    </Button>
+  </DialogFooter>
+</Dialog>
+
+<Dialog open={impersonateModalOpen} onClose={closeImpersonateModal}>
+  <DialogHeader>
+    <DialogTitle>Impersonate Tenant</DialogTitle>
+  </DialogHeader>
+  <div class="space-y-2">
+    <p class="text-sm text-muted-foreground">
+      You are about to impersonate <strong class="text-foreground">{tenantToImpersonate?.name}</strong>.
+    </p>
+    <p class="text-sm text-muted-foreground">
+      Your session will switch to this tenant's context and all actions you take will be performed as that tenant. This session change is logged in the audit trail.
+    </p>
+  </div>
+  <DialogFooter>
+    <Button variant="outline" on:click={closeImpersonateModal}>Cancel</Button>
+    <Button variant="secondary" on:click={impersonate}>
+      <Eye class="h-3 w-3 mr-1" />
+      Impersonate
+    </Button>
   </DialogFooter>
 </Dialog>

@@ -1,7 +1,11 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { coreFetch } from "$lib/api";
+import { requireTenantRole } from "$lib/server/guards";
 
-export const POST: RequestHandler = async ({ request, platform }) => {
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+
   const env = (platform?.env as any) || {};
 
   let body: any;
@@ -26,9 +30,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Lifecycle movement service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: "Lifecycle movement service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };

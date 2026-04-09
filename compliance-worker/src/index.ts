@@ -50,8 +50,10 @@ import {
 import { log } from "./log";
 import { webhookRoutes } from "./routes/webhooks";
 import { evaluateControls, scoreFromEvaluations } from "./modules/policies/cdt-rules";
+import { evaluateAndStoreEvidence } from "./modules/policies/evaluation";
 import {
   collectAllAdapterEvidence,
+  parseControlRef,
   type AdapterEvidenceItem,
 } from "../../packages/shared/src/evidence/adapter-collector";
 
@@ -72,6 +74,9 @@ import {
 // ----------------------------------------------------------------------------------
 
 const SNAPSHOT_TTL_SECONDS = 300;
+
+// Policy infrastructure is idempotent DDL+seed — run once per isolate lifetime.
+let policyInfraReady = false;
 const DEFAULT_TENANT = "demo";
 const DEFAULT_PACK = "unspecified";
 const DEFAULT_SUBJECT = "unknown";
@@ -369,27 +374,59 @@ async function activityRoutes(ctx: RouteContext): Promise<Response | null> {
 async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   const { url, method, request, env, requestId, headers } = ctx;
 
+  // C-1 FIX: All tenant-scoped evidence routes now require authentication.
+  // Tenant ID is derived exclusively from the validated token context, never from
+  // request params/query/headers, to prevent cross-tenant data access.
+
   if (url.pathname === "/api/compliance/snapshot" && (method === "GET" || method === "HEAD")) {
-    return handleSnapshot(env, url, requestId, headers, method === "HEAD" ? "HEAD" : "GET");
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleSnapshot(env, url, requestId, headers, method === "HEAD" ? "HEAD" : "GET", tenant.tenantId);
   }
 
   if (url.pathname === "/api/evidence/ingest" && method === "POST") {
-    return handleEvidenceIngest(request, env, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceIngest(request, env, requestId, headers, tenant.tenantId);
   }
 
   if (url.pathname === "/api/evidence/search" && method === "GET") {
-    return handleEvidenceSearch(env, url, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceSearch(env, url, requestId, headers, tenant.tenantId);
   }
 
   if (url.pathname.startsWith("/api/evidence/") && method === "GET") {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
     const hash = url.pathname.split("/").pop();
     if (!hash) {
       return errorResponse(400, requestId, headers, "Missing evidence hash");
     }
     if (url.searchParams.get("verify") === "1") {
-      return handleEvidenceVerify(env, hash, requestId, headers);
+      return handleEvidenceVerify(env, hash, requestId, headers, tenant.tenantId);
     }
-    return handleEvidenceGet(env, hash, requestId, headers);
+    return handleEvidenceGet(env, hash, requestId, headers, tenant.tenantId);
   }
 
   // Compatibility path expected by tests: /api/v1/evidence/{hash}/verify
@@ -398,10 +435,17 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
     url.pathname.endsWith("/verify") &&
     method === "GET"
   ) {
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
     const parts = url.pathname.split("/").filter(Boolean); // [api,v1,evidence,{hash},verify]
     if (parts.length === 5) {
       const hash = parts[3];
-      return handleEvidenceVerify(env, hash, requestId, headers);
+      return handleEvidenceVerify(env, hash, requestId, headers, tenant.tenantId);
     }
     return errorResponse(400, requestId, headers, "Invalid evidence verify path");
   }
@@ -409,10 +453,14 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   // --- v1 tenant-scoped evidence routes ---
 
   if (url.pathname === "/api/v1/evidence" && method === "GET") {
-    const tenantId = url.searchParams.get("tenant_id") || request.headers.get("x-tenant-id");
-    if (!tenantId) {
-      return errorResponse(400, requestId, headers, "tenant_id required");
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
     }
+    const tenantId = tenant.tenantId;
     // Read from shared DB (compliance_evidence) — the canonical evidence table
     // written by automation-evaluator, ai-orchestrator cron, and manual uploads.
     const sharedDb = env.ATLAS_SHARED_DB;
@@ -465,7 +513,19 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
         }));
         const nextCursor = hasNext ? String((sliced[sliced.length - 1] as any).created_at) : null;
 
-        return jsonResponse({ items, nextCursor, count: items.length }, 200, headers);
+        // Get total count for pagination display
+        let total = items.length;
+        try {
+          const countRow = await sharedDb
+            .prepare(`SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = ?`)
+            .bind(tenantId)
+            .first<{ cnt: number }>();
+          if (countRow) total = countRow.cnt;
+        } catch {
+          /* count is best-effort */
+        }
+
+        return jsonResponse({ items, nextCursor, count: items.length, total }, 200, headers);
       }
 
       // Fallback: read from legacy evidence_index in D1_COMPLIANCE
@@ -516,7 +576,14 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
   }
 
   if (url.pathname === "/api/v1/evidence" && method === "POST") {
-    return handleEvidenceIngest(request, env, requestId, headers);
+    let tenant: TenantContext;
+    try {
+      tenant = await requireTenant(request, env as unknown as Record<string, unknown>);
+    } catch (err) {
+      if (err instanceof AuthError) return errorResponse(err.status, requestId, headers, err.message);
+      return errorResponse(500, requestId, headers, "Auth error");
+    }
+    return handleEvidenceIngest(request, env, requestId, headers, tenant.tenantId);
   }
 
   // POST /api/v1/evidence/:id/link — supports both numeric (legacy) and UUID (shared DB) IDs
@@ -710,14 +777,13 @@ async function evidenceRoutes(ctx: RouteContext): Promise<Response | null> {
         if (sharedDb) {
           for (const controlRef of item.controlRefs) {
             // Parse "SOC2-CC6.1" → framework="SOC2", controlId="CC6.1"
-            const dashIdx = controlRef.indexOf("-");
-            const framework = dashIdx > 0 ? controlRef.slice(0, dashIdx) : controlRef;
-            const controlId = dashIdx > 0 ? controlRef.slice(dashIdx + 1) : controlRef;
+            // Uses shared parseControlRef to handle multi-segment prefixes (ISO-27001, NIST-CSF)
+            const { framework, controlId } = parseControlRef(controlRef);
 
             try {
               await sharedDb
                 .prepare(
-                  `INSERT INTO compliance_evidence
+                  `INSERT OR IGNORE INTO compliance_evidence
                  (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 )
@@ -827,6 +893,10 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
     return handlePolicyEvaluate(request, env, requestId, headers);
   }
 
+  if (url.pathname === "/api/v1/policies/evaluate-all" && method === "POST") {
+    return handleBulkPolicyEvaluate(request, env, requestId, headers);
+  }
+
   // CDT (Compliance Decision Tree) evaluation — evidence-based control status
   if (url.pathname === "/api/v1/cdt/evaluate" && method === "GET") {
     let tenant: TenantContext;
@@ -844,7 +914,18 @@ async function policiesRoutes(ctx: RouteContext): Promise<Response | null> {
     if (!sharedDb) return errorResponse(503, requestId, headers, "Database unavailable");
 
     const framework = url.searchParams.get("framework") ?? undefined;
-    const evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    let evaluations: Awaited<ReturnType<typeof evaluateControls>>;
+    try {
+      evaluations = await evaluateControls(sharedDb, tenant.tenantId, framework);
+    } catch (evalErr) {
+      log("error", "controls.evaluate_failed", { requestId, err: String(evalErr) });
+      return errorResponse(
+        503,
+        requestId,
+        headers,
+        "Compliance evaluation temporarily unavailable",
+      );
+    }
     const scores = scoreFromEvaluations(evaluations);
 
     return jsonResponse({ controls: evaluations, scores, requestId }, 200, headers);
@@ -1515,7 +1596,10 @@ async function handlePolicyTemplates(
   }
 
   try {
-    await ensurePolicyInfrastructure(db);
+    if (!policyInfraReady) {
+      await ensurePolicyInfrastructure(db);
+      policyInfraReady = true;
+    }
     const templates = await listPolicyTemplates(db);
     const body = {
       templates: templates.map((tpl) => ({
@@ -1607,11 +1691,25 @@ async function handlePolicyGenerate(
   const input = body?.input && typeof body.input === "object" ? body.input : {};
 
   try {
+    if (!policyInfraReady) {
+      await ensurePolicyInfrastructure(db);
+      policyInfraReady = true;
+    }
+
+    const tenantRow = await db
+      .prepare(`SELECT name, industry FROM tenants WHERE id = ? LIMIT 1`)
+      .bind(tenant.tenantId)
+      .first<{ name: string; industry: string | null }>();
+    const tenantName = tenantRow?.name ?? tenant.tenantId;
+    const tenantIndustry = tenantRow?.industry ?? "";
+
     const genStart = Date.now();
     const groqApiKey = (env as any).GROQ_API_KEY;
     const result = await generatePolicyDocument({
       db,
       tenantId: tenant.tenantId,
+      tenantName,
+      tenantIndustry,
       templateKey,
       input,
       groqApiKey,
@@ -1741,6 +1839,70 @@ async function handlePolicyEvaluate(
       error: err instanceof Error ? err.message : String(err),
     });
     return errorResponse(500, requestId, headers, "Failed to evaluate policy");
+  }
+}
+
+async function handleBulkPolicyEvaluate(
+  request: Request,
+  env: Env,
+  requestId: string,
+  headers: Record<string, string>,
+) {
+  let tenant: Awaited<ReturnType<typeof requireTenant>>;
+  try {
+    tenant = await requireTenant(request, env as unknown as Record<string, unknown>, [
+      "policies:manage",
+    ]);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return errorResponse(err.status, requestId, headers, err.message);
+    }
+    throw err;
+  }
+
+  const sharedDb = resolveD1(env);
+  if (!sharedDb) {
+    return errorResponse(503, requestId, headers, "Database unavailable");
+  }
+
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // empty body is fine — defaults to {}
+  }
+
+  const input = body?.input && typeof body.input === "object" ? body.input : {};
+
+  try {
+    const evalStart = Date.now();
+    const result = await evaluateAndStoreEvidence(sharedDb, tenant.tenantId, input);
+    recordLatency("bulkPolicyEvaluate", Date.now() - evalStart);
+
+    log("info", "policies.evaluate-all.success", {
+      requestId,
+      tenantId: tenant.tenantId,
+      passed: result.passed,
+      failed: result.failed,
+      unknown: result.unknown,
+    });
+
+    return jsonResponse(
+      {
+        ...result,
+        evaluatedAt: new Date().toISOString(),
+        requestId,
+      },
+      200,
+      headers,
+    );
+  } catch (err) {
+    log("error", "policies.evaluate-all.error", {
+      requestId,
+      tenantId: tenant.tenantId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return errorResponse(500, requestId, headers, "Failed to evaluate policies");
   }
 }
 
@@ -2030,7 +2192,18 @@ async function buildSnapshot(env: Env, tenantId: string): Promise<ComplianceSnap
 
   try {
     // ── Framework coverage (real data from D1) ──
-    const frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    // Read tenant-selected frameworks; fall back to defaults if not configured
+    let frameworks = ["SOC2", "ISO27001", "NIST CSF"];
+    try {
+      const fwRow = await (env.ATLAS_SHARED_DB ?? db)
+        .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+        .bind(tenantId)
+        .first<{ value: string }>();
+      if (fwRow?.value) {
+        const parsed = JSON.parse(fwRow.value);
+        if (Array.isArray(parsed) && parsed.length > 0) frameworks = parsed;
+      }
+    } catch {}
     const frameworkSummary: ComplianceSnapshot["frameworkSummary"] = [];
     for (const fw of frameworks) {
       try {
@@ -2629,8 +2802,8 @@ async function handleSnapshot(
   requestId: string,
   headers: Record<string, string>,
   method: "GET" | "HEAD",
+  tenantId: string,
 ) {
-  const tenantId = url.searchParams.get("tenantId") || DEFAULT_TENANT;
   const start = Date.now();
   try {
     await ensureSchema(env);
@@ -2650,8 +2823,19 @@ async function handleSnapshot(
       });
     }
 
-    const fresh = await buildSnapshot(env, tenantId);
-    await persistSnapshot(env, tenantId, fresh);
+    let fresh: ComplianceSnapshot;
+    try {
+      fresh = await buildSnapshot(env, tenantId);
+    } catch (buildErr) {
+      log("error", "snapshot.build_failed", { requestId, tenantId, err: String(buildErr) });
+      return new Response(JSON.stringify({ error: "Snapshot build failed", requestId }), {
+        status: 503,
+        headers: mergeHeaders(headers, { "content-type": "application/json" }),
+      });
+    }
+    await persistSnapshot(env, tenantId, fresh).catch((e) =>
+      log("warn", "snapshot.persist_failed", { requestId, tenantId, err: String(e) }),
+    );
     const enriched: ComplianceSnapshot = { ...fresh, ageSeconds: 0 };
     log("info", "snapshot.fresh", {
       requestId,
@@ -2741,6 +2925,7 @@ async function handleEvidenceIngest(
   env: Env,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId?: string,
 ) {
   const ingestStart = Date.now();
   const bucket = resolveR2(env);
@@ -2785,7 +2970,8 @@ async function handleEvidenceIngest(
     );
   }
 
-  const tenantId = normalizeString(body.tenantId, DEFAULT_TENANT);
+  // C-1 FIX: Use authenticated tenant ID; ignore body.tenantId to prevent cross-tenant writes
+  const tenantId = authenticatedTenantId || normalizeString(body.tenantId, DEFAULT_TENANT);
   const pack = normalizeString(body.pack, DEFAULT_PACK);
   const subject = normalizeString(body.subject, DEFAULT_SUBJECT);
 
@@ -2831,6 +3017,10 @@ async function handleEvidenceIngest(
   if (env.ATLAS_SHARED_DB) {
     try {
       const evidenceId = crypto.randomUUID();
+      // Extract control context from payload when available (e.g. verification attestations)
+      const payload = body.payload as Record<string, unknown>;
+      const controlId = typeof payload?.controlId === "string" ? payload.controlId : null;
+      const framework = typeof payload?.framework === "string" ? payload.framework : null;
       await env.ATLAS_SHARED_DB.prepare(
         `INSERT OR IGNORE INTO compliance_evidence
            (id, tenant_id, framework, control_id, evidence_type, source, source_id,
@@ -2840,8 +3030,8 @@ async function handleEvidenceIngest(
         .bind(
           evidenceId,
           tenantId,
-          null, // framework — unknown for manual uploads
-          "MANUAL", // control_id placeholder
+          framework,
+          controlId,
           pack, // evidence_type
           "manual", // source
           hash, // source_id = content hash
@@ -2908,10 +3098,23 @@ async function handleEvidenceGet(
   hash: string,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const bucket = resolveR2(env);
   if (!bucket) {
     return errorResponse(503, requestId, headers, "Evidence store unavailable");
+  }
+
+  // C-1 FIX: Verify evidence belongs to the authenticated tenant before returning
+  const db = resolveD1(env);
+  if (db) {
+    const row = await db
+      .prepare("SELECT tenant_id FROM evidence_index WHERE hash = ? LIMIT 1")
+      .bind(hash)
+      .first<{ tenant_id: string }>();
+    if (row && row.tenant_id !== authenticatedTenantId) {
+      return errorResponse(403, requestId, headers, "Evidence not accessible for this tenant");
+    }
   }
 
   try {
@@ -2955,6 +3158,7 @@ async function handleEvidenceSearch(
   url: URL,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const searchStart = Date.now();
   const db = resolveD1(env);
@@ -2964,7 +3168,8 @@ async function handleEvidenceSearch(
 
   await ensureSchema(env);
 
-  const tenantId = url.searchParams.get("tenantId")?.trim() || undefined;
+  // C-1 FIX: Always scope search to the authenticated tenant
+  const tenantId: string | undefined = authenticatedTenantId;
   const pack = url.searchParams.get("pack")?.trim() || undefined;
   const subject = url.searchParams.get("subject")?.trim() || undefined;
   const limit = parseLimit(url.searchParams.get("limit"));
@@ -3063,6 +3268,7 @@ async function handleEvidenceVerify(
   hash: string,
   requestId: string,
   headers: Record<string, string>,
+  authenticatedTenantId: string,
 ) {
   const verifyStart = Date.now();
   const bucket = resolveR2(env);
@@ -3095,6 +3301,10 @@ async function handleEvidenceVerify(
       )
       .bind(hash)
       .first<Record<string, string>>();
+    // C-1 FIX: Verify evidence belongs to authenticated tenant
+    if (row && row.tenant_id !== authenticatedTenantId) {
+      return errorResponse(403, requestId, headers, "Evidence not accessible for this tenant");
+    }
     const integrity = recomputed === hash;
     const resp = new Response(
       JSON.stringify({
@@ -3250,6 +3460,59 @@ function validateEnv(env: Env): void {
   }
 }
 
+async function refreshAllTenantSnapshots(env: Env): Promise<void> {
+  const runId = crypto.randomUUID().slice(0, 8);
+  log("info", "cron.snapshot.start", { runId });
+
+  await ensureSchema(env);
+
+  // Fetch active tenants from shared DB; fall back to compliance DB
+  const db = env.ATLAS_SHARED_DB ?? resolveD1(env);
+  if (!db) {
+    log("warn", "cron.snapshot.no_db", { runId });
+    return;
+  }
+
+  let tenantIds: string[];
+  try {
+    const { results } = await db
+      .prepare("SELECT DISTINCT id FROM tenants LIMIT 100")
+      .all<{ id: string }>();
+    tenantIds = (results ?? []).map((r) => r.id);
+  } catch {
+    // tenants table may not exist in compliance DB — use default
+    tenantIds = [DEFAULT_TENANT];
+  }
+
+  if (tenantIds.length === 0) {
+    tenantIds = [DEFAULT_TENANT];
+  }
+
+  const settled = await Promise.allSettled(
+    tenantIds.map(async (tenantId) => {
+      const snapshot = await buildSnapshot(env, tenantId);
+      await persistSnapshot(env, tenantId, snapshot);
+      return tenantId;
+    }),
+  );
+
+  let ok = 0;
+  let fail = 0;
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      ok++;
+    } else {
+      fail++;
+      log("error", "cron.snapshot.tenant_error", {
+        runId,
+        error: String(result.reason),
+      });
+    }
+  }
+
+  log("info", "cron.snapshot.done", { runId, tenants: tenantIds.length, ok, fail });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -3297,5 +3560,9 @@ export default {
     }
 
     return errorResponse(404, requestId, headers, "Not Found");
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(refreshAllTenantSnapshots(env));
   },
 };

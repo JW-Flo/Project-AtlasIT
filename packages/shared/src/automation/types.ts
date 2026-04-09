@@ -9,7 +9,10 @@ export type TriggerType =
   | "app_disconnected"
   | "app_health_changed"
   | "schedule"
-  | "compliance_score_changed";
+  | "compliance_score_changed"
+  | "nhi_token_expiring"
+  | "nhi_token_expired"
+  | "incident_sla_breached";
 
 export type ActionType =
   | "provision_app_access"
@@ -21,7 +24,9 @@ export type ActionType =
   | "sync_directory"
   | "create_incident"
   | "update_compliance_status"
-  | "request_access_review";
+  | "request_access_review"
+  | "rotate_nhi_credential"
+  | "revoke_nhi_token";
 
 export type ConditionOperator =
   | "equals"
@@ -57,6 +62,10 @@ export interface TriggerConfig {
   framework?: string;
   threshold?: number;
   direction?: "above" | "below";
+  /** For NHI token triggers */
+  nhiCredentialId?: string;
+  expiresAt?: string;
+  gracePeriodDays?: number;
 }
 
 export interface AutomationRule {
@@ -180,4 +189,32 @@ export interface RuleTemplate {
   triggerConfig: TriggerConfig;
   conditions: RuleCondition[];
   actions: RuleAction[];
+}
+
+/** Dry-run simulation result for previewing automation rule behavior */
+export interface ConditionResult {
+  field: string;
+  operator: ConditionOperator;
+  expected: string | string[] | number;
+  actual: unknown;
+  passed: boolean;
+}
+
+export interface ActionPreview {
+  type: ActionType;
+  order: number;
+  config: Record<string, unknown>;
+  interpolated: Record<string, string>;
+  description: string;
+}
+
+export interface SimulationResult {
+  ruleId: string;
+  ruleName: string;
+  enabled: boolean;
+  triggered: boolean;
+  triggerMatch: boolean;
+  conditionResults: ConditionResult[];
+  actionsPreview: ActionPreview[];
+  complianceImpact: { framework: string; controls: { id: string; name: string }[] }[];
 }

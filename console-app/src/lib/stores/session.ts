@@ -1,5 +1,10 @@
 import { writable } from "svelte/store";
 
+export interface TenantBranding {
+  logoUrl?: string;
+  accentColor?: string;
+}
+
 export interface SessionData {
   authenticated: boolean;
   email?: string;
@@ -10,6 +15,7 @@ export interface SessionData {
   impersonating?: boolean;
   impersonatedBy?: string;
   orgName?: string;
+  branding?: TenantBranding;
 }
 
 export const session = writable<SessionData | null>(null);
@@ -19,6 +25,7 @@ let fetched = false;
 
 export async function fetchSession(): Promise<SessionData | null> {
   if (fetched) {
+    sessionLoading.set(false);
     let current: SessionData | null = null;
     session.subscribe((v) => (current = v))();
     return current;
@@ -45,4 +52,10 @@ export function clearSession() {
   session.set(null);
   fetched = false;
   sessionLoading.set(true);
+}
+
+/** Force a fresh fetch from the server, bypassing the in-memory cache. */
+export async function refreshSession(): Promise<SessionData | null> {
+  fetched = false;
+  return fetchSession();
 }

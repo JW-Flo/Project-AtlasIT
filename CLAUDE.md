@@ -35,14 +35,16 @@
 
 ## Checkpoint SOP
 
-Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), pause to checkpoint before continuing:
+Once sufficient work has been completed on a feature branch (typically 3+ commits or a logical milestone), execute the full checkpoint **end-to-end without pausing or asking the user between steps**:
 
 1. **Review** — Diff branch against main, verify all changes are intentional and tests pass
 2. **Rebase** — `git fetch origin main && git rebase origin/main` to resolve conflicts early
-3. **PR** — Open a PR with a summary and test plan (`gh pr create`)
-4. **Merge** — Merge the PR once checks pass (`gh pr merge <num> --merge`)
-5. **Validate** — Smoke-test deployed endpoints (health checks, key routes) to confirm deployment
+3. **PR** — Push branch, then open a PR via GitHub API: `curl -X POST .../pulls`
+4. **Merge** — Merge the PR via GitHub API: `curl -X PUT .../pulls/<num>/merge -d '{"merge_method":"squash"}'`
+5. **Validate** — Fetch merged main, verify CI status via GitHub API (`curl .../actions/runs?branch=main&per_page=1`), then smoke-test deployed endpoints (`bash scripts/smoke-test.sh <worker> <url>` for console-app, orchestrator, compliance-worker)
 6. **Continue** — Create a new branch for the next batch of work
+
+**Execute all 6 steps autonomously.** Do not stop after step 3 to ask "want me to merge?" — the SOP is the instruction. Only pause if a step fails (CI red, smoke test failure, merge conflict).
 
 Do not accumulate unbounded work on a branch without checkpointing. This prevents painful rebases, ensures incremental review, and catches deployment issues early.
 
@@ -56,21 +58,30 @@ Do not accumulate unbounded work on a branch without checkpointing. This prevent
 
 ## GitHub & PR Workflow
 
-Use `gh` CLI for all GitHub operations — it is authenticated as JW-Flo.
-Never use `curl + $GH_PAT` directly (`GH_PAT` is in 1Password but not exported to the shell).
+### Tool Priority for GitHub Operations
+
+1. **`curl` + GitHub API** — Primary method for all GitHub operations (PRs, issues, merges, comments, CI status). Uses `$GH_PAT` env var for authentication.
+2. **MCP GitHub tools** (`mcp__github__*`) — Use when available as an alternative to curl.
+3. **`gh` CLI** — Fallback if installed; not always available in all environments.
+
+Use `curl` with `$GH_PAT` for GitHub API calls. Example:
+
+```bash
+curl -s -X POST -H "Authorization: token $GH_PAT" -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/JW-Flo/Project-AtlasIT/pulls" -d '{"title":"...","head":"...","base":"main","body":"..."}'
+```
 
 Full PR workflow:
 
 1. Create feature branch: `feat/<desc>` or `phase<N>/<desc>`
 2. Commit with concise why-focused messages (no session URLs)
-3. Push and open PR: `gh pr create --title "..." --body "..."`
-4. Request Copilot review: `gh pr edit <num> --add-reviewer copilot`
-5. Wait ~60s, check: `gh pr view <num> --json reviews,comments`
-6. Address actionable findings; if no findings after 1-2 checks → merge
-7. Merge: `gh pr merge <num> --squash`
-8. Delete remote branch: `git push origin --delete <branch>`
-
-Do not poll Copilot more than 2-3 times. If nothing reported, merge and move on.
+3. **Self-review (mandatory before pushing to main):**
+   - Read the full diff (`git diff main..HEAD`) and review every changed file for: bugs, security issues (auth bypass, tenant data leakage, injection), type safety, edge cases, error handling, and consistency with codebase patterns
+   - Fix all issues found — this is not optional. Do not merge with known defects.
+   - Commit remediation as a separate commit so fixes are visible in history
+4. Push and open PR via GitHub API: `curl -X POST .../pulls`
+5. Merge via GitHub API: `curl -X PUT .../pulls/<num>/merge -d '{"merge_method":"squash"}'`
+6. Delete remote branch: `curl -X DELETE .../git/refs/heads/<branch>` or `git push origin --delete <branch>`
 
 ## CI/CD & Deploy Validation
 
@@ -88,11 +99,22 @@ Wrangler `[env.<name>]` sections do NOT inherit top-level bindings. Each named e
 
 ### Deploy workflow conventions
 
-- All deploy jobs are in `.github/workflows/deploy-on-merge.yml`
+- All deploy jobs are in `.github/workflows/deploy-on-merge.yml` — triggers on push to main and workflow_dispatch
 - Workers behind CF Access need `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` env vars for smoke tests
 - Subdirectory `pnpm install --no-frozen-lockfile` is required for workers not in the root `workspaces` array (core-api, dispatch-worker) and for workspace members with local devDependencies (ai-orchestrator, compliance-worker)
 - Use `WRANGLER_LOG=debug` env var for deploy debugging (NOT `--log-level` which doesn't exist on `wrangler deploy`)
 - Smoke tests use `scripts/smoke-test.sh <worker-name> <base-url>` — supports CF Access auth headers when env vars are set
+- **Shared package build**: Always `rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json` in `packages/shared` before deploying — stale `.tsbuildinfo` can cause empty `dist/`
+
+### Post-deploy validation (partial deploys)
+
+When deploying fewer than all workers (e.g. only console-app), validate cross-worker synchronization:
+
+1. **API contract check** — verify console-app API routes that proxy to other workers still get valid responses (not 502/503)
+2. **Shared types** — if `packages/shared` types changed, all consumers (console-app, ai-orchestrator, compliance-worker) must be redeployed together
+3. **D1 migrations** — if new migrations were added, run `npx wrangler d1 migrations apply` before deploying workers that depend on new schema
+4. **Cron dependencies** — if orchestrator cron duties reference new API endpoints on compliance-worker or console-app, those workers must deploy first
+5. **Smoke test all affected workers** — `bash scripts/smoke-test.sh <worker> <url>` for each deployed worker
 
 ### Workspace membership
 
@@ -113,6 +135,53 @@ Never launch multiple write agents against the same branch — they will overwri
 - **sonnet**: implementing against existing patterns, code review, judgment calls, most feature work
 - **opus**: novel architecture decisions, hard debugging, system design trade-offs
   Do not use opus for cookie-cutter or pattern-following work.
+
+## Key Files Quick Reference
+
+Read these files directly at session start — do NOT explore or search for them.
+
+| Area                          | File                                                             |
+| ----------------------------- | ---------------------------------------------------------------- |
+| **Automation engine**         | `packages/shared/src/automation/engine.ts`                       |
+| **Automation types**          | `packages/shared/src/automation/types.ts`                        |
+| **Compliance mapping**        | `packages/shared/src/automation/compliance-mapping.ts`           |
+| **Suggestion generation**     | `packages/shared/src/automation/learner.ts`                      |
+| **NL rule builder**           | `packages/shared/src/automation/nl-builder.ts`                   |
+| **Shared barrel**             | `packages/shared/src/index.ts` → `automation/index.ts`           |
+| **Orchestrator cron**         | `ai-orchestrator/src/index.ts`                                   |
+| **Console layout/nav**        | `console-app/src/lib/components/layout/AppFrame.svelte`          |
+| **Session store**             | `console-app/src/lib/stores/session.ts`                          |
+| **Compliance store**          | `console-app/src/lib/stores/compliance.ts`                       |
+| **Theme store**               | `console-app/src/lib/stores/theme.ts`                            |
+| **Toast system**              | `console-app/src/lib/components/feedback/toastStore.ts`          |
+| **Integrations catalog**      | `console-app/src/lib/data/integrations.ts`                       |
+| **Dashboard page**            | `console-app/src/routes/console/+page.svelte`                    |
+| **Compliance page**           | `console-app/src/routes/console/compliance/+page.svelte`         |
+| **Automation page**           | `console-app/src/routes/console/automation/+page.svelte`         |
+| **Workflows page**            | `console-app/src/routes/console/workflows/+page.svelte`          |
+| **Directory page**            | `console-app/src/routes/console/directory/+page.svelte`          |
+| **Automation rules API**      | `console-app/src/routes/api/automation/rules/+server.ts`         |
+| **Simulate API**              | `console-app/src/routes/api/automation/simulate/+server.ts`      |
+| **Evaluate API**              | `console-app/src/routes/api/automation/evaluate/+server.ts`      |
+| **Evidence feed API**         | `console-app/src/routes/api/evidence-feed/+server.ts`            |
+| **Compliance scores API**     | `console-app/src/routes/api/tenant-compliance/scores/+server.ts` |
+| **Automation server helpers** | `console-app/src/lib/server/automation.ts`                       |
+| **Action handlers**           | `console-app/src/lib/server/automation-actions.ts`               |
+| **Auth provider**             | `console-app/src/lib/auth/provider.ts`                           |
+| **DB migrations**             | `migrations/` (numbered SQL files)                               |
+| **CDT rules**                 | `shared/services/cdt/` (60 compliance rules)                     |
+| **CI/CD**                     | `.github/workflows/deploy-on-merge.yml`                          |
+| **Billing types/plans**       | `packages/shared/src/billing/plans.ts`                           |
+| **Tier gating**               | `packages/shared/src/billing/tier-gating.ts`                     |
+| **Billing API**               | `console-app/src/routes/api/billing/+server.ts`                  |
+| **Stripe checkout**           | `console-app/src/routes/api/billing/checkout/+server.ts`         |
+| **Stripe webhook**            | `console-app/src/routes/api/billing/webhook/+server.ts`          |
+| **Pricing page**              | `console-app/src/routes/pricing/+page.svelte`                    |
+| **Analytics dashboard**       | `console-app/src/routes/console/analytics/+page.svelte`          |
+| **Analytics API**             | `console-app/src/routes/api/analytics/dashboard/+server.ts`      |
+| **Compliance packs API**      | `console-app/src/routes/api/compliance-packs/+server.ts`         |
+| **Compliance packs page**     | `console-app/src/routes/console/compliance/packs/+page.svelte`   |
+| **Billing settings**          | `console-app/src/routes/console/settings/billing/+page.svelte`   |
 
 ## Project Architecture
 

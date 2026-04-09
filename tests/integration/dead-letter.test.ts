@@ -90,9 +90,7 @@ function createMockDB(): MockDB {
           }
         } else if (upperSql.startsWith("DELETE")) {
           if (tables[tableName]) {
-            tables[tableName] = rows.filter(
-              (row) => !matchesWhereClause(row, sql, params),
-            );
+            tables[tableName] = rows.filter((row) => !matchesWhereClause(row, sql, params));
           }
         }
 
@@ -130,9 +128,7 @@ function extractTableName(sql: string): string {
 }
 
 function applyWhereFilters(rows: Row[], sql: string, params: unknown[]): Row[] {
-  const whereMatch = sql.match(
-    /WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|\s+GROUP|\s*$)/i,
-  );
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+LIMIT|\s+GROUP|\s*$)/i);
   if (!whereMatch) return [...rows];
 
   const conditions = whereMatch[1].split(/\s+AND\s+/i);
@@ -320,7 +316,7 @@ describe("Dead letter queue integration", () => {
 
       const res = await app.request(
         "/api/v1/dead-letter",
-        { method: "GET" },
+        { method: "GET", headers: { "X-Tenant-ID": "tenant-1" } },
         env,
       );
 
@@ -362,11 +358,7 @@ describe("Dead letter queue integration", () => {
         },
       );
 
-      const res = await app.request(
-        "/api/v1/dead-letter/stats/summary",
-        { method: "GET" },
-        env,
-      );
+      const res = await app.request("/api/v1/dead-letter/stats/summary", { method: "GET" }, env);
 
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -393,11 +385,7 @@ describe("Dead letter queue integration", () => {
         replay_status: null,
       });
 
-      const res = await app.request(
-        "/api/v1/dead-letter/dlq-1",
-        { method: "GET" },
-        env,
-      );
+      const res = await app.request("/api/v1/dead-letter/dlq-1", { method: "GET" }, env);
 
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -408,11 +396,7 @@ describe("Dead letter queue integration", () => {
     });
 
     it("returns 404 for missing entry", async () => {
-      const res = await app.request(
-        "/api/v1/dead-letter/nonexistent",
-        { method: "GET" },
-        env,
-      );
+      const res = await app.request("/api/v1/dead-letter/nonexistent", { method: "GET" }, env);
 
       expect(res.status).toBe(404);
       const body = await res.json();

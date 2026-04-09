@@ -5,10 +5,12 @@
   import { page } from "$app/stores";
   import { init as initUx } from "../../instrumentation/ux-metrics";
   import ToastContainer from "../feedback/ToastContainer.svelte";
+  import CopilotPanel from "../copilot/CopilotPanel.svelte";
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
-  import { fetchSession } from "../../stores/session";
+  import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
+  import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache, hydrateComplianceScore } from "../../stores/compliance";
   import {
     LayoutDashboard,
     Shield,
@@ -30,7 +32,14 @@
     Activity,
     FileText,
     ClipboardCheck,
+    FileCheck,
     Zap,
+    Menu,
+    X,
+    Search,
+    Lightbulb,
+    BarChart3,
+    Sparkles,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -44,11 +53,18 @@
     icon: any;
   }
 
+  /** Server-side session data passed from +layout.server.ts */
+  export let serverSession: any = null;
+
   let userRoles: string[] = [];
+  let isSuperAdmin = false;
   let userEmail = "";
   let userDisplayName = "";
   let isImpersonating = false;
   let impersonatedBy = "";
+  let orgName = "";
+  let logoUrl = "";
+  let accentColor = "";
 
   const navSections: NavSection[] = [
     {
@@ -64,6 +80,9 @@
         { href: "/console/compliance", label: "Controls", icon: ShieldCheck },
         { href: "/console/compliance/feed", label: "Evidence", icon: Activity },
         { href: "/console/policies", label: "Policies", icon: FileText },
+        { href: "/console/insights", label: "Insights", icon: Lightbulb },
+        { href: "/console/compliance/attestations", label: "Attestations", icon: FileCheck },
+        { href: "/console/compliance/packs", label: "Packs", icon: FolderCog },
       ],
     },
     {
@@ -72,6 +91,7 @@
         { href: "/console/access-reviews", label: "Access Reviews", icon: ClipboardCheck },
         { href: "/access-requests", label: "Access Requests", icon: KeyRound },
         { href: "/console/incidents", label: "Incidents", icon: AlertTriangle },
+        { href: "/console/nhi", label: "NHI Governance", icon: ShieldCheck },
         { href: "/console/jml/changelog", label: "JML Changelog", icon: FileText },
       ],
     },
@@ -88,6 +108,7 @@
       items: [
         { href: "/console/apps", label: "Connected Apps", icon: AppWindow },
         { href: "/console/marketplace", label: "Marketplace", icon: Store },
+        { href: "/console/discovery", label: "Discovery", icon: Search },
       ],
     },
     {
@@ -99,26 +120,89 @@
     },
   ];
 
-  $: computedSections = userRoles.includes("super-admin")
+  $: computedSections = isSuperAdmin || userRoles.includes("super-admin")
     ? [...navSections.slice(0, -1), {
         ...navSections[navSections.length - 1],
         items: [
           ...navSections[navSections.length - 1].items,
           { href: "/console/admin", label: "Admin", icon: Shield },
+          { href: "/console/admin/operations", label: "Operations", icon: Activity },
         ],
       }]
     : navSections;
 
   async function exitImpersonation() {
+    clearComplianceCache();
     await fetch("/api/admin/impersonate/exit", { method: "POST" });
     location.href = "/console/admin";
   }
 
   $: current = $page.url.pathname;
 
+  // Collect all nav hrefs for precise active-state matching
+  $: allNavHrefs = computedSections.flatMap((s) => s.items.map((i) => i.href));
+
   function isActive(href: string, pathname: string): boolean {
     if (href === "/console") return pathname === "/console" || pathname === "/console/";
-    return pathname.startsWith(href);
+    if (!pathname.startsWith(href)) return false;
+    // If another nav item has a longer prefix that also matches, this one isn't active
+    // e.g. on /console/compliance/feed, /console/compliance should NOT highlight
+    for (const other of allNavHrefs) {
+      if (other !== href && other.startsWith(href) && pathname.startsWith(other)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Only allow safe CSS color values to prevent injection via stored branding
+  function sanitizeColor(color: string): string {
+    const trimmed = color.trim();
+    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return trimmed; // hex
+    if (/^rgb[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // rgb/rgba
+    if (/^hsl[a]?\([^)]+\)$/.test(trimmed)) return trimmed;   // hsl/hsla
+    if (/^[a-zA-Z]{2,30}$/.test(trimmed)) return trimmed;      // named color
+    return "";
+  }
+
+  function applyBranding(logo: string, accent: string) {
+    logoUrl = logo;
+    accentColor = sanitizeColor(accent);
+    if (typeof document !== "undefined") {
+      if (accentColor) {
+        document.documentElement.style.setProperty("--accent-brand", accentColor);
+      } else {
+        document.documentElement.style.removeProperty("--accent-brand");
+      }
+    }
+  }
+
+  function applySessionData(sessionData: any) {
+    if (!sessionData?.authenticated) return;
+    userRoles = sessionData.roles || [];
+    isSuperAdmin = sessionData.superAdmin || false;
+    userEmail = sessionData.email || "";
+    userDisplayName = sessionData.displayName || sessionData.email || "User";
+    isImpersonating = sessionData.impersonating || false;
+    impersonatedBy = sessionData.impersonatedBy || "";
+    orgName = sessionData.orgName || "";
+    applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
+    // Populate the shared session store so child pages can react to it.
+    // Only set on client — during SSR, child reactive blocks would trigger
+    // fetch calls that fail or hang during server rendering.
+    if (typeof window !== "undefined") {
+      sessionStore.set(sessionData);
+    }
+  }
+
+  async function loadSession(force = false) {
+    const sessionData = await (force ? refreshSession() : fetchSession());
+    applySessionData(sessionData);
+  }
+
+  // Reactively apply session data whenever serverSession changes (e.g., after login navigates via goto)
+  $: if (serverSession?.authenticated) {
+    applySessionData(serverSession);
   }
 
   onMount(async () => {
@@ -127,19 +211,47 @@
       await getRuntimeConfig();
     } catch {}
 
-    try {
-      const sessionData = await fetchSession();
-      if (sessionData) {
-        userRoles = sessionData.roles || [];
-        userEmail = sessionData.email || "";
-        userDisplayName = sessionData.displayName || sessionData.email || "";
-        isImpersonating = sessionData.impersonating || false;
-        impersonatedBy = sessionData.impersonatedBy || "";
+    // If server session wasn't available, fall back to client-side fetch
+    if (!serverSession?.authenticated) {
+      try {
+        await loadSession();
+      } catch {}
+    }
+
+    // Re-apply branding whenever settings page saves new values
+    const onBrandingUpdated = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail) {
+        // Apply branding directly from the saved values
+        applyBranding(detail.logoUrl || "", detail.accentColor || "");
+      } else {
+        // Fallback: refetch session
+        loadSession(true).catch(() => {});
       }
-    } catch {}
+    };
+    window.addEventListener("branding-updated", onBrandingUpdated);
 
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
+
+    // Use server-prefetched compliance scores when available, else fetch client-side
+    const prefetchedScores = $page.data?.complianceScores;
+    if (prefetchedScores) {
+      hydrateComplianceScore(prefetchedScores);
+    } else {
+      fetchComplianceScore().catch(() => {});
+    }
+
+    return () => window.removeEventListener("branding-updated", onBrandingUpdated);
+  });
+
+  // Poll compliance score every 60s
+  let compliancePollTimer: ReturnType<typeof setInterval>;
+  onMount(() => {
+    compliancePollTimer = setInterval(() => {
+      refreshComplianceScore().catch(() => {});
+    }, 60000);
+    return () => clearInterval(compliancePollTimer);
   });
 
   let unreadCount = 0;
@@ -163,6 +275,30 @@
   onMount(() => () => unsub());
 
   let profileOpen = false;
+  let mobileMenuOpen = false;
+  let sidebarCollapsed = false;
+  let copilotOpen = false;
+
+  // Persist sidebar state in localStorage
+  if (typeof window !== "undefined") {
+    sidebarCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebar-collapsed", String(sidebarCollapsed));
+    }
+  }
+
+  function closeMobileMenu() {
+    mobileMenuOpen = false;
+  }
+
+  // Close mobile menu on navigation
+  $: if (current) {
+    mobileMenuOpen = false;
+  }
 
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement;
@@ -171,38 +307,53 @@
     }
   }
 
+  function handleCopilotShortcut(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      copilotOpen = !copilotOpen;
+    }
+  }
+
   $: initials = userDisplayName
     ? userDisplayName.split(/[\s@]/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join("")
     : "?";
 
   async function signOut() {
+    clearComplianceCache();
     await fetch("/api/auth/logout", { method: "POST" });
     location.href = "/console/login";
   }
 
+  const ACRONYMS = new Set(["nhi", "jml", "sso", "mfa", "api", "sla", "ai", "rbac", "oidc", "saml", "scim"]);
   function titleCase(s: string): string {
-    return s.replace(/\b\w/g, c => c.toUpperCase());
+    return s.replace(/\b\w+/g, w => ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1));
   }
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window on:click={handleClickOutside} on:keydown={handleCopilotShortcut} />
 
-<div class="flex min-h-dvh bg-background text-foreground">
+<div class="flex h-dvh bg-background text-foreground overflow-hidden">
   <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-primary focus:text-primary-foreground focus:px-3 focus:py-1.5 focus:rounded-md focus:text-sm">
     Skip to content
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex w-[240px] flex-col border-r bg-card shrink-0">
+  <aside class="hidden md:flex flex-col border-r bg-card shrink-0 sidebar-transition {sidebarCollapsed ? 'w-[64px]' : 'w-[240px]'}">
     <!-- Logo -->
-    <div class="flex items-center gap-2 px-6 h-16 border-b">
-      <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-        <span class="text-primary-foreground font-bold text-sm">A</span>
-      </div>
-      <span class="font-semibold text-lg tracking-tight">AtlasIT</span>
-    </div>
+    <a href="/console" class="flex items-center gap-2 h-16 border-b hover:bg-accent/50 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-6'}" title={sidebarCollapsed ? (orgName || 'AtlasIT') : ''}>
+      {#if logoUrl}
+        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover shrink-0" />
+      {:else}
+        <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0" style={accentColor ? `background-color: ${accentColor}` : ''}>
+          <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
+        </div>
+      {/if}
+      {#if !sidebarCollapsed}
+        <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+      {/if}
+    </a>
 
-    {#if isImpersonating}
+    {#if isImpersonating && !sidebarCollapsed}
       <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
         <span>Viewing as tenant</span>
         <button on:click={exitImpersonation} class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Exit</button>
@@ -210,26 +361,37 @@
     {/if}
 
     <!-- Navigation -->
-    <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+    <nav class="flex-1 overflow-y-auto py-4 {sidebarCollapsed ? 'px-2' : 'px-3'} space-y-6">
       {#each computedSections as section}
         <div>
-          <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {section.title}
-          </div>
+          {#if !sidebarCollapsed}
+            <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {section.title}
+            </div>
+          {/if}
           <div class="space-y-0.5">
             {#each section.items as item}
               {@const active = isActive(item.href, current)}
               <a
                 href={item.href}
+                title={sidebarCollapsed ? item.label : ''}
                 class={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center rounded-md text-sm font-medium transition-colors",
+                  sidebarCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2 border-l-2",
                   active
-                    ? "bg-primary/10 text-primary border-l-2 border-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent",
+                    ? sidebarCollapsed
+                      ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)]"
+                      : "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                    : sidebarCollapsed
+                      ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
                 )}
+                style={active && accentColor ? `color: ${accentColor}` : ""}
               >
                 <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
-                {item.label}
+                {#if !sidebarCollapsed}
+                  {item.label}
+                {/if}
               </a>
             {/each}
           </div>
@@ -237,26 +399,142 @@
       {/each}
     </nav>
 
+    <!-- Collapse toggle -->
+    <div class="border-t {sidebarCollapsed ? 'px-2' : 'px-3'} py-2">
+      <button
+        on:click={toggleSidebar}
+        class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} w-full rounded-md py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        <ChevronDown class="h-4 w-4 shrink-0 {sidebarCollapsed ? 'rotate-[-90deg]' : 'rotate-90'} transition-transform" />
+        {#if !sidebarCollapsed}
+          <span>Collapse</span>
+        {/if}
+      </button>
+    </div>
+
     <!-- User section at bottom -->
-    <div class="border-t p-3">
-      <a href="/console/profile" class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
+    <div class="border-t {sidebarCollapsed ? 'p-2' : 'p-3'}">
+      <a href="/console/profile" class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} rounded-md py-2 hover:bg-accent transition-colors" title={sidebarCollapsed ? userDisplayName : ''}>
         <Avatar {initials} size="sm" />
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
-          {#if userEmail && userEmail !== userDisplayName}
-            <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
-          {/if}
-        </div>
+        {#if !sidebarCollapsed}
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
+            {#if userEmail && userEmail !== userDisplayName}
+              <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
+            {/if}
+          </div>
+        {/if}
       </a>
     </div>
   </aside>
 
+  <!-- Mobile drawer overlay -->
+  {#if mobileMenuOpen}
+    <div class="fixed inset-0 z-40 md:hidden">
+      <!-- Backdrop -->
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div
+        class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        on:click={closeMobileMenu}
+      ></div>
+
+      <!-- Drawer panel -->
+      <aside class="absolute inset-y-0 left-0 w-[280px] max-w-[85vw] flex flex-col bg-card border-r shadow-xl overflow-y-auto">
+        <!-- Logo -->
+        <div class="flex items-center justify-between gap-2 px-4 h-16 border-b shrink-0">
+          <a href="/console" class="flex items-center gap-2" on:click={closeMobileMenu}>
+            {#if logoUrl}
+              <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover" />
+            {:else}
+              <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center" style={accentColor ? `background-color: ${accentColor}` : ''}>
+                <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
+              </div>
+            {/if}
+            <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+          </a>
+          <button
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            on:click={closeMobileMenu}
+            aria-label="Close navigation menu"
+          >
+            <X class="h-5 w-5" />
+          </button>
+        </div>
+
+        {#if isImpersonating}
+          <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
+            <span>Viewing as tenant</span>
+            <button on:click={exitImpersonation} class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Exit</button>
+          </div>
+        {/if}
+
+        <!-- Navigation -->
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-6">
+          {#each computedSections as section}
+            <div>
+              <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {section.title}
+              </div>
+              <div class="space-y-0.5">
+                {#each section.items as item}
+                  {@const active = isActive(item.href, current)}
+                  <a
+                    href={item.href}
+                    on:click={closeMobileMenu}
+                    class={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors border-l-2",
+                      active
+                        ? "bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
+                    )}
+                    style={active && accentColor ? `color: ${accentColor}` : ""}
+                  >
+                    <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
+                    {item.label}
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </nav>
+
+        <!-- User section at bottom -->
+        <div class="border-t p-3 shrink-0">
+          <a href="/console/profile" on:click={closeMobileMenu} class="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-accent transition-colors">
+            <Avatar {initials} size="sm" />
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
+              {#if userEmail && userEmail !== userDisplayName}
+                <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
+              {/if}
+            </div>
+          </a>
+        </div>
+      </aside>
+    </div>
+  {/if}
+
   <!-- Main area -->
   <div class="flex-1 min-w-0 flex flex-col">
     <!-- Topbar -->
-    <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-6 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-      <!-- Left: Breadcrumb area -->
+    <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <!-- Left: Hamburger + Breadcrumb -->
       <div class="flex items-center gap-2 text-sm text-muted-foreground">
+        <button
+          class="inline-flex md:hidden items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors -ml-1"
+          on:click={() => mobileMenuOpen = !mobileMenuOpen}
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+        >
+          {#if mobileMenuOpen}
+            <X class="h-5 w-5" />
+          {:else}
+            <Menu class="h-5 w-5" />
+          {/if}
+        </button>
         <a href="/console" class="hover:text-foreground transition-colors">Console</a>
         {#if current !== "/console" && current !== "/console/"}
           <ChevronDown class="h-3 w-3 -rotate-90" />
@@ -282,6 +560,35 @@
             </span>
           {/if}
         </a>
+
+        <!-- Compliance Score Badge -->
+        {#if $complianceScore}
+          <a
+            href="/console/compliance"
+            class="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-semibold transition-colors
+              {$complianceScore.overallScore >= 80
+                ? 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-green-500/25'
+                : $complianceScore.overallScore >= 60
+                  ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/25'
+                  : 'bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25'}"
+            title="Compliance: {$complianceScore.frameworks.map(f => `${f.framework} ${f.grade} (${f.score}%)`).join(', ')}"
+            aria-label="Compliance score: {$complianceScore.grade} {$complianceScore.overallScore}%"
+          >
+            <ShieldCheck class="h-3.5 w-3.5" />
+            <span>{$complianceScore.grade}</span>
+            <span class="text-[10px] opacity-75">{$complianceScore.overallScore}%</span>
+          </a>
+        {/if}
+
+        <!-- Copilot toggle -->
+        <button
+          class="inline-flex items-center justify-center h-9 w-9 rounded-md transition-colors {copilotOpen ? 'bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground hover:text-foreground'}"
+          on:click={() => copilotOpen = !copilotOpen}
+          title="Compliance Copilot (Cmd+K)"
+          aria-label="Toggle compliance copilot"
+        >
+          <Sparkles class="h-[18px] w-[18px]" />
+        </button>
 
         <!-- Theme toggle -->
         <button
@@ -352,10 +659,33 @@
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto" id="main">
-      <div class="max-w-[1280px] mx-auto px-6 py-8">
+      <div class="max-w-[1280px] mx-auto px-4 py-6 md:px-6 md:py-8">
         <slot />
       </div>
       <ToastContainer />
+      <!-- Footer -->
+      <footer class="border-t py-4 px-6 text-center text-xs text-muted-foreground">
+        &copy; {new Date().getFullYear()} AtlasIT &middot;
+        <a href="/privacy" class="hover:text-foreground transition-colors">Privacy</a> &middot;
+        <a href="/privacy/dsar" class="hover:text-foreground transition-colors">Data Requests</a> &middot;
+        <a href="/terms" class="hover:text-foreground transition-colors">Terms</a> &middot;
+        <a href="/support" class="hover:text-foreground transition-colors">Support</a> &middot;
+        <a href="https://status.atlasit.pro" class="hover:text-foreground transition-colors">Status</a>
+      </footer>
     </main>
   </div>
+
+  <!-- Copilot Panel -->
+  <CopilotPanel bind:open={copilotOpen} onClose={() => copilotOpen = false} />
 </div>
+
+<style>
+  :global(.nav-active) {
+    color: var(--accent-brand, hsl(var(--primary))) !important;
+    border-color: var(--accent-brand, hsl(var(--primary))) !important;
+    background-color: color-mix(in srgb, var(--accent-brand, hsl(var(--primary))) 10%, transparent) !important;
+  }
+  .sidebar-transition {
+    transition: width 200ms ease-in-out;
+  }
+</style>

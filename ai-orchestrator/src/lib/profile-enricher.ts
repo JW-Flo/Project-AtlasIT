@@ -30,18 +30,15 @@ export async function enrichUserProfile(
 
   if (!row) return null;
 
-  const raw = safeJsonParse<Record<string, unknown>>(
-    row.raw_attributes as string,
-    {},
-  );
+  const raw = safeJsonParse<Record<string, unknown>>(row.raw_attributes as string, {});
 
   // 2. Normalize IdP-specific raw_attributes
-  const firstName = (raw.firstName ??
-    raw.givenName ??
-    (raw as any)?.name?.givenName) as string | undefined;
-  const lastName = (raw.lastName ??
-    raw.familyName ??
-    (raw as any)?.name?.familyName) as string | undefined;
+  const firstName = (raw.firstName ?? raw.givenName ?? (raw as any)?.name?.givenName) as
+    | string
+    | undefined;
+  const lastName = (raw.lastName ?? raw.familyName ?? (raw as any)?.name?.familyName) as
+    | string
+    | undefined;
   const phone = (raw.mobilePhone ?? raw.phone) as string | undefined;
   const manager = (raw.manager ?? raw.managerEmail) as string | undefined;
   const location = (raw.city ?? raw.orgUnitPath) as string | undefined;
@@ -61,8 +58,30 @@ export async function enrichUserProfile(
   const groups = (memberRows ?? []).map((r) => r.groupName);
   const groupIds = (memberRows ?? []).map((r) => r.groupId);
 
-  // 4. Load app access from group_app_mappings
+  // 4. Load app access from group_app_mappings (legacy) + role_app_entitlements (new)
   let appAccess: CanonicalUserProfile["appAccess"] = [];
+  const seenApps = new Set<string>();
+
+  // 4a. Role-based entitlements (primary — if roles are configured)
+  try {
+    const { getUserRoleIds, resolveRoleEntitlements } = await import("@atlasit/shared");
+    const roleIds = await getUserRoleIds(db, tenantId, row.id as string, groupIds);
+    if (roleIds.length > 0) {
+      const entitlements = await resolveRoleEntitlements(db, tenantId, roleIds);
+      for (const ent of entitlements) {
+        seenApps.add(ent.appId);
+        appAccess.push({
+          appId: ent.appId,
+          role: ent.appRole,
+          groupId: ent.fromRoleId,
+        });
+      }
+    }
+  } catch {
+    // roles tables may not exist yet — fall through to legacy
+  }
+
+  // 4b. Legacy group_app_mappings (backward compat — fills gaps not covered by roles)
   if (groupIds.length > 0) {
     const placeholders = groupIds.map(() => "?").join(",");
     const { results: mappingRows } = await db
@@ -73,16 +92,44 @@ export async function enrichUserProfile(
       )
       .bind(tenantId, ...groupIds)
       .all<{ appId: string; role: string; groupId: string }>();
-    appAccess = mappingRows ?? [];
+
+    for (const mapping of mappingRows ?? []) {
+      if (!seenApps.has(mapping.appId)) {
+        seenApps.add(mapping.appId);
+        appAccess.push(mapping);
+      }
+    }
+  }
+
+  // 4c. Auto-seed: if tenant has zero group_app_mappings and user has groups,
+  // create default mappings from connected apps so JML works out of the box
+  if (appAccess.length === 0 && groupIds.length > 0) {
+    await seedDefaultMappingsIfEmpty(db, tenantId, groupIds);
+    // Re-query after seeding
+    if (groupIds.length > 0) {
+      const placeholders = groupIds.map(() => "?").join(",");
+      const { results: seededRows } = await db
+        .prepare(
+          `SELECT app_id as appId, role, group_id as groupId
+           FROM group_app_mappings
+           WHERE tenant_id = ? AND group_id IN (${placeholders})`,
+        )
+        .bind(tenantId, ...groupIds)
+        .all<{ appId: string; role: string; groupId: string }>();
+      for (const mapping of seededRows ?? []) {
+        if (!seenApps.has(mapping.appId)) {
+          seenApps.add(mapping.appId);
+          appAccess.push(mapping);
+        }
+      }
+    }
   }
 
   return {
     id: row.id as string,
     externalId: row.external_id as string,
     email: row.email as string,
-    displayName:
-      (row.display_name as string) ??
-      `${firstName ?? ""} ${lastName ?? ""}`.trim(),
+    displayName: (row.display_name as string) ?? `${firstName ?? ""} ${lastName ?? ""}`.trim(),
     status: row.status as CanonicalUserProfile["status"],
     source: (row.source as string) ?? "unknown",
     tenantId,
@@ -107,4 +154,77 @@ function safeJsonParse<T>(val: string | null | undefined, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Seed default group_app_mappings for a tenant that has none.
+ * Maps each of the tenant's directory groups to every connected app
+ * (from app_credentials) with role "member" and suggested=1 so admins
+ * can review/confirm later.
+ *
+ * This ensures JML works out of the box for new tenants without requiring
+ * manual mapping configuration.
+ */
+async function seedDefaultMappingsIfEmpty(
+  db: D1Database,
+  tenantId: string,
+  userGroupIds: string[],
+): Promise<void> {
+  // Check if tenant already has any mappings at all
+  const existing = await db
+    .prepare("SELECT COUNT(*) as cnt FROM group_app_mappings WHERE tenant_id = ?")
+    .bind(tenantId)
+    .first<{ cnt: number }>();
+
+  if (existing && existing.cnt > 0) return;
+
+  // Get connected apps for this tenant
+  const { results: apps } = await db
+    .prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?")
+    .bind(tenantId)
+    .all<{ app_id: string }>();
+
+  if (!apps?.length) return;
+
+  // Get all directory groups for the tenant (not just the user's groups)
+  const { results: allGroups } = await db
+    .prepare("SELECT id FROM directory_groups WHERE tenant_id = ? LIMIT 50")
+    .bind(tenantId)
+    .all<{ id: string }>();
+
+  const groupIds = allGroups?.length ? allGroups.map((g) => g.id) : userGroupIds;
+  if (groupIds.length === 0) return;
+
+  const now = new Date().toISOString();
+  const stmts = [];
+
+  for (const group of groupIds) {
+    for (const app of apps) {
+      const id = crypto.randomUUID().replace(/-/g, "");
+      stmts.push(
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'member', 1, ?, ?)`,
+          )
+          .bind(id, tenantId, group, app.app_id, now, now),
+      );
+    }
+  }
+
+  // Batch insert (D1 supports up to 100 statements per batch)
+  for (let i = 0; i < stmts.length; i += 100) {
+    await db.batch(stmts.slice(i, i + 100));
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      message: "Auto-seeded default group_app_mappings",
+      tenantId,
+      groups: groupIds.length,
+      apps: apps.length,
+      mappings: stmts.length,
+    }),
+  );
 }

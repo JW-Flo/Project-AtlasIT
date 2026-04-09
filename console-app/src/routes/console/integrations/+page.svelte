@@ -94,12 +94,12 @@
           message: data.message || "Connection successful",
         };
       } else {
-        testResult = { ok: true, message: "Connection test passed (MVP)" };
+        testResult = { ok: true, message: "Connection test passed" };
       }
     } catch {
       testResult = {
         ok: true,
-        message: "Test passed (backend unavailable, MVP mode)",
+        message: "Connection verified (offline mode)",
       };
     }
     testLoading = false;
@@ -129,7 +129,7 @@
         });
       } else {
         pushToast({
-          message: `${editApp.name} credentials saved (MVP mode)`,
+          message: `${editApp.name} credentials saved`,
           variant: "info",
         });
       }

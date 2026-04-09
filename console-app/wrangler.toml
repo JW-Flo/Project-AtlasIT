@@ -3,7 +3,7 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "src/worker-entry.ts"
 compatibility_date = "2025-09-27"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
 
 # Production routing (AtlasIT.pro). Add new pages for access requests & incidents if needed later via redirects.
 # Removed deprecated/unsupported top-level zone_id to silence Wrangler warning.
@@ -37,7 +37,28 @@ routes = [
 	"www.atlasit.pro/api/health*",
 	"www.atlasit.pro/api/platform*",
 	"www.atlasit.pro/api/support*",
+	"www.atlasit.pro/api/privacy/*",
 	"www.atlasit.pro/support*",
+	"www.atlasit.pro/terms*",
+	"www.atlasit.pro/privacy*",
+	"www.atlasit.pro/trust/*",
+	"www.atlasit.pro/marketplace*",
+	"www.atlasit.pro/api/trust/*",
+	"www.atlasit.pro/api/marketplace*",
+	"www.atlasit.pro/api/questionnaires*",
+	"www.atlasit.pro/api/compliance-intelligence/*",
+	"www.atlasit.pro/api/roles*",
+	"www.atlasit.pro/api/nhi*",
+	"www.atlasit.pro/api/discovery*",
+	"www.atlasit.pro/api/access-reviews*",
+	"www.atlasit.pro/api/activity*",
+	"www.atlasit.pro/api/evidence-collection/*",
+	"www.atlasit.pro/api/integrations/*",
+	"www.atlasit.pro/api/dead-letter*",
+	"www.atlasit.pro/api/user/*",
+	"www.atlasit.pro/api/billing*",
+	"www.atlasit.pro/pricing*",
+	"www.atlasit.pro/api/compliance-packs*",
 	"www.atlasit.pro/_app/*",
 	"www.atlasit.pro/favicon.png",
 	"www.atlasit.pro/" # root catch for redirect
@@ -58,14 +79,17 @@ CORE_API_BASE = "https://api.atlasit.pro"
 DISPATCH_BASE = "https://dispatch.atlasit.pro"
 ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
 ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
-# Auth: Cloudflare Access JWT validation (required in production)
-# CF_ACCESS_TEAM_DOMAIN: your Access team domain, e.g. https://your-team.cloudflareaccess.com
-# CF_ACCESS_AUD: the AUD tag for this Access Application (find in Zero Trust > Access > Applications)
-CF_ACCESS_TEAM_DOMAIN = "https://atlasit.cloudflareaccess.com"
-CF_ACCESS_AUD = "" # ACTION REQUIRED: Create an Access Application in Zero Trust > Access > Applications for the console, then paste its AUD tag here
-SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.pro"
-ALLOWED_ACCESS_EMAILS = "joe.whittle@atlasit.pro"
-TENANT_ID = "atlasit-prod"
+SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.app"
+TENANT_ID = "atlasit"
+# Secret bindings (set via `wrangler secret put <KEY> --name atlasit-console`):
+# GROQ_API_KEY — Required for NL automation rule builder and AI features
+# STRIPE_SECRET_KEY — Stripe secret key for billing/checkout (1Password: "Stripe - AtlasIT")
+# STRIPE_PUBLISHABLE_KEY — Stripe publishable key for client-side checkout
+# STRIPE_WEBHOOK_SECRET — Stripe webhook signing secret
+# STRIPE_PRICE_STARTER_MONTHLY — Stripe price ID for Starter monthly
+# STRIPE_PRICE_STARTER_ANNUAL — Stripe price ID for Starter annual
+# STRIPE_PRICE_PROFESSIONAL_MONTHLY — Stripe price ID for Professional monthly
+# STRIPE_PRICE_PROFESSIONAL_ANNUAL — Stripe price ID for Professional annual
 # DEV_AUTH_BYPASS must NEVER be set here — only in local dev env vars alongside NODE_ENV=development
 
 [observability]
@@ -88,3 +112,11 @@ id = "4f08086308004796bfd7cab01c34b006"
 [[services]]
 binding = "COMPLIANCE_WORKER"
 service = "atlasit-compliance-worker"
+
+[[services]]
+binding = "MARKETPLACE_WORKER"
+service = "atlasit-marketplace"
+
+[[services]]
+binding = "EMAIL_WORKER"
+service = "atlasit-email-worker"

@@ -1,34 +1,38 @@
 import type { Handle, HandleServerError } from "@sveltejs/kit";
-import { redirect } from "@sveltejs/kit";
-import { activeProviders, type UserPrincipal } from "./lib/auth/provider";
+import { redirect, isRedirect, isHttpError } from "@sveltejs/kit";
+import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
-
-/** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 60s. */
-const SESSION_REFRESH_INTERVAL_MS = 60 * 1000;
-
-/** Max age (seconds) for the session cache cookie before we re-read KV. */
-const SESSION_CACHE_MAX_AGE = 300; // 5 minutes
+import { validateEncryptionConfig } from "$lib/server/credentials";
 
 /**
- * Encode user principal into a base64url cache cookie.
- * Not a security boundary — the atlas_session KV sid is the real auth token.
- * This just avoids a KV read on every request.
+ * Routes that are intentionally public (no authentication required).
+ * Everything else under /api/* is deny-by-default.
  */
-function encodeSessionCache(user: UserPrincipal): string {
-  return btoa(JSON.stringify(user))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/", // login, register, SSO, MFA verify
+  "/api/health", // health checks
+  "/api/trust/", // public trust center
+  "/api/billing/webhook", // Stripe webhooks (verified by signature)
+  "/api/platform/health", // platform status (public)
+  "/api/support", // public support form submissions
+  "/api/privacy/dsar", // public data subject access requests
+];
+
+function isPublicApiRoute(pathname: string): boolean {
+  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-function decodeSessionCache(cookie: string): UserPrincipal | null {
-  try {
-    const padded = cookie.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(padded)) as UserPrincipal;
-  } catch {
-    return null;
-  }
-}
+let encryptionValidated = false;
+
+/** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 5 min. */
+const SESSION_REFRESH_INTERVAL_MS = 300_000;
+
+/**
+ * KV cacheTtl (seconds) — Cloudflare KV caches reads at the edge for this
+ * duration, eliminating repeated KV fetches without trusting an unsigned cookie.
+ * Minimum is 60s; we use 60s for a tight revalidation window.
+ */
+const KV_CACHE_TTL = 60;
 
 /**
  * Returns true only when running in a real local dev environment.
@@ -47,8 +51,7 @@ function isDevAuthBypass(env: Record<string, string | undefined>): boolean {
       JSON.stringify({
         level: "warn",
         event: "auth.dev_bypass_active",
-        message:
-          "DEV_AUTH_BYPASS is active — this MUST NOT appear in production logs",
+        message: "DEV_AUTH_BYPASS is active — this MUST NOT appear in production logs",
       }),
     );
   }
@@ -56,133 +59,92 @@ function isDevAuthBypass(env: Record<string, string | undefined>): boolean {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+  if (!encryptionValidated && event.platform?.env) {
+    validateEncryptionConfig(event.platform.env as Record<string, unknown>);
+    encryptionValidated = true;
+  }
+
   const sessionId = event.cookies.get("atlas_session");
   let user: UserPrincipal | null = null;
 
   // Typed env: avoid spreading `any` through the rest of the handler.
   // We use `Record<string, string | undefined>` because wrangler vars are strings.
-  const envRaw = event.platform?.env as unknown as Record<
-    string,
-    string | undefined
-  >;
+  const envRaw = event.platform?.env as unknown as Record<string, string | undefined>;
   const envAny = event.platform?.env as Record<string, unknown> | undefined;
 
   const devBypass = isDevAuthBypass(envRaw ?? {});
 
   // ------------------------------------------------------------------
-  // 1. Provider resolution (Cloudflare Access JWT)
+  // 1. Authentication is session-based (email/password via /api/auth/login)
   // ------------------------------------------------------------------
-  if (!devBypass && !sessionId) {
-    for (const p of activeProviders) {
-      try {
-        const resolved = await p.resolve({
-          headers: event.request.headers,
-          env: {
-            CF_ACCESS_AUD: envRaw?.["CF_ACCESS_AUD"],
-            CF_ACCESS_TEAM_DOMAIN: envRaw?.["CF_ACCESS_TEAM_DOMAIN"],
-            ALLOWED_ACCESS_EMAILS: envRaw?.["ALLOWED_ACCESS_EMAILS"],
-            SUPER_ADMIN_EMAIL: envRaw?.["SUPER_ADMIN_EMAIL"],
-          },
-          kv: envAny?.["KV_SESSIONS"] as KVNamespace | undefined,
-          db: envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined,
-        });
-        if (resolved) {
-          user = resolved;
-
-          // Enrich with tenantId from D1 if the provider didn't set one
-          if (!user.tenantId) {
-            try {
-              const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
-              if (db) {
-                const row = await db
-                  .prepare(
-                    "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
-                  )
-                  .bind(user.email)
-                  .first<{ tenant_id: string }>();
-                if (row?.tenant_id) {
-                  user.tenantId = row.tenant_id;
-                }
-              }
-            } catch (e) {
-              console.error(
-                JSON.stringify({
-                  level: "error",
-                  event: "auth.tenant_lookup_failed",
-                  email: user.email,
-                  err: String(e),
-                }),
-              );
-            }
-          }
-
-          // Persist minimal session in KV so subsequent requests do not
-          // re-validate the JWT (certs fetch is cached by the runtime, but
-          // still best to avoid repeated signature verification).
-          const sid = crypto.randomUUID();
-          const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-          if (kv) {
-            await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
-            event.cookies.set("atlas_session", sid, {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: 604800,
-            });
-          }
-          break;
-        }
-      } catch (err) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            event: "auth.provider_error",
-            provider: p.name,
-            err: String(err),
-          }),
-        );
-      }
-    }
-  }
 
   // ------------------------------------------------------------------
   // 2. Session lookup — use cache cookie to avoid KV reads
   // ------------------------------------------------------------------
   if (!user && !devBypass && sessionId) {
-    // Try the cache cookie first (no KV read)
-    const cachedSession = event.cookies.get("atlas_session_cache");
-    if (cachedSession) {
-      user = decodeSessionCache(cachedSession);
+    // Always validate session against KV (source of truth).
+    // cacheTtl reduces KV read cost at the edge without trusting unsigned cookies.
+    try {
+      const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
+      if (kv) {
+        const sessionData = await kv.get(sessionId, { cacheTtl: KV_CACHE_TTL });
+        if (sessionData) {
+          user = JSON.parse(sessionData) as UserPrincipal;
+        }
+      }
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auth.session_lookup_failed",
+          err: String(e),
+        }),
+      );
     }
 
-    // If no cache or cache is stale, fall back to KV
-    if (!user) {
-      try {
-        const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-        if (kv) {
-          const sessionData = await kv.get(sessionId);
-          if (sessionData) {
-            user = JSON.parse(sessionData) as UserPrincipal;
-            // Set cache cookie so next requests skip KV
-            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: SESSION_CACHE_MAX_AGE,
-            });
-          }
-        }
-      } catch (e) {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            event: "auth.session_lookup_failed",
-            err: String(e),
-          }),
+    // Clear any stale session cache cookies from before this hardening
+    if (event.cookies.get("atlas_session_cache")) {
+      event.cookies.delete("atlas_session_cache", { path: "/" });
+    }
+
+    // Ensure superAdmin flag is always derived authoritatively on every request.
+    // SUPER_ADMIN_EMAIL grants super-admin regardless of stored session value,
+    // so a role change or email match takes effect without requiring re-login.
+    if (user) {
+      const superAdminEmail = (envRaw?.["SUPER_ADMIN_EMAIL"] || "").toLowerCase();
+      const isSuperByEmail = Boolean(
+        superAdminEmail && user.email?.toLowerCase() === superAdminEmail,
+      );
+      const isSuperByRole = (user.roles ?? []).includes("super-admin");
+      user.superAdmin = isSuperByEmail || isSuperByRole;
+      // Ensure roles array includes "super-admin" so UI nav guards work
+      if (user.superAdmin && !(user.roles ?? []).includes("super-admin")) {
+        user.roles = [...(user.roles ?? []), "super-admin"];
+      }
+    }
+
+    // Sessions missing tenantId are invalid — invalidate and force re-login.
+    // Inferring tenant from DB (especially falling back to "first tenant") is a
+    // tenant-isolation risk and is not permitted.
+    if (user && !user.tenantId) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auth.session_missing_tenant_id",
+          message: "Session has no tenantId — invalidating",
+          email: user.email,
+        }),
+      );
+      user = null;
+      event.cookies.delete("atlas_session", { path: "/" });
+      const isApiRoute = event.url.pathname.startsWith("/api/");
+      if (isApiRoute) {
+        return new Response(
+          JSON.stringify({ error: "Session invalid", code: "session_invalid" }),
+          { status: 401, headers: { "content-type": "application/json" } },
         );
       }
+      throw redirect(302, "/console/login?error=session_invalid");
     }
 
     // Throttle lastSeenAt refresh — only write to KV every 5 minutes
@@ -196,14 +158,6 @@ export const handle: Handle = async ({ event, resolve }) => {
           if (kv) {
             await kv.put(sessionId, JSON.stringify(user), {
               expirationTtl: 604800,
-            });
-            // Refresh the cache cookie too
-            event.cookies.set("atlas_session_cache", encodeSessionCache(user), {
-              httpOnly: true,
-              secure: true,
-              sameSite: "lax",
-              path: "/",
-              maxAge: SESSION_CACHE_MAX_AGE,
             });
           }
         } catch {
@@ -233,60 +187,71 @@ export const handle: Handle = async ({ event, resolve }) => {
   event.locals.user = user;
 
   // ------------------------------------------------------------------
-  // 4. Structured auth decision log (no PII beyond email)
+  // 3b. Disabled tenant check — block all non-super-admin access
   // ------------------------------------------------------------------
-  try {
-    const jwtHeader = event.request.headers.get("cf-access-jwt-assertion");
-    const accessEmail = event.request.headers.get(
-      "cf-access-authenticated-user-email",
-    );
-    if (jwtHeader || accessEmail) {
-      console.log(
+  if (user && user.tenantId && !user.superAdmin) {
+    try {
+      const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
+      if (db) {
+        const tenantRow = await db
+          .prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1")
+          .bind(user.tenantId)
+          .first<{ status: string }>();
+        if (tenantRow?.status === "disabled") {
+          const isApiRoute = event.url.pathname.startsWith("/api/");
+          if (isApiRoute) {
+            return new Response(
+              JSON.stringify({ error: "Tenant account is disabled", code: "tenant_disabled" }),
+              { status: 403, headers: { "content-type": "application/json" } },
+            );
+          }
+          // Clear session cookies so the user is not stuck in a redirect loop
+          event.cookies.delete("atlas_session", { path: "/" });
+          event.cookies.delete("atlas_session_cache", { path: "/" });
+          throw redirect(302, "/console/login?error=tenant_disabled");
+        }
+      }
+    } catch (e) {
+      // Re-throw SvelteKit redirects and HTTP errors; only swallow DB errors
+      if (isRedirect(e) || isHttpError(e)) throw e;
+      console.error(
         JSON.stringify({
-          level: "info",
-          event: "auth.request",
-          accessEmail: accessEmail ?? null,
-          jwtPresent: !!jwtHeader,
-          authenticated: !!user,
-          provider: user?.provider ?? null,
-          path: event.url.pathname,
-          method: event.request.method,
-          ts: new Date().toISOString(),
+          level: "error",
+          event: "auth.tenant_status_check_failed",
+          err: String(e),
         }),
       );
     }
-  } catch {
-    // Logging must never block the request
   }
 
   // ------------------------------------------------------------------
-  // 5. Centralized RBAC enforcement for API routes
+  // 4. Centralized RBAC enforcement for API routes (deny-by-default)
   // ------------------------------------------------------------------
   if (event.url.pathname.startsWith("/api/")) {
-    const requiredRoles = matchRoutePermission(
-      event.url.pathname,
-      event.request.method,
-    );
+    // Public routes that don't require authentication
+    const isPublicRoute = isPublicApiRoute(event.url.pathname);
 
-    if (requiredRoles !== undefined) {
-      // null = any authenticated user; string[] = specific roles required
+    if (!isPublicRoute) {
+      // Deny-by-default: all /api/* routes require authentication unless explicitly public
       if (!user) {
-        return new Response(
-          JSON.stringify({ error: "Authentication required" }),
-          { status: 401, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ error: "Authentication required" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
 
-      if (requiredRoles !== null) {
+      // Check RBAC permissions for routes in the permission matrix
+      const requiredRoles = matchRoutePermission(event.url.pathname, event.request.method);
+      if (requiredRoles !== undefined && requiredRoles !== null) {
         // Super-admins bypass role checks
         if (!user.superAdmin) {
           const userRoles: string[] = user.roles ?? [];
           const hasRole = requiredRoles.some((r) => userRoles.includes(r));
           if (!hasRole) {
-            return new Response(
-              JSON.stringify({ error: "Insufficient permissions" }),
-              { status: 403, headers: { "content-type": "application/json" } },
-            );
+            return new Response(JSON.stringify({ error: "Insufficient permissions" }), {
+              status: 403,
+              headers: { "content-type": "application/json" },
+            });
           }
         }
       }
@@ -294,7 +259,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   // ------------------------------------------------------------------
-  // 6. Route protection: /console/* requires authentication
+  // 5. Route protection: /console/* requires authentication
   // ------------------------------------------------------------------
   if (
     event.url.pathname.startsWith("/console") &&
@@ -304,13 +269,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!user) {
       // API routes return 401; page routes redirect to login
       if (event.url.pathname.startsWith("/api/")) {
-        return new Response(
-          JSON.stringify({ error: "unauthorized", code: "auth_required" }),
-          {
-            status: 401,
-            headers: { "content-type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ error: "unauthorized", code: "auth_required" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
       throw redirect(302, "/console/login");
     }
@@ -328,8 +290,7 @@ export const handle: Handle = async ({ event, resolve }) => {
  * For API routes, SvelteKit serializes it as JSON automatically.
  */
 export const handleError: HandleServerError = ({ error, event }) => {
-  const message =
-    error instanceof Error ? error.message : "Internal server error";
+  const message = error instanceof Error ? error.message : "Internal server error";
 
   console.error(
     JSON.stringify({
@@ -341,6 +302,29 @@ export const handleError: HandleServerError = ({ error, event }) => {
       ts: new Date().toISOString(),
     }),
   );
+
+  // Expose error details only to super-admins via ?_debug=1.
+  // In production, even super-admins receive only the message — not the stack
+  // trace — to prevent accidental exposure through shared URLs or screenshots.
+  const debug = event.url.searchParams.get("_debug") === "1";
+  const user = event.locals.user as UserPrincipal | null | undefined;
+  const isSuperAdmin = Boolean(user?.superAdmin || (user?.roles ?? []).includes("super-admin"));
+  const isProduction = (event.platform?.env as Record<string, string | undefined> | undefined)?.[
+    "NODE_ENV"
+  ] !== "development";
+
+  if (debug && isSuperAdmin) {
+    if (isProduction) {
+      // Production: message only — no stack trace
+      return { message, code: "INTERNAL_ERROR" };
+    }
+    // Non-production: include partial stack for local debugging
+    const stack = error instanceof Error ? error.stack : String(error);
+    return {
+      message: `${message} | ${(stack || "").split("\n").slice(0, 3).join(" ")}`,
+      code: "INTERNAL_ERROR",
+    };
+  }
 
   // Never expose internal details to the client.
   return { message: "An unexpected error occurred", code: "INTERNAL_ERROR" };

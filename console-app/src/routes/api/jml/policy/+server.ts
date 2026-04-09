@@ -96,23 +96,9 @@ export const PUT: RequestHandler = async ({ request, platform, locals }) => {
   }
 };
 
-async function ensureTable(db: any): Promise<void> {
-  await db
-    .prepare(
-      `CREATE TABLE IF NOT EXISTS jml_policies (
-        tenant_id TEXT PRIMARY KEY,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        auto_joiner INTEGER NOT NULL DEFAULT 1,
-        auto_leaver INTEGER NOT NULL DEFAULT 1,
-        auto_mover INTEGER NOT NULL DEFAULT 1,
-        leaver_grace_ms INTEGER NOT NULL DEFAULT 0,
-        notify_manager INTEGER NOT NULL DEFAULT 1,
-        notify_user INTEGER NOT NULL DEFAULT 0,
-        require_joiner_approval INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )`,
-    )
-    .run();
+// H-7 FIX: Table created via migration 0018_jml_policies.sql
+async function ensureTable(_db: any): Promise<void> {
+  // No-op — table managed by migrations
 }
 
 function getSharedDb(platform: any): any {

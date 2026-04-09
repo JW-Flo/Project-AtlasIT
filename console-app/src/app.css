@@ -103,3 +103,83 @@ select option {
   background: hsl(var(--popover));
   color: hsl(var(--popover-foreground));
 }
+
+/* Mobile-specific improvements */
+@layer base {
+  /* Safe area insets for notched devices (iPhone X+, Android punch-holes) */
+  html {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Prevent iOS Safari zoom on input focus (inputs < 16px trigger zoom) */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Smoother touch scrolling */
+  .overflow-y-auto,
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text size adjust on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* Responsive table wrapper - allow horizontal scroll with visible indicator */
+@layer utilities {
+  .mobile-table-wrapper {
+    @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
+  }
+}
+
+/* Print styles for dashboard PDF export */
+@media print {
+  /* Hide non-content elements */
+  nav,
+  aside,
+  [data-sidebar],
+  [data-no-print],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Full-width content */
+  main {
+    margin: 0 !important;
+    padding: 0.5rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Cards look good on paper */
+  [class*="card"] {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+  }
+
+  /* Widget grid: 2 columns on paper */
+  .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.75rem !important;
+  }
+
+  /* Force light background for print */
+  body,
+  html {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 1cm;
+    size: landscape;
+  }
+}

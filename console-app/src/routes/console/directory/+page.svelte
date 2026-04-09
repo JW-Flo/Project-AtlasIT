@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { goto } from "$app/navigation";
+  import { integrations } from "$lib/data/integrations";
   import { push as pushToast } from "$lib/components/feedback/toastStore";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
@@ -14,7 +15,7 @@
   import Dialog from "$lib/components/ui/dialog.svelte";
   import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2 } from "lucide-svelte";
+  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2, ExternalLink, ScanSearch } from "lucide-svelte";
 
   // --- Types ---
   interface SyncStatus {
@@ -52,6 +53,32 @@
     suggested: boolean;
   }
 
+  interface NhiCredential {
+    id: string;
+    name: string;
+    type: string;
+    provider: string;
+    owner?: string;
+    lastUsed?: string;
+    expiry?: string;
+    riskScore: number;
+    status: "active" | "expired" | "revoked" | "rotation_pending";
+  }
+
+  function mapNhiFromApi(raw: Record<string, any>): NhiCredential {
+    return {
+      id: raw.id,
+      name: raw.displayName ?? raw.name ?? raw.display_name ?? "",
+      type: raw.credentialType ?? raw.type ?? raw.credential_type ?? "",
+      provider: raw.provider ?? "",
+      owner: raw.ownerEmail ?? raw.owner ?? raw.owner_email,
+      lastUsed: raw.lastUsedAt ?? raw.lastUsed ?? raw.last_used_at,
+      expiry: raw.expiresAt ?? raw.expiry ?? raw.expires_at,
+      riskScore: raw.riskScore ?? raw.risk_score ?? 0,
+      status: raw.status ?? "active",
+    };
+  }
+
   // --- State ---
   let syncStatus: SyncStatus = { connected: false };
   let users: DirectoryUser[] = [];
@@ -59,10 +86,43 @@
   let groups: DirectoryGroup[] = [];
   let mappings: Mapping[] = [];
 
+  let nhiCredentials: NhiCredential[] = [];
+  let discoveringNhi = false;
+
+  // NHI search, filters, pagination
+  let nhiSearch = "";
+  let nhiFilterType = "";
+  let nhiFilterProvider = "";
+  let nhiFilterStatus = "";
+  let nhiPage = 0;
+
+  $: filteredNhi = nhiCredentials.filter((n) => {
+    if (nhiSearch) {
+      const q = nhiSearch.toLowerCase();
+      if (
+        !n.name.toLowerCase().includes(q) &&
+        !n.provider.toLowerCase().includes(q) &&
+        !(n.owner || "").toLowerCase().includes(q)
+      ) return false;
+    }
+    if (nhiFilterType && n.type !== nhiFilterType) return false;
+    if (nhiFilterProvider && n.provider !== nhiFilterProvider) return false;
+    if (nhiFilterStatus && n.status !== nhiFilterStatus) return false;
+    return true;
+  });
+
+  $: nhiSearch, nhiFilterType, nhiFilterProvider, nhiFilterStatus, (nhiPage = 0);
+
+  $: pagedNhi = filteredNhi.slice(nhiPage * pageSize, (nhiPage + 1) * pageSize);
+  $: nhiTotalPages = Math.ceil(filteredNhi.length / pageSize);
+
+  $: nhiTypes = [...new Set(nhiCredentials.map((n) => n.type))].sort();
+  $: nhiProviders = [...new Set(nhiCredentials.map((n) => n.provider))].sort();
+
   let loading = true;
   let syncing = false;
   let suggesting = false;
-  let activeTab: "users" | "groups" | "mappings" = "users";
+  let activeTab: "users" | "groups" | "mappings" | "nhi" = "users";
 
   // Users pagination & search
   let userSearch = "";
@@ -95,6 +155,16 @@
   let addGroupLoading = false;
   let addGroupForm = { name: "", description: "" };
 
+  // Add Mapping dialog state
+  let addMappingOpen = false;
+  let addMappingLoading = false;
+  let addMappingForm = { groupId: "", appId: "", role: "member" };
+  let connectedApps: { appId: string; name: string }[] = [];
+
+  // Inline role editing
+  let editingRoleId: string | null = null;
+  let editingRoleValue = "";
+
   // Delete confirmation dialog state
   let deleteOpen = false;
   let deleteLoading = false;
@@ -116,7 +186,7 @@
         const data = await res.json();
         users = (data.users || []).map((u: any) => ({
           ...u,
-          name: u.display_name || u.name || u.email,
+          name: u.displayName || u.display_name || u.name || u.email,
         }));
         usersTotal = data.total || users.length;
       }
@@ -143,10 +213,49 @@
     } catch {}
   }
 
+  let nhiFetchError = "";
+
+  async function fetchNhi() {
+    nhiFetchError = "";
+    try {
+      const res = await fetch("/api/nhi?limit=200");
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = data.credentials || [];
+        nhiCredentials = rawList.map(mapNhiFromApi);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        nhiFetchError = data.error || `Failed to load NHI credentials (${res.status})`;
+        pushToast({ message: nhiFetchError, variant: "error" });
+      }
+    } catch (e: any) {
+      nhiFetchError = e?.message || "Failed to connect to NHI service";
+      pushToast({ message: nhiFetchError, variant: "error" });
+    }
+  }
+
+  async function discoverNhi() {
+    discoveringNhi = true;
+    try {
+      const res = await fetch("/api/nhi", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        pushToast({ message: data.message || "NHI discovery started", variant: "success" });
+        await fetchNhi();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        pushToast({ message: data.error || data.message || "Discovery failed", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Discovery request failed", variant: "error" });
+    }
+    discoveringNhi = false;
+  }
+
   async function loadAll() {
     loading = true;
     syncStatus = await fetchStatus();
-    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings()];
+    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings(), fetchNhi(), fetchConnectedApps()];
     await Promise.all(promises);
     loading = false;
 
@@ -313,6 +422,76 @@
     deleteTarget = null;
   }
 
+  async function fetchConnectedApps() {
+    try {
+      const res = await fetch("/api/integrations/connected");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.apps || []).map((a: any) => ({
+          appId: a.app_id || a.appId || a.id,
+          name: getAppName(a.app_id || a.appId || a.id),
+        }));
+      }
+    } catch {}
+  }
+
+  async function submitAddMapping() {
+    if (!addMappingForm.groupId || !addMappingForm.appId) return;
+    addMappingLoading = true;
+    try {
+      const res = await fetch("/api/directory/mappings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          groupId: addMappingForm.groupId,
+          appId: addMappingForm.appId,
+          role: addMappingForm.role || "member",
+        }),
+      });
+      if (res.ok) {
+        pushToast({ message: "Mapping created", variant: "success" });
+        addMappingOpen = false;
+        addMappingForm = { groupId: "", appId: "", role: "member" };
+        await fetchMappings();
+      } else {
+        const data = await res.json().catch(() => ({ error: "Failed to create mapping" }));
+        pushToast({ message: data.error || "Failed to create mapping", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Create mapping request failed", variant: "error" });
+    }
+    addMappingLoading = false;
+  }
+
+  async function updateMappingRole(id: string, role: string) {
+    try {
+      const res = await fetch(`/api/directory/mappings/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      if (res.ok) {
+        mappings = mappings.map((m) => (m.id === id ? { ...m, role } : m));
+        pushToast({ message: "Role updated", variant: "success" });
+      } else {
+        pushToast({ message: "Failed to update role", variant: "error" });
+      }
+    } catch {
+      pushToast({ message: "Update role request failed", variant: "error" });
+    }
+    editingRoleId = null;
+  }
+
+  function startEditRole(mapping: Mapping) {
+    editingRoleId = mapping.id;
+    editingRoleValue = mapping.role;
+  }
+
+  function getAppName(appId: string): string {
+    const app = integrations.find(i => i.id === appId);
+    return app?.name ?? appId;
+  }
+
   function formatTime(iso: string | undefined): string {
     if (!iso) return "Never";
     try {
@@ -332,10 +511,35 @@
     }
   }
 
+  function nhiRiskClass(score: number): string {
+    if (score <= 30) return "bg-green-100 text-green-800";
+    if (score <= 60) return "bg-yellow-100 text-yellow-800";
+    return "bg-red-100 text-red-800";
+  }
+
+  function nhiStatusClass(status: NhiCredential["status"]): string {
+    switch (status) {
+      case "active": return "bg-green-100 text-green-800";
+      case "expired": return "bg-red-100 text-red-800";
+      case "revoked": return "bg-gray-100 text-gray-800";
+      case "rotation_pending": return "bg-yellow-100 text-yellow-800";
+    }
+  }
+
+  function nhiStatusLabel(status: NhiCredential["status"]): string {
+    switch (status) {
+      case "active": return "Active";
+      case "expired": return "Expired";
+      case "revoked": return "Revoked";
+      case "rotation_pending": return "Rotation Pending";
+    }
+  }
+
   $: tabs = [
     { id: "users" as const, label: "Users" },
     { id: "groups" as const, label: "Groups" },
     { id: "mappings" as const, label: "Mappings" },
+    { id: "nhi" as const, label: "Non-Human" },
   ];
 
   const providerIcons: Record<string, string> = {
@@ -347,7 +551,7 @@
 
   onMount(() => {
     const tabParam = $page.url.searchParams.get("tab");
-    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users") {
+    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users" || tabParam === "nhi") {
       activeTab = tabParam;
     }
     loadAll();
@@ -375,8 +579,8 @@
         {#if syncStatus.connected}
           <p class="text-sm text-muted-foreground">
             Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
-            {syncStatus.userCount ?? users.length} users &middot;
-            {syncStatus.groupCount ?? groups.length} groups
+            {usersTotal || users.length} users &middot;
+            {groups.length} groups
           </p>
         {:else}
           <p class="text-sm text-muted-foreground">
@@ -385,7 +589,12 @@
         {/if}
       </div>
       <div class="flex items-center gap-2">
-        {#if !syncStatus.connected}
+        {#if activeTab === "nhi"}
+          <Button variant="outline" on:click={discoverNhi} disabled={discoveringNhi}>
+            <ScanSearch class="h-4 w-4 mr-1.5" />
+            {discoveringNhi ? "Discovering..." : "Discover NHIs"}
+          </Button>
+        {:else if !syncStatus.connected}
           <a href="/console/marketplace">
             <Button variant="outline">
               <Link class="h-4 w-4 mr-1.5" />
@@ -418,14 +627,14 @@
 
     <!-- Users tab -->
     {#if activeTab === "users"}
-      <div class="flex items-center justify-between gap-4 mb-4">
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
         <Input
           type="text"
           bind:value={userSearch}
-          placeholder="Search users by name, email, or department..."
-          class="max-w-md"
+          placeholder="Search users..."
+          class="sm:max-w-md"
         />
-        <Button on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
+        <Button class="shrink-0" on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
           <Plus class="h-4 w-4 mr-1.5" />
           Add User
         </Button>
@@ -437,13 +646,13 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Name</th>
-                  <th class="px-4 py-3 font-medium">Email</th>
-                  <th class="px-4 py-3 font-medium">Department</th>
-                  <th class="px-4 py-3 font-medium">Title</th>
-                  <th class="px-4 py-3 font-medium">Status</th>
-                  <th class="px-4 py-3 font-medium">Console Access</th>
-                  <th class="px-4 py-3 font-medium text-right"></th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Email</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Department</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Title</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Access</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium text-right"></th>
                 </tr>
               </thead>
               <tbody>
@@ -452,21 +661,24 @@
                     class="border-t hover:bg-muted/50 cursor-pointer"
                     on:click={() => goto(`/console/directory/users/${user.id}`)}
                   >
-                    <td class="px-4 py-3">{user.name}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.email}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.department || "-"}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{user.title || "-"}</td>
-                    <td class="px-4 py-3">
+                    <td class="px-3 sm:px-4 py-3">
+                      <div>{user.name}</div>
+                      <div class="text-xs text-muted-foreground sm:hidden">{user.email}</div>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{user.email}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.department || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.title || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3">
                       <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
                     </td>
-                    <td class="px-4 py-3">
+                    <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
                       {#if user.console_user_id}
-                        <Badge variant="secondary">Console Access</Badge>
+                        <Badge variant="secondary">Console</Badge>
                       {:else}
-                        <span class="text-muted-foreground">-</span>
+                        <span class="text-muted-foreground">—</span>
                       {/if}
                     </td>
-                    <td class="px-4 py-3 text-right">
+                    <td class="px-3 sm:px-4 py-3 text-right">
                       <!-- svelte-ignore a11y_click_events_have_key_events -->
                       <button
                         type="button"
@@ -491,14 +703,14 @@
 
       <!-- Pagination -->
       {#if totalPages > 1}
-        <div class="flex items-center justify-between text-sm">
-          <span class="text-muted-foreground">
-            Showing {userPage * pageSize + 1}--{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+          <span class="text-muted-foreground text-center sm:text-left">
+            Showing {userPage * pageSize + 1}–{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
           </span>
           <div class="flex gap-2">
             <Button variant="outline" size="sm" on:click={() => userPage = Math.max(0, userPage - 1)} disabled={userPage === 0}>
               <ChevronLeft class="h-4 w-4 mr-1" />
-              Previous
+              Prev
             </Button>
             <Button variant="outline" size="sm" on:click={() => userPage = Math.min(totalPages - 1, userPage + 1)} disabled={userPage >= totalPages - 1}>
               Next
@@ -565,16 +777,141 @@
       </Card>
     {/if}
 
+    <!-- NHI tab -->
+    {#if activeTab === "nhi"}
+      <!-- Filters -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4 flex-wrap">
+        <Input
+          type="text"
+          bind:value={nhiSearch}
+          placeholder="Search by name, provider, owner..."
+          class="sm:max-w-xs"
+        />
+        <select
+          bind:value={nhiFilterType}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Types</option>
+          {#each nhiTypes as t}
+            <option value={t}>{t}</option>
+          {/each}
+        </select>
+        <select
+          bind:value={nhiFilterProvider}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Providers</option>
+          {#each nhiProviders as p}
+            <option value={p}>{p}</option>
+          {/each}
+        </select>
+        <select
+          bind:value={nhiFilterStatus}
+          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+          <option value="revoked">Revoked</option>
+          <option value="rotation_pending">Rotation Pending</option>
+        </select>
+      </div>
+
+      <Card>
+        <CardContent class="p-0">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
+                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Type</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Provider</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Owner</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Last Used</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Expiry</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Risk Score</th>
+                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each pagedNhi as nhi}
+                  <tr
+                    class="border-t hover:bg-muted/50"
+                  >
+                    <td class="px-3 sm:px-4 py-3 font-medium">
+                      <div>{nhi.name}</div>
+                      <div class="text-xs text-muted-foreground sm:hidden">{nhi.type}</div>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 hidden sm:table-cell">
+                      <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium">
+                        {nhi.type}
+                      </span>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{nhi.provider}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{nhi.owner || "-"}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{formatTime(nhi.lastUsed)}</td>
+                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden xl:table-cell">{formatTime(nhi.expiry)}</td>
+                    <td class="px-3 sm:px-4 py-3">
+                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiRiskClass(nhi.riskScore)}">
+                        {nhi.riskScore}
+                      </span>
+                    </td>
+                    <td class="px-3 sm:px-4 py-3">
+                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiStatusClass(nhi.status)}">
+                        {nhiStatusLabel(nhi.status)}
+                      </span>
+                    </td>
+                  </tr>
+                {:else}
+                  <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">
+                      <p>No non-human identities found</p>
+                      <p class="text-xs mt-1">Click "Discover NHIs" to scan for service accounts, API keys, and machine credentials</p>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- NHI Pagination -->
+      {#if nhiTotalPages > 1}
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+          <span class="text-muted-foreground text-center sm:text-left">
+            Showing {nhiPage * pageSize + 1}–{Math.min((nhiPage + 1) * pageSize, filteredNhi.length)} of {filteredNhi.length}
+          </span>
+          <div class="flex gap-2">
+            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.max(0, nhiPage - 1)} disabled={nhiPage === 0}>
+              <ChevronLeft class="h-4 w-4 mr-1" />
+              Prev
+            </Button>
+            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.min(nhiTotalPages - 1, nhiPage + 1)} disabled={nhiPage >= nhiTotalPages - 1}>
+              Next
+              <ChevronRight class="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      {/if}
+    {/if}
+
     <!-- Mappings tab -->
     {#if activeTab === "mappings"}
-      <div class="flex items-center justify-between">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <p class="text-sm text-muted-foreground">
           Map IdP groups to application roles for automatic provisioning
         </p>
-        <Button variant="secondary" on:click={autoSuggest} disabled={suggesting}>
-          <Sparkles class="h-4 w-4 mr-1.5" />
-          {suggesting ? "Suggesting..." : "Auto-suggest"}
-        </Button>
+        <div class="flex gap-2">
+          <Button class="shrink-0" variant="default" on:click={() => { addMappingOpen = true; }}>
+            <Plus class="h-4 w-4 mr-1.5" />
+            Add Mapping
+          </Button>
+          <Button class="shrink-0" variant="secondary" on:click={autoSuggest} disabled={suggesting}>
+            <Sparkles class="h-4 w-4 mr-1.5" />
+            {suggesting ? "Suggesting..." : "Auto-suggest"}
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -594,8 +931,26 @@
                 {#each mappings as mapping}
                   <tr class="border-t hover:bg-muted/50">
                     <td class="px-4 py-3 font-medium">{mapping.groupName}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{mapping.appId}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{mapping.role}</td>
+                    <td class="px-4 py-3 text-muted-foreground">{getAppName(mapping.appId)}</td>
+                    <td class="px-4 py-3 text-muted-foreground">
+                      {#if editingRoleId === mapping.id}
+                        <select
+                          class="bg-background border border-input rounded px-2 py-1 text-sm"
+                          bind:value={editingRoleValue}
+                          on:change={() => updateMappingRole(mapping.id, editingRoleValue)}
+                          on:blur={() => { editingRoleId = null; }}
+                        >
+                          <option value="member">member</option>
+                          <option value="admin">admin</option>
+                          <option value="viewer">viewer</option>
+                          <option value="editor">editor</option>
+                        </select>
+                      {:else}
+                        <button class="hover:underline cursor-pointer" on:click={() => startEditRole(mapping)}>
+                          {mapping.role}
+                        </button>
+                      {/if}
+                    </td>
                     <td class="px-4 py-3">
                       {#if mapping.suggested}
                         <Badge variant="warning">Suggested</Badge>
@@ -681,6 +1036,59 @@
       <Button variant="outline" type="button" on:click={() => addGroupOpen = false}>Cancel</Button>
       <Button type="submit" disabled={!addGroupForm.name || addGroupLoading}>
         {addGroupLoading ? "Adding..." : "Add Group"}
+      </Button>
+    </DialogFooter>
+  </form>
+</Dialog>
+
+<!-- Add Mapping Dialog -->
+<Dialog open={addMappingOpen} onClose={() => addMappingOpen = false} title="Add Mapping">
+  <form on:submit|preventDefault={submitAddMapping} class="space-y-4">
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-group">Group *</Label>
+      <select
+        id="add-mapping-group"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.groupId}
+        required
+      >
+        <option value="">Select a group...</option>
+        {#each groups as group}
+          <option value={group.id}>{group.name}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-app">App *</Label>
+      <select
+        id="add-mapping-app"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.appId}
+        required
+      >
+        <option value="">Select an app...</option>
+        {#each connectedApps as app}
+          <option value={app.appId}>{app.name}</option>
+        {/each}
+      </select>
+    </div>
+    <div class="space-y-1.5">
+      <Label htmlFor="add-mapping-role">Role</Label>
+      <select
+        id="add-mapping-role"
+        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
+        bind:value={addMappingForm.role}
+      >
+        <option value="member">member</option>
+        <option value="admin">admin</option>
+        <option value="viewer">viewer</option>
+        <option value="editor">editor</option>
+      </select>
+    </div>
+    <DialogFooter>
+      <Button variant="outline" type="button" on:click={() => addMappingOpen = false}>Cancel</Button>
+      <Button type="submit" disabled={!addMappingForm.groupId || !addMappingForm.appId || addMappingLoading}>
+        {addMappingLoading ? "Creating..." : "Create Mapping"}
       </Button>
     </DialogFooter>
   </form>

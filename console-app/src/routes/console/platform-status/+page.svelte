@@ -16,6 +16,8 @@
 
   let health: PlatformHealthResponse | null = null;
   let usage: PlatformUsageSummary | null = null;
+  let deepHealth: any = null;
+  let journeyMetrics: any = null;
   let loading = true;
   let error = "";
 
@@ -30,6 +32,23 @@
       console.error(e);
     }
     loading = false;
+    // Load deep health and journey metrics in background
+    loadDeepHealth();
+    loadJourneyMetrics();
+  }
+
+  async function loadDeepHealth() {
+    try {
+      const res = await fetch("/api/platform/health-deep");
+      if (res.ok) deepHealth = await res.json();
+    } catch { /* optional */ }
+  }
+
+  async function loadJourneyMetrics() {
+    try {
+      const res = await fetch("/api/platform/journey-metrics");
+      if (res.ok) journeyMetrics = await res.json();
+    } catch { /* optional */ }
   }
 
   onMount(() => {
@@ -181,4 +200,67 @@
       </Card>
     {/if}
   </section>
+
+  <!-- Deep Functional Health Checks -->
+  {#if deepHealth}
+    <section>
+      <h2 class="text-lg font-semibold mb-4">Functional Health (SLO)</h2>
+      <Card>
+        <CardContent class="pt-5">
+          <div class="flex items-center gap-3 mb-4">
+            <span class="w-3 h-3 rounded-full {deepHealth.healthy ? 'bg-green-500' : 'bg-destructive'}"></span>
+            <span class="font-medium">{deepHealth.healthy ? 'All Systems Functional' : 'Degraded'}</span>
+            <Badge variant={deepHealth.sloMet ? 'success' : 'destructive'}>
+              {deepHealth.passingChecks}/{deepHealth.totalChecks} checks passing
+            </Badge>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {#each (deepHealth.services ?? []) as svc}
+              <div class="p-3 rounded border">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="w-2 h-2 rounded-full {svc.reachable ? 'bg-green-500' : 'bg-destructive'}"></span>
+                  <span class="font-medium capitalize">{svc.name}</span>
+                  {#if svc.version}<span class="text-xs text-muted-foreground">v{svc.version}</span>{/if}
+                </div>
+                {#each Object.entries(svc.functionalChecks) as [check, status]}
+                  <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">{check}</span>
+                    <span class="{status === 'pass' ? 'text-green-500' : status === 'fail' ? 'text-destructive' : 'text-muted-foreground'}">{status}</span>
+                  </div>
+                {/each}
+                <div class="text-xs text-muted-foreground mt-1">{svc.latencyMs}ms</div>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  {/if}
+
+  <!-- Journey Completion Metrics -->
+  {#if journeyMetrics}
+    <section>
+      <h2 class="text-lg font-semibold mb-4">Activation Journey</h2>
+      <Card>
+        <CardContent class="pt-5">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="text-2xl font-bold {journeyMetrics.fullyActivated ? 'text-green-500' : 'text-primary'}">{journeyMetrics.completionRate}%</div>
+            <span class="text-sm text-muted-foreground">{journeyMetrics.completedSteps}/{journeyMetrics.totalSteps} steps complete</span>
+            {#if journeyMetrics.fullyActivated}
+              <Badge variant="success">Fully Activated</Badge>
+            {/if}
+          </div>
+          <div class="space-y-2">
+            {#each (journeyMetrics.steps ?? []) as step, i}
+              <div class="flex items-center gap-3">
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs {step.completed ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}">{i + 1}</span>
+                <span class="font-medium capitalize {step.completed ? '' : 'text-muted-foreground'}">{step.name.replace(/_/g, " ")}</span>
+                <span class="text-xs text-muted-foreground ml-auto">{step.evidence}</span>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  {/if}
 </div>

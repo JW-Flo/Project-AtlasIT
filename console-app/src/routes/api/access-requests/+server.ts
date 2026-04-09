@@ -98,7 +98,24 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       },
       body,
     });
-    const data = await res.json();
+    const rawData: any = await res.json();
+
+    // Remap snake_case D1 fields to match frontend types (same as GET handler)
+    const data: any = rawData?.request
+      ? {
+          ...rawData,
+          request: {
+            id: rawData.request.id,
+            subject: rawData.request.subject_ref ?? rawData.request.subject,
+            resource: rawData.request.resource,
+            status: rawData.request.status,
+            reason: rawData.request.reason ?? rawData.request.justification,
+            createdAt: rawData.request.created_at ?? rawData.request.createdAt,
+            decidedAt: rawData.request.decided_at ?? rawData.request.decidedAt ?? null,
+            approver: rawData.request.approved_by ?? rawData.request.approver ?? null,
+          },
+        }
+      : rawData;
 
     // Log audit event for successful access request creation
     if (res.ok) {
@@ -111,9 +128,9 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
             actorEmail: user.email ?? "unknown",
             action: "access_request.created",
             targetType: "access_request",
-            targetId: data?.id,
-            detail: data?.resource
-              ? JSON.stringify({ resource: data.resource })
+            targetId: data?.request?.id ?? data?.id,
+            detail: data?.request?.resource
+              ? JSON.stringify({ resource: data.request.resource })
               : undefined,
           });
         } catch {

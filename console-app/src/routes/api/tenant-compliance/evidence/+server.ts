@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { proxyFetch, getWorkerBase } from "../../_proxy-helpers";
+import { requireTenantRole } from "$lib/server/guards";
 
 export const GET: RequestHandler = async ({ locals, platform, url }) => {
   const user = locals.user;
@@ -21,8 +22,9 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, platform, request }) => {
-  const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const body = await request.json();
   const base = getWorkerBase(platform);

@@ -372,9 +372,11 @@
   <!-- Footer -->
   <footer class="mt-auto border-t py-6 px-6 text-center text-xs text-muted-foreground">
     &copy; 2026 AtlasIT &middot;
-    <a href="https://atlasit.pro/privacy" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Privacy</a>
+    <a href="/privacy" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Privacy</a>
     &middot;
-    <a href="https://atlasit.pro/terms" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Terms</a>
+    <a href="/privacy/dsar" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Data requests</a>
+    &middot;
+    <a href="/terms" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Terms</a>
     &middot;
     <a href="https://status.atlasit.pro" class="text-muted-foreground hover:text-foreground transition-colors no-underline">Status</a>
   </footer>

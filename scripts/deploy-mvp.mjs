@@ -148,7 +148,7 @@ async function main() {
   console.log(`curl -fsS "${consoleOrigin}/health"`);
   console.log(`curl -fsS "${consoleOrigin}/api/config"`);
   console.log(`curl -fsS "${consoleOrigin}/admin/usage/summary"`);
-  console.log(`curl -fsS -H "x-admin-token: ${process.env.DISPATCH_ADMIN_TOKEN || '<token>'}" "${dispatchOrigin}/admin/usage/summary"`);
+  console.log(`curl -fsS -H "x-admin-token: \$DISPATCH_ADMIN_TOKEN" "${dispatchOrigin}/admin/usage/summary"`);
   console.log(`curl -fsS "${orchOrigin}/health" || true`);
   console.log(`curl -fsS "${compOrigin}/health" || true`);
   console.log('echo "MVP SMOKE: GREEN"');

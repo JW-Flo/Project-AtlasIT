@@ -79,7 +79,7 @@ async function handleEvidenceWebhook(
   try {
     await db
       .prepare(
-        "INSERT INTO compliance_evidence (id, tenant_id, framework_id, control_id, evidence_type, data, collected_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO compliance_evidence (id, tenant_id, framework_id, control_id, evidence_type, data, collected_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
       .bind(
         id,

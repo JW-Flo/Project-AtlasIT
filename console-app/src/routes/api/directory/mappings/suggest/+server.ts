@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
+import { requireTenantRole } from "$lib/server/guards";
 
 /**
  * Group name → app mapping patterns.
@@ -55,8 +56,9 @@ const DEPARTMENT_APP_MAP: Record<string, string[]> = {
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
@@ -64,36 +66,57 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "database unavailable" }, { status: 500 });
 
-  // Get connected apps, groups, and existing mappings in parallel (resilient to missing tables)
-  const [groupsResult, connectedAppsResult, existingMappingsResult] = await Promise.allSettled([
-    db
-      .prepare(`SELECT id, name FROM directory_groups WHERE tenant_id = ?`)
-      .bind(tenantId)
-      .all()
-      .then((r: any) => r.results || []),
-    db
-      .prepare(`SELECT app_id FROM app_credentials WHERE tenant_id = ?`)
-      .bind(tenantId)
-      .all()
-      .then((r: any) => (r.results || []).map((row: any) => row.app_id as string)),
-    db
-      .prepare(`SELECT group_id, app_id FROM group_app_mappings WHERE tenant_id = ?`)
-      .bind(tenantId)
-      .all()
-      .then((r: any) => {
-        const set = new Set<string>();
-        for (const row of r.results || []) {
-          set.add(`${row.group_id}:${row.app_id}`);
-        }
-        return set;
-      }),
-  ]);
+  // Get connected apps, groups, existing mappings, and tenant ecosystem in parallel
+  const [groupsResult, connectedAppsResult, existingMappingsResult, selectedAppsResult] =
+    await Promise.allSettled([
+      db
+        .prepare(`SELECT id, name FROM directory_groups WHERE tenant_id = ?`)
+        .bind(tenantId)
+        .all()
+        .then((r: any) => r.results || []),
+      db
+        .prepare(`SELECT app_id FROM app_credentials WHERE tenant_id = ?`)
+        .bind(tenantId)
+        .all()
+        .then((r: any) => (r.results || []).map((row: any) => row.app_id as string)),
+      db
+        .prepare(`SELECT group_id, app_id FROM group_app_mappings WHERE tenant_id = ?`)
+        .bind(tenantId)
+        .all()
+        .then((r: any) => {
+          const set = new Set<string>();
+          for (const row of r.results || []) {
+            set.add(`${row.group_id}:${row.app_id}`);
+          }
+          return set;
+        }),
+      db
+        .prepare(
+          `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'selected_apps'`,
+        )
+        .bind(tenantId)
+        .first<{ value: string }>(),
+    ]);
 
   const groups: any[] = groupsResult.status === "fulfilled" ? groupsResult.value : [];
-  const connectedApps: string[] =
+  const allConnectedApps: string[] =
     connectedAppsResult.status === "fulfilled" ? connectedAppsResult.value : [];
   const existingMappings: Set<string> =
     existingMappingsResult.status === "fulfilled" ? existingMappingsResult.value : new Set();
+
+  // Restrict to tenant's selected ecosystem when available
+  let selectedApps: string[] = [];
+  if (selectedAppsResult.status === "fulfilled" && selectedAppsResult.value?.value) {
+    try {
+      selectedApps = JSON.parse(selectedAppsResult.value.value);
+    } catch {
+      // ignore
+    }
+  }
+  const connectedApps =
+    selectedApps.length > 0
+      ? allConnectedApps.filter((id) => selectedApps.includes(id))
+      : allConnectedApps;
 
   if (groups.length === 0) {
     return json({

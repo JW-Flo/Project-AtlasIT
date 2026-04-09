@@ -172,7 +172,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     this.definition = body.definition;
 
     const now = new Date().toISOString();
-    const runId = crypto.randomUUID();
+    const runId = body.correlationId || crypto.randomUUID();
     const steps: StepState[] = body.definition.steps.map((step) => ({
       stepId: step.id,
       action: step.handler,
@@ -191,7 +191,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       createdAt: now,
       steps,
       history: [],
-      context: body.context ?? {},
+      context: { ...body.context, _correlationId: body.correlationId },
       alarmCount: 0,
     };
 
@@ -227,13 +227,29 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       return this.jsonResponse({ error: "Workflow not initialized" }, 400);
 
     const stepId = path.split("/step/")[1].split("/complete")[0];
-    const body = (await request.json()) as { output?: unknown };
+    const body = (await request.json()) as { output?: unknown; idempotencyKey?: string };
 
     const stepIndex = this.state.steps.findIndex((s) => s.stepId === stepId);
     if (stepIndex === -1)
       return this.jsonResponse({ error: "Unknown step" }, 404);
 
     const step = this.state.steps[stepIndex];
+
+    // Idempotency check: if a completion for this exact attempt already exists
+    // in history, return the cached result instead of processing again.
+    if (body.idempotencyKey && step.status === "completed") {
+      const existingCompletion = this.state.history.find(
+        (h) => h.stepId === stepId && h.status === "completed",
+      );
+      if (existingCompletion) {
+        return this.jsonResponse({
+          status: "already_completed",
+          output: existingCompletion.output,
+          idempotencyKey: body.idempotencyKey,
+        });
+      }
+    }
+
     if (step.status !== "running")
       return this.jsonResponse(
         { error: `Step is ${step.status}, not running` },
@@ -246,6 +262,9 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
     step.durationMs = step.startedAt
       ? Date.now() - new Date(step.startedAt).getTime()
       : undefined;
+
+    // Update steps_done in D1 workflow_runs table
+    await this.updateRunProgress();
 
     // Record in history
     this.state.history.push({
@@ -277,6 +296,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         this.state.completedAt = new Date().toISOString();
         await this.ctx.storage.put("state", this.state);
         await this.ctx.storage.deleteAlarm();
+        await this.updateRunProgress("failed");
       }
       return this.jsonResponse({
         status: allCompensationDone ? "failed" : "compensating",
@@ -302,6 +322,7 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       this.state.completedAt = new Date().toISOString();
       await this.ctx.storage.put("state", this.state);
       await this.ctx.storage.deleteAlarm();
+      await this.updateRunProgress("completed");
       return this.jsonResponse({
         status: "completed",
         context: this.state.context,
@@ -494,11 +515,13 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         step.attempts = 1;
         const bus = this.getQueueBus();
         if (bus) {
+          const idempotencyKey = `${this.state.id}:${step.stepId}:attempt-1`;
           await bus.publish("step-tasks", {
             kind: "step-task",
             runId: this.state.id,
             stepId: step.stepId,
             attempt: 1,
+            idempotencyKey,
           });
         }
         this.state.history.push({
@@ -585,6 +608,46 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       );
     }
     this.state.status = newStatus;
+  }
+
+  /** Write steps_done and status back to D1 workflow_runs table */
+  private async updateRunProgress(finalStatus?: string): Promise<void> {
+    if (!this.state) return;
+    const db = (this.env as any)?.DB;
+    if (!db) return;
+
+    // Use correlationId (the workflow_runs.id from jml-engine) if available
+    const runDbId =
+      (this.state.context?._correlationId as string) || this.state.id;
+    const stepsDone = this.state.steps.filter(
+      (s) => s.status === "completed" && !s.compensation,
+    ).length;
+
+    try {
+      if (finalStatus) {
+        await db
+          .prepare(
+            `UPDATE workflow_runs SET steps_done = ?, status = ?, completed_at = ?, duration_ms = ? WHERE id = ?`,
+          )
+          .bind(
+            stepsDone,
+            finalStatus,
+            new Date().toISOString(),
+            this.state.createdAt
+              ? Date.now() - new Date(this.state.createdAt).getTime()
+              : null,
+            runDbId,
+          )
+          .run();
+      } else {
+        await db
+          .prepare(`UPDATE workflow_runs SET steps_done = ? WHERE id = ?`)
+          .bind(stepsDone, runDbId)
+          .run();
+      }
+    } catch {
+      // Non-fatal: DO state is the source of truth
+    }
   }
 
   private async advanceToNextStep(): Promise<void> {
@@ -684,13 +747,15 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
         attemptNumber: 1,
       });
 
-      // Dispatch step task via queue
+      // Dispatch step task via queue with idempotency key
       if (bus) {
+        const idempotencyKey = `${this.state.id}:${step.stepId}:attempt-${step.attempts}`;
         const msg: StepTaskMessage = {
           kind: "step-task",
           runId: this.state.id,
           stepId: step.stepId,
           attempt: step.attempts,
+          idempotencyKey,
         };
         await bus.publish("step-tasks", msg);
       }
@@ -852,12 +917,14 @@ export class WorkflowDO extends DurableObject<WorkflowDOEnv> {
       });
 
       if (bus) {
+        const idempotencyKey = `${this.state.id}:${compensationStep.stepId}:attempt-1`;
         const msg: StepTaskMessage = {
           kind: "step-task",
           runId: this.state.id,
           stepId: compensationStep.stepId,
           attempt: 1,
           compensation: true,
+          idempotencyKey,
         };
         await bus.publish("step-tasks", msg);
       }

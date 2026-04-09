@@ -17,14 +17,30 @@
   import Label from "$lib/components/ui/label.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import { AlertTriangle, KeyRound, Plus, Check, X, Zap, ShieldCheck } from "lucide-svelte";
+  import { session } from "$lib/stores/session";
+
+  const JUSTIFICATION_OPTIONS = [
+    "Business need",
+    "Temporary access for project",
+    "Compliance requirement",
+    "Incident response",
+    "Role change / promotion",
+    "Other",
+  ];
+
+  interface ConnectedApp {
+    id: string;
+    connected: boolean;
+  }
 
   let items: AccessRequest[] = [];
   let loading = true;
   let error: string | null = null;
   let nextCursor: number | null = null;
-  let form = { subjectRef: "", resource: "", justification: "" };
+  let form = { subjectRef: "", resource: "", justification: "", roleRequested: "" };
   let submitting = false;
   let formError = "";
+  let connectedApps: ConnectedApp[] = [];
 
   async function load(reset = false) {
     try {
@@ -42,7 +58,21 @@
     }
   }
 
-  onMount(() => { load(true); });
+  async function loadConnectedApps() {
+    try {
+      const res = await fetch("/api/apps/status");
+      if (res.ok) {
+        const data = await res.json();
+        connectedApps = (data.applications || []).filter((a: any) => a.connected);
+      }
+    } catch {}
+  }
+
+  onMount(() => {
+    if ($session?.email) form.subjectRef = $session.email;
+    load(true);
+    loadConnectedApps();
+  });
 
   async function submit() {
     formError = "";
@@ -55,9 +85,10 @@
         subjectRef: form.subjectRef.trim(),
         resource: form.resource.trim(),
         justification: form.justification.trim() || undefined,
+        roleRequested: form.roleRequested.trim() || undefined,
       });
       items = [created, ...items];
-      form = { subjectRef: "", resource: "", justification: "" };
+      form = { subjectRef: $session?.email || "", resource: "", justification: "", roleRequested: "" };
     } catch (e: any) {
       error = e?.message || "Create failed";
     } finally {
@@ -110,22 +141,36 @@
       <CardTitle class="text-base">New Access Request</CardTitle>
     </CardHeader>
     <CardContent>
-      <div class="flex gap-3 flex-wrap items-end">
+      <div class="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 items-end">
         <div class="flex flex-col gap-1.5">
           <Label htmlFor="ar-subject">Subject Ref *</Label>
           <Input id="ar-subject" placeholder="user@company.com" bind:value={form.subjectRef} />
         </div>
         <div class="flex flex-col gap-1.5">
-          <Label htmlFor="ar-resource">Resource *</Label>
-          <Input id="ar-resource" placeholder="production-db" bind:value={form.resource} />
+          <Label htmlFor="ar-resource">Application *</Label>
+          <select id="ar-resource" bind:value={form.resource} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select application...</option>
+            {#each connectedApps as app}
+              <option value={app.id}>{app.id}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <Label htmlFor="ar-role">Role Requested</Label>
+          <Input id="ar-role" placeholder="e.g. Admin, Viewer, Editor" bind:value={form.roleRequested} />
         </div>
         <div class="flex flex-col gap-1.5">
           <Label htmlFor="ar-justification">Justification</Label>
-          <Input id="ar-justification" placeholder="Reason for access" bind:value={form.justification} />
+          <select id="ar-justification" bind:value={form.justification} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select justification...</option>
+            {#each JUSTIFICATION_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
         </div>
         <Button disabled={submitting} on:click={submit}>
           <Plus class="h-4 w-4 mr-1" />
-          {submitting ? "Creating..." : "Create"}
+          {submitting ? "Creating..." : "+ Create"}
         </Button>
       </div>
       {#if formError}

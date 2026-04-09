@@ -16,7 +16,8 @@ interface WorkflowStatusResponse {
   type: string;
   status: string;
   tenantId: string;
-  steps: Array<{ stepId: string; action: string; status: string }>;
+  steps: Array<{ stepId: string; action: string; status: string; attempts: number }>;
+  history: Array<{ stepId: string; status: string; attemptNumber: number; output?: unknown }>;
   context: Record<string, unknown>;
   createdAt: string;
 }
@@ -43,6 +44,7 @@ export async function executeStepTask(
     stepId: string;
     attempt: number;
     compensation?: boolean;
+    idempotencyKey?: string;
   },
   env: StepTaskEnv,
 ): Promise<void> {
@@ -62,6 +64,29 @@ export async function executeStepTask(
     // Step not found — silently ack, likely a duplicate delivery
     return;
   }
+
+  // Idempotency check: if this exact attempt already has a completion in
+  // history, skip re-execution and return the cached result to the DO.
+  if (msg.idempotencyKey && runState.history) {
+    const existingCompletion = runState.history.find(
+      (h) => h.stepId === msg.stepId && h.attemptNumber === msg.attempt && h.status === "completed",
+    );
+    if (existingCompletion) {
+      // Step handler already succeeded for this attempt — report cached result
+      await stub.fetch(
+        new Request(`http://workflow/step/${msg.stepId}/complete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            output: existingCompletion.output,
+            idempotencyKey: msg.idempotencyKey,
+          }),
+        }),
+      );
+      return;
+    }
+  }
+
   if (step.status !== "running") {
     // Step already completed or pending — skip
     return;
@@ -102,6 +127,11 @@ export async function executeStepTask(
         body: JSON.stringify({ output }),
       }),
     );
+
+    // Record step success as compliance evidence
+    if (env.DB && step.action !== "atlas.resolve_access_bundle") {
+      recordStepEvidence(env.DB, runState.tenantId, runState.id, step, "pass", output);
+    }
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     await stub.fetch(
@@ -111,13 +141,18 @@ export async function executeStepTask(
         body: JSON.stringify({ error }),
       }),
     );
+
+    // Record step failure as compliance evidence
+    if (env.DB) {
+      recordStepEvidence(env.DB, runState.tenantId, runState.id, step, "fail", { error });
+    }
     // WorkflowDO manages retry backoff via alarms — we ack the queue message
   }
 }
 
 // ── Legacy dispatch (kept for backwards compatibility) ──────────────────────
 
-async function legacyDispatch(
+export async function legacyDispatch(
   handler: string,
   context: Record<string, unknown>,
   tenantId: string,
@@ -163,6 +198,23 @@ async function legacyDispatch(
     throw new Error(`No adapter URL configured for "${appId}"`);
   }
 
+  // Check adapter health before dispatching — skip unhealthy adapters with warning
+  try {
+    const healthRes = await fetch(`${adapterUrl}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!healthRes.ok) {
+      throw new Error(
+        `Adapter "${appId}" is unhealthy (HTTP ${healthRes.status}) — skipping ${operation}`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("unhealthy")) throw err;
+    throw new Error(
+      `Adapter "${appId}" is unreachable — skipping ${operation}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   const userProfile = extractUserProfile(context);
 
   if (operation === "provision") {
@@ -171,8 +223,7 @@ async function legacyDispatch(
       headers: { "Content-Type": "application/json", "X-Tenant-ID": tenantId },
       body: JSON.stringify({ tenantId, userProfile, config: {} }),
     });
-    if (!res.ok)
-      throw new Error(`${appId} provision failed: HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`${appId} provision failed: HTTP ${res.status}`);
     return res.json().catch(() => ({}));
   }
 
@@ -182,8 +233,7 @@ async function legacyDispatch(
       headers: { "Content-Type": "application/json", "X-Tenant-ID": tenantId },
       body: JSON.stringify({ tenantId, userProfile, config: {} }),
     });
-    if (!res.ok)
-      throw new Error(`${appId} deprovision failed: HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`${appId} deprovision failed: HTTP ${res.status}`);
     return res.json().catch(() => ({}));
   }
 
@@ -215,11 +265,102 @@ function extractUserProfile(context: Record<string, unknown>) {
   };
 }
 
-function parseAdapterUrls(val?: string): Record<string, string> {
+export function parseAdapterUrls(val?: string): Record<string, string> {
   if (!val) return {};
   try {
     return JSON.parse(val) as Record<string, string>;
   } catch {
     return {};
+  }
+}
+
+/**
+ * Record a workflow step outcome as compliance evidence in D1.
+ * Maps provision/deprovision actions to relevant compliance controls.
+ */
+function recordStepEvidence(
+  db: D1Database,
+  tenantId: string,
+  workflowRunId: string,
+  step: { stepId: string; action: string },
+  status: "pass" | "fail",
+  output: unknown,
+): void {
+  const dotIdx = step.action.indexOf(".");
+  const appId = dotIdx >= 0 ? step.action.slice(0, dotIdx) : step.action;
+  const operation = dotIdx >= 0 ? step.action.slice(dotIdx + 1) : "";
+
+  // Only record adapter provision/deprovision steps
+  if (appId === "atlas" || !["provision", "deprovision"].includes(operation)) return;
+
+  // Map to relevant compliance controls
+  const controlRefs =
+    operation === "provision"
+      ? ["SOC2-CC6.2", "ISO-27001-A.9.2.1", "NIST-CSF-PR.AC-1"]
+      : ["SOC2-CC6.3", "ISO-27001-A.9.2.6", "HIPAA-164.312(a)(1)"];
+
+  const id = `step-${workflowRunId}-${step.stepId}`;
+  const metadata = JSON.stringify({
+    status,
+    operation,
+    appId,
+    workflowRunId,
+    output: typeof output === "object" ? output : { value: output },
+    recordedAt: new Date().toISOString(),
+  });
+
+  // Best-effort — never block the workflow
+  db.prepare(
+    `INSERT INTO compliance_evidence
+     (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+     VALUES (?, ?, 'SOC2', ?, ?, 'workflow_step', ?, ?, 'system', ?, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata, created_at = excluded.created_at`,
+  )
+    .bind(
+      id,
+      tenantId,
+      controlRefs[0].split("-").slice(1).join("-"),
+      `${appId}.${operation}`,
+      "workflow_step",
+      `${workflowRunId}:${step.stepId}`,
+      appId,
+      metadata,
+    )
+    .run()
+    .catch((err) => {
+      console.warn(
+        `[step-executor] Evidence write failed for ${step.action}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+
+  // Write additional control refs as separate evidence rows
+  for (let i = 1; i < controlRefs.length; i++) {
+    const ref = controlRefs[i];
+    const parts = ref.split("-");
+    const framework = parts[0] === "ISO" ? "ISO27001" : parts[0] === "NIST" ? "NIST_CSF" : parts[0];
+    const controlId =
+      ref.slice(ref.indexOf("-", ref.indexOf("-") + 1) + 1) || ref.split("-").slice(1).join("-");
+
+    db.prepare(
+      `INSERT INTO compliance_evidence
+       (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, 'workflow_step', ?, ?, 'system', ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET metadata = excluded.metadata, created_at = excluded.created_at`,
+    )
+      .bind(
+        `${id}-${framework}`,
+        tenantId,
+        framework,
+        controlId,
+        `${appId}.${operation}`,
+        "workflow_step",
+        `${workflowRunId}:${step.stepId}`,
+        appId,
+        metadata,
+      )
+      .run()
+      .catch(() => {
+        /* best-effort */
+      });
   }
 }

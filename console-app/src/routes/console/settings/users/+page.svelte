@@ -22,6 +22,9 @@
     { href: "/console/settings/audit-log", label: "Audit Log" },
     { href: "/console/settings/billing", label: "Billing" },
     { href: "/console/settings/trust", label: "Trust Center" },
+    { href: "/console/settings/incidents", label: "Incidents" },
+    { href: "/console/settings/security", label: "Security" },
+    { href: "/console/settings/notifications", label: "Notifications" },
   ];
   $: current = $page.url.pathname;
 
@@ -235,6 +238,7 @@
                         on:change={(e) => changeRole(user, e.currentTarget.value)}
                         class="h-8 rounded-md border border-input bg-background px-2 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
+                        <option value="super-admin">super-admin</option>
                         <option value="admin">admin</option>
                         <option value="member">member</option>
                       </select>
@@ -311,6 +315,7 @@
       >
         <option value="member">Member</option>
         <option value="admin">Admin</option>
+        <option value="super-admin">Super Admin</option>
       </select>
     </div>
   </div>

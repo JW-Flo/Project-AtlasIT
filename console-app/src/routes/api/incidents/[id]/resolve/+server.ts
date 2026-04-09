@@ -52,7 +52,22 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
             targetId: id,
           });
         } catch {
-          // Non-blocking: audit write failure shouldn't break incident resolution
+          // Non-blocking
+        }
+        try {
+          const { notify } = await import("$lib/server/notifications");
+          await notify(db, platform, {
+            tenantId,
+            type: "incident_resolved",
+            title: `Incident resolved`,
+            body: `Incident ${id} was resolved by ${user.email}`,
+            severity: "info",
+            sourceType: "incident",
+            sourceId: id!,
+            actionUrl: `/console/incidents`,
+          });
+        } catch {
+          // Non-blocking
         }
       }
     }
@@ -62,9 +77,9 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Incidents service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: "Incidents service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };

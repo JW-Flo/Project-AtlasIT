@@ -61,14 +61,8 @@ http_get_with_retry() {
     attempt=$(( attempt + 1 ))
     info "Attempt $attempt/$MAX_RETRIES: GET $url"
 
-    # Build CF Access auth headers if service token is available
-    local -a auth_headers=()
-    if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
-      auth_headers=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-    fi
-
-    body=$(curl -sS --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || true)
-    code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${auth_headers[@]}" "$url" 2>/dev/null || echo "000")
+    body=$(curl -sSL --max-time "$TIMEOUT" "$url" 2>/dev/null || true)
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "$url" 2>/dev/null || echo "000")
 
     LAST_HTTP_CODE="$code"
     LAST_BODY="$body"
@@ -127,6 +121,19 @@ case "$WORKER_NAME" in
     HEALTH_PATH="/health"
     HEALTH_FIELDS=("status")
     ;;
+  documentation-worker|docs)
+    HEALTH_PATH="/health"
+    HEALTH_FIELDS=("status")
+    ;;
+  apex-redirect|apex-redirect-worker)
+    # Apex redirect returns 301/302 — verify the redirect works, not JSON
+    HEALTH_PATH="/"
+    HEALTH_FIELDS=()
+    ;;
+  email-worker|email)
+    HEALTH_PATH="/health"
+    HEALTH_FIELDS=("status")
+    ;;
   *)
     # Generic fallback
     HEALTH_PATH="/health"
@@ -135,24 +142,6 @@ case "$WORKER_NAME" in
 esac
 
 HEALTH_URL="${BASE_URL}${HEALTH_PATH}"
-
-# ---------------------------------------------------------------------------
-# CF Access gate: skip smoke tests when credentials are missing
-# Workers behind CF Access will always return 403 without a service token,
-# so running retries just wastes CI time.
-# ---------------------------------------------------------------------------
-NEEDS_CF_ACCESS=false
-case "$WORKER_NAME" in
-  ai-orchestrator|orchestrator|compliance-worker|compliance|console-app|console|dispatch-worker|dispatch|root-worker)
-    NEEDS_CF_ACCESS=true ;;
-esac
-
-if [ "$NEEDS_CF_ACCESS" = true ] && { [ -z "${CF_ACCESS_CLIENT_ID:-}" ] || [ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]; }; then
-  echo ""
-  warn "CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET not set — skipping smoke test for $WORKER_NAME"
-  warn "Deploy succeeded; set the secrets to enable post-deploy health checks."
-  exit 0
-fi
 
 # ---------------------------------------------------------------------------
 # Run checks
@@ -191,11 +180,7 @@ fi
 if [ -n "$EXTRA_PROBE_PATH" ]; then
   EXTRA_URL="${BASE_URL}${EXTRA_PROBE_PATH}"
   section "Secondary probe (informational): $EXTRA_URL"
-  AUTH_HEADERS=()
-  if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
-    AUTH_HEADERS=(-H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET")
-  fi
-  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${AUTH_HEADERS[@]}" "$EXTRA_URL" 2>/dev/null || echo "000")
+  extra_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "$EXTRA_URL" 2>/dev/null || echo "000")
   if [ "$extra_code" = "200" ]; then
     pass "Secondary probe returned HTTP 200"
   elif [ "$extra_code" = "000" ]; then

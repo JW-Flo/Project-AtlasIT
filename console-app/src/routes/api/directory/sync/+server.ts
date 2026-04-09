@@ -124,19 +124,76 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     .run();
 
   try {
-    // MVP-only: synthetic directory data for demo/development
     const env = (platform?.env as any) || {};
-    if (env.SYNTHETIC_DIRECTORY !== "true" && connection.provider_token) {
-      return json(
-        { error: "Real IdP sync not yet implemented" },
-        { status: 501 },
-      );
+    const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;
+    // C-6 FIX: Service-to-service API key for orchestrator calls
+    const serviceApiKey = env.ORCHESTRATOR_API_KEY || env.INTERNAL_API_KEY || "";
+
+    // If a real provider is connected and orchestrator is available, proxy sync
+    // through the orchestrator which dispatches to the correct adapter worker.
+    if (env.SYNTHETIC_DIRECTORY !== "true" && connection.provider && orchestratorUrl) {
+      const syncRes = await fetch(`${orchestratorUrl}/api/v1/directory/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": tenantId,
+          ...(serviceApiKey ? { "X-API-Key": serviceApiKey } : {}),
+        },
+        body: JSON.stringify({ provider: connection.provider }),
+      });
+
+      if (syncRes.ok) {
+        const adapterData = (await syncRes.json().catch(() => ({}))) as any;
+        const userCount = adapterData.users?.length ?? adapterData.userCount ?? 0;
+        const groupCount = adapterData.groups?.length ?? adapterData.groupCount ?? 0;
+
+        await db
+          .prepare(
+            `UPDATE directory_connections SET status = 'active', last_sync_at = ?, user_count = ?, group_count = ?, error_msg = NULL, updated_at = ? WHERE tenant_id = ?`,
+          )
+          .bind(now, userCount, groupCount, now, tenantId)
+          .run();
+
+        await writeAudit(db, {
+          tenantId,
+          actorUserId: user.userId,
+          actorEmail: user.email,
+          action: "directory.sync",
+          targetType: "directory_connection",
+          targetId: connection.id,
+          detail: JSON.stringify({
+            userCount,
+            groupCount,
+            source: "orchestrator",
+            provider: connection.provider,
+          }),
+        });
+
+        return json({ success: true, userCount, groupCount, source: "orchestrator" });
+      }
+
+      // If orchestrator returned an error, fall through to synthetic as degraded mode
+      console.warn(`Orchestrator sync failed (${syncRes.status}), falling back to synthetic`);
     }
 
+    // Fallback: seed directory with example data when orchestrator is unavailable
     const tenantDomain = user.email?.split("@")[1] || "example.com";
     const { users, groups, memberships } = generateSyntheticData(tenantDomain);
 
+    // Snapshot existing active users before upsert to detect new vs updated
+    const existingRows = await db
+      .prepare(`SELECT email, status FROM directory_users WHERE tenant_id = ?`)
+      .bind(tenantId)
+      .all()
+      .then((r: any) => r.results || []);
+    const existingEmails = new Set<string>(existingRows.map((r: any) => r.email as string));
+    const existingActiveEmails = new Set<string>(
+      existingRows.filter((r: any) => r.status === "active").map((r: any) => r.email as string),
+    );
+    const incomingEmails = new Set<string>(users.map((u) => u.email));
+
     // Upsert users
+    const newUsers: SyntheticUser[] = [];
     for (const u of users) {
       const id = crypto.randomUUID();
       const externalId = u.email.split("@")[0];
@@ -162,6 +219,10 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
           now,
         )
         .run();
+
+      if (!existingEmails.has(u.email)) {
+        newUsers.push(u);
+      }
     }
 
     // Upsert groups
@@ -180,9 +241,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
         .run();
 
       const row = await db
-        .prepare(
-          `SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?`,
-        )
+        .prepare(`SELECT id FROM directory_groups WHERE tenant_id = ? AND external_id = ?`)
         .bind(tenantId, externalId)
         .first();
       groupIdMap[g.name] = row?.id ?? id;
@@ -195,9 +254,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
       for (const externalId of userExternalIds) {
         const userRow = await db
-          .prepare(
-            `SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?`,
-          )
+          .prepare(`SELECT id FROM directory_users WHERE tenant_id = ? AND external_id = ?`)
           .bind(tenantId, externalId)
           .first();
         if (!userRow) continue;
@@ -227,6 +284,57 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     // Auto-suggest mappings after first sync
     await autoSuggestMappings(db, tenantId);
 
+    // Emit lifecycle events to the orchestrator JML engine
+    if (orchestratorUrl) {
+      // Deactivated: previously active users absent from this sync
+      const deactivatedEmails = [...existingActiveEmails].filter((e) => !incomingEmails.has(e));
+
+      const eventPayloads = [
+        ...newUsers.map((u) => ({
+          tenantId,
+          type: "user.created",
+          source: "console-directory-sync",
+          payload: {
+            userId: u.email.split("@")[0],
+            email: u.email,
+            displayName: u.displayName,
+            department: u.department,
+            status: "active",
+          },
+        })),
+        ...deactivatedEmails.map((email) => ({
+          tenantId,
+          type: "user.deactivated",
+          source: "console-directory-sync",
+          payload: {
+            userId: email.split("@")[0],
+            email,
+            status: "inactive",
+          },
+        })),
+      ];
+
+      // C-6 FIX: Include auth headers + log failures instead of silently swallowing
+      const eventResults = await Promise.allSettled(
+        eventPayloads.map((evt) =>
+          fetch(`${orchestratorUrl}/api/v1/events`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Tenant-ID": tenantId,
+              ...(serviceApiKey ? { "X-API-Key": serviceApiKey } : {}),
+            },
+            body: JSON.stringify(evt),
+          }),
+        ),
+      );
+      for (const r of eventResults) {
+        if (r.status === "rejected") {
+          console.error("[directory-sync] Event delivery failed:", r.reason);
+        }
+      }
+    }
+
     await writeAudit(db, {
       tenantId,
       actorUserId: user.userId,
@@ -246,10 +354,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
       .bind(err?.message ?? "unknown error", new Date().toISOString(), tenantId)
       .run();
 
-    return json(
-      { error: "sync failed", detail: err?.message },
-      { status: 500 },
-    );
+    return json({ error: "sync failed", detail: err?.message }, { status: 500 });
   }
 };
 

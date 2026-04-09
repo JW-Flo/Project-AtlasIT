@@ -61,13 +61,41 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     return json({ error: "Database unavailable" }, { status: 503 });
   }
 
-  const limit = Math.min(Number(url.searchParams.get("limit") ?? "50"), 200);
-  const offset = Math.max(Number(url.searchParams.get("offset") ?? "0"), 0);
+  const rawLimit = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Math.min(Number.isNaN(rawLimit) ? 50 : rawLimit, 200);
+  const rawOffset = Number(url.searchParams.get("offset") ?? "0");
+  const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
   const framework = url.searchParams.get("framework");
   const controlId = url.searchParams.get("controlId");
   const category = url.searchParams.get("category");
   const impact = url.searchParams.get("impact");
   const since = url.searchParams.get("since");
+
+  // Normalize framework names: tenant preferences use "NIST CSF" (space),
+  // but evidence table uses "NIST_CSF" (underscore)
+  const FRAMEWORK_DISPLAY_TO_DB: Record<string, string> = {
+    "NIST CSF": "NIST_CSF",
+  };
+  function toDbFramework(fw: string): string {
+    return FRAMEWORK_DISPLAY_TO_DB[fw] ?? fw;
+  }
+
+  // Load tenant's selected frameworks to scope results
+  let tenantFrameworks: string[] | null = null;
+  try {
+    const fwPref = await db
+      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
+      .bind(tenantId)
+      .first<{ value: string }>();
+    if (fwPref?.value) {
+      const parsed = JSON.parse(fwPref.value);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        tenantFrameworks = parsed.map(toDbFramework);
+      }
+    }
+  } catch {
+    // fall through — no framework scoping
+  }
 
   // Build query
   const conditions = ["ce.tenant_id = ?"];
@@ -75,11 +103,31 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
   if (framework) {
     conditions.push("ce.framework = ?");
-    params.push(framework);
+    params.push(toDbFramework(framework));
+  } else if (tenantFrameworks) {
+    // Scope to tenant's selected frameworks
+    const placeholders = tenantFrameworks.map(() => "?").join(", ");
+    conditions.push(`ce.framework IN (${placeholders})`);
+    params.push(...tenantFrameworks);
   }
   if (controlId) {
-    conditions.push("ce.control_id = ?");
-    params.push(controlId);
+    // Support comma-separated CDT prefixes (e.g. "CC6,CC7") for prefix matching,
+    // or exact control ID match for direct CDT IDs (e.g. "CC6.1")
+    const prefixes = url.searchParams.get("controlPrefixes");
+    if (prefixes) {
+      const prefixList = prefixes
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (prefixList.length > 0) {
+        const likeClauses = prefixList.map(() => "ce.control_id LIKE ?");
+        conditions.push(`(${likeClauses.join(" OR ")})`);
+        params.push(...prefixList.map((p) => `${p}%`));
+      }
+    } else {
+      conditions.push("ce.control_id = ?");
+      params.push(controlId);
+    }
   }
   if (category) {
     conditions.push("ce.evidence_type = ?");
@@ -107,27 +155,45 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
       .bind(...params, limit, offset)
       .all(),
     db
-      .prepare(
-        `SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`,
-      )
+      .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence ce WHERE ${where}`)
       .bind(...params)
       .first<{ cnt: number }>(),
-    // Summary stats for the entire tenant (unfiltered)
-    db
-      .prepare(
-        `SELECT
-           COUNT(*) AS total_evidence,
-           COUNT(DISTINCT framework) AS framework_count,
-           COUNT(DISTINCT control_id) AS control_count
-         FROM compliance_evidence
-         WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{
-        total_evidence: number;
-        framework_count: number;
-        control_count: number;
-      }>(),
+    // Summary stats scoped to tenant's selected frameworks
+    (() => {
+      if (tenantFrameworks) {
+        const ph = tenantFrameworks.map(() => "?").join(", ");
+        return db
+          .prepare(
+            `SELECT
+               COUNT(*) AS total_evidence,
+               COUNT(DISTINCT framework) AS framework_count,
+               COUNT(DISTINCT control_id) AS control_count
+             FROM compliance_evidence
+             WHERE tenant_id = ? AND framework IN (${ph})`,
+          )
+          .bind(tenantId, ...tenantFrameworks)
+          .first<{
+            total_evidence: number;
+            framework_count: number;
+            control_count: number;
+          }>();
+      }
+      return db
+        .prepare(
+          `SELECT
+             COUNT(*) AS total_evidence,
+             COUNT(DISTINCT framework) AS framework_count,
+             COUNT(DISTINCT control_id) AS control_count
+           FROM compliance_evidence
+           WHERE tenant_id = ?`,
+        )
+        .bind(tenantId)
+        .first<{
+          total_evidence: number;
+          framework_count: number;
+          control_count: number;
+        }>();
+    })(),
   ]);
 
   // Parse metadata to extract impact, confidence, reasoning, eventType
@@ -161,23 +227,24 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
     },
   );
 
-  // Filter by impact in app layer (stored in metadata JSON)
-  const filteredFeed = impact
-    ? feed.filter((item) => item.impact === impact)
-    : feed;
+  // Impact filtering: since impact is stored in metadata JSON, we filter in the
+  // app layer. Adjust total count to reflect the actual filtered set size.
+  const filteredFeed = impact ? feed.filter((item) => item.impact === impact) : feed;
 
-  // Count positive/detrimental from the current page for summary
-  const positiveCount = filteredFeed.filter(
-    (f) => f.impact === "positive",
-  ).length;
-  const detrimentalCount = filteredFeed.filter(
-    (f) => f.impact === "detrimental",
-  ).length;
+  // When impact filter is active, the DB count doesn't reflect the filter.
+  // Use the filtered feed length for this page, and estimate total from the
+  // unfiltered DB count (best effort — exact impact counts require a full scan).
+  const effectiveTotal = impact ? filteredFeed.length + offset : (countResult?.cnt ?? 0);
+
+  // Count positive/detrimental across the full summary (from DB-level aggregates)
+  // plus from current page for immediate display
+  const positiveCount = feed.filter((f) => f.impact === "positive").length;
+  const detrimentalCount = feed.filter((f) => f.impact === "detrimental").length;
 
   return json({
     feed: filteredFeed,
     meta: {
-      total: countResult?.cnt ?? 0,
+      total: impact ? effectiveTotal : (countResult?.cnt ?? 0),
       limit,
       offset,
     },

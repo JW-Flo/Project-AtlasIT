@@ -339,6 +339,611 @@ async function updateConnectionStatus(
 }
 
 // ---------------------------------------------------------------------------
+// IAM provisioning helpers
+// ---------------------------------------------------------------------------
+
+function deriveIamUsername(email: string): string {
+  const local = email.split("@")[0];
+  // IAM usernames: max 64 chars, allowed chars [a-zA-Z0-9+=,.@_-]
+  return local.replace(/[^a-zA-Z0-9+=,.@_-]/g, "_").slice(0, 64);
+}
+
+async function iamPost(
+  params: Record<string, string>,
+  config: AwsConfig,
+): Promise<{ ok: boolean; status: number; xml: string }> {
+  const body = new URLSearchParams({ ...params, Version: "2010-05-08" }).toString();
+  const url = "https://iam.amazonaws.com/";
+  const signedHeaders = await signAwsRequest(
+    "POST",
+    url,
+    "iam",
+    config.region,
+    config.accessKeyId,
+    config.secretAccessKey,
+    body,
+  );
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...signedHeaders, "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const xml = await res.text();
+  return { ok: res.ok, status: res.status, xml };
+}
+
+function xmlErrorCode(xml: string): string | null {
+  const m = xml.match(/<Code>([^<]+)<\/Code>/);
+  return m ? m[1] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Provision — create IAM user
+// ---------------------------------------------------------------------------
+app.post("/api/provision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  type ProvisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<ProvisionBody>().catch((): ProvisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
+  }
+
+  const username = deriveIamUsername(email);
+  const config = buildAwsConfig(c.env);
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Provisioning IAM user",
+      username,
+    }),
+  );
+
+  // Step 1: CreateUser
+  const createRes = await iamPost(
+    { Action: "CreateUser", UserName: username, Path: "/atlasit/" },
+    config,
+  );
+
+  if (!createRes.ok) {
+    const code = xmlErrorCode(createRes.xml);
+    if (code !== "EntityAlreadyExists") {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          correlationId,
+          tenantId,
+          message: "CreateUser failed",
+          username,
+          awsErrorCode: code,
+        }),
+      );
+      return c.json({ error: `AWS CreateUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+    }
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "IAM user already exists, continuing with tag update",
+        username,
+      }),
+    );
+  }
+
+  // Step 2: TagUser
+  const tagRes = await iamPost(
+    {
+      Action: "TagUser",
+      UserName: username,
+      "Tags.member.1.Key": "email",
+      "Tags.member.1.Value": email,
+      "Tags.member.2.Key": "tenant_id",
+      "Tags.member.2.Value": tenantId,
+    },
+    config,
+  );
+
+  if (!tagRes.ok) {
+    const code = xmlErrorCode(tagRes.xml);
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "TagUser failed",
+        username,
+        awsErrorCode: code,
+      }),
+    );
+    return c.json({ error: `AWS TagUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "IAM user provisioned",
+      username,
+    }),
+  );
+
+  return c.json({
+    status: "provisioned",
+    correlationId,
+    username,
+    iamPath: "/atlasit/",
+    email,
+    tenantId,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deprovision — delete IAM user and clean up dependencies
+// ---------------------------------------------------------------------------
+app.post("/api/deprovision", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  type DeprovisionBody = {
+    tenantId?: string;
+    userProfile?: { email?: string; displayName?: string; firstName?: string; lastName?: string };
+    config?: Record<string, unknown>;
+  };
+
+  const body = await c.req.json<DeprovisionBody>().catch((): DeprovisionBody => ({}));
+  const email = body.userProfile?.email;
+
+  if (!email) {
+    return c.json({ error: "Missing userProfile.email in request body", correlationId }, 400);
+  }
+
+  const username = deriveIamUsername(email);
+  const config = buildAwsConfig(c.env);
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "Deprovisioning IAM user",
+      username,
+    }),
+  );
+
+  // Step 1: Delete access keys
+  const listKeysRes = await iamPost({ Action: "ListAccessKeys", UserName: username }, config);
+  if (listKeysRes.ok) {
+    const keyIds = [...listKeysRes.xml.matchAll(/<AccessKeyId>([^<]+)<\/AccessKeyId>/g)].map(
+      (m) => m[1],
+    );
+    for (const keyId of keyIds) {
+      await iamPost({ Action: "DeleteAccessKey", UserName: username, AccessKeyId: keyId }, config);
+    }
+  }
+
+  // Step 2: Detach managed policies
+  const listPoliciesRes = await iamPost(
+    { Action: "ListAttachedUserPolicies", UserName: username },
+    config,
+  );
+  if (listPoliciesRes.ok) {
+    const policyArns = [...listPoliciesRes.xml.matchAll(/<PolicyArn>([^<]+)<\/PolicyArn>/g)].map(
+      (m) => m[1],
+    );
+    for (const arn of policyArns) {
+      await iamPost({ Action: "DetachUserPolicy", UserName: username, PolicyArn: arn }, config);
+    }
+  }
+
+  // Step 3: Remove from groups
+  const listGroupsRes = await iamPost({ Action: "ListGroupsForUser", UserName: username }, config);
+  if (listGroupsRes.ok) {
+    const groupNames = [...listGroupsRes.xml.matchAll(/<GroupName>([^<]+)<\/GroupName>/g)].map(
+      (m) => m[1],
+    );
+    for (const group of groupNames) {
+      await iamPost(
+        { Action: "RemoveUserFromGroup", UserName: username, GroupName: group },
+        config,
+      );
+    }
+  }
+
+  // Step 4: Delete login profile (ignore NoSuchEntity / 404)
+  const deleteProfileRes = await iamPost(
+    { Action: "DeleteLoginProfile", UserName: username },
+    config,
+  );
+  if (!deleteProfileRes.ok && xmlErrorCode(deleteProfileRes.xml) !== "NoSuchEntity") {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "DeleteLoginProfile returned unexpected error",
+        username,
+        awsErrorCode: xmlErrorCode(deleteProfileRes.xml),
+      }),
+    );
+  }
+
+  // Step 5: Delete user
+  const deleteRes = await iamPost({ Action: "DeleteUser", UserName: username }, config);
+  if (!deleteRes.ok) {
+    const code = xmlErrorCode(deleteRes.xml);
+    if (code === "NoSuchEntity") {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          correlationId,
+          tenantId,
+          message: "IAM user not found, treating as already deprovisioned",
+          username,
+        }),
+      );
+      return c.json({ status: "deprovisioned", correlationId, username, tenantId });
+    }
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "DeleteUser failed",
+        username,
+        awsErrorCode: code,
+      }),
+    );
+    return c.json({ error: `AWS DeleteUser failed: ${code ?? "Unknown"}`, correlationId }, 502);
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "IAM user deprovisioned",
+      username,
+    }),
+  );
+
+  return c.json({ status: "deprovisioned", correlationId, username, tenantId });
+});
+
+// ---------------------------------------------------------------------------
+// NHI Discovery — IAM roles, access keys, and service account users
+// ---------------------------------------------------------------------------
+
+type NHIIdentity = {
+  externalId: string;
+  displayName: string;
+  identityType: "service";
+  credentialType: "service_account" | "access_key";
+  ownerEmail?: string;
+  scopes?: string[];
+  expiresAt?: string;
+  lastUsedAt?: string;
+  metadata?: Record<string, unknown>;
+};
+
+app.post("/api/nhi/discovery", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+  if (!tenantId) {
+    return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
+  }
+
+  const config = buildAwsConfig(c.env);
+  const identities: NHIIdentity[] = [];
+
+  // --- 1. IAM Roles (service-linked or service account roles) ---
+  try {
+    let marker: string | undefined;
+    do {
+      const params: Record<string, string> = { Action: "ListRoles", MaxItems: "1000" };
+      if (marker) params.Marker = marker;
+      const res = await iamPost(params, config);
+
+      if (res.ok) {
+        const roleBlocks = [...res.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map((m) => m[1]);
+        for (const roleXml of roleBlocks) {
+          const arn = roleXml.match(/<Arn>([^<]+)<\/Arn>/)?.[1] ?? "";
+          const roleName = roleXml.match(/<RoleName>([^<]+)<\/RoleName>/)?.[1] ?? "";
+          const path = roleXml.match(/<Path>([^<]+)<\/Path>/)?.[1] ?? "/";
+          const createDate = roleXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+          const description = roleXml.match(/<Description>([^<]+)<\/Description>/)?.[1];
+
+          // Include service-linked roles and roles with service-indicative paths
+          const isServiceLinked = path.startsWith("/aws-service-role/");
+          const isServicePath =
+            path.includes("/service/") ||
+            path.includes("/system/") ||
+            path.includes("/application/") ||
+            roleName.toLowerCase().includes("service") ||
+            roleName.toLowerCase().includes("automation") ||
+            roleName.toLowerCase().includes("lambda") ||
+            roleName.toLowerCase().includes("ec2") ||
+            roleName.toLowerCase().includes("ecs");
+
+          if (!isServiceLinked && !isServicePath) continue;
+
+          // Fetch attached policies for scopes
+          const policiesRes = await iamPost(
+            { Action: "ListAttachedRolePolicies", RoleName: roleName, MaxItems: "100" },
+            config,
+          ).catch(() => null);
+          const scopes = policiesRes?.ok
+            ? [...policiesRes.xml.matchAll(/<PolicyName>([^<]+)<\/PolicyName>/g)].map((m) => m[1])
+            : undefined;
+
+          // Extract owner tag if present
+          const tagsRes = await iamPost(
+            { Action: "ListRoleTags", RoleName: roleName },
+            config,
+          ).catch(() => null);
+          let ownerEmail: string | undefined;
+          if (tagsRes?.ok) {
+            const tagBlocks = [...tagsRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+              (m) => m[1],
+            );
+            for (const tag of tagBlocks) {
+              const key = tag.match(/<Key>([^<]+)<\/Key>/)?.[1] ?? "";
+              const value = tag.match(/<Value>([^<]+)<\/Value>/)?.[1] ?? "";
+              if (key.toLowerCase() === "owner" || key.toLowerCase() === "email") {
+                ownerEmail = value;
+                break;
+              }
+            }
+          }
+
+          identities.push({
+            externalId: arn,
+            displayName: roleName,
+            identityType: "service",
+            credentialType: "service_account",
+            ownerEmail,
+            scopes: scopes && scopes.length > 0 ? scopes : undefined,
+            metadata: {
+              path,
+              createDate,
+              description,
+              serviceLinked: isServiceLinked,
+            },
+          });
+        }
+
+        const isTruncated = res.xml.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1] === "true";
+        marker = isTruncated ? (res.xml.match(/<Marker>([^<]+)<\/Marker>/)?.[1]) : undefined;
+      } else {
+        marker = undefined;
+      }
+    } while (marker);
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: IAM roles fetch failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  // --- 2. Access Keys — list all IAM users, then keys per user ---
+  try {
+    const usersRes = await iamPost({ Action: "ListUsers", MaxItems: "1000" }, config);
+    if (usersRes.ok) {
+      const userBlocks = [...usersRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+        (m) => m[1],
+      );
+
+      for (const userXml of userBlocks) {
+        const userName = userXml.match(/<UserName>([^<]+)<\/UserName>/)?.[1] ?? "";
+        if (!userName) continue;
+
+        try {
+          const keysRes = await iamPost(
+            { Action: "ListAccessKeys", UserName: userName },
+            config,
+          );
+          if (!keysRes.ok) continue;
+
+          const keyBlocks = [...keysRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+            (m) => m[1],
+          );
+
+          for (const keyXml of keyBlocks) {
+            const accessKeyId = keyXml.match(/<AccessKeyId>([^<]+)<\/AccessKeyId>/)?.[1] ?? "";
+            const status = keyXml.match(/<Status>([^<]+)<\/Status>/)?.[1] ?? "";
+            const createDate = keyXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+
+            if (!accessKeyId) continue;
+
+            // Fetch last used time
+            let lastUsedAt: string | undefined;
+            try {
+              const lastUsedRes = await iamPost(
+                { Action: "GetAccessKeyLastUsed", AccessKeyId: accessKeyId },
+                config,
+              );
+              if (lastUsedRes.ok) {
+                lastUsedAt = lastUsedRes.xml.match(/<LastUsedDate>([^<]+)<\/LastUsedDate>/)?.[1];
+              }
+            } catch {
+              // non-fatal
+            }
+
+            identities.push({
+              externalId: accessKeyId,
+              displayName: `AccessKey:${accessKeyId} for ${userName}`,
+              identityType: "service",
+              credentialType: "access_key",
+              lastUsedAt,
+              metadata: {
+                userName,
+                status,
+                createDate,
+              },
+            });
+          }
+        } catch (err) {
+          console.error(
+            JSON.stringify({
+              level: "warn",
+              correlationId,
+              tenantId,
+              message: "NHI discovery: access key fetch failed for user",
+              userName,
+              error: err instanceof Error ? err.message : "Unknown",
+            }),
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: access keys discovery failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  // --- 3. Service account IAM users (path-based heuristic) ---
+  try {
+    const usersRes = await iamPost({ Action: "ListUsers", MaxItems: "1000" }, config);
+    if (usersRes.ok) {
+      const userBlocks = [...usersRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+        (m) => m[1],
+      );
+
+      for (const userXml of userBlocks) {
+        const userName = userXml.match(/<UserName>([^<]+)<\/UserName>/)?.[1] ?? "";
+        const arn = userXml.match(/<Arn>([^<]+)<\/Arn>/)?.[1] ?? "";
+        const path = userXml.match(/<Path>([^<]+)<\/Path>/)?.[1] ?? "/";
+        const createDate = userXml.match(/<CreateDate>([^<]+)<\/CreateDate>/)?.[1];
+
+        // Only include users with service-indicative paths
+        const isServiceUser =
+          path.includes("/service/") ||
+          path.includes("/system/") ||
+          path.includes("/bot/") ||
+          path.includes("/automation/") ||
+          path.includes("/application/");
+
+        if (!isServiceUser) continue;
+
+        // Fetch attached policies for scopes
+        const policiesRes = await iamPost(
+          { Action: "ListAttachedUserPolicies", UserName: userName, MaxItems: "100" },
+          config,
+        ).catch(() => null);
+        const scopes = policiesRes?.ok
+          ? [...policiesRes.xml.matchAll(/<PolicyName>([^<]+)<\/PolicyName>/g)].map((m) => m[1])
+          : undefined;
+
+        // Fetch tags for owner email
+        const tagsRes = await iamPost(
+          { Action: "ListUserTags", UserName: userName },
+          config,
+        ).catch(() => null);
+        let ownerEmail: string | undefined;
+        if (tagsRes?.ok) {
+          const tagBlocks = [...tagsRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
+            (m) => m[1],
+          );
+          for (const tag of tagBlocks) {
+            const key = tag.match(/<Key>([^<]+)<\/Key>/)?.[1] ?? "";
+            const value = tag.match(/<Value>([^<]+)<\/Value>/)?.[1] ?? "";
+            if (key.toLowerCase() === "owner" || key.toLowerCase() === "email") {
+              ownerEmail = value;
+              break;
+            }
+          }
+        }
+
+        identities.push({
+          externalId: arn,
+          displayName: userName,
+          identityType: "service",
+          credentialType: "service_account",
+          ownerEmail,
+          scopes: scopes && scopes.length > 0 ? scopes : undefined,
+          metadata: {
+            path,
+            createDate,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "warn",
+        correlationId,
+        tenantId,
+        message: "NHI discovery: service account users fetch failed",
+        error: err instanceof Error ? err.message : "Unknown",
+      }),
+    );
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "info",
+      correlationId,
+      tenantId,
+      message: "NHI discovery completed",
+      identityCount: identities.length,
+    }),
+  );
+
+  return c.json({
+    provider: "aws",
+    identities,
+    discoveredAt: new Date().toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// OAuth grant / IAM discovery for Shadow AI detection
+// ---------------------------------------------------------------------------
+app.post("/api/oauth-grants", async (c) => {
+  // AWS doesn't use OAuth grants in the traditional sense. IAM roles, access keys,
+  // and resource policies serve a similar function. Full IAM enumeration requires
+  // the IAM ListUsers/ListRoles APIs which need direct AWS SDK access.
+  // This endpoint returns a minimal response acknowledging the limitation.
+  return c.json({
+    provider: "aws",
+    grants: [],
+    discoveredAt: new Date().toISOString(),
+    note: "AWS IAM discovery requires direct API access via access keys. OAuth grant scanning is not applicable to AWS.",
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Evidence collection
 // ---------------------------------------------------------------------------
 app.post("/api/evidence", async (c) => {

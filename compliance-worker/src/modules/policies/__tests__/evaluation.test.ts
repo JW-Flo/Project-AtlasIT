@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   evaluatePolicy,
   evaluateAllControls,
   evaluateFramework,
+  evaluateAndStoreEvidence,
   FRAMEWORK_CONTROLS,
   type PolicyEvaluationOptions,
 } from "../evaluation";
@@ -133,9 +134,7 @@ describe("evaluateFramework", () => {
   });
 
   it("throws for unknown framework names", async () => {
-    await expect(
-      evaluateFramework("unknown_framework" as never, "tenant-1", {}),
-    ).rejects.toThrow();
+    await expect(evaluateFramework("unknown_framework" as never, "tenant-1", {})).rejects.toThrow();
   });
 
   it("evaluates hipaa, nist_csf and gdpr frameworks", async () => {
@@ -160,5 +159,83 @@ describe("FRAMEWORK_CONTROLS", () => {
     const all = Object.values(FRAMEWORK_CONTROLS).flat();
     const unique = new Set(all);
     expect(unique.size).toBe(all.length);
+  });
+});
+
+// ------- evaluateAndStoreEvidence -------
+
+describe("evaluateAndStoreEvidence", () => {
+  function buildMockDb() {
+    const boundStatements: Array<{ bindings: unknown[] }> = [];
+    const mockBind = vi.fn((...args: unknown[]) => {
+      const stmt = { bindings: args };
+      boundStatements.push(stmt);
+      return stmt;
+    });
+    const mockPrepare = vi.fn().mockReturnValue({ bind: mockBind });
+    const mockBatch = vi.fn().mockResolvedValue([]);
+    const db = {
+      prepare: mockPrepare,
+      batch: mockBatch,
+      _boundStatements: boundStatements,
+      _mockBatch: mockBatch,
+      _mockPrepare: mockPrepare,
+    };
+    return db as unknown as D1Database & {
+      _boundStatements: typeof boundStatements;
+      _mockBatch: typeof mockBatch;
+      _mockPrepare: typeof mockPrepare;
+    };
+  }
+
+  it("evaluates all 60 controls and returns pass/fail/unknown counts", async () => {
+    const db = buildMockDb();
+    const result = await evaluateAndStoreEvidence(db, "tenant-1", {});
+    expect(result.passed + result.failed + result.unknown).toBe(60);
+    expect(result.passed).toBeGreaterThanOrEqual(0);
+    expect(result.failed).toBeGreaterThanOrEqual(0);
+  });
+
+  it("batches all INSERT statements via db.batch()", async () => {
+    const db = buildMockDb();
+    await evaluateAndStoreEvidence(db, "tenant-1", {});
+    expect(db._mockBatch).toHaveBeenCalledTimes(1);
+    const batchArgs = db._mockBatch.mock.calls[0][0];
+    expect(batchArgs).toHaveLength(60);
+  });
+
+  it("uses deterministic IDs based on tenant and control", async () => {
+    const db = buildMockDb();
+    await evaluateAndStoreEvidence(db, "tenant-1", {});
+    const firstBinding = db._boundStatements[0].bindings;
+    // First binding is the deterministic ID
+    expect(firstBinding[0]).toMatch(/^policy-eval-tenant-1-/);
+    // evidence_type should be 'policy_evaluation'
+    expect(firstBinding[5]).toBe("policy_evaluation");
+    // source should be 'policy'
+    expect(firstBinding[6]).toBe("policy");
+  });
+
+  it("stores decision status in metadata JSON", async () => {
+    const db = buildMockDb();
+    await evaluateAndStoreEvidence(db, "tenant-1", { least_privilege_enforced: true });
+    // Find the CC6.1 statement (SOC2 least privilege control)
+    const cc61Stmt = db._boundStatements.find(
+      (s) => s.bindings[0] === "policy-eval-tenant-1-CC6.1",
+    );
+    expect(cc61Stmt).toBeDefined();
+    const metadata = JSON.parse(cc61Stmt!.bindings[10] as string);
+    expect(metadata.status).toBe("pass");
+    expect(metadata.rationale).toBeDefined();
+  });
+
+  it("increases pass count when payload satisfies more controls", async () => {
+    const db1 = buildMockDb();
+    const result1 = await evaluateAndStoreEvidence(db1, "tenant-1", {});
+    const db2 = buildMockDb();
+    const result2 = await evaluateAndStoreEvidence(db2, "tenant-1", {
+      least_privilege_enforced: true,
+    });
+    expect(result2.passed).toBeGreaterThanOrEqual(result1.passed);
   });
 });

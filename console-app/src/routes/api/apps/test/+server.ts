@@ -1,15 +1,9 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import {
-  getCredentials,
-  getOAuthAccessToken,
-  updateTestStatus,
-} from "$lib/server/credentials";
+import { getCredentials, getOAuthAccessToken, updateTestStatus } from "$lib/server/credentials";
+import { requireTenantRole } from "$lib/server/guards";
 
 /** AWS Signature V4 helpers */
-async function hmacSha256(
-  key: ArrayBuffer | Uint8Array,
-  data: string,
-): Promise<ArrayBuffer> {
+async function hmacSha256(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
     key instanceof Uint8Array ? key : new Uint8Array(key),
@@ -21,17 +15,12 @@ async function hmacSha256(
 }
 
 async function sha256Hex(data: string): Promise<string> {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(data),
-  );
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
   return bufToHex(hash);
 }
 
 function bufToHex(buf: ArrayBuffer): string {
-  return [...new Uint8Array(buf)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -40,20 +29,15 @@ function bufToHex(buf: ArrayBuffer): string {
  */
 const PROVIDER_TESTS: Record<
   string,
-  (
-    creds: Record<string, string>,
-    token: string | null,
-  ) => Promise<{ ok: boolean; message: string }>
+  (creds: Record<string, string>, token: string | null) => Promise<{ ok: boolean; message: string }>
 > = {
   slack: async (_creds, token) => {
-    if (!token)
-      return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    if (!token) return { ok: false, message: "No OAuth token. Connect via OAuth first." };
     const res = await fetch("https://slack.com/api/auth.test", {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data: any = await res.json();
-    if (data.ok)
-      return { ok: true, message: `Connected as ${data.team} (${data.user})` };
+    if (data.ok) return { ok: true, message: `Connected as ${data.team} (${data.user})` };
     return { ok: false, message: `Slack error: ${data.error}` };
   },
 
@@ -69,8 +53,7 @@ const PROVIDER_TESTS: Record<
   bamboohr: async (creds) => {
     const domain = creds.company_domain;
     const key = creds.api_key;
-    if (!domain || !key)
-      return { ok: false, message: "Missing company_domain or api_key" };
+    if (!domain || !key) return { ok: false, message: "Missing company_domain or api_key" };
     const res = await fetch(
       `https://api.bamboohr.com/api/gateway.php/${domain}/v1/employees/directory`,
       {
@@ -111,8 +94,7 @@ const PROVIDER_TESTS: Record<
     const site = creds.site || "datadoghq.com";
     const apiKey = creds.api_key;
     const appKey = creds.app_key;
-    if (!apiKey || !appKey)
-      return { ok: false, message: "Missing api_key or app_key" };
+    if (!apiKey || !appKey) return { ok: false, message: "Missing api_key or app_key" };
     const res = await fetch(`https://api.${site}/api/v1/validate`, {
       headers: { "DD-API-KEY": apiKey, "DD-APPLICATION-KEY": appKey },
     });
@@ -134,11 +116,7 @@ const PROVIDER_TESTS: Record<
     const host = "sts.amazonaws.com";
     const now = new Date();
     const dateStamp = now.toISOString().replace(/[-:]/g, "").slice(0, 8);
-    const amzDate =
-      dateStamp +
-      "T" +
-      now.toISOString().replace(/[-:]/g, "").slice(9, 15) +
-      "Z";
+    const amzDate = dateStamp + "T" + now.toISOString().replace(/[-:]/g, "").slice(9, 15) + "Z";
     const service = "sts";
     const body = "Action=GetCallerIdentity&Version=2011-06-15";
     const bodyHash = await sha256Hex(body);
@@ -150,10 +128,7 @@ const PROVIDER_TESTS: Record<
     const scope = `${dateStamp}/${region}/${service}/aws4_request`;
     const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`;
 
-    const kDate = await hmacSha256(
-      new TextEncoder().encode("AWS4" + secretKey),
-      dateStamp,
-    );
+    const kDate = await hmacSha256(new TextEncoder().encode("AWS4" + secretKey), dateStamp);
     const kRegion = await hmacSha256(kDate, region);
     const kService = await hmacSha256(kRegion, service);
     const kSigning = await hmacSha256(kService, "aws4_request");
@@ -186,13 +161,55 @@ const PROVIDER_TESTS: Record<
     }
   },
 
+  "google-workspace": async (_creds, token) => {
+    if (!token) return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://www.googleapis.com/oauth2/v1/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return {
+        ok: true,
+        message: `Google Workspace connected as ${data.email || data.name || "user"}`,
+      };
+    }
+    if (res.status === 401)
+      return { ok: false, message: "OAuth token expired. Reconnect Google Workspace." };
+    return { ok: false, message: `Google API error: ${res.status}` };
+  },
+
+  "microsoft-365": async (_creds, token) => {
+    if (!token) return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://graph.microsoft.com/v1.0/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return {
+        ok: true,
+        message: `Microsoft 365 connected as ${data.displayName || data.userPrincipalName || "user"}`,
+      };
+    }
+    if (res.status === 401)
+      return { ok: false, message: "OAuth token expired. Reconnect Microsoft 365." };
+    return { ok: false, message: `Microsoft Graph error: ${res.status}` };
+  },
+
+  jira: async (_creds, token) => {
+    if (!token) return { ok: false, message: "No OAuth token. Connect via OAuth first." };
+    const res = await fetch("https://api.atlassian.com/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      return { ok: true, message: `Jira connected as ${data.name || data.email || "user"}` };
+    }
+    return { ok: false, message: `Atlassian API error: ${res.status}` };
+  },
+
   github: async (creds, token) => {
     const tok =
-      token ||
-      creds.personal_access_token ||
-      creds.pat ||
-      creds.client_secret ||
-      creds.api_key;
+      token || creds.personal_access_token || creds.pat || creds.client_secret || creds.api_key;
     if (!tok)
       return {
         ok: false,
@@ -217,20 +234,16 @@ async function genericTest(
   if (hasValues)
     return {
       ok: true,
-      message:
-        "Credentials stored. Live API test not yet implemented for this provider.",
+      message: "Credentials stored. Live API test not yet implemented for this provider.",
     };
   return { ok: false, message: "No credentials found" };
 }
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
-  const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const guard = requireTenantRole(locals.user, ["owner", "admin"]);
+  if (guard) return guard;
+  const user = locals.user!;
+
   const tenantId = user.tenantId;
   if (!tenantId) {
     return new Response(JSON.stringify({ error: "Tenant context required" }), {
@@ -275,8 +288,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   // Persist test result
   await updateTestStatus(platform, appId, result.ok, tenantId);
 
-  return new Response(
-    JSON.stringify({ healthy: result.ok, message: result.message }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
-  );
+  return new Response(JSON.stringify({ healthy: result.ok, message: result.message }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 };

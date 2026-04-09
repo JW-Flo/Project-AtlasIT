@@ -8,7 +8,7 @@
   import Label from "$lib/components/ui/label.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
   import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle } from "lucide-svelte";
+  import { AlertTriangle, Copy } from "lucide-svelte";
 
   type Impact = "positive" | "detrimental" | "neutral";
 
@@ -49,7 +49,7 @@
     detrimentalCount: 0,
   };
 
-  const FRAMEWORKS = ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"];
+  let FRAMEWORKS: string[] = [];
   const CATEGORIES = [
     "access_grant", "access_revoke", "onboarding", "offboarding",
     "policy_change", "config_change", "adapter_pull", "incident",
@@ -62,9 +62,10 @@
   let impact: "all" | Impact = "all";
   let since = "";
 
-  let limit = 25;
+  let limit = 50;
   let offset = 0;
   let total = 0;
+  let expandedId: string | null = null;
 
   $: pageStart = total === 0 ? 0 : offset + 1;
   $: pageEnd = Math.min(offset + limit, total);
@@ -82,10 +83,18 @@
     return `${Math.round(value * 100)}%`;
   }
 
-  function shortHash(hash: string): string {
-    if (!hash) return "--";
+  function shortHash(hash: string | null | undefined): string {
+    if (!hash) return "pending";
     if (hash.length <= 16) return hash;
     return `${hash.slice(0, 10)}...${hash.slice(-6)}`;
+  }
+
+  async function copyHash(hash: string) {
+    try {
+      await navigator.clipboard.writeText(hash);
+    } catch {
+      // clipboard access not available
+    }
   }
 
   function buildQuery(): string {
@@ -158,11 +167,26 @@
     loadFeed();
   }
 
-  onMount(loadFeed);
+  async function loadFrameworks() {
+    try {
+      const res = await fetch("/api/tenant-compliance/controls");
+      if (res.ok) {
+        const data = await res.json();
+        FRAMEWORKS = data.frameworks || [];
+      }
+    } catch {
+      // fall back to empty — filter dropdown will just be "All Frameworks"
+    }
+  }
+
+  onMount(async () => {
+    await Promise.all([loadFrameworks(), loadFeed()]);
+  });
 </script>
 
 <div class="space-y-6">
   <div>
+    <a href="/console/compliance" class="text-sm text-primary hover:underline">← Back to Compliance</a>
     <h1 class="text-2xl font-semibold tracking-tight">Evidence Activity Feed</h1>
     <p class="text-sm text-muted-foreground">Lifecycle operations mapped to compliance controls with evidence impact.</p>
   </div>
@@ -241,7 +265,7 @@
   {:else}
     <div class="space-y-3">
       {#each feed as item}
-        <Card>
+        <Card class="cursor-pointer" on:click={() => expandedId = expandedId === item.id ? null : item.id}>
           <CardContent class="pt-4">
             <div class="flex items-start justify-between gap-3">
               <div class="space-y-1.5">
@@ -254,22 +278,64 @@
                 <div class="text-sm font-medium">{item.controlName}</div>
                 <div class="text-sm text-muted-foreground">{item.reasoning}</div>
                 <div class="text-xs text-muted-foreground">
-                  {item.eventType} • {item.category} • source: {item.source} • actor: {item.actor || "system"} • subject: {item.subject || "--"}
+                  {item.eventType} • {item.category} • source: {item.source} • actor: {item.actor || "system"} • subject: {typeof item.subject === "object" ? JSON.stringify(item.subject) : (item.subject || "--")}
                 </div>
               </div>
               <div class="text-right shrink-0">
                 <div class="text-xs text-muted-foreground">Confidence</div>
                 <div class="text-sm font-semibold">{confidencePct(item.confidence)}</div>
-                <div class="text-[11px] text-muted-foreground mt-1" title={item.contentHash}>hash: {shortHash(item.contentHash)}</div>
+                <div class="flex items-center justify-end gap-1 mt-1">
+                  <span class="text-[11px] text-muted-foreground" title={item.contentHash}>hash: {shortHash(item.contentHash)}</span>
+                  {#if item.contentHash}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <button
+                      type="button"
+                      class="inline-flex items-center justify-center rounded h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                      on:click|stopPropagation={() => copyHash(item.contentHash)}
+                      title="Copy hash"
+                    >
+                      <Copy class="h-3 w-3" />
+                    </button>
+                  {/if}
+                </div>
               </div>
             </div>
+            {#if expandedId === item.id}
+              <div class="mt-3 pt-3 border-t space-y-2" on:click|stopPropagation>
+                <div>
+                  <div class="text-xs font-semibold text-muted-foreground mb-1">Full Hash</div>
+                  <div class="flex items-center gap-2">
+                    <code class="text-[11px] bg-muted px-2 py-1 rounded break-all">{item.contentHash || "--"}</code>
+                    {#if item.contentHash}
+                      <Button size="sm" variant="outline" on:click={() => copyHash(item.contentHash)}>Copy</Button>
+                    {/if}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs font-semibold text-muted-foreground mb-1">Metadata</div>
+                  <pre class="text-[11px] bg-muted px-2 py-1.5 rounded overflow-x-auto whitespace-pre-wrap">{JSON.stringify({ id: item.id, framework: item.framework, controlId: item.controlId, controlName: item.controlName, category: item.category, source: item.source, actor: item.actor, subject: item.subject, impact: item.impact, confidence: item.confidence, eventType: item.eventType, createdAt: item.createdAt }, null, 2)}</pre>
+                </div>
+              </div>
+            {/if}
           </CardContent>
         </Card>
       {/each}
     </div>
 
     <div class="flex items-center justify-between text-sm text-muted-foreground">
-      <div>Showing {pageStart}–{pageEnd} of {total}</div>
+      <div class="flex items-center gap-3">
+        <span>Showing {pageStart}–{pageEnd} of {total}</span>
+        <div class="flex items-center gap-1">
+          <span class="text-xs">Per page:</span>
+          {#each [25, 50, 100] as size}
+            <button
+              type="button"
+              class="px-2 py-0.5 text-xs rounded border {limit === size ? 'bg-primary text-primary-foreground border-primary' : 'border-input bg-background hover:bg-muted'}"
+              on:click={() => { limit = size; offset = 0; loadFeed(); }}
+            >{size}</button>
+          {/each}
+        </div>
+      </div>
       <div class="flex items-center gap-2">
         <Button size="sm" variant="outline" on:click={prevPage} disabled={!canPrev}>Previous</Button>
         <Button size="sm" variant="outline" on:click={nextPage} disabled={!canNext}>Next</Button>

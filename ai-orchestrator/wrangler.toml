@@ -3,7 +3,7 @@ account_id = "620865722bd88ef0a77dbbb60c91392e"
 main = "src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true
+workers_dev = false
 
 # Custom domain route
 routes = [
@@ -44,6 +44,12 @@ database_id = "4c219864-76be-4453-a494-a4e0904e9cbc"
 name = "WORKFLOW"
 class_name = "WorkflowDO"
 
+# Cloudflare Workflows — durable step execution (replaces WorkflowDO for new runs)
+[[workflows]]
+name = "atlas-workflow"
+binding = "ATLAS_WORKFLOW"
+class_name = "AtlasWorkflow"
+
 [[durable_objects.bindings]]
 name = "AUTOMATION"
 class_name = "AutomationDO"
@@ -75,10 +81,11 @@ ENVIRONMENT = "production"
 AI_PROVIDER = "groq"
 AI_FALLBACKS = "groq,together,cloudflare"
 SELF_URL = "https://orchestrator.atlasit.pro"
-ADAPTER_URLS = '{"google-workspace":"https://atlasit-google-workspace.workers.dev"}'
+ADAPTER_URLS = '{"github":"https://atlasit-adapter-github.kd8jc7v8cd.workers.dev","okta":"https://atlasit-okta-connector.kd8jc7v8cd.workers.dev","google_workspace":"https://atlasit-google-workspace.kd8jc7v8cd.workers.dev","microsoft_365":"https://atlasit-adapter-microsoft-365.kd8jc7v8cd.workers.dev","aws":"https://atlasit-adapter-aws.kd8jc7v8cd.workers.dev","slack":"https://atlasit-adapter-slack.kd8jc7v8cd.workers.dev","adp":"https://atlasit-adapter-adp.kd8jc7v8cd.workers.dev","auth0":"https://atlasit-adapter-auth0.kd8jc7v8cd.workers.dev","azure":"https://atlasit-adapter-azure.kd8jc7v8cd.workers.dev","bamboohr":"https://atlasit-adapter-bamboohr.kd8jc7v8cd.workers.dev","crowdstrike":"https://atlasit-adapter-crowdstrike.kd8jc7v8cd.workers.dev","discord":"https://atlasit-adapter-discord.kd8jc7v8cd.workers.dev","gcp":"https://atlasit-adapter-gcp.kd8jc7v8cd.workers.dev","quickbooks":"https://atlasit-adapter-quickbooks.kd8jc7v8cd.workers.dev","stripe":"https://atlasit-adapter-stripe.kd8jc7v8cd.workers.dev","teams":"https://atlasit-adapter-teams.kd8jc7v8cd.workers.dev","workday":"https://atlasit-adapter-workday.kd8jc7v8cd.workers.dev","xero":"https://atlasit-adapter-xero.kd8jc7v8cd.workers.dev","zoom":"https://atlasit-adapter-zoom.kd8jc7v8cd.workers.dev","zscaler":"https://atlasit-adapter-zscaler.kd8jc7v8cd.workers.dev","jira":"https://atlasit-adapter-jira.kd8jc7v8cd.workers.dev","confluence":"https://atlasit-adapter-confluence.kd8jc7v8cd.workers.dev"}'
+COMPLIANCE_WORKER_URL = "https://compliance.atlasit.pro"
 
 [triggers]
-crons = ["*/5 * * * *", "0 2 * * *"]
+crons = ["*/5 * * * *", "0 2 * * *", "0 8 * * 0", "0 */6 * * *"]
 
 [observability.logs]
 enabled = true
