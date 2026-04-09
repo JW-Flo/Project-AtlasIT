@@ -281,19 +281,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // POST /api/v1/flags — create a new feature flag
+  // Note: The flag repository uses 'name' as the key identifier, so we accept 'key' as the identifier
+  // and ignore the 'name' field (which was confusing). API now only requires 'key'.
   if (path === "/api/v1/flags" && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const b = body(event) as {
       key?: string;
-      name?: string;
       description?: string;
       enabled?: boolean;
       rolloutPercentage?: number;
       tenantOverrides?: Record<string, boolean>;
-      tierMinimum?: string;
-      killSwitch?: boolean;
     };
-    if (!b.key || !b.name) return fail(400, "key and name are required", "VALIDATION_FAILED");
+    if (!b.key) return fail(400, "key is required", "VALIDATION_FAILED");
     const existing = await svc.flagRepo.get(b.key);
     if (existing) return fail(409, "A flag with this key already exists", "CONFLICT");
     const now = new Date().toISOString();
@@ -302,11 +301,6 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       enabled: b.enabled ?? true,
       rolloutPct: b.rolloutPercentage ?? 100,
       tenantOverrides: b.tenantOverrides ?? {},
-      description: b.description,
-      tierMinimum: b.tierMinimum,
-      killSwitch: b.killSwitch ?? false,
-      createdAt: now,
-      updatedAt: now,
     };
     await svc.flagRepo.set(flag);
     return ok({ status: "success", data: flag, timestamp: now }, 201);
@@ -319,28 +313,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const existing = await svc.flagRepo.get(key);
     if (!existing) return fail(404, "Flag not found", "NOT_FOUND");
     const b = body(event) as {
-      name?: string;
-      description?: string;
       enabled?: boolean;
       rolloutPercentage?: number;
       tenantOverrides?: Record<string, boolean>;
-      tierMinimum?: string;
-      killSwitch?: boolean;
     };
-    const now = new Date().toISOString();
     const updated = {
-      ...existing,
       name: key,
-      description: b.description ?? existing.description,
       enabled: b.enabled ?? existing.enabled,
       rolloutPct: b.rolloutPercentage ?? existing.rolloutPct,
       tenantOverrides: b.tenantOverrides ?? existing.tenantOverrides,
-      tierMinimum: b.tierMinimum ?? existing.tierMinimum,
-      killSwitch: b.killSwitch ?? existing.killSwitch,
-      updatedAt: now,
     };
     await svc.flagRepo.set(updated);
-    return ok({ status: "success", data: updated, timestamp: now });
+    return ok({ status: "success", data: updated, timestamp: new Date().toISOString() });
   }
 
   // DELETE /api/v1/flags/:key — delete a feature flag
@@ -489,14 +473,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(403, "Tenant access denied", "FORBIDDEN");
     }
     const result = await pool.query(
-      `SELECT encrypted_credentials FROM app_credentials WHERE tenant_id = $1 AND app_id = $2`,
+      `SELECT credentials FROM app_credentials WHERE tenant_id = $1 AND app_id = $2`,
       [credTenantId, appId],
     );
     if (result.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
-    const decrypted = JSON.parse(Buffer.from(result.rows[0].encrypted_credentials, "base64").toString("utf8"));
+    // SECURITY WARNING: Credentials are only base64-encoded, not encrypted.
+    // Do not return raw secrets without proper authorization and audit logging.
+    const decoded = JSON.parse(Buffer.from(result.rows[0].credentials, "base64").toString("utf8"));
     return ok({
       status: "success",
-      data: { tenantId: credTenantId, appId, credentials: decrypted },
+      data: { tenantId: credTenantId, appId, credentials: decoded },
       timestamp: new Date().toISOString(),
     });
   }
@@ -512,10 +498,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       [credTenantId, appId],
     );
     if (existing.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
-    const encryptedCreds = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
+    const encodedCredentials = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
     await pool.query(
-      `UPDATE app_credentials SET encrypted_credentials = $1, updated_at = NOW() WHERE tenant_id = $2 AND app_id = $3`,
-      [encryptedCreds, credTenantId, appId],
+      `UPDATE app_credentials SET credentials = $1, updated_at = NOW() WHERE tenant_id = $2 AND app_id = $3`,
+      [encodedCredentials, credTenantId, appId],
     );
     return ok({
       status: "success",

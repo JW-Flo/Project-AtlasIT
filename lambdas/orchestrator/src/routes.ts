@@ -648,7 +648,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (agentSubsMatch && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, agentId] = agentSubsMatch;
-    const b = parseBody(event) as { eventType?: string; filterExpression?: string };
+    const b = parseBody(event) as { eventType?: string; filterExpression?: Record<string, unknown> | null };
     if (!b.eventType) return fail(400, "eventType is required", "VALIDATION_FAILED");
     const agent = await pool.query(
       "SELECT id FROM agents WHERE id = $1 AND tenant_id = $2",
@@ -656,14 +656,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     );
     if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
     const subId = crypto.randomUUID();
+    // Convert filterExpression to JSONB-compatible format
+    const filterExpr = b.filterExpression ? JSON.stringify(b.filterExpression) : null;
     try {
       await pool.query(
         `INSERT INTO event_subscriptions (id, agent_id, event_type, filter_expression, created_at)
          VALUES ($1, $2, $3, $4, NOW())`,
-        [subId, agentId, b.eventType, b.filterExpression ?? null],
+        [subId, agentId, b.eventType, filterExpr],
       );
-    } catch (e) {
-      if ((e as Error).message.includes("duplicate") || (e as Error).message.includes("unique")) {
+    } catch (e: unknown) {
+      // Check Postgres error code 23505 for unique violation
+      const pgError = e as { code?: string };
+      if (pgError.code === "23505") {
         return fail(409, "Already subscribed to this event type", "CONFLICT");
       }
       throw e;
@@ -680,16 +684,29 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (agentHealthMatch && method === "POST") {
     const [, agentId] = agentHealthMatch;
     const agent = await pool.query(
-      "SELECT id, webhook_url as healthUrl FROM agents WHERE id = $1 AND tenant_id = $2",
+      "SELECT id, health_check_url as healthUrl FROM agents WHERE id = $1 AND tenant_id = $2",
       [agentId, tenantId],
     );
     if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
     let healthStatus = "unhealthy";
     const healthUrl = agent.rows[0].healthUrl as string | null;
     if (healthUrl) {
+      // SSRF protection: validate URL scheme and block private IP ranges
       try {
-        const res = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(5000) });
-        healthStatus = res.ok ? "healthy" : "unhealthy";
+        const url = new URL(healthUrl);
+        if (!["http:", "https:"].includes(url.protocol)) {
+          console.warn(`[orchestrator] Blocked health check to non-HTTP URL: ${url.protocol}`);
+        } else {
+          // Block private IPs and localhost (basic SSRF protection)
+          const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
+          const isPrivateIP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(url.hostname);
+          if (blockedHosts.includes(url.hostname) || isPrivateIP) {
+            console.warn(`[orchestrator] Blocked health check to private/local address: ${url.hostname}`);
+          } else {
+            const res = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(5000) });
+            healthStatus = res.ok ? "healthy" : "unhealthy";
+          }
+        }
       } catch {
         healthStatus = "unhealthy";
       }
@@ -757,6 +774,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // POST /api/v1/workflows/:id/cancel — cancel a workflow
+  // Note: schema constraint allows 'queued|running|completed|failed|compensating', so we use 'failed'
+  // with error text indicating cancellation rather than unsupported 'cancelled' status.
   const workflowCancelMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/cancel$/);
   if (workflowCancelMatch && method === "POST") {
     const [, workflowId] = workflowCancelMatch;
@@ -767,7 +786,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     );
     if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
     await pool.query(
-      `UPDATE workflow_runs SET status = 'cancelled', completed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+      `UPDATE workflow_runs SET status = 'failed', error = 'Cancelled by user', completed_at = NOW()
+       WHERE id = $1 AND tenant_id = $2`,
       [workflowId, tenantId],
     );
     return ok({ status: "success", data: { workflowId, status: "cancelled" }, timestamp: ts });

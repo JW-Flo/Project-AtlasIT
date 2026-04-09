@@ -534,6 +534,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const adaptersCollected: string[] = [];
 
     // Fetch evidence from each adapter
+    const adapterErrors: Array<{ adapter: string; error: string }> = [];
     for (const [slug, adapterUrl] of Object.entries(adapterUrls)) {
       try {
         const res = await fetch(`${adapterUrl}/api/evidence`, {
@@ -590,21 +591,37 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                       }),
                     ],
                   );
-                } catch {
-                  // Ignore duplicate insert errors
+                } catch (dbErr) {
+                  console.error(`[compliance-api] evidence.collect.db.error`, {
+                    requestId,
+                    adapter: slug,
+                    controlRef,
+                    error: (dbErr as Error).message,
+                  });
                 }
               }
             }
           }
+        } else {
+          const errMsg = `HTTP ${res.status}`;
+          console.error(`[compliance-api] evidence.collect.adapter.error`, { requestId, adapter: slug, error: errMsg });
+          adapterErrors.push({ adapter: slug, error: errMsg });
         }
-      } catch {
-        // Skip adapters that fail
+      } catch (fetchErr) {
+        const errMsg = (fetchErr as Error).message;
+        console.error(`[compliance-api] evidence.collect.adapter.error`, { requestId, adapter: slug, error: errMsg });
+        adapterErrors.push({ adapter: slug, error: errMsg });
       }
     }
 
     return ok({
       status: "success",
-      data: { collected: allItems.length, adapters: adaptersCollected, items: allItems },
+      data: {
+        collected: allItems.length,
+        adapters: adaptersCollected,
+        items: allItems,
+        ...(adapterErrors.length > 0 ? { errors: adapterErrors } : {}),
+      },
       timestamp: new Date().toISOString(),
     });
   }
