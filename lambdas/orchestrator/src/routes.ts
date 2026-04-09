@@ -633,7 +633,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     );
     if (existing.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
     // Delete subscriptions first (cascade), then agent
-    await pool.query("DELETE FROM event_subscriptions WHERE agent_id = $1", [id]);
+    // Use subquery to ensure tenant isolation
+    await pool.query(
+      `DELETE FROM event_subscriptions WHERE agent_id = $1
+       AND agent_id IN (SELECT id FROM agents WHERE tenant_id = $2)`,
+      [id, tenantId],
+    );
     await pool.query("DELETE FROM agents WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
     return ok({ status: "success", data: { id, deleted: true }, timestamp: ts });
   }
@@ -703,6 +708,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   const stepCompleteMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/steps\/([^/]+)\/complete$/);
   if (stepCompleteMatch && method === "POST") {
     const [, workflowId, stepId] = stepCompleteMatch;
+    const stepIndex = parseInt(stepId, 10);
+    if (Number.isNaN(stepIndex) || stepIndex < 0) {
+      return fail(400, "stepId must be a valid non-negative integer", "VALIDATION_FAILED");
+    }
     const b = parseBody(event) as Record<string, unknown>;
     // Verify workflow belongs to tenant
     const wf = await pool.query(
@@ -714,7 +723,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     await svc.queueRepo.send({
       tenantId,
       workflowRunId: workflowId,
-      stepIndex: parseInt(stepId, 10) || 0,
+      stepIndex,
       action: "step_complete",
       payload: b,
     });
@@ -725,6 +734,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   const stepFailMatch = path.match(/^\/api\/v1\/workflows\/([^/]+)\/steps\/([^/]+)\/fail$/);
   if (stepFailMatch && method === "POST") {
     const [, workflowId, stepId] = stepFailMatch;
+    const stepIndex = parseInt(stepId, 10);
+    if (Number.isNaN(stepIndex) || stepIndex < 0) {
+      return fail(400, "stepId must be a valid non-negative integer", "VALIDATION_FAILED");
+    }
     const b = parseBody(event) as { error?: string };
     // Verify workflow belongs to tenant
     const wf = await pool.query(
@@ -736,7 +749,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     await svc.queueRepo.send({
       tenantId,
       workflowRunId: workflowId,
-      stepIndex: parseInt(stepId, 10) || 0,
+      stepIndex,
       action: "step_fail",
       payload: { error: b.error ?? "Unknown error" },
     });

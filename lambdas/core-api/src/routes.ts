@@ -427,15 +427,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (user.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
     const u = user.rows[0];
     if (u.status !== "active") return fail(403, "User account is not active", "FORBIDDEN");
-    // TODO: Issue real JWT in production
-    return ok({
-      status: "success",
-      data: {
-        message: "Token endpoint placeholder — JWT issuance not yet implemented",
-        user: { id: u.id, email: u.email, role: u.role },
-      },
-      timestamp: new Date().toISOString(),
-    });
+    // Token issuance not yet implemented — return 501
+    return fail(501, "Token issuance not yet implemented", "NOT_IMPLEMENTED");
   }
 
   // ── Credential routes ───────────────────────────────────────────────────────
@@ -452,7 +445,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(403, "Tenant access denied", "FORBIDDEN");
     }
     const id = crypto.randomUUID();
-    // Store encrypted credentials (in production, use proper encryption)
+    // SECURITY WARNING: Base64 is NOT encryption. This is a placeholder implementation.
+    // In production, use AWS KMS envelope encryption or similar proper encryption.
+    // The column name 'encrypted_credentials' is misleading — this is just encoded.
     const encryptedCreds = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
     await pool.query(
       `INSERT INTO app_credentials (id, tenant_id, app_id, encrypted_credentials, connected_at, updated_at)

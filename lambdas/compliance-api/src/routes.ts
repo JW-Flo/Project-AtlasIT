@@ -41,6 +41,10 @@ const JSON_HEADERS = {
 
 const SNAPSHOT_TTL_SECONDS = 300;
 
+// Evidence thresholds for compliance status determination
+const MIN_EVIDENCE_FOR_VERIFIED = 3;
+const MIN_EVIDENCE_FOR_IMPLEMENTED = 1;
+
 function ok(body: unknown, status = 200): APIGatewayProxyResultV2 {
   return { statusCode: status, headers: JSON_HEADERS, body: JSON.stringify(body) };
 }
@@ -498,13 +502,24 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     let adapterUrls: Record<string, string>;
     try {
       adapterUrls = JSON.parse(process.env.ADAPTER_URLS ?? "{}") as Record<string, string>;
-    } catch {
-      return fail(500, "Invalid ADAPTER_URLS configuration", "CONFIG_ERROR");
+    } catch (parseErr) {
+      return fail(500, `Invalid ADAPTER_URLS configuration: ${(parseErr as Error).message}`, "CONFIG_ERROR");
     }
     if (Object.keys(adapterUrls).length === 0) {
       return ok({
         status: "success",
         data: { collected: 0, adapters: [], items: [] },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Skip adapter calls if API key is not configured
+    const internalApiKey = process.env.INTERNAL_API_KEY;
+    if (!internalApiKey) {
+      console.warn("[compliance-api] INTERNAL_API_KEY not configured, skipping adapter evidence collection");
+      return ok({
+        status: "success",
+        data: { collected: 0, adapters: [], items: [], warning: "INTERNAL_API_KEY not configured" },
         timestamp: new Date().toISOString(),
       });
     }
@@ -525,7 +540,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           method: "GET",
           headers: {
             "X-Tenant-ID": tenantId,
-            "X-API-Key": process.env.INTERNAL_API_KEY ?? "",
+            "X-API-Key": internalApiKey,
           },
           signal: AbortSignal.timeout(10_000),
         });
@@ -652,8 +667,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     for (const row of evidenceRows.rows) {
       const evidenceCount = parseInt(row.evidence_count, 10);
       let status = "not_started";
-      if (evidenceCount >= 3) status = "verified";
-      else if (evidenceCount >= 1) status = "implemented";
+      if (evidenceCount >= MIN_EVIDENCE_FOR_VERIFIED) status = "verified";
+      else if (evidenceCount >= MIN_EVIDENCE_FOR_IMPLEMENTED) status = "implemented";
       evaluations.push({
         controlId: row.controlId,
         framework: row.framework ?? "unknown",
