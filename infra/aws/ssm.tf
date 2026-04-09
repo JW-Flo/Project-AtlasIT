@@ -41,3 +41,15 @@ resource "aws_ssm_parameter" "event_bus_name" {
   type  = "String"
   value = aws_cloudwatch_event_bus.atlasit.name
 }
+
+resource "aws_ssm_parameter" "jml_workflow_arn" {
+  name  = "/atlasit/${var.env}/jml-workflow-arn"
+  type  = "String"
+  value = aws_sfn_state_machine.jml_workflow.arn
+}
+
+resource "aws_ssm_parameter" "automation_rule_arn" {
+  name  = "/atlasit/${var.env}/automation-rule-arn"
+  type  = "String"
+  value = aws_sfn_state_machine.automation_rule.arn
+}

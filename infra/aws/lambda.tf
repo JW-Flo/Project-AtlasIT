@@ -20,8 +20,10 @@ locals {
     CACHE_TABLE        = aws_dynamodb_table.cache.name
     FLAGS_TABLE        = aws_dynamodb_table.feature_flags.name
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
-    SQS_STEP_TASKS_URL = aws_sqs_queue.step_tasks.url
-    DATABASE_URL       = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
+    SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
+    DATABASE_URL           = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
+    JML_WORKFLOW_ARN       = aws_sfn_state_machine.jml_workflow.arn
+    AUTOMATION_RULE_ARN    = aws_sfn_state_machine.automation_rule.arn
   }
 
   lambda_vpc_config = {
@@ -113,6 +115,15 @@ resource "aws_iam_policy" "lambda_app" {
         Effect   = "Allow"
         Action   = ["rds-db:connect"]
         Resource = ["arn:aws:rds-db:${var.region}:${var.account_id}:dbuser:*/atlasit_app"]
+      },
+      {
+        Sid      = "StepFunctions"
+        Effect   = "Allow"
+        Action   = ["states:StartExecution", "states:DescribeExecution", "states:StopExecution"]
+        Resource = [
+          aws_sfn_state_machine.jml_workflow.arn,
+          aws_sfn_state_machine.automation_rule.arn
+        ]
       }
     ]
   })
