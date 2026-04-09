@@ -1,6 +1,6 @@
 # AtlasIT Roadmap
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 This roadmap tracks implementation phases from foundation through market readiness. See `STATUS.md` for current deployment state and `CLAUDE.md` for coding standards.
 
@@ -8,11 +8,11 @@ This roadmap tracks implementation phases from foundation through market readine
 
 ## Vision & Market Positioning
 
-AtlasIT is a **Cloudflare-native IT automation and compliance platform** for small and mid-sized businesses (1–100 employees) that want to internalize IT ops securely without dedicated IT teams or expensive MSPs.
+AtlasIT is an **IT automation and compliance platform** (migrating from Cloudflare to AWS) for small and mid-sized businesses (1–100 employees) that want to internalize IT ops securely without dedicated IT teams or expensive MSPs.
 
 **Value prop:** Zero-touch IT operations — once adapters are connected and rules are defined, the platform runs itself.
 
-**Differentiators:** Edge-native architecture, AI-driven connector onboarding, policy-as-code compliance, unified IdP abstraction with fallback OIDC/SAML for SMBs without an existing identity provider.
+**Differentiators:** Cloud-native architecture (AWS Lambda + CloudFront + Aurora), AI-driven connector onboarding, policy-as-code compliance, unified IdP abstraction with fallback OIDC/SAML for SMBs without an existing identity provider.
 
 ### The Autonomous Loop
 
@@ -215,6 +215,65 @@ Directory Event / Schedule / Webhook
 - [x] Automation action type `request_access_review` with compliance control mappings (SOC2 CC6.1, CC6.3, ISO27001 A.9.2.5, HIPAA 164.312(a)(1))
 - [x] Files: `console-app/src/routes/api/access-reviews/`, `ai-orchestrator/src/lib/access-review-auto-revoke.ts`, `migrations/0021_access_reviews.sql`
 
+## Phase 8.5 — AWS Migration (Platform Re-Host) ⚠️ In Progress
+
+> **Strategic context**: Cloudflare's D1 (SQLite semantics), Durable Objects, and Workflows impose scaling
+> ceilings that block enterprise readiness. AWS provides Aurora PostgreSQL (real relational DB), Step Functions
+> (durable workflows), and a mature security/compliance ecosystem (Control Tower, GuardDuty, Config) that
+> enterprise buyers expect. The migration preserves all external endpoints and multi-tenant correctness.
+>
+> **Decision**: Progressive cutover using Route 53 weighted routing. Cloudflare stays as hot standby until
+> full validation. See `infra/aws/MIGRATION.md` for the complete cutover playbook.
+
+### Infrastructure (PR #376) ✅
+
+- [x] **Terraform IaC** (18 files in `infra/aws/`):
+  - VPC with 2 private + 2 public subnets, NAT Gateway, security groups
+  - CloudFront distribution (wildcard `*.atlasit.pro` + apex) with S3 OAC + API Gateway origins
+  - AWS WAF (3 managed rule sets: common, known-bad-inputs, IP reputation + 2 rate-limit rules)
+  - API Gateway HTTP API with Lambda integrations (core-api, compliance, orchestrator, onboarding, slack)
+  - 7 Lambda functions with IAM execution role, VPC attachment, SQS event source mappings
+  - Aurora PostgreSQL Serverless v2 (0.5–4 ACU, encrypted, VPC-attached)
+  - DynamoDB tables: sessions, cache, feature-flags, idempotency (all with TTL)
+  - S3 buckets: evidence, policies, artifacts, console (OAC), logs (90d lifecycle)
+  - SQS queue + DLQ (replaces `atlasit-step-tasks`) with CloudWatch alarm
+  - EventBridge Scheduler (replaces cron: 5min scoring, daily eval, 15min dispatch)
+  - Route 53 hosted zone + apex/wildcard A records + health check
+  - ACM wildcard certificate (us-east-1) with DNS validation
+  - SSM Parameter Store (7 params for service discovery)
+  - Secrets Manager (6 secrets: encryption key, Groq, webhooks, Slack, GitHub)
+  - CloudWatch: 8 log groups, 3 alarms (5xx, Lambda errors, Lambda duration)
+- [x] **CI/CD**: Lambda deploy workflow (change-detection matrix), console S3 deploy, terraform-apply expansion
+
+### Database Migration ✅
+
+- [x] PostgreSQL schema: 35 tables converted from D1/SQLite (all 26 migrations)
+  - `datetime('now')` → `NOW()`, `INTEGER` booleans → `BOOLEAN`, `TEXT` JSON → `JSONB`
+  - `hex(randomblob(16))` → `gen_random_uuid()`, `AUTOINCREMENT` → `GENERATED ALWAYS AS IDENTITY`
+- [x] Migration scripts: `scripts/migrate-d1-to-aurora.sh`, `scripts/migrate-kv-to-dynamodb.sh`, `scripts/migrate-r2-to-s3.sh`
+
+### Platform SDK ✅
+
+- [x] `packages/shared/src/platform/aws/` — AWS service abstraction layer:
+  - `bootstrap.ts`: lazy-init service container (DynamoDB, S3, SQS, EventBridge, Secrets Manager)
+  - `repos/session-repo.ts`: DynamoDB sessions (replaces KV_SESSIONS)
+  - `repos/cache-repo.ts`: DynamoDB cache with TTL (replaces KV_CACHE)
+  - `repos/flag-repo.ts`: DynamoDB feature flags with deterministic rollout (replaces KV_FEATURE_FLAGS)
+  - `repos/evidence-repo.ts`: S3 evidence store (replaces R2 atlas-evidence)
+  - `repos/queue-repo.ts`: SQS step task dispatch (replaces Cloudflare Queues)
+  - `repos/audit-repo.ts`: PostgreSQL audit log (replaces D1 audit_log)
+  - `repos/tenant-repo.ts`: PostgreSQL tenant/user queries (replaces D1 tenants/users)
+- [x] `packages/shared/src/auth/`: Lambda auth (Bearer + ApiKey), session validation, auth context
+
+### Remaining
+
+- [ ] Port Worker handler business logic to Lambda entry points (18 Lambda stubs exist in `lambdas/`)
+- [ ] SvelteKit static adapter configuration for S3 deploy
+- [ ] Step Functions state machine (replaces WorkflowDO + AutomationDO durable objects)
+- [ ] Staging environment validation + load testing
+- [ ] DNS cutover: Route 53 weighted routing (Cloudflare→AWS progressive shift)
+- [ ] Post-cutover: Cloudflare decommission after 2-week stability window
+
 ## Phase 9 — Trust Center & Questionnaire Automation (Kill the Security Questionnaire)
 
 > **Strategic context**: 43% of companies report compliance gaps delayed their sales cycles (Secureframe 2026).
@@ -379,11 +438,12 @@ Competitors must stitch together:
 
 | Concern             | Strategy                                                                  |
 | ------------------- | ------------------------------------------------------------------------- |
-| Schema Evolution    | Versioned D1 migrations + idempotent backfills                            |
-| Secrets             | 1Password (vault: AWW_SHARED) + wrangler secret put                       |
-| Config              | Environment gating via wrangler.toml [env.*] sections                     |
-| Performance         | Precompute aggregates into KV; Queues for heavy ops                       |
+| Schema Evolution    | Versioned PostgreSQL migrations in `infra/aws/migrations/` (was D1)       |
+| Secrets             | AWS Secrets Manager (was 1Password + wrangler secret put)                 |
+| Config              | SSM Parameter Store + Lambda env vars (was wrangler.toml [env.*])         |
+| Performance         | DynamoDB + CloudFront caching; SQS for heavy ops (was KV + Queues)        |
 | Testing             | Vitest + Miniflare; 719 tests (118 files)                                 |
-| Observability       | Structured JSON logging, SLO burn-rate alerting, Analytics Engine metrics |
-| IaC                 | Terraform + OPA policies + daily drift detection                          |
+| Observability       | CloudWatch + OpenTelemetry (was CF Analytics Engine); 8 log groups, 4 alarms |
+| IaC                 | Terraform (18 files) + OPA policies + daily drift detection               |
 | Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |
+| Platform Migration  | Progressive DNS cutover (Route 53 weighted), Cloudflare hot standby       |

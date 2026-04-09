@@ -1,12 +1,13 @@
 # AtlasIT Platform Status
 
-**Last updated:** March 2026
+**Last updated:** April 2026
 
 ## Current State
 
 - **Test suite:** 719 tests passing (118 files)
 - **Package manager:** pnpm (workspace monorepo)
-- **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues
+- **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues (migrating to AWS)
+- **AWS Migration:** Phase 1 infrastructure scaffolded (PR #376)
 
 ## Phase Completion
 
@@ -22,6 +23,10 @@
 | 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload |
 | 7.5 — Compliance Integration   | ⚠️ In Progress | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls). **Remaining:** policy eval stub |
 | 8 — Access Reviews             | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action |
+| **AWS Migration — Infra**      | ⚠️ In Progress | #376       | Terraform: VPC, CloudFront, WAF, API GW, Lambda (7), Aurora PG, SQS, EventBridge, Route 53, ACM, SSM, Secrets Manager |
+| **AWS Migration — Data**       | ⚠️ In Progress | #376       | PostgreSQL schema (35 tables from D1), migration scripts (KV→DynamoDB, R2→S3, D1→Aurora) |
+| **AWS Migration — Platform**   | ⚠️ In Progress | #376       | Shared AWS SDK: DynamoDB repos (session/cache/flags), S3 evidence, SQS queue, PG audit/tenant, Lambda auth |
+| **AWS Migration — CI/CD**      | ⚠️ In Progress | #376       | Lambda deploy workflow, console S3 deploy workflow, terraform-apply path expansion |
 
 ## Deployed Workers
 
@@ -49,10 +54,27 @@
 
 ## Infrastructure
 
+### Cloudflare (Current — migrating)
 - **D1:** `ATLAS_SHARED_DB` (tenants, users, compliance, audit, console_user_roles, directory)
 - **KV:** `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`, `MCP_STORE`
 - **R2:** `atlasit-evidence` (policies, evidence, artifacts)
 - **Queues:** `atlasit-step-tasks` (workflow step dispatch)
+
+### AWS (Target — scaffolded, not yet live)
+- **Compute:** 7 Lambda functions behind API Gateway HTTP API, CloudFront CDN
+- **Database:** Aurora PostgreSQL Serverless v2 (replaces all 5 D1 databases)
+- **KV → DynamoDB:** `atlasit-sessions`, `atlasit-cache`, `atlasit-feature-flags`, `atlasit-idem` (all with TTL)
+- **R2 → S3:** `atlasit-evidence`, `atlasit-policies`, `atlasit-artifacts`, `atlasit-console` (OAC)
+- **Queues → SQS:** `atlasit-step-tasks` + DLQ
+- **Cron → EventBridge:** 5-min scoring, daily evaluation, 15-min dispatch
+- **Edge:** CloudFront + WAF (3 managed rule sets, 2 rate-limit rules) + ACM wildcard cert
+- **DNS:** Route 53 hosted zone (apex + wildcard → CloudFront)
+- **Networking:** VPC with 2 private + 2 public subnets, NAT GW, security groups
+- **Secrets:** Secrets Manager (6 secrets: encryption key, Groq, webhooks, Slack, GitHub)
+- **Observability:** CloudWatch log groups (8), alarms (API 5xx, Lambda errors, Lambda duration, DLQ depth)
+- **CI/CD:** GitHub OIDC → `arn:aws:iam::457335975503:role/atlasit-github-actions-deploy`
+- **IaC:** 18 Terraform files in `infra/aws/`, SSM parameter store for service discovery
+- **Platform SDK:** `packages/shared/src/platform/aws/` — DynamoDB, S3, SQS, PG repos + auth layer
 
 ## What's Built
 
