@@ -356,33 +356,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (!b.tenantId) return fail(400, "tenantId is required", "VALIDATION_FAILED");
     const flag = await svc.flagRepo.get(key);
     if (!flag) return fail(404, "Flag not found", "NOT_FOUND");
-    // Simple evaluation logic
+    // Simple evaluation logic based on persisted flag fields only.
     let enabled = flag.enabled;
-    if (flag.killSwitch) enabled = false;
     if (flag.tenantOverrides?.[b.tenantId] !== undefined) {
       enabled = flag.tenantOverrides[b.tenantId];
     }
     return ok({
       status: "success",
-      data: { key, enabled, reason: flag.killSwitch ? "kill_switch" : "evaluated" },
+      data: { key, enabled, reason: "evaluated" },
       timestamp: new Date().toISOString(),
     });
   }
 
-  // POST /api/v1/flags/:key/kill — toggle kill switch
+  // POST /api/v1/flags/:key/kill — unsupported because killSwitch is not persisted
   const flagKillMatch = path.match(/^\/api\/v1\/flags\/([^/]+)\/kill$/);
   if (flagKillMatch && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, key] = flagKillMatch;
     const flag = await svc.flagRepo.get(key);
     if (!flag) return fail(404, "Flag not found", "NOT_FOUND");
-    const updated = {
-      ...flag,
-      killSwitch: !flag.killSwitch,
-      updatedAt: new Date().toISOString(),
-    };
-    await svc.flagRepo.set(updated);
-    return ok({ status: "success", data: updated, timestamp: new Date().toISOString() });
+    return fail(
+      501,
+      "Flag kill switch is not supported by the current flag repository",
+      "NOT_IMPLEMENTED",
+    );
   }
 
   // ── Tenant DELETE route ─────────────────────────────────────────────────────
