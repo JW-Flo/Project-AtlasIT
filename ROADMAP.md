@@ -265,14 +265,69 @@ Directory Event / Schedule / Webhook
   - `repos/tenant-repo.ts`: PostgreSQL tenant/user queries (replaces D1 tenants/users)
 - [x] `packages/shared/src/auth/`: Lambda auth (Bearer + ApiKey), session validation, auth context
 
-### Remaining
+### Step Functions (PR #377) ✅
 
-- [ ] Port Worker handler business logic to Lambda entry points (18 Lambda stubs exist in `lambdas/`)
-- [ ] SvelteKit static adapter configuration for S3 deploy
-- [ ] Step Functions state machine (replaces WorkflowDO + AutomationDO durable objects)
-- [ ] Staging environment validation + load testing
-- [ ] DNS cutover: Route 53 weighted routing (Cloudflare→AWS progressive shift)
-- [ ] Post-cutover: Cloudflare decommission after 2-week stability window
+- [x] JML workflow state machine: classify → route (joiner/mover/leaver) → provision/revoke/update → emit evidence → notify → compensation → DLQ escalation
+- [x] Automation rule state machine: evaluate conditions → parallel action execution (Map, max 3 concurrent) → record execution
+- [x] IAM role + Lambda invoke + SQS + CloudWatch logging permissions
+- [x] Lambda env vars (`JML_WORKFLOW_ARN`, `AUTOMATION_RULE_ARN`) + IAM `states:StartExecution`
+- [x] SSM params for workflow ARNs
+- [x] SvelteKit `adapter-node` config (`console-app/svelte.config.aws.js`) for SSR via Lambda
+
+### Ops Tooling (PR #378) ✅
+
+- [x] `scripts/cloudflare-export.sh` — exports DNS zone, WAF/firewall rules, page rules, all 9 KV namespaces, all 5 D1 databases, R2 inventory, worker list
+- [x] `scripts/dns-cutover.sh` — phased Route 53 weighted routing with 8 phases (`pre-lower-ttl` → `canary-1pct` → `canary-20pct` → `split-50` → `aws-majority` → `aws-full` → `rollback` → `restore-ttl`), supports `--dry-run`
+- [x] `scripts/smoke-test-aws.sh` — discovers endpoints from SSM Parameter Store, tests API GW + CloudFront + SQS/DLQ depth
+
+### Lambda Handlers (PR #379) ✅
+
+- [x] 7 Lambda functions ported from Cloudflare Workers (`lambdas/`):
+  - `core-api/` — tenants CRUD, events, feature flags, auth validate
+  - `compliance-api/` — evidence CRUD, policy gen/eval, CDT scoring, compliance snapshot
+  - `orchestrator/` — events, agents, workflows, JML, dead-letter; SQS step-task consumer
+  - `onboarding-api/` — onboarding start/submit/status, question generation
+  - `scheduler/` — health/manual-trigger (HTTP), cron jobs (EventBridge)
+  - `slack-handler/` — Slack approval webhook with HMAC-SHA256 verification
+  - `dlq-processor/` — DLQ consumer: persists failures, updates workflow status, writes audit log
+- [x] CF → AWS binding translations: `env.DB` → pg Pool, `env.KV_*` → DynamoDB repos, `env.EVIDENCE_BUCKET` → S3, `env.STEP_TASKS` → SQS
+
+### Security Fixes (PR #381) ✅
+
+- [x] `x-tenant-id` auth bypass fixed — requires `INTERNAL_API_KEY` shared secret for service-to-service calls
+- [x] 7 unscoped SQL queries fixed — DLQ stats/entry/replay, idempotency checks, agent re-query, SQS processor updates all scoped to `tenant_id`
+- [x] `INTERNAL_API_KEY` added to Secrets Manager + Lambda env vars
+
+### Phase 8.5a — Route Completion ⚠️ In Progress
+
+> ~60 Worker routes were not ported in the initial Lambda handler PR. These need to be added
+> to complete feature parity before staging validation can begin.
+
+- [ ] core-api: credentials CRUD (6 routes), auth/token, tenant DELETE, event by ID, flag operations (create/PATCH/DELETE/evaluate/kill)
+- [ ] orchestrator: event by ID, agent DELETE/subscriptions/health, workflow step complete/fail/cancel, automation evaluate/rules/stats, JML changelog/runs
+- [ ] compliance-api: evidence collect/search, policy evaluate-all/coverage, controls evidence linking
+
+### Phase 8.5b — Staging Validation
+
+- [ ] Deploy full stack to AWS staging (`env=staging` tfvars)
+- [ ] Run `scripts/cloudflare-export.sh` to capture current CF state
+- [ ] Execute data migration: `scripts/migrate-d1-to-aurora.sh`, `scripts/migrate-kv-to-dynamodb.sh`, `scripts/migrate-r2-to-s3.sh`
+- [ ] Run `scripts/smoke-test-aws.sh staging` — all endpoints green
+- [ ] k6 load tests against API Gateway (update existing k6 scripts with AWS URLs)
+- [ ] Verify Step Functions workflows execute correctly (joiner/mover/leaver + automation rules)
+- [ ] Console SPA loads from S3 + CloudFront, API calls route through API Gateway
+- [ ] WAF rules don't block legitimate traffic (test rate limits)
+- [ ] Verify CloudWatch alarms trigger on synthetic failures
+
+### Phase 8.5c — DNS Cutover & Decommission
+
+- [ ] Lower Cloudflare DNS TTL to 60s (72h before cutover)
+- [ ] Execute `scripts/dns-cutover.sh canary-1pct` → monitor for 1h
+- [ ] Progressive shift: 20% → 50% → 99% → 100%
+- [ ] Update nameservers at registrar to Route 53
+- [ ] 2-week stability window with Cloudflare as hot standby
+- [ ] Decommission Cloudflare Workers, D1, KV, R2, Queues
+- [ ] Archive Cloudflare export artifacts
 
 ## Phase 9 — Trust Center & Questionnaire Automation (Kill the Security Questionnaire)
 
