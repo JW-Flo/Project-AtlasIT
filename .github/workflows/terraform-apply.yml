@@ -6,24 +6,37 @@ on:
       - main
     paths:
       - "infra/aws/**"
-      - "terraform/aws/**"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
 
 concurrency:
-  group: terraform-apply
+  group: terraform-apply-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 permissions:
   id-token: write
   contents: read
 
+env:
+  TF_ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+
 jobs:
   apply:
-    name: Terraform Apply
+    name: Terraform Apply (${{ inputs.environment || 'dev' }})
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
     defaults:
       run:
-        working-directory: terraform/aws/environments/dev
+        working-directory: infra/aws
 
     steps:
       - name: Checkout
@@ -43,5 +56,14 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
+      - name: Terraform Plan
+        run: terraform plan -var-file="${TF_ENVIRONMENT}.tfvars" -out=tfplan
+
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve tfplan
+
+      - name: Smoke test
+        if: success()
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          bash scripts/smoke-test-aws.sh "$TF_ENVIRONMENT" || echo "::warning::Smoke test had failures"

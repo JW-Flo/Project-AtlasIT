@@ -1,0 +1,186 @@
+name: Staging Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_terraform:
+        description: "Skip Terraform apply (infra already deployed)"
+        type: boolean
+        default: false
+      skip_data_migration:
+        description: "Skip data migration (data already migrated)"
+        type: boolean
+        default: false
+      run_load_tests:
+        description: "Run k6 load tests after smoke tests"
+        type: boolean
+        default: false
+
+concurrency:
+  group: staging-validation
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  TF_ENVIRONMENT: staging
+
+jobs:
+  deploy-infra:
+    name: Deploy Staging Infrastructure
+    if: ${{ !inputs.skip_terraform }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/aws
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.5"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply (staging)
+        run: terraform apply -var-file=staging.tfvars -auto-approve
+
+  build-and-deploy-lambdas:
+    name: Deploy Lambda Functions
+    needs: [deploy-infra]
+    if: always() && (needs.deploy-infra.result == 'success' || needs.deploy-infra.result == 'skipped')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function: [core-api, compliance-api, orchestrator, onboarding-api, scheduler, slack-handler, dlq-processor]
+      max-parallel: 7
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install & build
+        run: |
+          pnpm install --frozen-lockfile
+          node scripts/build-lambdas.mjs --function ${{ matrix.function }}
+
+      - name: Package
+        run: |
+          cd lambdas/${{ matrix.function }}/dist
+          zip -r ../../../${{ matrix.function }}.zip .
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy
+        run: |
+          aws lambda update-function-code \
+            --function-name "atlasit-${{ matrix.function }}-staging" \
+            --zip-file "fileb://${{ matrix.function }}.zip" \
+            --publish
+          aws lambda wait function-updated \
+            --function-name "atlasit-${{ matrix.function }}-staging"
+
+  deploy-console:
+    name: Deploy Console to S3
+    needs: [deploy-infra]
+    if: always() && (needs.deploy-infra.result == 'success' || needs.deploy-infra.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install & build
+        run: |
+          pnpm install --frozen-lockfile
+          cp console-app/svelte.config.aws.js console-app/svelte.config.js
+          cd console-app && pnpm build
+        env:
+          PUBLIC_API_BASE: https://api.atlasit.pro
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          BUCKET=$(aws ssm get-parameter --name "/atlasit/staging/console-bucket" \
+            --query "Parameter.Value" --output text 2>/dev/null || echo "atlasit-console-staging-457335975503")
+          aws s3 sync console-app/build "s3://$BUCKET" --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          DIST_ID=$(aws ssm get-parameter --name "/atlasit/staging/cloudfront-distribution-id" \
+            --query "Parameter.Value" --output text 2>/dev/null || echo "")
+          [ -n "$DIST_ID" ] && aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*" || true
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: [build-and-deploy-lambdas, deploy-console]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run smoke tests
+        run: bash scripts/smoke-test-aws.sh staging
+
+  load-tests:
+    name: Load Tests (k6)
+    needs: [smoke-tests]
+    if: ${{ inputs.run_load_tests }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+
+      - name: Run load tests
+        run: bash scripts/k6-aws.sh staging all
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-staging
+          path: results/k6-*.json
