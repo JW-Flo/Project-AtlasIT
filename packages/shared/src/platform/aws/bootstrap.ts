@@ -19,7 +19,7 @@ import { PgAuditRepo } from "./repos/audit-repo.js";
 import { PgTenantRepo } from "./repos/tenant-repo.js";
 import { S3EvidenceRepo } from "./repos/evidence-repo.js";
 import { SqsQueueRepo } from "./repos/queue-repo.js";
-import { LambdaAuthRepo } from "../auth/lambda-auth-repo.js";
+import { LambdaAuthRepo } from "../../auth/lambda-auth-repo.js";
 
 export interface ServiceContainer {
   ddb: DynamoDBDocumentClient;
