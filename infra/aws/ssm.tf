@@ -62,3 +62,61 @@ resource "aws_ssm_parameter" "automation_rule_arn" {
   overwrite = true
   value = aws_sfn_state_machine.automation_rule.arn
 }
+
+# --- Secrets (SecureString, free — replaces Secrets Manager at $0.40/secret/mo) ---
+
+resource "aws_ssm_parameter" "secret_cred_encryption_key" {
+  name      = "/atlasit/${var.env}/secrets/cred-encryption-key"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_groq_api_key" {
+  name      = "/atlasit/${var.env}/secrets/groq-api-key"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_webhook_secret" {
+  name      = "/atlasit/${var.env}/secrets/webhook-secret"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_slack_webhook_url" {
+  name      = "/atlasit/${var.env}/secrets/slack-webhook-url"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_slack_signing_secret" {
+  name      = "/atlasit/${var.env}/secrets/slack-signing-secret"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_github_app_key" {
+  name      = "/atlasit/${var.env}/secrets/github-app-key"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_internal_api_key" {
+  name      = "/atlasit/${var.env}/secrets/internal-api-key"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}

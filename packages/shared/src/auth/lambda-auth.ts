@@ -7,6 +7,7 @@
 
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import type { LambdaAuthRepo } from "./lambda-auth-repo.js";
+import { getSecret } from "../platform/aws/bootstrap.js";
 
 export class AuthError extends Error {
   constructor(
@@ -37,9 +38,12 @@ export async function extractAuth(
     // Without the shared secret, x-tenant-id alone is NOT trusted.
     const tenantId = event.headers?.["x-tenant-id"];
     const internalKey = event.headers?.["x-internal-api-key"];
-    const expectedKey = process.env.INTERNAL_API_KEY;
 
-    if (tenantId && internalKey && expectedKey && internalKey === expectedKey) {
+    if (tenantId && internalKey) {
+      const expectedKey = await getSecret("internal-api-key").catch(() => "");
+      if (!expectedKey || internalKey !== expectedKey) {
+        throw new AuthError("Invalid internal API key");
+      }
       return {
         userId: "system",
         tenantId,

@@ -1,4 +1,6 @@
-# AWS WAF WebACL for CloudFront (must be CLOUDFRONT scope)
+# AWS WAF WebACL — slimmed to 2 rules ($7/mo vs $11)
+# Kept: IP reputation (free managed rule) + API rate limiting (brute-force protection)
+# Removed: common ruleset, known-bad-inputs, global rate limit (handled by app layer + API GW throttling)
 
 resource "aws_wafv2_web_acl" "edge" {
   provider = aws.use1
@@ -9,56 +11,10 @@ resource "aws_wafv2_web_acl" "edge" {
     allow {}
   }
 
-  # AWS managed common rule set (XSS, SQLi, etc.)
-  rule {
-    name     = "aws-managed-common"
-    priority = 1
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesCommonRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "awsManagedCommon"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # Known bad inputs
-  rule {
-    name     = "aws-managed-known-bad-inputs"
-    priority = 2
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesKnownBadInputsRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "awsManagedKnownBadInputs"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # IP reputation list
+  # IP reputation list — blocks known botnets/malware sources (free managed rule)
   rule {
     name     = "aws-managed-ip-reputation"
-    priority = 3
+    priority = 1
 
     override_action {
       none {}
@@ -78,33 +34,10 @@ resource "aws_wafv2_web_acl" "edge" {
     }
   }
 
-  # Global rate limiting (per IP)
-  rule {
-    name     = "rate-limit-global"
-    priority = 10
-
-    action {
-      block {}
-    }
-
-    statement {
-      rate_based_statement {
-        limit              = 2000
-        aggregate_key_type = "IP"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "rateLimitGlobal"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # Stricter rate limit on API endpoints
+  # API rate limiting — 500 req/IP/5min on /api/* (brute-force protection)
   rule {
     name     = "rate-limit-api"
-    priority = 11
+    priority = 10
 
     action {
       block {}

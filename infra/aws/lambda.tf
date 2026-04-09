@@ -22,7 +22,6 @@ locals {
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
     DATABASE_URL           = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
-    INTERNAL_API_KEY       = aws_secretsmanager_secret.internal_api_key.arn
     SSM_PREFIX             = "/atlasit/${var.env}"
   }
 
@@ -103,12 +102,6 @@ resource "aws_iam_policy" "lambda_app" {
         Effect   = "Allow"
         Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
         Resource = [aws_sqs_queue.step_tasks.arn, aws_sqs_queue.step_tasks_dlq.arn]
-      },
-      {
-        Sid      = "SecretsManager"
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = ["arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:atlasit/*"]
       },
       {
         Sid      = "RDSConnect"
