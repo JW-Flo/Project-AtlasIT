@@ -87,31 +87,7 @@ resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
   }
 }
 
-# --- Budget Alert ---
-
-resource "aws_budgets_budget" "monthly" {
-  name         = "atlasit-monthly-${var.env}"
-  budget_type  = "COST"
-  limit_amount = var.env == "prod" ? "500" : "100"
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-
-  notification {
-    comparison_operator       = "GREATER_THAN"
-    threshold                 = 80
-    threshold_type            = "PERCENTAGE"
-    notification_type         = "ACTUAL"
-    subscriber_sns_topic_arns = [aws_sns_topic.alerts.arn]
-  }
-
-  notification {
-    comparison_operator       = "GREATER_THAN"
-    threshold                 = 100
-    threshold_type            = "PERCENTAGE"
-    notification_type         = "FORECASTED"
-    subscriber_sns_topic_arns = [aws_sns_topic.alerts.arn]
-  }
-}
+# Budget alerts moved to cost-controls.tf (tighter limits, per-service budgets, anomaly detection)
 
 # --- CloudWatch Dashboard ---
 
