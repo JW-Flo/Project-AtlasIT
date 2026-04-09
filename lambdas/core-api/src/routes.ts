@@ -280,5 +280,284 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: flag, timestamp: new Date().toISOString() });
   }
 
+  // POST /api/v1/flags — create a new feature flag
+  if (path === "/api/v1/flags" && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const b = body(event) as {
+      key?: string;
+      name?: string;
+      description?: string;
+      enabled?: boolean;
+      rolloutPercentage?: number;
+      tenantOverrides?: Record<string, boolean>;
+      tierMinimum?: string;
+      killSwitch?: boolean;
+    };
+    if (!b.key || !b.name) return fail(400, "key and name are required", "VALIDATION_FAILED");
+    const existing = await svc.flagRepo.get(b.key);
+    if (existing) return fail(409, "A flag with this key already exists", "CONFLICT");
+    const now = new Date().toISOString();
+    const flag = {
+      name: b.key,
+      enabled: b.enabled ?? true,
+      rolloutPct: b.rolloutPercentage ?? 100,
+      tenantOverrides: b.tenantOverrides ?? {},
+      description: b.description,
+      tierMinimum: b.tierMinimum,
+      killSwitch: b.killSwitch ?? false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await svc.flagRepo.set(flag);
+    return ok({ status: "success", data: flag, timestamp: now }, 201);
+  }
+
+  // PATCH /api/v1/flags/:key — update a feature flag
+  if (flagMatch && method === "PATCH") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, key] = flagMatch;
+    const existing = await svc.flagRepo.get(key);
+    if (!existing) return fail(404, "Flag not found", "NOT_FOUND");
+    const b = body(event) as {
+      name?: string;
+      description?: string;
+      enabled?: boolean;
+      rolloutPercentage?: number;
+      tenantOverrides?: Record<string, boolean>;
+      tierMinimum?: string;
+      killSwitch?: boolean;
+    };
+    const updated = {
+      ...existing,
+      ...b,
+      name: key,
+      rolloutPct: b.rolloutPercentage ?? existing.rolloutPct,
+      updatedAt: new Date().toISOString(),
+    };
+    await svc.flagRepo.set(updated);
+    return ok({ status: "success", data: updated, timestamp: new Date().toISOString() });
+  }
+
+  // DELETE /api/v1/flags/:key — delete a feature flag
+  if (flagMatch && method === "DELETE") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, key] = flagMatch;
+    const existing = await svc.flagRepo.get(key);
+    if (!existing) return fail(404, "Flag not found", "NOT_FOUND");
+    await svc.flagRepo.delete(key);
+    return ok({ status: "success", data: { key, deleted: true }, timestamp: new Date().toISOString() });
+  }
+
+  // POST /api/v1/flags/:key/evaluate — evaluate flag for given context
+  const flagEvaluateMatch = path.match(/^\/api\/v1\/flags\/([^/]+)\/evaluate$/);
+  if (flagEvaluateMatch && method === "POST") {
+    const [, key] = flagEvaluateMatch;
+    const b = body(event) as { tenantId?: string; tenantTier?: string; userId?: string };
+    if (!b.tenantId) return fail(400, "tenantId is required", "VALIDATION_FAILED");
+    const flag = await svc.flagRepo.get(key);
+    if (!flag) return fail(404, "Flag not found", "NOT_FOUND");
+    // Simple evaluation logic
+    let enabled = flag.enabled;
+    if (flag.killSwitch) enabled = false;
+    if (flag.tenantOverrides?.[b.tenantId] !== undefined) {
+      enabled = flag.tenantOverrides[b.tenantId];
+    }
+    return ok({
+      status: "success",
+      data: { key, enabled, reason: flag.killSwitch ? "kill_switch" : "evaluated" },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/flags/:key/kill — toggle kill switch
+  const flagKillMatch = path.match(/^\/api\/v1\/flags\/([^/]+)\/kill$/);
+  if (flagKillMatch && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, key] = flagKillMatch;
+    const flag = await svc.flagRepo.get(key);
+    if (!flag) return fail(404, "Flag not found", "NOT_FOUND");
+    const updated = {
+      ...flag,
+      killSwitch: !flag.killSwitch,
+      updatedAt: new Date().toISOString(),
+    };
+    await svc.flagRepo.set(updated);
+    return ok({ status: "success", data: updated, timestamp: new Date().toISOString() });
+  }
+
+  // ── Tenant DELETE route ─────────────────────────────────────────────────────
+
+  // DELETE /api/v1/tenants/:id — delete tenant
+  const tenantDeleteMatch = path.match(/^\/api\/v1\/tenants\/([^/]+)$/);
+  if (tenantDeleteMatch && method === "DELETE") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, id] = tenantDeleteMatch;
+    const existing = await pool.query("SELECT id FROM tenants WHERE id = $1", [id]);
+    if (existing.rows.length === 0) return fail(404, "Tenant not found", "NOT_FOUND");
+    await pool.query("DELETE FROM tenants WHERE id = $1", [id]);
+    return ok({ status: "success", data: { id, deleted: true }, timestamp: new Date().toISOString() });
+  }
+
+  // ── Event routes (continued) ────────────────────────────────────────────────
+
+  // GET /api/v1/events/:id — get single event
+  const eventByIdMatch = path.match(/^\/api\/v1\/events\/([^/]+)$/);
+  if (eventByIdMatch && method === "GET") {
+    const [, id] = eventByIdMatch;
+    const result = await pool.query(
+      `SELECT id, tenant_id as "tenantId", type, source, payload, status,
+              idempotency_key as "idempotencyKey", created_at as "createdAt"
+       FROM events WHERE id = $1 AND tenant_id = $2`,
+      [id, auth.tenantId],
+    );
+    if (result.rows.length === 0) return fail(404, "Event not found", "NOT_FOUND");
+    return ok({ status: "success", data: result.rows[0], timestamp: new Date().toISOString() });
+  }
+
+  // ── Auth routes (continued) ─────────────────────────────────────────────────
+
+  // POST /api/v1/auth/token — placeholder for token issuance
+  if (path === "/api/v1/auth/token" && method === "POST") {
+    const b = body(event) as { email?: string; tenantId?: string };
+    if (!b.email || !b.tenantId) return fail(400, "email and tenantId are required", "VALIDATION_FAILED");
+    const user = await pool.query(
+      `SELECT id, email, role, status FROM users WHERE email = $1 AND tenant_id = $2`,
+      [b.email, b.tenantId],
+    );
+    if (user.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+    const u = user.rows[0];
+    if (u.status !== "active") return fail(403, "User account is not active", "FORBIDDEN");
+    // TODO: Issue real JWT in production
+    return ok({
+      status: "success",
+      data: {
+        message: "Token endpoint placeholder — JWT issuance not yet implemented",
+        user: { id: u.id, email: u.email, role: u.role },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ── Credential routes ───────────────────────────────────────────────────────
+
+  // POST /api/v1/credentials — store credential
+  if (path === "/api/v1/credentials" && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const b = body(event) as { tenantId?: string; appId?: string; credentials?: Record<string, string> };
+    if (!b.tenantId || !b.appId || !b.credentials) {
+      return fail(400, "tenantId, appId, and credentials are required", "VALIDATION_FAILED");
+    }
+    // Non-admins can only store credentials for their own tenant
+    if (auth.tenantId !== b.tenantId && auth.role !== "admin") {
+      return fail(403, "Tenant access denied", "FORBIDDEN");
+    }
+    const id = crypto.randomUUID();
+    // Store encrypted credentials (in production, use proper encryption)
+    const encryptedCreds = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
+    await pool.query(
+      `INSERT INTO app_credentials (id, tenant_id, app_id, encrypted_credentials, connected_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (tenant_id, app_id) DO UPDATE SET encrypted_credentials = EXCLUDED.encrypted_credentials, updated_at = NOW()`,
+      [id, b.tenantId, b.appId, encryptedCreds],
+    );
+    return ok({
+      status: "success",
+      data: { id, appId: b.appId, tenantId: b.tenantId },
+      timestamp: new Date().toISOString(),
+    }, 201);
+  }
+
+  // GET /api/v1/credentials — list credentials (metadata only)
+  if (path === "/api/v1/credentials" && method === "GET") {
+    const qsTenantId = qs.tenantId ?? auth.tenantId;
+    if (auth.role !== "admin" && qsTenantId !== auth.tenantId) {
+      return fail(403, "Tenant access denied", "FORBIDDEN");
+    }
+    const result = await pool.query(
+      `SELECT id, tenant_id as "tenantId", app_id as "appId", healthy, last_test_at as "lastTestAt",
+              connected_at as "connectedAt", updated_at as "updatedAt"
+       FROM app_credentials WHERE tenant_id = $1`,
+      [qsTenantId],
+    );
+    return ok({ status: "success", data: result.rows, timestamp: new Date().toISOString() });
+  }
+
+  // GET /api/v1/credentials/:tenantId/:appId — retrieve and decrypt
+  const credGetMatch = path.match(/^\/api\/v1\/credentials\/([^/]+)\/([^/]+)$/);
+  if (credGetMatch && method === "GET") {
+    const [, credTenantId, appId] = credGetMatch;
+    if (auth.role !== "admin" && credTenantId !== auth.tenantId) {
+      return fail(403, "Tenant access denied", "FORBIDDEN");
+    }
+    const result = await pool.query(
+      `SELECT encrypted_credentials FROM app_credentials WHERE tenant_id = $1 AND app_id = $2`,
+      [credTenantId, appId],
+    );
+    if (result.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
+    const decrypted = JSON.parse(Buffer.from(result.rows[0].encrypted_credentials, "base64").toString("utf8"));
+    return ok({
+      status: "success",
+      data: { tenantId: credTenantId, appId, credentials: decrypted },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // PUT /api/v1/credentials/:tenantId/:appId — rotate credential
+  if (credGetMatch && method === "PUT") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, credTenantId, appId] = credGetMatch;
+    const b = body(event) as { credentials?: Record<string, string> };
+    if (!b.credentials) return fail(400, "credentials are required", "VALIDATION_FAILED");
+    const existing = await pool.query(
+      "SELECT id FROM app_credentials WHERE tenant_id = $1 AND app_id = $2",
+      [credTenantId, appId],
+    );
+    if (existing.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
+    const encryptedCreds = Buffer.from(JSON.stringify(b.credentials)).toString("base64");
+    await pool.query(
+      `UPDATE app_credentials SET encrypted_credentials = $1, updated_at = NOW() WHERE tenant_id = $2 AND app_id = $3`,
+      [encryptedCreds, credTenantId, appId],
+    );
+    return ok({
+      status: "success",
+      data: { tenantId: credTenantId, appId, rotated: true },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // DELETE /api/v1/credentials/:tenantId/:appId — delete credential
+  if (credGetMatch && method === "DELETE") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, credTenantId, appId] = credGetMatch;
+    await pool.query("DELETE FROM app_credentials WHERE tenant_id = $1 AND app_id = $2", [credTenantId, appId]);
+    return ok({
+      status: "success",
+      data: { tenantId: credTenantId, appId, deleted: true },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/credentials/:tenantId/:appId/test — test credential health
+  const credTestMatch = path.match(/^\/api\/v1\/credentials\/([^/]+)\/([^/]+)\/test$/);
+  if (credTestMatch && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, credTenantId, appId] = credTestMatch;
+    const existing = await pool.query(
+      "SELECT id FROM app_credentials WHERE tenant_id = $1 AND app_id = $2",
+      [credTenantId, appId],
+    );
+    if (existing.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
+    // Placeholder: mark as healthy. Real implementation would call the app's API.
+    await pool.query(
+      `UPDATE app_credentials SET healthy = true, last_test_at = NOW() WHERE tenant_id = $1 AND app_id = $2`,
+      [credTenantId, appId],
+    );
+    return ok({
+      status: "success",
+      data: { tenantId: credTenantId, appId, healthy: true, testedAt: new Date().toISOString() },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }

@@ -4,7 +4,7 @@
  */
 
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, ScanCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 
 export interface FeatureFlag {
   name: string;
@@ -70,6 +70,15 @@ export class DynamoFlagRepo {
       rolloutPct: (item.rolloutPct as number) ?? 100,
       tenantOverrides: (item.tenantOverrides as Record<string, boolean>) ?? {},
     }));
+  }
+
+  async delete(flagName: string): Promise<void> {
+    await this.ddb.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: { pk: `flag#${flagName}` },
+      }),
+    );
   }
 }
 

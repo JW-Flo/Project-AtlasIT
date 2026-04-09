@@ -490,7 +490,239 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: row.rows[0], timestamp: new Date().toISOString() });
   }
 
+  // ── Evidence routes (continued) ─────────────────────────────────────────────
+
+  // POST /api/v1/evidence/collect — pull evidence from connected adapters
+  if (path === "/api/v1/evidence/collect" && method === "POST") {
+    // Get configured adapter URLs from env
+    let adapterUrls: Record<string, string>;
+    try {
+      adapterUrls = JSON.parse(process.env.ADAPTER_URLS ?? "{}") as Record<string, string>;
+    } catch {
+      return fail(500, "Invalid ADAPTER_URLS configuration", "CONFIG_ERROR");
+    }
+    if (Object.keys(adapterUrls).length === 0) {
+      return ok({
+        status: "success",
+        data: { collected: 0, adapters: [], items: [] },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const allItems: Array<{
+      adapter: string;
+      type: string;
+      status: string;
+      controlRefs: string[];
+      details: Record<string, unknown>;
+    }> = [];
+    const adaptersCollected: string[] = [];
+
+    // Fetch evidence from each adapter
+    for (const [slug, adapterUrl] of Object.entries(adapterUrls)) {
+      try {
+        const res = await fetch(`${adapterUrl}/api/evidence`, {
+          method: "GET",
+          headers: {
+            "X-Tenant-ID": tenantId,
+            "X-API-Key": process.env.INTERNAL_API_KEY ?? "",
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { items?: Array<{ type: string; status: string; controlRefs?: string[]; details?: Record<string, unknown> }> };
+          if (data.items?.length) {
+            adaptersCollected.push(slug);
+            for (const item of data.items) {
+              allItems.push({
+                adapter: slug,
+                type: item.type,
+                status: item.status,
+                controlRefs: item.controlRefs ?? [],
+                details: item.details ?? {},
+              });
+              // Store each item as compliance_evidence per control ref
+              for (const controlRef of item.controlRefs ?? []) {
+                const { framework, controlId } = parseControlRef(controlRef);
+                try {
+                  await pool.query(
+                    `INSERT INTO compliance_evidence
+                       (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+                     ON CONFLICT (source_id) DO NOTHING`,
+                    [
+                      crypto.randomUUID(),
+                      tenantId,
+                      framework,
+                      controlId,
+                      controlRef,
+                      "adapter_pull",
+                      `adapter:${slug}`,
+                      `${slug}:${item.type}`,
+                      "system",
+                      `${slug} ${item.type}`,
+                      JSON.stringify({
+                        impact: item.status === "pass" ? "positive" : item.status === "fail" ? "detrimental" : "neutral",
+                        confidence: item.status === "unknown" ? 0.3 : 0.8,
+                        details: item.details,
+                      }),
+                    ],
+                  );
+                } catch {
+                  // Ignore duplicate insert errors
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip adapters that fail
+      }
+    }
+
+    return ok({
+      status: "success",
+      data: { collected: allItems.length, adapters: adaptersCollected, items: allItems },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/evidence/search — search evidence
+  if (path === "/api/evidence/search" && method === "GET") {
+    const framework = qs.framework ?? undefined;
+    const controlId = qs.controlId ?? undefined;
+    const source = qs.source ?? undefined;
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+
+    const conditions = ["tenant_id = $1"];
+    const vals: unknown[] = [tenantId];
+
+    if (framework) {
+      conditions.push(`framework = $${vals.length + 1}`);
+      vals.push(framework);
+    }
+    if (controlId) {
+      conditions.push(`control_id = $${vals.length + 1}`);
+      vals.push(controlId);
+    }
+    if (source) {
+      conditions.push(`source = $${vals.length + 1}`);
+      vals.push(source);
+    }
+
+    const where = conditions.join(" AND ");
+    const rows = await pool.query(
+      `SELECT id, tenant_id as "tenantId", framework, control_id as "controlId",
+              control_name as "controlName", evidence_type as "evidenceType",
+              source, source_id as "sourceId", actor, subject, metadata, created_at as "createdAt"
+       FROM compliance_evidence WHERE ${where}
+       ORDER BY created_at DESC LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
+      [...vals, limit, offset],
+    );
+
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE ${where}`,
+      vals,
+    );
+
+    return ok({
+      status: "success",
+      data: {
+        items: rows.rows,
+        total: parseInt(countRow.rows[0]?.cnt ?? "0", 10),
+        limit,
+        offset,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/policies/evaluate-all — bulk evaluate all policies
+  if (path === "/api/v1/policies/evaluate-all" && method === "POST") {
+    // Evaluate all controls based on evidence
+    const evidenceRows = await pool.query(
+      `SELECT control_id as "controlId", framework, COUNT(*) as evidence_count
+       FROM compliance_evidence WHERE tenant_id = $1
+       GROUP BY control_id, framework`,
+      [tenantId],
+    );
+
+    const evaluations: Array<{ controlId: string; framework: string; status: string; evidenceCount: number }> = [];
+    for (const row of evidenceRows.rows) {
+      const evidenceCount = parseInt(row.evidence_count, 10);
+      let status = "not_started";
+      if (evidenceCount >= 3) status = "verified";
+      else if (evidenceCount >= 1) status = "implemented";
+      evaluations.push({
+        controlId: row.controlId,
+        framework: row.framework ?? "unknown",
+        status,
+        evidenceCount,
+      });
+    }
+
+    const totalScore = evaluations.length === 0 ? 0
+      : evaluations.reduce((sum, e) => {
+        const weights: Record<string, number> = { not_started: 0, in_progress: 0.25, implemented: 0.75, verified: 1.0 };
+        return sum + (weights[e.status] ?? 0);
+      }, 0) / evaluations.length;
+
+    return ok({
+      status: "success",
+      data: {
+        evaluated: evaluations.length,
+        evaluations,
+        score: Math.round(totalScore * 100),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/policies/coverage/:framework — compliance coverage for a specific framework
+  const coverageFrameworkMatch = path.match(/^\/api\/v1\/policies\/coverage\/([^/]+)$/);
+  if (coverageFrameworkMatch && method === "GET") {
+    let framework: string;
+    try {
+      framework = decodeURIComponent(coverageFrameworkMatch[1]).trim();
+    } catch {
+      return fail(400, "Invalid framework", "VALIDATION_FAILED");
+    }
+
+    const rows = await pool.query(
+      `SELECT control_id as "controlId", framework, COUNT(*) as evidence_count
+       FROM compliance_evidence WHERE tenant_id = $1 AND framework = $2
+       GROUP BY control_id, framework ORDER BY control_id`,
+      [tenantId, framework],
+    );
+
+    return ok({
+      status: "success",
+      data: {
+        framework,
+        controls: rows.rows,
+        total: rows.rows.length,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
+}
+
+/** Parse control reference like "SOC2-CC6.1" into framework and controlId */
+function parseControlRef(ref: string): { framework: string; controlId: string } {
+  // Handle multi-segment prefixes like ISO-27001, NIST-CSF
+  const multiSegmentPrefixes = ["ISO-27001", "NIST-CSF", "NIST-800-53"];
+  for (const prefix of multiSegmentPrefixes) {
+    if (ref.startsWith(prefix + "-")) {
+      return { framework: prefix, controlId: ref.slice(prefix.length + 1) };
+    }
+  }
+  // Default: split on first hyphen
+  const idx = ref.indexOf("-");
+  if (idx === -1) return { framework: "unknown", controlId: ref };
+  return { framework: ref.slice(0, idx), controlId: ref.slice(idx + 1) };
 }
 
 /** Build a compliance snapshot for the tenant from PostgreSQL. */
