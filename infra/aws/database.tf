@@ -24,6 +24,9 @@ resource "aws_rds_cluster" "main" {
   preferred_backup_window = "03:00-04:00"
 
   enabled_cloudwatch_logs_exports = ["postgresql"]
+
+  vpc_security_group_ids = [aws_security_group.aurora.id]
+  db_subnet_group_name   = aws_db_subnet_group.main.name
 }
 
 resource "aws_rds_cluster_instance" "writer" {

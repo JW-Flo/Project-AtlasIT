@@ -21,6 +21,12 @@ locals {
     FLAGS_TABLE        = aws_dynamodb_table.feature_flags.name
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL = aws_sqs_queue.step_tasks.url
+    DATABASE_URL       = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
+  }
+
+  lambda_vpc_config = {
+    subnet_ids         = aws_subnet.private[*].id
+    security_group_ids = [aws_security_group.lambda.id]
   }
 }
 
@@ -42,6 +48,11 @@ resource "aws_iam_role" "lambda_exec" {
 resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_vpc" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
 resource "aws_iam_policy" "lambda_app" {
@@ -128,6 +139,11 @@ resource "aws_lambda_function" "core_api" {
     variables = local.common_env
   }
 
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
+  }
+
   lifecycle {
     ignore_changes = [filename, source_code_hash]
   }
@@ -144,6 +160,11 @@ resource "aws_lambda_function" "compliance_api" {
 
   environment {
     variables = local.common_env
+  }
+
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
   }
 
   lifecycle {
@@ -164,6 +185,11 @@ resource "aws_lambda_function" "orchestrator" {
     variables = local.common_env
   }
 
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
+  }
+
   lifecycle {
     ignore_changes = [filename, source_code_hash]
   }
@@ -180,6 +206,11 @@ resource "aws_lambda_function" "onboarding_api" {
 
   environment {
     variables = local.common_env
+  }
+
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
   }
 
   lifecycle {
@@ -200,6 +231,11 @@ resource "aws_lambda_function" "scheduler" {
     variables = local.common_env
   }
 
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
+  }
+
   lifecycle {
     ignore_changes = [filename, source_code_hash]
   }
@@ -218,6 +254,11 @@ resource "aws_lambda_function" "slack_handler" {
     variables = local.common_env
   }
 
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
+  }
+
   lifecycle {
     ignore_changes = [filename, source_code_hash]
   }
@@ -234,6 +275,11 @@ resource "aws_lambda_function" "dlq_processor" {
 
   environment {
     variables = local.common_env
+  }
+
+  vpc_config {
+    subnet_ids         = local.lambda_vpc_config.subnet_ids
+    security_group_ids = local.lambda_vpc_config.security_group_ids
   }
 
   lifecycle {
