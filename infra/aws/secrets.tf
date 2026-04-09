@@ -29,3 +29,8 @@ resource "aws_secretsmanager_secret" "github_app_key" {
   name        = "atlasit/${var.env}/github-app-key"
   description = "GitHub App private key for proxy worker"
 }
+
+resource "aws_secretsmanager_secret" "internal_api_key" {
+  name        = "atlasit/${var.env}/internal-api-key"
+  description = "Shared secret for internal service-to-service calls (x-internal-api-key header)"
+}

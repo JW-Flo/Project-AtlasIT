@@ -32,9 +32,14 @@ export async function extractAuth(
   const authHeader = event.headers?.authorization ?? event.headers?.Authorization;
 
   if (!authHeader) {
-    // Check x-tenant-id header (service-to-service calls)
+    // Internal service-to-service calls: require BOTH x-tenant-id AND
+    // x-internal-api-key matching the INTERNAL_API_KEY secret.
+    // Without the shared secret, x-tenant-id alone is NOT trusted.
     const tenantId = event.headers?.["x-tenant-id"];
-    if (tenantId) {
+    const internalKey = event.headers?.["x-internal-api-key"];
+    const expectedKey = process.env.INTERNAL_API_KEY;
+
+    if (tenantId && internalKey && expectedKey && internalKey === expectedKey) {
       return {
         userId: "system",
         tenantId,

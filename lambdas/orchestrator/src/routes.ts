@@ -120,8 +120,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     if (b.idempotencyKey) {
       const existing = await pool.query<{ id: string; status: string }>(
-        "SELECT id, status FROM events WHERE idempotency_key = $1",
-        [b.idempotencyKey],
+        "SELECT id, status FROM events WHERE idempotency_key = $1 AND tenant_id = $2",
+        [b.idempotencyKey, tenantId],
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
@@ -246,8 +246,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       vals,
     );
     const updated = await pool.query(
-      `SELECT id, name, status, webhook_url as "webhookUrl" FROM agents WHERE id = $1`,
-      [id],
+      `SELECT id, name, status, webhook_url as "webhookUrl" FROM agents WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
     );
     return ok({ status: "success", data: updated.rows[0], timestamp: ts });
   }
@@ -387,16 +387,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
-  // GET /api/v1/dead-letter/stats/summary — DLQ stats
+  // GET /api/v1/dead-letter/stats/summary — DLQ stats (tenant-scoped)
   if (path === "/api/v1/dead-letter/stats/summary" && method === "GET") {
     const total = await pool.query(
-      "SELECT COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL",
+      "SELECT COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL AND tenant_id = $1",
+      [tenantId],
     );
     const byAgent = await pool.query(
-      "SELECT agent_id, COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL GROUP BY agent_id",
+      "SELECT agent_id, COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL AND tenant_id = $1 GROUP BY agent_id",
+      [tenantId],
     );
     const byType = await pool.query(
-      "SELECT event_type, COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL GROUP BY event_type",
+      "SELECT event_type, COUNT(*) as count FROM dead_letter_queue WHERE replay_status IS NULL AND tenant_id = $1 GROUP BY event_type",
+      [tenantId],
     );
     return ok({
       status: "success",
@@ -409,27 +412,27 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
-  // GET /api/v1/dead-letter/:id — get single dead-letter entry
+  // GET /api/v1/dead-letter/:id — get single dead-letter entry (tenant-scoped)
   const dlqEntryMatch = path.match(/^\/api\/v1\/dead-letter\/([^/]+)$/);
   if (dlqEntryMatch && method === "GET") {
     const [, id] = dlqEntryMatch;
     const row = await pool.query(
-      "SELECT * FROM dead_letter_queue WHERE id = $1",
-      [id],
+      "SELECT * FROM dead_letter_queue WHERE id = $1 AND tenant_id = $2",
+      [id, tenantId],
     );
     if (row.rows.length === 0) return fail(404, "Dead letter entry not found", "NOT_FOUND");
     return ok({ status: "success", data: row.rows[0], timestamp: ts });
   }
 
-  // POST /api/v1/dead-letter/:id/replay — replay a dead letter entry
+  // POST /api/v1/dead-letter/:id/replay — replay a dead letter entry (tenant-scoped)
   const dlqReplayMatch = path.match(/^\/api\/v1\/dead-letter\/([^/]+)\/replay$/);
   if (dlqReplayMatch && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, id] = dlqReplayMatch;
 
     const row = await pool.query<{ id: string; payload: string; event_type: string; tenant_id: string }>(
-      "SELECT id, payload, event_type, tenant_id FROM dead_letter_queue WHERE id = $1",
-      [id],
+      "SELECT id, payload, event_type, tenant_id FROM dead_letter_queue WHERE id = $1 AND tenant_id = $2",
+      [id, tenantId],
     );
     if (row.rows.length === 0) return fail(404, "Dead letter entry not found", "NOT_FOUND");
 

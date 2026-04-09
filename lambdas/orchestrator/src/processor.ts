@@ -108,16 +108,16 @@ async function executeJmlAction(
   pool: pg.Pool,
 ): Promise<void> {
   await pool.query(
-    `UPDATE workflow_executions SET status = 'running', started_at = NOW() WHERE id = $1`,
-    [runId],
+    `UPDATE workflow_executions SET status = 'running', started_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+    [runId, tenantId],
   );
 
   // Simulate JML execution — in production, this would call the JML engine
   console.info("[orchestrator:sqs] Executing JML action", { tenantId, runId, action, payload });
 
   await pool.query(
-    `UPDATE workflow_executions SET status = 'completed', completed_at = NOW() WHERE id = $1`,
-    [runId],
+    `UPDATE workflow_executions SET status = 'completed', completed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+    [runId, tenantId],
   );
 
   // Record audit trail
@@ -139,8 +139,8 @@ async function processEvent(
   pool: pg.Pool,
 ): Promise<void> {
   await pool.query(
-    `UPDATE events SET status = 'processing' WHERE id = $1`,
-    [eventId],
+    `UPDATE events SET status = 'processing' WHERE id = $1 AND tenant_id = $2`,
+    [eventId, tenantId],
   );
 
   const eventType = payload.type as string | undefined;
@@ -148,8 +148,8 @@ async function processEvent(
 
   // Mark event as processed
   await pool.query(
-    `UPDATE events SET status = 'processed', processed_at = NOW() WHERE id = $1`,
-    [eventId],
+    `UPDATE events SET status = 'processed', processed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+    [eventId, tenantId],
   );
 }
 
