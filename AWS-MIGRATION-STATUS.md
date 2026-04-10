@@ -95,9 +95,10 @@ All 13 routes already implemented in initial port. Verified 2026-04-10.
 - [ ] POST /api/onboarding
 - [ ] GET /api/onboarding/*
 
-### M1.5 -- DLQ processor Lambda
-- [ ] Create atlasit-dlq-processor-dev Lambda in AWS
-- [ ] Connect SQS DLQ event source mapping
+### M1.5 -- DLQ processor Lambda -- COMPLETE (2026-04-10)
+- [x] Create atlasit-dlq-processor-dev Lambda in AWS
+- [x] Connect SQS DLQ event source mapping
+- [x] Connect SQS step_tasks -> orchestrator event source mapping
 
 **Exit criteria:** All CF Worker routes exist in Lambda handlers. Build succeeds for all 7 functions.
 
@@ -108,13 +109,14 @@ All 13 routes already implemented in initial port. Verified 2026-04-10.
 **Goal:** All AWS infrastructure operational.
 **Blocked by:** Nothing. Runs in parallel with M1.
 
-### M2.1 -- Terraform convergence
-- [ ] Fix remaining state drift (Lambda SG, IGW, public RT associations)
+### M2.1 -- Terraform convergence -- PARTIAL (2026-04-10)
+- [ ] Fix remaining state drift (Lambda SG replace blocked by ENI detach)
 - [ ] terraform apply until Plan: 0 to add, 0 to change, 0 to destroy
-- [ ] Verify: EventBridge schedulers created (5min scoring, 2am daily eval, 15min dispatch)
-- [ ] Verify: SQS event source mappings connected (step_tasks -> orchestrator, dlq -> dlq-processor)
+- [x] Verify: EventBridge schedulers created (5min scoring, 2am daily eval, 15min dispatch)
+- [x] Verify: SQS event source mappings connected (step_tasks -> orchestrator, dlq -> dlq-processor)
 - [ ] Verify: Step Functions automation_rule state machine created
 - [ ] Verify: Lambda throttle configs applied
+Note: Schedulers, SQS mappings, DLQ processor created via CLI while Terraform resolves SG.
 
 ### M2.2 -- Console app deployment
 - [ ] Configure SvelteKit adapter-static (or adapter-node)
