@@ -260,7 +260,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const rows = await pool.query(
         `SELECT id, key, name, description, framework, category, created_at as "createdAt"
-         FROM policy_templates ORDER BY framework, name`,
+         FROM policy_templates WHERE tenant_id = $1 ORDER BY framework, name`,
+        [tenantId],
       );
       return ok({ status: "success", data: rows.rows, timestamp: new Date().toISOString() });
     } catch (e) {
