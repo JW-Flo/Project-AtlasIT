@@ -25,7 +25,7 @@ resource "aws_ssm_parameter" "aurora_endpoint" {
   name  = "/atlasit/${var.env}/aurora-endpoint"
   type      = "String"
   overwrite = true
-  value = aws_rds_cluster.main.endpoint
+  value = aws_db_instance.main.endpoint
 }
 
 resource "aws_ssm_parameter" "evidence_bucket" {

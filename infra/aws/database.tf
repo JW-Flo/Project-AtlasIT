@@ -1,58 +1,49 @@
-# Aurora PostgreSQL Serverless v2 — replaces all D1 databases
-# (atlasit-shared, atlas_core_db, atlasit_compliance, atlas_audit_db, atlas_audit_shadow)
+# RDS PostgreSQL db.t4g.small — replaces Aurora Serverless v2
+# Saves ~$28/mo ($43 → $15) with no application code changes.
+# App uses standard pg driver with password auth — no Aurora-specific features.
 
-resource "aws_rds_cluster" "main" {
-  cluster_identifier     = "atlasit-${var.env}"
-  engine                 = "aurora-postgresql"
-  engine_mode            = "provisioned"
-  engine_version         = "16.4"
-  database_name          = "atlasit"
-  master_username        = "atlasit_admin"
+resource "aws_db_instance" "main" {
+  identifier           = "atlasit-rds-${var.env}"
+  engine               = "postgres"
+  engine_version       = "16.4"
+  instance_class       = "db.t4g.small"
+  allocated_storage    = 20
+  max_allocated_storage = 100
+  storage_type         = "gp3"
+  storage_encrypted    = true
+
+  db_name  = "atlasit"
+  username = "atlasit_admin"
   manage_master_user_password = true
-
-  serverlessv2_scaling_configuration {
-    min_capacity = 0.5
-    max_capacity = 4
-  }
-
-  storage_encrypted   = true
-  deletion_protection = var.env == "prod"
-  skip_final_snapshot = var.env != "prod"
-  final_snapshot_identifier = var.env == "prod" ? "atlasit-final-${var.env}" : null
-
-  backup_retention_period = 7
-  preferred_backup_window = "03:00-04:00"
-
-  enabled_cloudwatch_logs_exports = ["postgresql"]
 
   vpc_security_group_ids = [aws_security_group.aurora.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
+
+  backup_retention_period = 7
+  preferred_backup_window = "03:00-04:00"
+  skip_final_snapshot     = var.env != "prod"
+  final_snapshot_identifier = var.env == "prod" ? "atlasit-final-${var.env}" : null
+  deletion_protection     = var.env == "prod"
+
+  performance_insights_enabled = false
+  multi_az                     = false
+
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+
+  tags = { Name = "atlasit-rds-${var.env}" }
 }
 
-resource "aws_rds_cluster_instance" "writer" {
-  identifier         = "atlasit-${var.env}-writer"
-  cluster_identifier = aws_rds_cluster.main.id
-  instance_class     = "db.serverless"
-  engine             = aws_rds_cluster.main.engine
-  engine_version     = aws_rds_cluster.main.engine_version
-}
-
-resource "aws_cloudwatch_log_group" "aurora" {
-  name              = "/aws/rds/cluster/atlasit-${var.env}/postgresql"
+resource "aws_cloudwatch_log_group" "rds" {
+  name              = "/aws/rds/instance/atlasit-rds-${var.env}/postgresql"
   retention_in_days = 30
 }
 
 # --- Outputs ---
-output "aurora_endpoint" {
-  value       = aws_rds_cluster.main.endpoint
-  description = "Aurora writer endpoint"
+output "rds_endpoint" {
+  value       = aws_db_instance.main.endpoint
+  description = "RDS writer endpoint"
 }
 
-output "aurora_reader_endpoint" {
-  value       = aws_rds_cluster.main.reader_endpoint
-  description = "Aurora reader endpoint"
-}
-
-output "aurora_database_name" {
-  value = aws_rds_cluster.main.database_name
+output "rds_database_name" {
+  value = aws_db_instance.main.db_name
 }
