@@ -9,6 +9,9 @@ import { processSqsBatch } from "./processor.js";
 
 type LambdaEvent = APIGatewayProxyEventV2 | SQSEvent;
 
+// API Gateway routes to /orchestrator/{proxy+} — strip prefix so Lambda routes match
+const PATH_PREFIX = "/orchestrator";
+
 export async function handler(
   event: LambdaEvent,
 ): Promise<APIGatewayProxyResultV2 | SQSBatchResponse | void> {
@@ -17,7 +20,12 @@ export async function handler(
     if ("Records" in event && Array.isArray(event.Records) && event.Records[0]?.eventSource === "aws:sqs") {
       return await processSqsBatch(event as SQSEvent);
     }
-    return await route(event as APIGatewayProxyEventV2);
+    const apiEvent = event as APIGatewayProxyEventV2;
+    if (apiEvent.rawPath.startsWith(PATH_PREFIX)) {
+      apiEvent.rawPath = apiEvent.rawPath.slice(PATH_PREFIX.length) || "/";
+      apiEvent.requestContext.http.path = apiEvent.rawPath;
+    }
+    return await route(apiEvent);
   } catch (err) {
     console.error("[orchestrator] Unhandled error", {
       message: (err as Error).message,

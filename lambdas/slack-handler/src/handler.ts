@@ -1,10 +1,16 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { route } from "./routes.js";
 
+const PATH_PREFIX = "/api/slack";
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> {
   try {
+    if (event.rawPath.startsWith(PATH_PREFIX)) {
+      event.rawPath = event.rawPath.slice(PATH_PREFIX.length) || "/";
+      event.requestContext.http.path = event.rawPath;
+    }
     return await route(event);
   } catch (err) {
     console.error("[slack-handler] Unhandled error", {
