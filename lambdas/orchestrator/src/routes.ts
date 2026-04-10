@@ -122,7 +122,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (b.idempotencyKey) {
       const existing = await pool.query<{ id: string; status: string }>(
         "SELECT id, status FROM events WHERE idempotency_key = $1 AND tenant_id = $2",
-        [b.idempotencyKey, tenantId],
+        [b.idempotencyKey, evTenantId],
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
@@ -449,8 +449,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       });
 
       await pool.query(
-        `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1`,
-        [id],
+        `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
       );
 
       return ok({ status: "success", data: { id, replayed: true }, timestamp: ts });
@@ -462,9 +462,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // POST /api/v1/dead-letter/replay-all — replay all unreplayed entries
   if (path === "/api/v1/dead-letter/replay-all" && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
-    const filterTenantId = qs.tenantId ?? tenantId;
     const conditions = ["replay_status IS NULL", "tenant_id = $1"];
-    const params: unknown[] = [filterTenantId];
+    const params: unknown[] = [tenantId];
     const where = `WHERE ${conditions.join(" AND ")}`;
 
     const entries = await pool.query<{ id: string; payload: string; event_type: string; tenant_id: string }>(
@@ -484,8 +483,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           payload: JSON.parse(entry.payload ?? "{}") as Record<string, unknown>,
         });
         await pool.query(
-          `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1`,
-          [entry.id],
+          `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+          [entry.id, tenantId],
         );
         replayed++;
       } catch {
@@ -1230,8 +1229,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const stepsResult = await pool.query(
         `SELECT id, step_index, name, status, started_at, completed_at, error
-         FROM workflow_steps WHERE workflow_run_id = $1 ORDER BY step_index ASC`,
-        [id],
+         FROM workflow_steps WHERE workflow_run_id = $1 AND tenant_id = $2 ORDER BY step_index ASC`,
+        [id, tenantId],
       );
       steps = stepsResult.rows;
     } catch {
