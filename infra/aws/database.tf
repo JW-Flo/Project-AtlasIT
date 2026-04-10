@@ -19,10 +19,10 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.aurora.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  backup_retention_period = 7
-  preferred_backup_window = "03:00-04:00"
-  skip_final_snapshot     = var.env != "prod"
-  final_snapshot_identifier = var.env == "prod" ? "atlasit-final-${var.env}" : null
+  backup_retention_period      = 7
+  backup_window                = "03:00-04:00"
+  skip_final_snapshot          = var.env != "prod"
+  final_snapshot_identifier    = var.env == "prod" ? "atlasit-final-${var.env}" : null
   deletion_protection     = var.env == "prod"
 
   performance_insights_enabled = false
