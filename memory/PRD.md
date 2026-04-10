@@ -22,7 +22,7 @@ SvelteKit console app for a parallel static build targeting AWS S3 + CloudFront 
 
 ---
 
-## What Was Implemented (this session)
+## What Was Implemented (this session) — 2 commits on codex/onboarding-console-deploy
 
 ### M1.4 — Onboarding Lambda route parity
 - Verified all CF Worker routes (`POST /onboarding/submit`, `POST /api/onboarding`,
@@ -53,6 +53,11 @@ SvelteKit console app for a parallel static build targeting AWS S3 + CloudFront 
 
 - `node scripts/build-lambdas.mjs --function onboarding-api` → **OK**
 - `cd console-app && pnpm install` → **Done**
+- `packages/shared pnpm run build` → **0 errors**
+- `packages/shared vitest` → **40/40 pass**
+- `ai-orchestrator npm test` → **20/20 pass** (was crashing)
+- `onboarding npm test` → **15/15 pass**
+- `git push` pre-push hooks → **PASS** (no `--no-verify`)
 
 ---
 
