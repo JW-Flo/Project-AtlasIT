@@ -746,6 +746,394 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // ── Legacy evidence routes (pre-v1 paths) ─────────────────────────────────
+
+  // POST /api/evidence/ingest — legacy evidence ingestion path
+  if (path === "/api/evidence/ingest" && method === "POST") {
+    const b = parseBody(event) as {
+      payload?: unknown;
+      pack?: string;
+      subject?: string;
+    };
+    if (!b.payload) return fail(400, "payload is required", "VALIDATION_FAILED");
+
+    const canonical = JSON.stringify(b.payload);
+    const hash = sha256(canonical);
+    const key = `evidence/${tenantId}/${hash}`;
+
+    try {
+      await svc.evidenceRepo.put(key, canonical, "application/json");
+
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO compliance_evidence
+           (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+         ON CONFLICT (source_id) DO NOTHING`,
+        [
+          id, tenantId, null, null, null,
+          "manual", b.pack ?? "api", hash, auth.userId, b.subject ?? null,
+          JSON.stringify({ pack: b.pack, hash }),
+        ],
+      );
+
+      await svc.auditRepo.log({
+        tenantId,
+        actorId: auth.userId,
+        actorType: "user",
+        action: "evidence.ingested",
+        resourceType: "evidence",
+        resourceId: hash,
+        correlationId: requestId,
+      });
+
+      return ok({ status: "success", data: { id, hash, key }, timestamp: new Date().toISOString() }, 201);
+    } catch (e) {
+      console.error("[compliance-api] evidence.legacy-ingest.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to ingest evidence", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/evidence/* — legacy evidence retrieval (dynamic paths)
+  // Matches /api/evidence/{hash} and /api/evidence/{hash}/verify
+  if (path.startsWith("/api/evidence/") && method === "GET") {
+    const segments = path.split("/").filter(Boolean); // [api, evidence, {hash}, ?verify]
+    const hash = segments[2];
+    if (!hash) return fail(400, "Missing evidence hash", "VALIDATION_FAILED");
+
+    const isVerify = segments[3] === "verify" || qs.verify === "1";
+    const key = `evidence/${tenantId}/${hash}`;
+
+    try {
+      const content = await svc.evidenceRepo.get(key);
+      if (!content) return fail(404, "Evidence not found", "NOT_FOUND");
+
+      if (isVerify) {
+        const actualHash = sha256(content);
+        const verified = actualHash === hash;
+        return ok({ status: "success", data: { hash, verified, actualHash }, timestamp: new Date().toISOString() });
+      }
+
+      return ok({ status: "success", data: { hash, content: JSON.parse(content) }, timestamp: new Date().toISOString() });
+    } catch (e) {
+      console.error("[compliance-api] evidence.legacy-get.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to retrieve evidence", "INTERNAL_ERROR");
+    }
+  }
+
+  // ── Activity log ────────────────────────────────────────────────────────────
+
+  // GET /api/v1/activity — activity log (uses activity_stream table in PostgreSQL schema)
+  if (path === "/api/v1/activity" && method === "GET") {
+    const type = qs.type ?? undefined;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "25", 10) || 25, 1), 100);
+    const cursorRaw = qs.cursor ? parseInt(qs.cursor, 10) : null;
+
+    if (qs.cursor && (isNaN(cursorRaw as number) || (cursorRaw as number) <= 0)) {
+      return fail(400, "Invalid cursor", "VALIDATION_FAILED");
+    }
+
+    try {
+      const conditions = [`tenant_id = $1`];
+      const vals: unknown[] = [tenantId];
+
+      if (type) {
+        conditions.push(`event_type = $${vals.length + 1}`);
+        vals.push(type);
+      }
+      if (cursorRaw) {
+        conditions.push(`id < $${vals.length + 1}`);
+        vals.push(cursorRaw);
+      }
+
+      const where = conditions.join(" AND ");
+      const rows = await pool.query(
+        `SELECT id, tenant_id as "tenantId", event_type as "type", severity, title, detail as "message",
+                entity_type as "ref", actor, created_at as "createdAt"
+         FROM activity_stream WHERE ${where}
+         ORDER BY id DESC LIMIT $${vals.length + 1}`,
+        [...vals, limit + 1],
+      );
+
+      const hasNext = rows.rows.length > limit;
+      const items = rows.rows.slice(0, limit);
+      const nextCursor = hasNext ? items[items.length - 1]?.id ?? null : null;
+
+      return ok({
+        status: "success",
+        data: { items, nextCursor },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] activity.list.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to load activity", "INTERNAL_ERROR");
+    }
+  }
+
+  // ── Incidents ───────────────────────────────────────────────────────────────
+
+  // GET /api/v1/incidents — list incidents (uses incidents table in PostgreSQL schema)
+  if (path === "/api/v1/incidents" && method === "GET") {
+    const status = qs.status ?? undefined;
+    const severity = qs.severity ?? undefined;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 50);
+    const cursorRaw = qs.cursor ? parseInt(qs.cursor, 10) : null;
+
+    try {
+      const conditions = [`tenant_id = $1`];
+      const vals: unknown[] = [tenantId];
+
+      if (status) { conditions.push(`status = $${vals.length + 1}`); vals.push(status); }
+      if (severity) { conditions.push(`severity = $${vals.length + 1}`); vals.push(severity); }
+      if (cursorRaw) { conditions.push(`id < $${vals.length + 1}`); vals.push(cursorRaw); }
+
+      const where = conditions.join(" AND ");
+      const rows = await pool.query(
+        `SELECT id, tenant_id as "tenantId", title, severity, status, source,
+                created_at as "createdAt", resolved_at as "resolvedAt"
+         FROM incidents WHERE ${where}
+         ORDER BY created_at DESC LIMIT $${vals.length + 1}`,
+        [...vals, limit + 1],
+      );
+
+      const hasNext = rows.rows.length > limit;
+      const items = rows.rows.slice(0, limit);
+      const nextCursor = hasNext ? items[items.length - 1]?.id ?? null : null;
+
+      return ok({
+        status: "success",
+        data: { items, nextCursor },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] incidents.list.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to list incidents", "INTERNAL_ERROR");
+    }
+  }
+
+  // POST /api/v1/incidents — create incident
+  if (path === "/api/v1/incidents" && method === "POST") {
+    const b = parseBody(event) as { title?: string; severity?: string; source?: string };
+    const title = typeof b.title === "string" ? b.title.trim() : "";
+    const severity = typeof b.severity === "string" ? b.severity.trim().toLowerCase() : "";
+
+    if (!title) return fail(400, "title is required", "VALIDATION_FAILED");
+    const validSeverities = new Set(["critical", "high", "medium", "low"]);
+    if (!severity || !validSeverities.has(severity)) {
+      return fail(400, "severity must be one of: critical, high, medium, low", "VALIDATION_FAILED");
+    }
+
+    try {
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO incidents (id, tenant_id, title, severity, status, source, created_at)
+         VALUES ($1, $2, $3, $4, 'open', $5, NOW())`,
+        [id, tenantId, title, severity, b.source ?? null],
+      );
+
+      const incident = await pool.query(
+        `SELECT id, tenant_id as "tenantId", title, severity, status, source,
+                created_at as "createdAt", resolved_at as "resolvedAt"
+         FROM incidents WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+
+      await svc.auditRepo.log({
+        tenantId,
+        actorId: auth.userId,
+        actorType: "user",
+        action: "incident.created",
+        resourceType: "incident",
+        resourceId: id,
+        correlationId: requestId,
+      });
+
+      return ok({
+        status: "success",
+        data: { incident: incident.rows[0] },
+        timestamp: new Date().toISOString(),
+      }, 201);
+    } catch (e) {
+      console.error("[compliance-api] incidents.create.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to create incident", "INTERNAL_ERROR");
+    }
+  }
+
+  // ── Access Requests ─────────────────────────────────────────────────────────
+  // Note: access_requests table is not in the PostgreSQL migration schema.
+  // These routes are stubbed with 501 until the table is added in a follow-up migration.
+
+  // GET /api/v1/access-requests — list access requests
+  if (path === "/api/v1/access-requests" && method === "GET") {
+    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // POST /api/v1/access-requests — create access request
+  if (path === "/api/v1/access-requests" && method === "POST") {
+    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // POST /api/v1/access-requests/:id/* — update access request status
+  const accessRequestUpdateMatch = path.match(/^\/api\/v1\/access-requests\/([^/]+)\/(.+)$/);
+  if (accessRequestUpdateMatch && method === "POST") {
+    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // ── Notifications ───────────────────────────────────────────────────────────
+  // Note: notifications table is not in the PostgreSQL migration schema.
+  // These routes are stubbed with 501 until the table is added in a follow-up migration.
+
+  // GET /api/v1/notifications — list notifications
+  if (path === "/api/v1/notifications" && method === "GET") {
+    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // POST /api/v1/notifications/read — mark notifications as read
+  if (path === "/api/v1/notifications/read" && method === "POST") {
+    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // POST /api/v1/notifications/read-all — mark all notifications as read
+  if (path === "/api/v1/notifications/read-all" && method === "POST") {
+    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+  }
+
+  // ── Admin ───────────────────────────────────────────────────────────────────
+
+  // POST /api/v1/admin/retention/policies/purge — purge stale generated policies
+  if (path === "/api/v1/admin/retention/policies/purge" && method === "POST") {
+    const b = parseBody(event) as { dryRun?: boolean };
+    const dryRun = b.dryRun !== false; // default true — must explicitly pass false to delete
+    const retentionDays = parseInt(process.env.RETENTION_DAYS_POLICIES ?? "90", 10) || 90;
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+
+    try {
+      const candidates = await pool.query(
+        `SELECT id, hash, template_key, created_at as "createdAt"
+         FROM generated_policies WHERE tenant_id = $1 AND created_at < $2`,
+        [tenantId, cutoff],
+      );
+
+      let deleted = 0;
+      if (!dryRun && candidates.rows.length > 0) {
+        const hashes = candidates.rows.map((r) => r.hash as string);
+        await pool.query(
+          `DELETE FROM generated_policies WHERE tenant_id = $1 AND hash = ANY($2::text[])`,
+          [tenantId, hashes],
+        );
+        deleted = hashes.length;
+      }
+
+      console.info("[compliance-api] policies.retention.purge", {
+        requestId,
+        tenantId,
+        dryRun,
+        retentionDays,
+        cutoff,
+        candidates: candidates.rows.length,
+        deleted,
+      });
+
+      return ok({
+        status: "success",
+        data: {
+          dryRun,
+          retentionDays,
+          cutoff,
+          candidates: candidates.rows.length,
+          deleted: dryRun ? 0 : deleted,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] policies.retention.purge.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to run retention purge", "INTERNAL_ERROR");
+    }
+  }
+
+  // ── JML Demo ────────────────────────────────────────────────────────────────
+
+  // GET /api/v1/workflows/demo/jml — demo JML workflow documentation
+  if (path === "/api/v1/workflows/demo/jml" && method === "GET") {
+    return ok({
+      status: "success",
+      data: {
+        demo: true,
+        workflowTypes: ["joiner", "mover", "leaver"],
+        exampleExecute: {
+          endpoint: "/api/v1/workflows/execute",
+          method: "POST",
+          payload: {
+            workflowType: "joiner",
+            subjectRef: "user:alice@example.com",
+            idempotencyKey: "<optional-unique-id>",
+          },
+        },
+        note: "POST to /api/v1/workflows/execute with a valid workflowType (joiner|mover|leaver) and subjectRef to run a JML workflow. This endpoint is a documentation/demo helper and performs no execution itself.",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ── Workflow executions (list) ───────────────────────────────────────────────
+
+  // GET /api/v1/workflows/executions/* — list or retrieve workflow executions
+  // Handles: /api/v1/workflows/executions (list) and /api/v1/workflows/executions/:id (get by ID)
+  // Note: the single-item GET /api/v1/workflows/executions/:id is already handled above;
+  // this block handles additional sub-path variants.
+  const workflowExecListMatch = path.match(/^\/api\/v1\/workflows\/executions(?:\/([^/]+))?$/);
+  if (workflowExecListMatch && method === "GET") {
+    const executionId = workflowExecListMatch[1];
+
+    if (executionId) {
+      // Already handled above by workflowExecMatch — this is a fallback for safety
+      const row = await pool.query(
+        `SELECT id, tenant_id as "tenantId", workflow_type as "workflowType",
+                subject_ref as "subjectRef", status, created_at as "createdAt",
+                completed_at as "completedAt"
+         FROM workflow_executions WHERE id = $1 AND tenant_id = $2`,
+        [executionId, tenantId],
+      );
+      if (row.rows.length === 0) return fail(404, "Execution not found", "NOT_FOUND");
+      return ok({ status: "success", data: row.rows[0], timestamp: new Date().toISOString() });
+    }
+
+    // List executions for tenant
+    const statusFilter = qs.status ?? undefined;
+    const limitVal = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
+    const cursorVal = qs.cursor ?? null;
+
+    const conditions = [`tenant_id = $1`];
+    const vals: unknown[] = [tenantId];
+    if (statusFilter) { conditions.push(`status = $${vals.length + 1}`); vals.push(statusFilter); }
+    if (cursorVal) { conditions.push(`created_at < $${vals.length + 1}`); vals.push(cursorVal); }
+
+    const where = conditions.join(" AND ");
+    try {
+      const rows = await pool.query(
+        `SELECT id, tenant_id as "tenantId", workflow_type as "workflowType",
+                subject_ref as "subjectRef", status, created_at as "createdAt",
+                completed_at as "completedAt"
+         FROM workflow_executions WHERE ${where}
+         ORDER BY created_at DESC LIMIT $${vals.length + 1}`,
+        [...vals, limitVal + 1],
+      );
+
+      const hasNext = rows.rows.length > limitVal;
+      const items = rows.rows.slice(0, limitVal);
+      const nextCursor = hasNext ? items[items.length - 1]?.["createdAt"] ?? null : null;
+
+      return ok({
+        status: "success",
+        data: { items, nextCursor, total: items.length },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] workflows.executions.list.error", { requestId, error: (e as Error).message });
+      return fail(500, "Failed to list workflow executions", "INTERNAL_ERROR");
+    }
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
 
