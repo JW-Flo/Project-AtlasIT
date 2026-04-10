@@ -14,6 +14,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
+import { buildAutomationFromNL } from "@atlasit/shared/automation/nl-builder.js";
 import crypto from "crypto";
 import pg from "pg";
 
@@ -930,5 +931,475 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: { run: row.rows[0], liveState: null }, timestamp: ts });
   }
 
+  // ── Automation rules (continued) ─────────────────────────────────────────
+
+  // POST /api/v1/automation/rules — create a new automation rule
+  if (path === "/api/v1/automation/rules" && method === "POST") {
+    const b = parseBody(event) as {
+      name?: string;
+      description?: string;
+      triggerType?: string;
+      triggerConfig?: Record<string, unknown>;
+      conditions?: unknown[];
+      actions?: unknown[];
+      enabled?: boolean;
+    };
+    if (!b.name || !b.triggerType || !b.actions?.length) {
+      return fail(400, "name, triggerType, and actions are required", "VALIDATION_FAILED");
+    }
+    const id = crypto.randomUUID().replace(/-/g, "");
+    await pool.query(
+      `INSERT INTO automation_rules
+         (id, tenant_id, name, description, trigger_type, trigger_config, conditions, actions, enabled, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,
+      [
+        id,
+        tenantId,
+        b.name,
+        b.description ?? null,
+        b.triggerType,
+        JSON.stringify(b.triggerConfig ?? {}),
+        JSON.stringify(b.conditions ?? []),
+        JSON.stringify(b.actions),
+        b.enabled !== false,
+      ],
+    );
+    const created = await pool.query(
+      `SELECT id, tenant_id as "tenantId", name, description, trigger_type as "triggerType",
+              trigger_config as "triggerConfig", conditions, actions, enabled, created_at as "createdAt"
+       FROM automation_rules WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    return ok({ status: "success", data: created.rows[0], timestamp: ts }, 201);
+  }
+
+  // POST /api/v1/automation/nl — natural language rule creation
+  if (path === "/api/v1/automation/nl" && method === "POST") {
+    const b = parseBody(event) as {
+      prompt?: string;
+      connectedApps?: string[];
+      directoryGroups?: string[];
+    };
+    if (!b.prompt || b.prompt.trim().length < 5) {
+      return fail(400, "prompt must be at least 5 characters", "VALIDATION_FAILED");
+    }
+
+    // Auto-populate connected apps if not provided
+    let connectedApps = b.connectedApps;
+    if (!connectedApps) {
+      try {
+        const appsResult = await pool.query<{ app_name: string }>(
+          "SELECT DISTINCT app_name FROM connected_apps WHERE tenant_id = $1 AND status = 'active'",
+          [tenantId],
+        );
+        connectedApps = appsResult.rows.map((r) => r.app_name);
+      } catch {
+        connectedApps = [];
+      }
+    }
+
+    // Auto-populate directory groups if not provided
+    let directoryGroups = b.directoryGroups;
+    if (!directoryGroups) {
+      try {
+        const groupsResult = await pool.query<{ name: string }>(
+          "SELECT DISTINCT name FROM directory_groups WHERE tenant_id = $1 LIMIT 50",
+          [tenantId],
+        );
+        directoryGroups = groupsResult.rows.map((r) => r.name);
+      } catch {
+        directoryGroups = [];
+      }
+    }
+
+    try {
+      const result = await buildAutomationFromNL(
+        process.env as Record<string, unknown>,
+        { prompt: b.prompt, connectedApps, directoryGroups },
+      );
+      return ok({ status: "success", data: result, timestamp: ts });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "AI generation failed";
+      return fail(422, message, "NL_BUILD_FAILED");
+    }
+  }
+
+  // ── Discovery routes ───────────────────────────────────────────────────────
+
+  // POST /api/v1/discovery/scan — trigger OAuth grant discovery from adapters
+  if (path === "/api/v1/discovery/scan" && method === "POST") {
+    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
+    if (Object.keys(adapterUrls).length === 0) {
+      return fail(501, "No adapter URLs configured", "NOT_IMPLEMENTED");
+    }
+
+    // Enqueue discovery scan via SQS
+    const scanId = crypto.randomUUID();
+    try {
+      await svc.queueRepo.send({
+        tenantId,
+        workflowRunId: scanId,
+        stepIndex: 0,
+        action: "discovery_scan_oauth",
+        payload: { adapterUrls, tenantId },
+      });
+    } catch (err) {
+      return fail(500, `Failed to enqueue scan: ${(err as Error).message}`, "QUEUE_ERROR");
+    }
+
+    return ok({
+      status: "success",
+      data: { scanId, status: "queued", tenantId, queuedAt: ts },
+      timestamp: ts,
+    }, 202);
+  }
+
+  // GET /api/v1/discovery/apps — list discovered apps
+  if (path === "/api/v1/discovery/apps" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 500);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const riskTier = qs.risk_tier ?? undefined;
+    const isAiToolParam = qs.is_ai_tool ?? undefined;
+    const statusFilter = qs.status ?? undefined;
+
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (riskTier) { conditions.push(`risk_tier = $${params.length + 1}`); params.push(riskTier); }
+    if (isAiToolParam === "true") { conditions.push(`is_ai_tool = $${params.length + 1}`); params.push(true); }
+    else if (isAiToolParam === "false") { conditions.push(`is_ai_tool = $${params.length + 1}`); params.push(false); }
+    if (statusFilter) { conditions.push(`status = $${params.length + 1}`); params.push(statusFilter); }
+    const where = conditions.join(" AND ");
+
+    const rows = await pool.query(
+      `SELECT * FROM discovered_apps WHERE ${where} ORDER BY first_seen_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    const countRow = await pool.query(`SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`, params);
+
+    return ok({
+      status: "success",
+      data: rows.rows,
+      meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
+      timestamp: ts,
+    });
+  }
+
+  // PATCH /api/v1/discovery/apps/:id — update risk tier for a discovered app
+  const discoveryAppMatch = path.match(/^\/api\/v1\/discovery\/apps\/([^/]+)$/);
+  if (discoveryAppMatch && method === "PATCH") {
+    const [, appId] = discoveryAppMatch;
+    const b = parseBody(event) as { risk_tier?: string; riskTier?: string };
+    const validRiskTiers = ["approved", "under_review", "blocked", "unknown"];
+    const riskTier = b.risk_tier ?? b.riskTier;
+    if (!riskTier || !validRiskTiers.includes(riskTier)) {
+      return fail(400, `risk_tier must be one of: ${validRiskTiers.join(", ")}`, "VALIDATION_FAILED");
+    }
+
+    const existing = await pool.query(
+      "SELECT id FROM discovered_apps WHERE id = $1 AND tenant_id = $2",
+      [appId, tenantId],
+    );
+    if (existing.rows.length === 0) return fail(404, "App not found", "NOT_FOUND");
+
+    await pool.query(
+      "UPDATE discovered_apps SET risk_tier = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+      [riskTier, appId, tenantId],
+    );
+
+    return ok({ status: "success", data: { id: appId, riskTier, updated: true }, timestamp: ts });
+  }
+
+  // GET /api/v1/discovery/grants — list discovered OAuth grants
+  if (path === "/api/v1/discovery/grants" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "100", 10) || 100, 500);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const appId = qs.app_id ?? undefined;
+    const userEmail = qs.user_email ?? undefined;
+
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (appId) { conditions.push(`app_id = $${params.length + 1}`); params.push(appId); }
+    if (userEmail) { conditions.push(`user_email = $${params.length + 1}`); params.push(userEmail); }
+    const where = conditions.join(" AND ");
+
+    const rows = await pool.query(
+      `SELECT * FROM discovered_grants WHERE ${where} ORDER BY granted_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    const countRow = await pool.query(`SELECT COUNT(*) as total FROM discovered_grants WHERE ${where}`, params);
+
+    return ok({
+      status: "success",
+      data: rows.rows,
+      meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
+      timestamp: ts,
+    });
+  }
+
+  // ── Stream routes (Lambda-adapted: SSE → JSON snapshot) ───────────────────
+  // Note: Lambda does not support SSE (long-lived connections). These endpoints
+  // return a JSON snapshot of the data instead of a streaming response.
+  // Clients should poll these endpoints and use the cursor/since params for
+  // incremental fetches.
+
+  // GET /api/v1/stream/evidence — evidence events snapshot (replaces SSE)
+  if (path === "/api/v1/stream/evidence" && method === "GET") {
+    const EPOCH = "1970-01-01T00:00:00.000Z";
+    const since = event.headers?.["last-event-id"] ?? qs.since ?? EPOCH;
+
+    const rows = await pool.query(
+      `SELECT id, tenant_id, framework_id, framework, control_id, control_name,
+              evidence_type, source, source_id, actor, subject, data, metadata,
+              collected_at, created_at
+       FROM compliance_evidence
+       WHERE tenant_id = $1 AND created_at > $2
+       ORDER BY created_at ASC
+       LIMIT 50`,
+      [tenantId, since],
+    );
+
+    const data = rows.rows.map((row) => ({
+      id: row.id,
+      tenantId: row.tenant_id,
+      framework: row.framework ?? row.framework_id ?? null,
+      controlId: row.control_id,
+      controlName: row.control_name,
+      evidenceType: row.evidence_type,
+      source: row.source,
+      sourceId: row.source_id,
+      actor: row.actor,
+      subject: row.subject,
+      metadata: safeJsonParse(row.metadata ?? row.data),
+      collectedAt: row.collected_at,
+      createdAt: row.created_at,
+    }));
+
+    const lastCreatedAt = data.length > 0 ? data[data.length - 1].createdAt : since;
+
+    return ok({
+      status: "success",
+      data,
+      meta: { cursor: lastCreatedAt, count: data.length },
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/stream/recent — latest activity snapshot
+  if (path === "/api/v1/stream/recent" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+
+    const rows = await pool.query(
+      `SELECT id, tenant_id, event_type, title, detail, severity,
+              entity_type, entity_id, actor, metadata, created_at
+       FROM activity_stream WHERE tenant_id = $1 ORDER BY id DESC LIMIT $2`,
+      [tenantId, limit],
+    );
+
+    return ok({
+      status: "success",
+      data: rows.rows.map((row) => ({
+        id: row.id,
+        eventType: row.event_type,
+        title: row.title,
+        detail: row.detail,
+        severity: row.severity,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        actor: row.actor,
+        metadata: safeJsonParse(row.metadata),
+        createdAt: row.created_at,
+      })),
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/stream/workflow/:id — workflow step status snapshot
+  const streamWorkflowMatch = path.match(/^\/api\/v1\/stream\/workflow\/([^/]+)$/);
+  if (streamWorkflowMatch && method === "GET") {
+    const [, id] = streamWorkflowMatch;
+    const row = await pool.query(
+      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", status, context,
+              created_at as "createdAt", completed_at as "completedAt"
+       FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (row.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
+
+    // Fetch steps from workflow_steps if available
+    let steps: unknown[] = [];
+    try {
+      const stepsResult = await pool.query(
+        `SELECT id, step_index, name, status, started_at, completed_at, error
+         FROM workflow_steps WHERE workflow_run_id = $1 ORDER BY step_index ASC`,
+        [id],
+      );
+      steps = stepsResult.rows;
+    } catch {
+      // workflow_steps table may not exist yet
+    }
+
+    return ok({
+      status: "success",
+      data: { run: row.rows[0], steps, liveState: null },
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/stream — activity stream snapshot (replaces SSE)
+  if (path === "/api/v1/stream" && method === "GET") {
+    const cursor = parseInt(qs.cursor ?? "0", 10) || 0;
+    const types = qs.types?.split(",").filter(Boolean) ?? [];
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+
+    const conditions = ["tenant_id = $1", "id > $2"];
+    const params: unknown[] = [tenantId, cursor];
+    if (types.length > 0) {
+      const placeholders = types.map((_, i) => `$${params.length + i + 1}`).join(", ");
+      conditions.push(`event_type IN (${placeholders})`);
+      params.push(...types);
+    }
+    const where = conditions.join(" AND ");
+
+    const rows = await pool.query(
+      `SELECT id, tenant_id, event_type, title, detail, severity,
+              entity_type, entity_id, actor, metadata, created_at
+       FROM activity_stream WHERE ${where} ORDER BY id ASC LIMIT $${params.length + 1}`,
+      [...params, limit],
+    );
+
+    const data = rows.rows.map((row) => ({
+      id: row.id,
+      eventType: row.event_type,
+      title: row.title,
+      detail: row.detail,
+      severity: row.severity,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      actor: row.actor,
+      metadata: safeJsonParse(row.metadata),
+      createdAt: row.created_at,
+    }));
+
+    const lastId = data.length > 0 ? data[data.length - 1].id : cursor;
+
+    return ok({
+      status: "success",
+      data,
+      meta: { cursor: lastId, count: data.length },
+      timestamp: ts,
+    });
+  }
+
+  // ── NHI routes ─────────────────────────────────────────────────────────────
+  // Note: NHI adapter-based discovery (discoverFromAdapters / syncNhiFromAdapters)
+  // is stubbed here — Lambda doesn't have direct access to CF adapter workers.
+  // These endpoints enqueue the work via SQS and return accepted status.
+
+  // POST /api/v1/nhi/discover — discover NHIs from connected adapters (stubbed)
+  if (path === "/api/v1/nhi/discover" && method === "POST") {
+    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
+    if (Object.keys(adapterUrls).length === 0) {
+      return fail(501, "No adapter URLs configured", "NOT_IMPLEMENTED");
+    }
+
+    const discoverJobId = crypto.randomUUID();
+    try {
+      await svc.queueRepo.send({
+        tenantId,
+        workflowRunId: discoverJobId,
+        stepIndex: 0,
+        action: "nhi_discover",
+        payload: { adapterUrls, tenantId },
+      });
+    } catch (err) {
+      return fail(500, `Failed to enqueue NHI discovery: ${(err as Error).message}`, "QUEUE_ERROR");
+    }
+
+    return ok({
+      status: "success",
+      data: {
+        jobId: discoverJobId,
+        status: "queued",
+        tenantId,
+        discoveredAt: ts,
+      },
+      timestamp: ts,
+    }, 202);
+  }
+
+  // POST /api/v1/nhi/sync — discover + persist NHIs (stubbed)
+  if (path === "/api/v1/nhi/sync" && method === "POST") {
+    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
+    if (Object.keys(adapterUrls).length === 0) {
+      return fail(501, "No adapter URLs configured", "NOT_IMPLEMENTED");
+    }
+
+    const syncJobId = crypto.randomUUID();
+    try {
+      await svc.queueRepo.send({
+        tenantId,
+        workflowRunId: syncJobId,
+        stepIndex: 0,
+        action: "nhi_sync",
+        payload: { adapterUrls, tenantId },
+      });
+    } catch (err) {
+      return fail(500, `Failed to enqueue NHI sync: ${(err as Error).message}`, "QUEUE_ERROR");
+    }
+
+    return ok({
+      status: "success",
+      data: {
+        jobId: syncJobId,
+        status: "queued",
+        tenantId,
+        syncedAt: ts,
+      },
+      timestamp: ts,
+    }, 202);
+  }
+
+  // GET /api/v1/nhi/credentials — list NHI credentials for tenant
+  if (path === "/api/v1/nhi/credentials" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "100", 10) || 100, 500);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const statusFilter = qs.status ?? undefined;
+    const credentialType = qs.type ?? undefined;
+    const provider = qs.provider ?? undefined;
+
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (statusFilter) { conditions.push(`status = $${params.length + 1}`); params.push(statusFilter); }
+    if (credentialType) { conditions.push(`credential_type = $${params.length + 1}`); params.push(credentialType); }
+    if (provider) { conditions.push(`provider = $${params.length + 1}`); params.push(provider); }
+    const where = conditions.join(" AND ");
+
+    const rows = await pool.query(
+      `SELECT id, tenant_id, credential_type, provider, name, status,
+              expires_at, last_rotated_at, created_at
+       FROM nhi_credentials WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    const countRow = await pool.query(`SELECT COUNT(*) as total FROM nhi_credentials WHERE ${where}`, params);
+
+    return ok({
+      status: "success",
+      data: rows.rows,
+      meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
+      timestamp: ts,
+    });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function safeJsonParse(val: string | null | undefined): unknown {
+  if (!val) return {};
+  try {
+    return JSON.parse(val);
+  } catch {
+    return {};
+  }
 }
