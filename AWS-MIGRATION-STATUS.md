@@ -137,9 +137,10 @@ Note: Schedulers, SQS mappings, DLQ processor created via CLI while Terraform re
 ## Phase M3 -- Data Migration
 
 **Goal:** All data from Cloudflare replicated to AWS.
-**Blocked by:** M1 + M2 (working Lambda + infra required).
+**Blocked by:** CLOUDFLARE_API_TOKEN needed for wrangler D1/KV export. RDS import needs VPC access (use migration Lambda).
 
 ### M3.1 -- D1 -> RDS PostgreSQL
+- [ ] Set CLOUDFLARE_API_TOKEN env var for wrangler access
 - [ ] Run scripts/migrate-d1-to-aurora.sh (targets RDS now)
 - [ ] Verify row counts match across all 35 tables
 - [ ] Spot-check 3 tenants for data integrity
