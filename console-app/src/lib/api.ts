@@ -1,6 +1,6 @@
-// Default API Gateway base URL for AWS deployments (overridden per-service below)
-const AWS_API_BASE =
-  typeof import.meta !== "undefined" ? (import.meta.env?.VITE_API_URL ?? "") : "";
+// API Gateway base URL for AWS deployments — overridden per-service below.
+// VITE_API_URL is injected at build time by Vite (e.g. in deploy-console-s3.yml).
+const AWS_API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
 
 export interface ApiEnv {
   CORE_API_BASE?: string;

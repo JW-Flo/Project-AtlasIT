@@ -1,8 +1,9 @@
 /**
  * JwtVerifier — validates a JWT against a remote JWKS endpoint.
  *
- * Uses the Web Crypto API (available in Cloudflare Workers, Node 18+,
- * and browsers) so there is no heavyweight third-party JWT library.
+ * Uses the Web Crypto API (available in Cloudflare Workers and Node 18+)
+ * and the Node.js/Workers Buffer API for base64url decoding.
+ * Not intended for browser environments.
  */
 import type { AuthContext } from "./types.js";
 
