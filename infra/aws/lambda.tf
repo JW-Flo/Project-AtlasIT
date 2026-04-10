@@ -21,7 +21,7 @@ locals {
     FLAGS_TABLE        = aws_dynamodb_table.feature_flags.name
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
-    DATABASE_URL           = "postgresql://atlasit_app@${aws_rds_cluster.main.endpoint}:5432/atlasit"
+    DATABASE_URL           = "postgresql://atlasit_admin@${aws_db_instance.main.endpoint}/atlasit"
     SSM_PREFIX             = "/atlasit/${var.env}"
   }
 

@@ -54,7 +54,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors_notify" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
-  alarm_name          = "atlasit-aurora-cpu-${var.env}"
+  alarm_name          = "atlasit-rds-cpu-${var.env}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "CPUUtilization"
@@ -62,28 +62,28 @@ resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
   period              = 300
   statistic           = "Average"
   threshold           = 80
-  alarm_description   = "Aurora CPU above 80% — consider scaling ACU max"
+  alarm_description   = "RDS CPU above 80pct"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    DBClusterIdentifier = aws_rds_cluster.main.cluster_identifier
+    DBInstanceIdentifier = aws_db_instance.main.identifier
   }
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
-  alarm_name          = "atlasit-aurora-connections-${var.env}"
+  alarm_name          = "atlasit-rds-connections-${var.env}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "DatabaseConnections"
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Maximum"
-  threshold           = 50
-  alarm_description   = "Aurora connections high — check Lambda pool config"
+  threshold           = 40
+  alarm_description   = "RDS connections high — check Lambda pool config"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    DBClusterIdentifier = aws_rds_cluster.main.cluster_identifier
+    DBInstanceIdentifier = aws_db_instance.main.identifier
   }
 }
 
@@ -177,11 +177,11 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 8
         height = 6
         properties = {
-          title = "Aurora PostgreSQL"
+          title = "RDS PostgreSQL"
           metrics = [
-            ["AWS/RDS", "CPUUtilization", "DBClusterIdentifier", "atlasit-${var.env}", { stat = "Average", label = "CPU %" }],
-            ["AWS/RDS", "DatabaseConnections", "DBClusterIdentifier", "atlasit-${var.env}", { stat = "Maximum", label = "Connections" }],
-            ["AWS/RDS", "ServerlessDatabaseCapacity", "DBClusterIdentifier", "atlasit-${var.env}", { stat = "Average", label = "ACU" }],
+            ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "atlasit-rds-${var.env}", { stat = "Average", label = "CPU %" }],
+            ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", "atlasit-rds-${var.env}", { stat = "Maximum", label = "Connections" }],
+            ["AWS/RDS", "FreeableMemory", "DBInstanceIdentifier", "atlasit-rds-${var.env}", { stat = "Average", label = "Free RAM" }],
           ]
           period = 300
           view   = "timeSeries"
