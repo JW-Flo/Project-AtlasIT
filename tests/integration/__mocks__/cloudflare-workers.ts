@@ -7,3 +7,8 @@ export class DurableObject {
     this.env = env;
   }
 }
+
+export class WorkflowEntrypoint<_Env = unknown, _Params = unknown> {
+  ctx!: unknown;
+  env!: _Env;
+}

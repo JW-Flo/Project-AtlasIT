@@ -17,9 +17,7 @@ interface AuthMiddlewareOptions {
   allowApiKey?: boolean;
 }
 
-export function authMiddleware(
-  options: AuthMiddlewareOptions = {},
-): MiddlewareHandler {
+export function authMiddleware(options: AuthMiddlewareOptions = {}): MiddlewareHandler {
   let verifier: JwtVerifier | null = null;
 
   return async (c, next) => {
@@ -30,10 +28,8 @@ export function authMiddleware(
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
 
-      const issuerUrl =
-        options.issuerUrl ?? (c.env as Record<string, string>)?.JWT_ISSUER;
-      const audience =
-        options.audience ?? (c.env as Record<string, string>)?.JWT_AUDIENCE;
+      const issuerUrl = options.issuerUrl ?? (c.env as Record<string, string>)?.JWT_ISSUER;
+      const audience = options.audience ?? (c.env as Record<string, string>)?.JWT_AUDIENCE;
 
       if (!issuerUrl || !audience) {
         throw new AuthError(500, "JWT issuer or audience not configured");
@@ -61,23 +57,20 @@ export function authMiddleware(
 
     // API key auth (legacy support)
     if (apiKeyHeader && options.allowApiKey !== false) {
-      const allowedKeys = (
-        (c.env as Record<string, string>)?.API_ALLOWED_KEYS ?? ""
-      )
+      const allowedKeys = ((c.env as Record<string, string>)?.API_ALLOWED_KEYS ?? "")
         .split(",")
         .map((k) => k.trim())
         .filter(Boolean);
 
       if (allowedKeys.length > 0 && allowedKeys.includes(apiKeyHeader)) {
-        const tenantId = c.req.header("X-Tenant-ID");
-        if (!tenantId) {
-          throw new AuthError(400, "X-Tenant-ID header required for API key auth");
-        }
+        // X-Tenant-ID is optional; fall back to "default" so callers are not
+        // forced to supply a header when the context is not tenant-scoped.
+        const tenantId = c.req.header("X-Tenant-ID") ?? "default";
         const authContext: AuthContext = {
           tenantId,
-          userId: "service",
+          userId: "",
           email: "",
-          roles: ["api-key", "service", "member"],
+          roles: ["api-key"],
           tokenType: "api-key",
         };
 
@@ -125,7 +118,7 @@ export function requireRole(role: RoleLevel): MiddlewareHandler {
     }
     const requiredLevel = ROLE_HIERARCHY.indexOf(role);
     const userLevel = Math.max(
-      ...auth.roles.map((r) => ROLE_HIERARCHY.indexOf(r as RoleLevel)),
+      ...auth.roles.map((r: string) => ROLE_HIERARCHY.indexOf(r as RoleLevel)),
       -1,
     );
     if (userLevel < requiredLevel) {
