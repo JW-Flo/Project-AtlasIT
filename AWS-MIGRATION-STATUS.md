@@ -40,15 +40,17 @@
 **Blocked by:** Nothing. Start immediately.
 **Estimate:** ~55 route handlers across 4 Lambda functions.
 
-### M1.1 -- core-api routes (13 missing)
-- [ ] GET/PATCH/DELETE /api/v1/tenants/:id
-- [ ] GET /api/v1/events/:id
-- [ ] POST /api/v1/auth/token
-- [ ] GET/POST/PATCH/DELETE /api/v1/flags/:key
-- [ ] POST /api/v1/flags/:key/evaluate
-- [ ] POST /api/v1/flags/:key/kill
-- [ ] GET/PUT/DELETE /api/v1/credentials/:tenantId/:appId
-- [ ] POST /api/v1/credentials/:tenantId/:appId/test
+### M1.1 -- core-api routes -- COMPLETE
+All 13 routes already implemented in initial port. Verified 2026-04-10.
+
+- [x] GET/PATCH/DELETE /api/v1/tenants/:id
+- [x] GET /api/v1/events/:id
+- [x] POST /api/v1/auth/token
+- [x] GET/POST/PATCH/DELETE /api/v1/flags/:key
+- [x] POST /api/v1/flags/:key/evaluate
+- [x] POST /api/v1/flags/:key/kill
+- [x] GET/PUT/DELETE /api/v1/credentials/:tenantId/:appId
+- [x] POST /api/v1/credentials/:tenantId/:appId/test
 
 ### M1.2 -- orchestrator routes (24 missing)
 - [ ] GET /api/v1/workflows/:id
@@ -72,19 +74,21 @@
 - [ ] GET /api/v1/nhi/credentials
 - [ ] GET /api/v1/jml/runs/:id
 
-### M1.3 -- compliance-api routes (15 missing)
-- [ ] POST /api/evidence/ingest
-- [ ] GET /api/evidence/*
-- [ ] GET /api/v1/activity
-- [ ] GET/POST /api/v1/incidents
-- [ ] GET/POST /api/v1/access-requests
-- [ ] POST /api/v1/access-requests/:id/*
-- [ ] GET /api/v1/notifications
-- [ ] POST /api/v1/notifications/read, /api/v1/notifications/read-all
-- [ ] GET /api/v1/policies/coverage/*
-- [ ] POST /api/v1/admin/retention/policies/purge
-- [ ] GET /api/v1/workflows/demo/jml
-- [ ] GET /api/v1/workflows/executions/*
+### M1.3 -- compliance-api routes -- COMPLETE (2026-04-10)
+9 fully implemented, 6 stubbed as 501 (access_requests + notifications tables not in PG schema).
+
+- [x] POST /api/evidence/ingest
+- [x] GET /api/evidence/*
+- [x] GET /api/v1/activity
+- [x] GET/POST /api/v1/incidents
+- [x] GET/POST /api/v1/access-requests (501 stub -- needs PG migration)
+- [x] POST /api/v1/access-requests/:id/* (501 stub)
+- [x] GET /api/v1/notifications (501 stub -- needs PG migration)
+- [x] POST /api/v1/notifications/read, /api/v1/notifications/read-all (501 stub)
+- [x] GET /api/v1/policies/coverage/*
+- [x] POST /api/v1/admin/retention/policies/purge
+- [x] GET /api/v1/workflows/demo/jml
+- [x] GET /api/v1/workflows/executions/*
 
 ### M1.4 -- onboarding routes (3 missing)
 - [ ] POST /onboarding/submit
