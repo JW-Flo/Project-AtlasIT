@@ -25,24 +25,25 @@ jobs:
     name: Build & Deploy Console
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build SvelteKit (static adapter)
-        working-directory: console-app
-        run: pnpm build
-        env:
-          PUBLIC_API_BASE: https://api.atlasit.pro
+      - name: Build shared package
+        run: cd packages/shared && pnpm run build
+
+      - name: Build console app (static adapter)
+        run: SVELTE_CONFIG=console-app/svelte.config.aws.js pnpm --filter console-app run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -50,26 +51,15 @@ jobs:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Sync to S3
+      - name: Discover S3 bucket and CloudFront distribution from SSM
         run: |
-          BUCKET=$(aws ssm get-parameter --name "/atlasit/dev/console-bucket" --query "Parameter.Value" --output text 2>/dev/null || echo "atlasit-console-dev-457335975503")
-          aws s3 sync console-app/build "s3://$BUCKET" \
-            --delete \
-            --cache-control "public, max-age=31536000, immutable" \
-            --exclude "*.html" \
-            --exclude "service-worker.js"
-          # HTML files get short cache
-          aws s3 sync console-app/build "s3://$BUCKET" \
-            --cache-control "public, max-age=0, must-revalidate" \
-            --include "*.html" \
-            --include "service-worker.js" \
-            --content-type "text/html"
+          BUCKET=$(aws ssm get-parameter --name /atlasit/dev/console-bucket --query Parameter.Value --output text)
+          DIST_ID=$(aws ssm get-parameter --name /atlasit/dev/cloudfront-distribution-id --query Parameter.Value --output text)
+          echo "BUCKET=$BUCKET" >> $GITHUB_ENV
+          echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
 
-      - name: Invalidate CloudFront
-        run: |
-          DIST_ID=$(aws ssm get-parameter --name "/atlasit/dev/cloudfront-distribution-id" --query "Parameter.Value" --output text 2>/dev/null || echo "")
-          if [ -n "$DIST_ID" ]; then
-            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
-          else
-            echo "::notice::CloudFront distribution ID not found — skipping invalidation"
-          fi
+      - name: Sync to S3
+        run: aws s3 sync console-app/build/ s3://$BUCKET --delete
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id $DIST_ID --paths "/*"

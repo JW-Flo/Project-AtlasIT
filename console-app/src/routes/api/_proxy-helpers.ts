@@ -1,5 +1,20 @@
 export function getWorkerBase(platform: any): string {
   const env = (platform?.env as any) || {};
+
+  // Allow a global API URL override for static/node deployments (e.g. S3 + API Gateway).
+  // VITE_API_URL is baked in at build time; PUBLIC_API_URL is a SvelteKit public env var.
+  // When set, this URL is used as the base for all upstream service calls instead of the
+  // individual Cloudflare Worker URLs.  Default is empty — keeps existing CF behavior.
+  const apiOverride: string =
+    env.PUBLIC_API_URL ||
+    env.VITE_API_URL ||
+    (typeof process !== "undefined"
+      ? process.env.PUBLIC_API_URL || process.env.VITE_API_URL || ""
+      : "");
+  if (apiOverride) {
+    return apiOverride.replace(/\/$/, "");
+  }
+
   const complianceBase: string = env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
   return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
 }
