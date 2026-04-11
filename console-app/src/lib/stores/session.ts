@@ -64,10 +64,24 @@ export async function fetchSession(): Promise<SessionData | null> {
     return tokenSession;
   }
 
+  // In SPA mode (VITE_API_URL set), there are no server-side routes.
+  // If no token exists, the user is unauthenticated — return null.
+  const isSpa = typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL;
+  if (isSpa) {
+    session.set(null);
+    sessionLoading.set(false);
+    return null;
+  }
+
   // Fall back to server-side session (CF Workers mode)
   try {
     const res = await fetch("/api/auth/session");
     if (!res.ok) {
+      session.set(null);
+      return null;
+    }
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
       session.set(null);
       return null;
     }

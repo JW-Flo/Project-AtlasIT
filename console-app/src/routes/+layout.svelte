@@ -5,10 +5,21 @@
   import { isSpaMode } from "$lib/client-api";
   import { onMount } from "svelte";
 
-  // In SPA mode (S3/CloudFront), intercept fetch calls to /api/ and route
-  // them to API Gateway with auth headers. This avoids rewriting every page.
+  // In SPA mode: redirect to /login if no auth token, then intercept fetch calls
   onMount(() => {
     if (!isSpaMode) return;
+
+    // Redirect to /login if unauthenticated and not already on a public route
+    const token = sessionStorage.getItem("atlasit_token");
+    const path = window.location.pathname;
+    const isPublic = ["/login", "/", "/support", "/trust", "/faq", "/privacy", "/developers"].some(
+      (r) => path === r || path.startsWith(r + "/"),
+    );
+    if (!token && !isPublic) {
+      window.location.href = "/login";
+      return;
+    }
+
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch;
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
