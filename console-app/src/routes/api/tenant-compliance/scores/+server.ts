@@ -33,9 +33,7 @@ function computeGrade(score: number): string {
 async function ensureScoreTables(_db: any): Promise<void> {
   // No-op — tables managed by migrations. Kept as a function to avoid
   // breaking callers; will be removed in a future cleanup pass.
-  try {
-    // intentionally empty
-  }
+  // intentionally empty — tables managed by migrations
 }
 
 // ── Evidence-grounded scoring via compliance-worker ──────────────────────────
