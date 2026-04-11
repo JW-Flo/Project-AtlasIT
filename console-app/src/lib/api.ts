@@ -9,12 +9,23 @@ export interface ApiEnv {
   ORCHESTRATOR_BASE?: string;
 }
 
+/** Get stored auth token for API Gateway calls (SPA mode). */
+function getAuthToken(): string | null {
+  if (typeof sessionStorage === "undefined") return null;
+  return sessionStorage.getItem("atlasit_token");
+}
+
 async function doFetch(base: string | undefined, path: string, init?: RequestInit) {
   const resolved = base || AWS_API_BASE || undefined;
   if (!resolved) throw new Error("Missing API base for " + path);
   const url = resolved.replace(/\/$/, "") + path;
   const headers = new Headers(init?.headers || {});
   if (!headers.has("x-correlation-id")) headers.set("x-correlation-id", crypto.randomUUID());
+  // Inject auth token for API Gateway (SPA mode)
+  const token = getAuthToken();
+  if (token && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
   const resp = await fetch(url, { ...init, headers });
   return resp;
 }
