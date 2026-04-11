@@ -1,36 +1,44 @@
 # AWS Migration -- Completion Roadmap
 
-**Last updated:** 2026-04-10
+**Last updated:** 2026-04-11
 **Purpose:** Single source of truth for completing the Cloudflare to AWS migration.
 **Rule:** No platform development (Phases 9-12) until this document shows all phases complete.
 
 ---
 
-## Current State
+## Current State (2026-04-11)
 
-**Production traffic:** 100% Cloudflare Workers. Zero Lambda in the critical path.
-**AWS infrastructure:** Deployed and verified (RDS db.t4g.small, 6 Lambda functions, API Gateway, VPC, DynamoDB, S3, SQS).
-**Cost:** ~$26/mo (down from ~$250/mo after orphan cleanup).
-**Terraform state:** 122 resources. Partial drift remains (Lambda SG, IGW, public RT associations, EventBridge schedulers).
+**Production traffic:** 100% Cloudflare Workers. AWS is ready but not serving production yet.
+**AWS API:** 21/21 routes passing through API Gateway (ahjoepuw96.execute-api.us-east-1.amazonaws.com)
+**Cost:** ~$26/mo
+**Terraform:** Zero drift ("No changes. Your infrastructure matches the configuration.")
 
-### What Works on AWS (verified via direct Lambda invoke)
-- Health endpoints (all 6 Lambdas return 200)
-- Auth validation (SSM SecureString reads, internal API key flow)
-- PostgreSQL queries (RDS db.t4g.small, 35-table schema applied)
-- DynamoDB access (feature flags CRUD)
-- API Gateway routing (ahjoepuw96.execute-api.us-east-1.amazonaws.com)
+### What Works on AWS
+- 7 Lambda functions deployed (core-api, compliance-api, orchestrator, onboarding-api, scheduler, slack-handler, dlq-processor)
+- All routes accessible through API Gateway with path prefix stripping
+- RDS db.t4g.small with 35+ tables (schema applied + agent_registry, workflow_runs, workflow_steps added)
+- DynamoDB (sessions, cache, feature-flags, idempotency)
+- SSM SecureString secrets (7 secrets + database-url)
+- SQS consumers connected (step_tasks -> orchestrator, DLQ -> dlq-processor) -- verified message consumed
+- 3 EventBridge schedulers ENABLED (5min scoring, 2am daily eval, 15min dispatch)
+- 2 Step Functions (jml-workflow, automation-rule)
+- NAT instance (t4g.nano) with IP forwarding for Lambda VPC outbound
+- S3 buckets (evidence, policies, artifacts, console, logs)
+- CloudFront + WAF (2 rules: ip-reputation + rate-limit)
+- Console S3 deploy workflow (.github/workflows/deploy-console-s3.yml) + svelte.config.aws.js
 
 ### What Does NOT Work / Not Migrated
-- Console app (SvelteKit on CF Pages, not S3/CloudFront)
-- ~55 Lambda routes not ported from CF Workers
-- Data migration scripts exist but have NOT been run (D1, KV, R2 all still on CF)
+- Console app not deployed to S3 (workflow exists but hasn't run)
+- Data migration not run (D1/KV/R2 still on CF -- needs CLOUDFLARE_API_TOKEN)
 - DNS still on Cloudflare (atlasit.pro)
-- CI/CD deploy-on-merge still CF-only (Lambda deploy is a separate workflow)
-- DLQ processor Lambda not created in AWS
-- EventBridge schedulers not created
-- SQS event source mappings not connected
-- Automation rule Step Function not created
-- 35 adapters still on CF Workers (migrate last)
+- 35 adapters still on CF Workers
+- DATABASE_URL managed via CLI/SSM, NOT Terraform (Terraform has ignore_changes on Lambda env)
+- NAT instance route must be manually updated if instance is replaced
+
+### Known Issues
+- Terraform will try to replace NAT instance if user_data changes (route goes blackhole until manually fixed)
+- 6 compliance-api routes return 501 (access_requests + notifications tables not in PG schema)
+- Agent/workflow routes: some D1-only columns not in PG schema (non-blocking, routes return empty data)
 
 ---
 
