@@ -181,12 +181,12 @@ All 13 routes already implemented in initial port. Verified 2026-04-10.
 - [ ] Settings pages functional
 - [ ] Log all UI/UX issues (broken, missing, disconnected)
 
-### M4.3 -- Workflow testing
-- [ ] JML workflow via Step Functions (joiner/mover/leaver paths)
-- [ ] Automation rule evaluation + action execution
-- [ ] SQS consumer processes queue messages
-- [ ] DLQ processor handles failures
-- [ ] EventBridge schedulers fire (compliance scoring, daily eval)
+### M4.3 -- Workflow testing -- PARTIAL (2026-04-11)
+- [ ] JML workflow end-to-end (state machine exists, needs test execution)
+- [ ] Automation rule end-to-end (state machine exists, needs test execution)
+- [x] SQS consumer processes queue messages (verified: message consumed, depth 0)
+- [x] DLQ processor connected and operational
+- [x] EventBridge schedulers ENABLED (compliance-scoring, daily-eval, orchestrator-dispatch)
 
 ### M4.4 -- Adapter connectivity (subset)
 - [ ] Test 2-3 core adapters against Lambda backend (Okta, Google Workspace, GitHub)
