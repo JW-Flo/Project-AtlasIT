@@ -29,11 +29,14 @@ function getPool(): pg.Pool {
       connectionString: process.env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 10_000,
+      ssl: { rejectUnauthorized: false },
     });
+    _pool.connect().then(c => { c.release(); }).catch(() => {});
   }
   return _pool;
 }
+getPool();
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",

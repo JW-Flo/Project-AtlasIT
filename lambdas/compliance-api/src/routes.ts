@@ -28,11 +28,17 @@ function getPool(): pg.Pool {
       connectionString: process.env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 10_000,
+      ssl: { rejectUnauthorized: false },
     });
+    // Eagerly connect on module init to avoid cold-start PG latency on first request
+    _pool.connect().then(c => { c.release(); }).catch(() => {});
   }
   return _pool;
 }
+
+// Trigger pool init at module load (Lambda reuses across warm invocations)
+getPool();
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
