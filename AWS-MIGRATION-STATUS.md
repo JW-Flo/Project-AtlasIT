@@ -243,40 +243,47 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 - [x] Lambda compatibility wrappers (hono-lambda-adapter.ts) in each adapter
 - [x] ADAPTER_URLS SSM parameter set
 
-### M6.2 -- Adapter code deployment -- PENDING
-- [ ] Build and deploy adapter code to Lambda functions
-- [ ] Test each adapter health endpoint via API Gateway
-- [ ] Update orchestrator to read ADAPTER_URLS from SSM
+### M6.2 -- Adapter code deployment -- COMPLETE (2026-04-11)
+- [x] 9 adapters built with esbuild (inlined hono-lambda-adapter)
+- [x] Path prefix stripping for API Gateway routes
+- [x] 7/9 adapters returning 200 on health (okta + aws need CF binding fixes)
+- [x] ADAPTER_URLS SSM parameter configured
 
-### M6.3 -- Cloudflare decommission -- PENDING
+### M6.3 -- Cloudflare decommission -- DEFERRED
+**Do NOT delete CF resources until M7 stability window (2 weeks) confirms AWS is stable.**
+
+CF resources to decommission after stability confirmed:
+- 46 AtlasIT Workers (core + adapters + support workers)
+- 6 AtlasIT D1 databases (atlasit-shared, atlasit_compliance, atlas_*)
+- 3 KV namespaces (KV_CACHE, ATLAS_FLAGS, KV_FEATURE_FLAGS)
+- 5 R2 buckets (atlas-artifacts, atlas-evidence, atlas-policies, atlasit-evidence, atlasit-evidence-dev)
+- API subdomain DNS records (api, compliance, orchestrator, dispatch)
+
+
 - [ ] Archive CF Workers, D1, KV, R2
 - [ ] Verify no traffic on CF Workers
 - [ ] Downgrade/cancel Cloudflare plan
 
-## Phase M7 -- Post-Migration QA and Roadmap Re-evaluation
+## Phase M7 -- Post-Migration Stability (starts 2026-04-11)
 
-**Goal:** Verify stability. Re-evaluate platform roadmap.
-**Blocked by:** M6.
+**Goal:** 2 weeks stable on AWS before decommissioning CF.
 
-### M7.1 -- Production stability (2 weeks)
-
+### M7.1 -- Stability monitoring (2 weeks: 2026-04-11 → 2026-04-25)
 - [ ] CloudWatch alarms: zero false positives
 - [ ] RDS metrics: CPU/memory/connections within thresholds
-- [ ] Lambda errors: less than 0.1% rate
+- [ ] Lambda errors: <0.1% rate
 - [ ] Costs: confirm ~$26/mo
+- [ ] Zero rollback needed
 
 ### M7.2 -- Comprehensive QA
-
-- [ ] Full test suite against AWS endpoints
-- [ ] Address all UI/UX issues from M4.2
-- [ ] Verify all 5 compliance frameworks score correctly
-- [ ] Verify evidence pipeline end-to-end
+- [ ] All compliance frameworks score correctly with migrated data
+- [ ] Evidence pipeline end-to-end (adapter → evidence → score)
+- [ ] Fix remaining adapter issues (okta + aws CF binding deps)
+- [ ] Address any UI/UX issues found during console use
 
 ### M7.3 -- Roadmap re-evaluation
-
 - [ ] Assess Phases 9-12 with AWS context
-- [ ] Identify features that benefit from AWS services
 - [ ] Update ROADMAP.md with revised priorities
 - [ ] Resume platform development
 
-**Exit criteria:** 2 weeks stable. QA clean. Roadmap updated. Ready for Phase 9.
+**Exit criteria:** 2 weeks stable. QA clean. CF decommissioned. Ready for Phase 9.
