@@ -126,7 +126,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
-        return ok({ status: "success", data: { id: row.id, status: row.status, deduplicated: true }, timestamp: ts });
+        return ok({
+          status: "success",
+          data: { id: row.id, status: row.status, deduplicated: true },
+          timestamp: ts,
+        });
       }
     }
 
@@ -134,7 +138,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     await pool.query(
       `INSERT INTO events (id, tenant_id, type, source, payload, status, idempotency_key, created_at)
        VALUES ($1,$2,$3,$4,$5,'pending',$6,NOW())`,
-      [id, evTenantId, b.type, b.source, b.payload ? JSON.stringify(b.payload) : null, b.idempotencyKey ?? null],
+      [
+        id,
+        evTenantId,
+        b.type,
+        b.source,
+        b.payload ? JSON.stringify(b.payload) : null,
+        b.idempotencyKey ?? null,
+      ],
     );
 
     // Fan-out: enqueue to SQS step tasks
@@ -150,7 +161,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       console.warn("[orchestrator] SQS enqueue failed", { id, error: (qErr as Error).message });
     }
 
-    return ok({ status: "success", data: { id, type: b.type, source: b.source, status: "pending" }, timestamp: ts }, 201);
+    return ok(
+      {
+        status: "success",
+        data: { id, type: b.type, source: b.source, status: "pending" },
+        timestamp: ts,
+      },
+      201,
+    );
   }
 
   // GET /api/v1/events — list events for tenant
@@ -161,7 +179,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = ["tenant_id = $1"];
     const vals: unknown[] = [tenantId];
-    if (type) { conditions.push(`type = $${vals.length + 1}`); vals.push(type); }
+    if (type) {
+      conditions.push(`type = $${vals.length + 1}`);
+      vals.push(type);
+    }
     const where = conditions.join(" AND ");
 
     const rows = await pool.query(
@@ -185,8 +206,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       capabilities?: string[];
       eventTypes?: string[];
     };
-    if (!b.name || !b.webhookUrl) return fail(400, "name and webhookUrl are required", "VALIDATION_FAILED");
-    if (!b.eventTypes?.length) return fail(400, "eventTypes must not be empty", "VALIDATION_FAILED");
+    if (!b.name || !b.webhookUrl)
+      return fail(400, "name and webhookUrl are required", "VALIDATION_FAILED");
+    if (!b.eventTypes?.length)
+      return fail(400, "eventTypes must not be empty", "VALIDATION_FAILED");
 
     const id = crypto.randomUUID();
     const secretBytes = crypto.randomBytes(32);
@@ -196,10 +219,21 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       `INSERT INTO agent_registry
          (id, tenant_id, name, description, webhook_url, capabilities, status, secret, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,'active',$7,NOW())`,
-      [id, tenantId, b.name, b.description ?? null, b.webhookUrl ?? "", JSON.stringify(b.capabilities ?? []), secret],
+      [
+        id,
+        tenantId,
+        b.name,
+        b.description ?? null,
+        b.webhookUrl ?? "",
+        JSON.stringify(b.capabilities ?? []),
+        secret,
+      ],
     );
 
-    return ok({ status: "success", data: { id, name: b.name, status: "active", secret }, timestamp: ts }, 201);
+    return ok(
+      { status: "success", data: { id, name: b.name, status: "active", secret }, timestamp: ts },
+      201,
+    );
   }
 
   // GET /api/v1/agents — list agents for tenant
@@ -233,13 +267,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (agentByIdMatch && method === "PATCH") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, id] = agentByIdMatch;
-    const b = parseBody(event) as { description?: string; webhookUrl?: string; status?: string; capabilities?: string[] };
+    const b = parseBody(event) as {
+      description?: string;
+      webhookUrl?: string;
+      status?: string;
+      capabilities?: string[];
+    };
     const updates: string[] = [];
     const vals: unknown[] = [];
-    if (b.description !== undefined) { updates.push(`description = $${vals.length + 1}`); vals.push(b.description); }
-    if (b.webhookUrl !== undefined) { updates.push(`webhook_url = $${vals.length + 1}`); vals.push(b.webhookUrl); }
-    if (b.status !== undefined) { updates.push(`status = $${vals.length + 1}`); vals.push(b.status); }
-    if (b.capabilities !== undefined) { updates.push(`capabilities = $${vals.length + 1}`); vals.push(JSON.stringify(b.capabilities)); }
+    if (b.description !== undefined) {
+      updates.push(`description = $${vals.length + 1}`);
+      vals.push(b.description);
+    }
+    if (b.webhookUrl !== undefined) {
+      updates.push(`webhook_url = $${vals.length + 1}`);
+      vals.push(b.webhookUrl);
+    }
+    if (b.status !== undefined) {
+      updates.push(`status = $${vals.length + 1}`);
+      vals.push(b.status);
+    }
+    if (b.capabilities !== undefined) {
+      updates.push(`capabilities = $${vals.length + 1}`);
+      vals.push(JSON.stringify(b.capabilities));
+    }
     if (updates.length === 0) return fail(400, "No fields to update", "VALIDATION_FAILED");
     vals.push(id, tenantId);
     await pool.query(
@@ -295,7 +346,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       workflowRunId: workflowId,
       stepIndex: 0,
       action: b.steps[0].handler,
-      payload: { definition: { steps: b.steps, globalTimeoutMs: b.globalTimeoutMs ?? 300_000 }, context: b.context ?? {} },
+      payload: {
+        definition: { steps: b.steps, globalTimeoutMs: b.globalTimeoutMs ?? 300_000 },
+        context: b.context ?? {},
+      },
     });
 
     return ok({ status: "success", data: { workflowId, status: "running" }, timestamp: ts }, 201);
@@ -326,7 +380,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     };
     const validTypes = ["joiner", "mover", "leaver"];
     if (!b.workflowType || !validTypes.includes(b.workflowType)) {
-      return fail(400, `workflowType must be one of: ${validTypes.join(", ")}`, "VALIDATION_FAILED");
+      return fail(
+        400,
+        `workflowType must be one of: ${validTypes.join(", ")}`,
+        "VALIDATION_FAILED",
+      );
     }
 
     if (b.idempotencyKey) {
@@ -336,7 +394,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
       if (existing.rows.length > 0) {
         const row = existing.rows[0];
-        return ok({ status: "success", data: { id: row.id, status: row.status, idempotentHit: true }, timestamp: ts });
+        return ok({
+          status: "success",
+          data: { id: row.id, status: row.status, idempotentHit: true },
+          timestamp: ts,
+        });
       }
     }
 
@@ -355,7 +417,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       payload: { subjectRef: b.subjectRef },
     });
 
-    return ok({ status: "success", data: { id, status: "pending", idempotentHit: false }, timestamp: ts }, 202);
+    return ok(
+      { status: "success", data: { id, status: "pending", idempotentHit: false }, timestamp: ts },
+      202,
+    );
   }
 
   // GET /api/v1/automation/executions/:id — get automation execution
@@ -384,14 +449,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = ["tenant_id = $1"];
     const params: unknown[] = [tenantId];
-    if (agentId) { conditions.push(`agent_id = $${params.length + 1}`); params.push(agentId); }
+    if (agentId) {
+      conditions.push(`agent_id = $${params.length + 1}`);
+      params.push(agentId);
+    }
     const where = `WHERE ${conditions.join(" AND ")}`;
 
     const rows = await pool.query(
       `SELECT * FROM dead_letter_queue ${where} ORDER BY dead_lettered_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
-    const countRow = await pool.query(`SELECT COUNT(*) as total FROM dead_letter_queue ${where}`, params);
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as total FROM dead_letter_queue ${where}`,
+      params,
+    );
 
     return ok({
       status: "success",
@@ -444,7 +515,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, id] = dlqReplayMatch;
 
-    const row = await pool.query<{ id: string; payload: string; event_type: string; tenant_id: string }>(
+    const row = await pool.query<{
+      id: string;
+      payload: string;
+      event_type: string;
+      tenant_id: string;
+    }>(
       "SELECT id, payload, event_type, tenant_id FROM dead_letter_queue WHERE id = $1 AND tenant_id = $2",
       [id, tenantId],
     );
@@ -479,7 +555,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const params: unknown[] = [tenantId];
     const where = `WHERE ${conditions.join(" AND ")}`;
 
-    const entries = await pool.query<{ id: string; payload: string; event_type: string; tenant_id: string }>(
+    const entries = await pool.query<{
+      id: string;
+      payload: string;
+      event_type: string;
+      tenant_id: string;
+    }>(
       `SELECT id, payload, event_type, tenant_id FROM dead_letter_queue ${where} LIMIT 100`,
       params,
     );
@@ -505,7 +586,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       }
     }
 
-    return ok({ status: "success", data: { total: entries.rows.length, replayed, failed }, timestamp: ts });
+    return ok({
+      status: "success",
+      data: { total: entries.rows.length, replayed, failed },
+      timestamp: ts,
+    });
   }
 
   // ── JML routes ──────────────────────────────────────────────────────────────
@@ -516,7 +601,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       `SELECT tenant_id as "tenantId", policy FROM jml_policies WHERE tenant_id = $1`,
       [tenantId],
     );
-    const policy = row.rows.length > 0 ? row.rows[0].policy : { tenantId, enabled: false, rules: [] };
+    const policy =
+      row.rows.length > 0 ? row.rows[0].policy : { tenantId, enabled: false, rules: [] };
     return ok({ status: "success", data: policy, timestamp: ts });
   }
 
@@ -542,7 +628,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       changeType?: string;
       delta?: Record<string, unknown>;
     };
-    if (!b.userId || !b.changeType) return fail(400, "userId and changeType are required", "VALIDATION_FAILED");
+    if (!b.userId || !b.changeType)
+      return fail(400, "userId and changeType are required", "VALIDATION_FAILED");
 
     const validTypes = ["joiner", "mover", "leaver"];
     if (!validTypes.includes(b.changeType)) {
@@ -568,8 +655,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const b = parseBody(event) as { provider?: string };
     if (!b.provider) return fail(400, "provider is required", "VALIDATION_FAILED");
 
-    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);    const adapterUrl = adapterUrls[b.provider];
-    if (!adapterUrl) return fail(501, `No adapter configured for provider: ${b.provider}`, "NOT_IMPLEMENTED");
+    const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
+    const adapterUrl = adapterUrls[b.provider];
+    if (!adapterUrl)
+      return fail(501, `No adapter configured for provider: ${b.provider}`, "NOT_IMPLEMENTED");
 
     try {
       const res = await fetch(`${adapterUrl}/api/sync`, {
@@ -582,7 +671,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         },
         body: JSON.stringify({ tenantId }),
       });
-      const data = await res.json() as unknown;
+      const data = (await res.json()) as unknown;
       return ok({ status: "success", data, upstream: b.provider, timestamp: ts });
     } catch (e) {
       return fail(502, `Adapter sync failed: ${(e as Error).message}`, "UPSTREAM_ERROR");
@@ -664,7 +753,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (agentSubsMatch && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, agentId] = agentSubsMatch;
-    const b = parseBody(event) as { eventType?: string; filterExpression?: Record<string, unknown> | null };
+    const b = parseBody(event) as {
+      eventType?: string;
+      filterExpression?: Record<string, unknown> | null;
+    };
     if (!b.eventType) return fail(400, "eventType is required", "VALIDATION_FAILED");
     const agent = await pool.query(
       "SELECT id FROM agent_registry WHERE id = $1 AND tenant_id = $2",
@@ -688,11 +780,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       }
       throw e;
     }
-    return ok({
-      status: "success",
-      data: { id: subId, agentId, eventType: b.eventType },
-      timestamp: ts,
-    }, 201);
+    return ok(
+      {
+        status: "success",
+        data: { id: subId, agentId, eventType: b.eventType },
+        timestamp: ts,
+      },
+      201,
+    );
   }
 
   // POST /api/v1/agents/:id/health — report health check result
@@ -715,11 +810,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         } else {
           // Block private IPs and localhost (basic SSRF protection)
           const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
-          const isPrivateIP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(url.hostname);
+          const isPrivateIP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(
+            url.hostname,
+          );
           if (blockedHosts.includes(url.hostname) || isPrivateIP) {
-            console.warn(`[orchestrator] Blocked health check to private/local address: ${url.hostname}`);
+            console.warn(
+              `[orchestrator] Blocked health check to private/local address: ${url.hostname}`,
+            );
           } else {
-            const res = await fetch(healthUrl, { method: "GET", signal: AbortSignal.timeout(5000) });
+            const res = await fetch(healthUrl, {
+              method: "GET",
+              signal: AbortSignal.timeout(5000),
+            });
             healthStatus = res.ok ? "healthy" : "unhealthy";
           }
         }
@@ -747,10 +849,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
     const b = parseBody(event) as Record<string, unknown>;
     // Verify workflow belongs to tenant
-    const wf = await pool.query(
-      "SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2",
-      [workflowId, tenantId],
-    );
+    const wf = await pool.query("SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2", [
+      workflowId,
+      tenantId,
+    ]);
     if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
     // Enqueue step completion
     await svc.queueRepo.send({
@@ -760,7 +862,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       action: "step_complete",
       payload: b,
     });
-    return ok({ status: "success", data: { workflowId, stepId, status: "completed" }, timestamp: ts });
+    return ok({
+      status: "success",
+      data: { workflowId, stepId, status: "completed" },
+      timestamp: ts,
+    });
   }
 
   // POST /api/v1/workflows/:id/steps/:stepId/fail — fail a workflow step
@@ -773,10 +879,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
     const b = parseBody(event) as { error?: string };
     // Verify workflow belongs to tenant
-    const wf = await pool.query(
-      "SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2",
-      [workflowId, tenantId],
-    );
+    const wf = await pool.query("SELECT id FROM workflow_runs WHERE id = $1 AND tenant_id = $2", [
+      workflowId,
+      tenantId,
+    ]);
     if (wf.rows.length === 0) return fail(404, "Workflow not found", "NOT_FOUND");
     // Enqueue step failure
     await svc.queueRepo.send({
@@ -985,6 +1091,117 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: created.rows[0], timestamp: ts }, 201);
   }
 
+  // GET /api/v1/automation/rules/:id — get single automation rule
+  const ruleByIdMatch = path.match(/^\/api\/v1\/automation\/rules\/([^/]+)$/);
+  if (ruleByIdMatch && method === "GET") {
+    const [, id] = ruleByIdMatch;
+    const row = await pool.query(
+      `SELECT id, tenant_id as "tenantId", name, description, trigger_type as "triggerType",
+              trigger_config as "triggerConfig", conditions, actions, enabled,
+              run_count as "runCount", error_count as "errorCount",
+              last_run_at as "lastRunAt", last_status as "lastStatus",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM automation_rules WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (row.rows.length === 0) return fail(404, "Rule not found", "NOT_FOUND");
+    return ok({ status: "success", data: row.rows[0], timestamp: ts });
+  }
+
+  // PATCH /api/v1/automation/rules/:id — update automation rule
+  if (ruleByIdMatch && method === "PATCH") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, id] = ruleByIdMatch;
+    const b = parseBody(event) as {
+      name?: string;
+      description?: string;
+      triggerType?: string;
+      triggerConfig?: Record<string, unknown>;
+      conditions?: unknown[];
+      actions?: unknown[];
+      enabled?: boolean;
+    };
+    const updates: string[] = [];
+    const vals: unknown[] = [];
+    if (b.name !== undefined) {
+      updates.push(`name = $${vals.length + 1}`);
+      vals.push(b.name);
+    }
+    if (b.description !== undefined) {
+      updates.push(`description = $${vals.length + 1}`);
+      vals.push(b.description);
+    }
+    if (b.triggerType !== undefined) {
+      updates.push(`trigger_type = $${vals.length + 1}`);
+      vals.push(b.triggerType);
+    }
+    if (b.triggerConfig !== undefined) {
+      updates.push(`trigger_config = $${vals.length + 1}`);
+      vals.push(JSON.stringify(b.triggerConfig));
+    }
+    if (b.conditions !== undefined) {
+      updates.push(`conditions = $${vals.length + 1}`);
+      vals.push(JSON.stringify(b.conditions));
+    }
+    if (b.actions !== undefined) {
+      updates.push(`actions = $${vals.length + 1}`);
+      vals.push(JSON.stringify(b.actions));
+    }
+    if (b.enabled !== undefined) {
+      updates.push(`enabled = $${vals.length + 1}`);
+      vals.push(b.enabled);
+    }
+    if (updates.length === 0) return fail(400, "No fields to update", "VALIDATION_FAILED");
+    vals.push(id, tenantId);
+    await pool.query(
+      `UPDATE automation_rules SET ${updates.join(", ")}, updated_at = NOW()
+       WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
+      vals,
+    );
+    const updated = await pool.query(
+      `SELECT id, name, description, trigger_type as "triggerType", enabled,
+              updated_at as "updatedAt"
+       FROM automation_rules WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (updated.rows.length === 0) return fail(404, "Rule not found", "NOT_FOUND");
+    return ok({ status: "success", data: updated.rows[0], timestamp: ts });
+  }
+
+  // DELETE /api/v1/automation/rules/:id — delete automation rule
+  if (ruleByIdMatch && method === "DELETE") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, id] = ruleByIdMatch;
+    const existing = await pool.query(
+      "SELECT id FROM automation_rules WHERE id = $1 AND tenant_id = $2",
+      [id, tenantId],
+    );
+    if (existing.rows.length === 0) return fail(404, "Rule not found", "NOT_FOUND");
+    await pool.query("DELETE FROM automation_rules WHERE id = $1 AND tenant_id = $2", [
+      id,
+      tenantId,
+    ]);
+    return ok({ status: "success", data: { id, deleted: true }, timestamp: ts });
+  }
+
+  // POST /api/v1/automation/rules/:id/toggle — toggle rule enabled/disabled
+  const ruleToggleMatch = path.match(/^\/api\/v1\/automation\/rules\/([^/]+)\/toggle$/);
+  if (ruleToggleMatch && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const [, id] = ruleToggleMatch;
+    const row = await pool.query(
+      "SELECT id, enabled FROM automation_rules WHERE id = $1 AND tenant_id = $2",
+      [id, tenantId],
+    );
+    if (row.rows.length === 0) return fail(404, "Rule not found", "NOT_FOUND");
+    const newEnabled = !row.rows[0].enabled;
+    await pool.query(
+      "UPDATE automation_rules SET enabled = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+      [newEnabled, id, tenantId],
+    );
+    return ok({ status: "success", data: { id, enabled: newEnabled }, timestamp: ts });
+  }
+
   // POST /api/v1/automation/nl — natural language rule creation
   if (path === "/api/v1/automation/nl" && method === "POST") {
     const b = parseBody(event) as {
@@ -1025,10 +1242,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
 
     try {
-      const result = await buildAutomationFromNL(
-        process.env as Record<string, unknown>,
-        { prompt: b.prompt, connectedApps, directoryGroups },
-      );
+      const result = await buildAutomationFromNL(process.env as Record<string, unknown>, {
+        prompt: b.prompt,
+        connectedApps,
+        directoryGroups,
+      });
       return ok({ status: "success", data: result, timestamp: ts });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "AI generation failed";
@@ -1059,11 +1277,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(500, `Failed to enqueue scan: ${(err as Error).message}`, "QUEUE_ERROR");
     }
 
-    return ok({
-      status: "success",
-      data: { scanId, status: "queued", tenantId, queuedAt: ts },
-      timestamp: ts,
-    }, 202);
+    return ok(
+      {
+        status: "success",
+        data: { scanId, status: "queued", tenantId, queuedAt: ts },
+        timestamp: ts,
+      },
+      202,
+    );
   }
 
   // GET /api/v1/discovery/apps — list discovered apps
@@ -1076,17 +1297,31 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = ["tenant_id = $1"];
     const params: unknown[] = [tenantId];
-    if (riskTier) { conditions.push(`risk_tier = $${params.length + 1}`); params.push(riskTier); }
-    if (isAiToolParam === "true") { conditions.push(`is_ai_tool = $${params.length + 1}`); params.push(true); }
-    else if (isAiToolParam === "false") { conditions.push(`is_ai_tool = $${params.length + 1}`); params.push(false); }
-    if (statusFilter) { conditions.push(`status = $${params.length + 1}`); params.push(statusFilter); }
+    if (riskTier) {
+      conditions.push(`risk_tier = $${params.length + 1}`);
+      params.push(riskTier);
+    }
+    if (isAiToolParam === "true") {
+      conditions.push(`is_ai_tool = $${params.length + 1}`);
+      params.push(true);
+    } else if (isAiToolParam === "false") {
+      conditions.push(`is_ai_tool = $${params.length + 1}`);
+      params.push(false);
+    }
+    if (statusFilter) {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(statusFilter);
+    }
     const where = conditions.join(" AND ");
 
     const rows = await pool.query(
       `SELECT * FROM discovered_apps WHERE ${where} ORDER BY first_seen_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
-    const countRow = await pool.query(`SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`, params);
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`,
+      params,
+    );
 
     return ok({
       status: "success",
@@ -1104,7 +1339,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const validRiskTiers = ["approved", "under_review", "blocked", "unknown"];
     const riskTier = b.risk_tier ?? b.riskTier;
     if (!riskTier || !validRiskTiers.includes(riskTier)) {
-      return fail(400, `risk_tier must be one of: ${validRiskTiers.join(", ")}`, "VALIDATION_FAILED");
+      return fail(
+        400,
+        `risk_tier must be one of: ${validRiskTiers.join(", ")}`,
+        "VALIDATION_FAILED",
+      );
     }
 
     const existing = await pool.query(
@@ -1130,15 +1369,24 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = ["tenant_id = $1"];
     const params: unknown[] = [tenantId];
-    if (appId) { conditions.push(`app_id = $${params.length + 1}`); params.push(appId); }
-    if (userEmail) { conditions.push(`user_email = $${params.length + 1}`); params.push(userEmail); }
+    if (appId) {
+      conditions.push(`app_id = $${params.length + 1}`);
+      params.push(appId);
+    }
+    if (userEmail) {
+      conditions.push(`user_email = $${params.length + 1}`);
+      params.push(userEmail);
+    }
     const where = conditions.join(" AND ");
 
     const rows = await pool.query(
       `SELECT * FROM discovered_grants WHERE ${where} ORDER BY granted_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
-    const countRow = await pool.query(`SELECT COUNT(*) as total FROM discovered_grants WHERE ${where}`, params);
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as total FROM discovered_grants WHERE ${where}`,
+      params,
+    );
 
     return ok({
       status: "success",
@@ -1327,16 +1575,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(500, `Failed to enqueue NHI discovery: ${(err as Error).message}`, "QUEUE_ERROR");
     }
 
-    return ok({
-      status: "success",
-      data: {
-        jobId: discoverJobId,
-        status: "queued",
-        tenantId,
-        discoveredAt: ts,
+    return ok(
+      {
+        status: "success",
+        data: {
+          jobId: discoverJobId,
+          status: "queued",
+          tenantId,
+          discoveredAt: ts,
+        },
+        timestamp: ts,
       },
-      timestamp: ts,
-    }, 202);
+      202,
+    );
   }
 
   // POST /api/v1/nhi/sync — discover + persist NHIs (stubbed)
@@ -1359,16 +1610,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(500, `Failed to enqueue NHI sync: ${(err as Error).message}`, "QUEUE_ERROR");
     }
 
-    return ok({
-      status: "success",
-      data: {
-        jobId: syncJobId,
-        status: "queued",
-        tenantId,
-        syncedAt: ts,
+    return ok(
+      {
+        status: "success",
+        data: {
+          jobId: syncJobId,
+          status: "queued",
+          tenantId,
+          syncedAt: ts,
+        },
+        timestamp: ts,
       },
-      timestamp: ts,
-    }, 202);
+      202,
+    );
   }
 
   // GET /api/v1/nhi/credentials — list NHI credentials for tenant
@@ -1381,9 +1635,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = ["tenant_id = $1"];
     const params: unknown[] = [tenantId];
-    if (statusFilter) { conditions.push(`status = $${params.length + 1}`); params.push(statusFilter); }
-    if (credentialType) { conditions.push(`credential_type = $${params.length + 1}`); params.push(credentialType); }
-    if (provider) { conditions.push(`provider = $${params.length + 1}`); params.push(provider); }
+    if (statusFilter) {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(statusFilter);
+    }
+    if (credentialType) {
+      conditions.push(`credential_type = $${params.length + 1}`);
+      params.push(credentialType);
+    }
+    if (provider) {
+      conditions.push(`provider = $${params.length + 1}`);
+      params.push(provider);
+    }
     const where = conditions.join(" AND ");
 
     const rows = await pool.query(
@@ -1392,7 +1655,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
        FROM nhi_credentials WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
-    const countRow = await pool.query(`SELECT COUNT(*) as total FROM nhi_credentials WHERE ${where}`, params);
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as total FROM nhi_credentials WHERE ${where}`,
+      params,
+    );
 
     return ok({
       status: "success",
