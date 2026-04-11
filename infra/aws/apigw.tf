@@ -7,9 +7,9 @@ resource "aws_apigatewayv2_api" "main" {
   description   = "AtlasIT API Gateway (${var.env})"
 
   cors_configuration {
-    allow_origins     = ["https://${var.domain}", "https://www.${var.domain}"]
+    allow_origins     = ["https://${var.domain}", "https://www.${var.domain}", "https://${aws_cloudfront_distribution.main.domain_name}"]
     allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers     = ["Authorization", "Content-Type", "x-tenant-id", "x-request-id"]
+    allow_headers     = ["Authorization", "Content-Type", "x-tenant-id", "x-internal-api-key", "x-request-id", "x-correlation-id", "x-api-key"]
     expose_headers    = ["x-request-id"]
     max_age           = 7200
     allow_credentials = true
