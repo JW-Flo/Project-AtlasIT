@@ -163,10 +163,14 @@ All 13 routes already implemented in initial port. Verified 2026-04-10.
 **Goal:** Platform works end-to-end on AWS with no CF dependency.
 **Blocked by:** M1 + M2 + M3.
 
-### M4.1 -- API smoke tests
-- [ ] Run scripts/smoke-test-aws.sh dev -- all endpoints green
-- [ ] Test every route category: tenants, events, flags, credentials, compliance, workflows
-- [ ] Verify auth flows: Bearer token, API key, internal service-to-service
+### M4.1 -- API smoke tests -- COMPLETE (2026-04-11)
+21/21 routes returning correct status codes through API Gateway.
+- [x] Core API: health, auth, tenants, events, flags, credentials
+- [x] Compliance API: health, incidents, activity
+- [x] Orchestrator: health, events, rules, workflows, agents, dead-letter
+- [x] Onboarding: health
+- [x] Auth guard (401) and not-found (404) verified
+- [x] Internal service-to-service auth via x-internal-api-key verified
 
 ### M4.2 -- Console app QA
 - [ ] Console loads from CloudFront
