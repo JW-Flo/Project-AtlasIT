@@ -61,15 +61,20 @@ resource "aws_instance" "nat" {
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.nat.id]
 
-  user_data = <<-EOF
-    #!/bin/bash
-    yum install -y iptables-services
-    sysctl -w net.ipv4.ip_forward=1
-    echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
-    service iptables save
-    systemctl enable iptables
-  EOF
+  user_data = base64encode(<<-SCRIPT
+#!/bin/bash
+# Enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.d/nat.conf
+sysctl -p /etc/sysctl.d/nat.conf
+# Find the primary network interface dynamically
+IFACE=$(ip -o -4 route show to default | awk '{print $5}' | head -1)
+# Set up NAT masquerade
+yum install -y iptables-services 2>/dev/null || true
+iptables -t nat -A POSTROUTING -o "$IFACE" -s 10.0.0.0/16 -j MASQUERADE
+iptables-save > /etc/sysconfig/iptables 2>/dev/null || true
+SCRIPT
+  )
 
   tags = { Name = "atlasit-nat-${var.env}" }
 }
