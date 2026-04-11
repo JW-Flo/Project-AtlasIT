@@ -194,9 +194,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     await pool.query(
       `INSERT INTO agent_registry
-         (id, tenant_id, name, description, webhook_url, capabilities, event_types, status, secret, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,NOW())`,
-      [id, tenantId, b.name, b.description ?? null, b.webhookUrl, JSON.stringify(b.capabilities ?? []), JSON.stringify(b.eventTypes), secret],
+         (id, tenant_id, name, description, webhook_url, capabilities, status, secret, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'active',$7,NOW())`,
+      [id, tenantId, b.name, b.description ?? null, b.webhookUrl ?? "", JSON.stringify(b.capabilities ?? []), secret],
     );
 
     return ok({ status: "success", data: { id, name: b.name, status: "active", secret }, timestamp: ts }, 201);
@@ -208,7 +208,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const offset = parseInt(qs.offset ?? "0", 10) || 0;
     const rows = await pool.query(
       `SELECT id, tenant_id as "tenantId", name, description, webhook_url as "webhookUrl",
-              capabilities, event_types as "eventTypes", status, created_at as "createdAt"
+              capabilities, status, created_at as "createdAt"
        FROM agent_registry WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
       [tenantId, limit, offset],
     );
@@ -221,7 +221,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const [, id] = agentByIdMatch;
     const row = await pool.query(
       `SELECT id, tenant_id as "tenantId", name, description, webhook_url as "webhookUrl",
-              capabilities, event_types as "eventTypes", status, created_at as "createdAt"
+              capabilities, status, created_at as "createdAt"
        FROM agent_registry WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
@@ -260,9 +260,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
     const offset = parseInt(qs.offset ?? "0", 10) || 0;
     const result = await pool.query(
-      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", status,
-              started_at as "startedAt", completed_at as "completedAt", created_at as "createdAt"
-       FROM workflow_runs WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      `SELECT id, tenant_id as "tenantId", type as "type", status,
+              started_at as "startedAt", completed_at as "completedAt"
+       FROM workflow_runs WHERE tenant_id = $1 ORDER BY started_at DESC NULLS LAST LIMIT $2 OFFSET $3`,
       [tenantId, limit, offset],
     );
     return ok({ status: "success", data: result.rows, meta: { limit, offset }, timestamp: ts });
@@ -284,7 +284,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const workflowId = crypto.randomUUID();
 
     await pool.query(
-      `INSERT INTO workflow_runs (id, tenant_id, definition_id, status, context, created_at)
+      `INSERT INTO workflow_runs (id, tenant_id, type, status, context, created_at)
        VALUES ($1,$2,$3,'running',$4,NOW())`,
       [workflowId, tenantId, b.definitionId, JSON.stringify(b.context ?? {})],
     );
@@ -306,7 +306,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (workflowRunMatch && method === "GET") {
     const [, id] = workflowRunMatch;
     const row = await pool.query(
-      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", status, context,
+      `SELECT id, tenant_id as "tenantId", type as "definitionId", status, context,
               created_at as "createdAt", completed_at as "completedAt"
        FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
@@ -921,7 +921,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
     const where = conditions.join(" AND ");
     const rows = await pool.query(
-      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", type, status,
+      `SELECT id, tenant_id as "tenantId", type as "definitionId", type, status,
               context, created_at as "createdAt", completed_at as "completedAt"
        FROM workflow_runs WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1}`,
       [...params, limit],
@@ -934,7 +934,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (jmlRunMatch && method === "GET") {
     const [, runId] = jmlRunMatch;
     const row = await pool.query(
-      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", type, status,
+      `SELECT id, tenant_id as "tenantId", type as "definitionId", type, status,
               context, created_at as "createdAt", completed_at as "completedAt"
        FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
       [runId, tenantId],
@@ -1230,7 +1230,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (streamWorkflowMatch && method === "GET") {
     const [, id] = streamWorkflowMatch;
     const row = await pool.query(
-      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", status, context,
+      `SELECT id, tenant_id as "tenantId", type as "definitionId", status, context,
               created_at as "createdAt", completed_at as "completedAt"
        FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
