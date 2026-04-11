@@ -35,9 +35,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build shared package
+        run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
+
       - name: Build SvelteKit (static adapter)
         working-directory: console-app
-        run: SVELTE_CONFIG=svelte.config.aws.js pnpm run build
+        run: npx svelte-kit sync && SVELTE_CONFIG=svelte.config.aws.js pnpm run build
         env:
           VITE_API_URL: https://ahjoepuw96.execute-api.us-east-1.amazonaws.com
 
