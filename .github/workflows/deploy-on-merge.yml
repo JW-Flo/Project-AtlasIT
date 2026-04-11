@@ -39,6 +39,8 @@ jobs:
       slack-approval: ${{ steps.filter.outputs.slack-approval }}
       scheduler: ${{ steps.filter.outputs.scheduler }}
       marketplace: ${{ steps.filter.outputs.marketplace }}
+      aws-lambdas: ${{ steps.filter.outputs.aws-lambdas }}
+      aws-console: ${{ steps.filter.outputs.aws-console }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
@@ -104,6 +106,13 @@ jobs:
               - 'scheduler-worker/**'
             marketplace:
               - 'marketplace/**'
+            aws-lambdas:
+              - 'lambdas/**'
+              - 'packages/shared/**'
+              - 'scripts/build-lambdas.mjs'
+            aws-console:
+              - 'console-app/**'
+              - 'packages/shared/**'
 
   migrate-shared-db:
     needs: [changes]
@@ -681,3 +690,103 @@ jobs:
         working-directory: marketplace
       - name: Deploy
         run: npx wrangler deploy --config marketplace/wrangler.toml
+
+  # ── AWS Lambda Functions ─────────────────────────────────────────────────
+  deploy-aws-lambdas:
+    needs: [changes]
+    if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
+    name: Deploy AWS Lambdas
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build all Lambda functions
+        run: node scripts/build-lambdas.mjs
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: us-east-1
+      - name: Deploy changed Lambdas
+        run: |
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          for dir in lambdas/*/; do
+            FUNC=$(basename "$dir")
+            FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
+            echo "Packaging ${FUNC}..."
+            cd "${dir}dist"
+            if grep -q 'require.*"pg"' handler.js 2>/dev/null; then
+              mkdir -p /tmp/pg-deps && cd /tmp/pg-deps
+              echo '{"dependencies":{"pg":"^8"}}' > package.json
+              npm install --production --silent
+              cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
+              cd "${GITHUB_WORKSPACE}/${dir}dist"
+            fi
+            zip -r "/tmp/${FUNC}.zip" .
+            cd "${GITHUB_WORKSPACE}"
+            echo "Deploying ${FUNCTION_NAME}..."
+            aws lambda update-function-code \
+              --function-name "$FUNCTION_NAME" \
+              --zip-file "fileb:///tmp/${FUNC}.zip" \
+              --publish || echo "::warning::Failed to deploy ${FUNC}"
+          done
+      - name: Health check
+        run: |
+          API_URL=$(aws ssm get-parameter --name "/atlasit/dev/api-gateway-url" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+          if [ -n "$API_URL" ]; then
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" --max-time 10 || echo "000")
+            echo "Health: $API_URL/health → HTTP $STATUS"
+            [ "$STATUS" != "200" ] && echo "::warning::Health check returned $STATUS"
+          fi
+
+  # ── AWS Console (S3 + CloudFront) ────────────────────────────────────────
+  deploy-aws-console:
+    needs: [changes]
+    if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
+    name: Deploy Console to S3
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build console (static adapter)
+        working-directory: console-app
+        run: SVELTE_CONFIG=svelte.config.aws.js pnpm run build
+        env:
+          VITE_API_URL: https://ahjoepuw96.execute-api.us-east-1.amazonaws.com
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: us-east-1
+      - name: Sync to S3
+        run: |
+          BUCKET=$(aws ssm get-parameter --name "/atlasit/dev/console-bucket" --query "Parameter.Value" --output text 2>/dev/null || echo "atlasit-console-dev-457335975503")
+          aws s3 sync console-app/build "s3://$BUCKET" \
+            --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "*.html" --exclude "service-worker.js"
+          aws s3 sync console-app/build "s3://$BUCKET" \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --include "*.html" --include "service-worker.js"
+      - name: Invalidate CloudFront
+        run: |
+          DIST_ID=$(aws ssm get-parameter --name "/atlasit/dev/cloudfront-distribution-id" --query "Parameter.Value" --output text 2>/dev/null || echo "")
+          if [ -n "$DIST_ID" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          fi
