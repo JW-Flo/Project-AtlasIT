@@ -156,7 +156,7 @@
                 <Button
                   variant="outline"
                   size="sm"
-                  on:click|stopPropagation={() => acknowledgeAlert(alert.id)}
+                  on:click={() => acknowledgeAlert(alert.id)}
                 >
                   <CheckCircle class="h-3.5 w-3.5 mr-1" />
                   Acknowledge
