@@ -144,8 +144,13 @@ resource "aws_route_table_association" "private" {
 # --- Security groups ---
 
 resource "aws_security_group" "lambda" {
-  name_prefix = "atlasit-lambda-${var.env}-"
+  name        = "atlasit-lambda-${var.env}"
+  description = "Security group for AtlasIT Lambda functions"
   vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    create_before_destroy = false
+  }
 
   egress {
     from_port   = 0
