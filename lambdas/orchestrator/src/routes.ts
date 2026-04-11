@@ -193,7 +193,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const secret = secretBytes.toString("hex");
 
     await pool.query(
-      `INSERT INTO agents
+      `INSERT INTO agent_registry
          (id, tenant_id, name, description, webhook_url, capabilities, event_types, status, secret, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'active',$8,NOW())`,
       [id, tenantId, b.name, b.description ?? null, b.webhookUrl, JSON.stringify(b.capabilities ?? []), JSON.stringify(b.eventTypes), secret],
@@ -209,7 +209,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const rows = await pool.query(
       `SELECT id, tenant_id as "tenantId", name, description, webhook_url as "webhookUrl",
               capabilities, event_types as "eventTypes", status, created_at as "createdAt"
-       FROM agents WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+       FROM agent_registry WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
       [tenantId, limit, offset],
     );
     return ok({ status: "success", data: rows.rows, meta: { limit, offset }, timestamp: ts });
@@ -222,7 +222,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const row = await pool.query(
       `SELECT id, tenant_id as "tenantId", name, description, webhook_url as "webhookUrl",
               capabilities, event_types as "eventTypes", status, created_at as "createdAt"
-       FROM agents WHERE id = $1 AND tenant_id = $2`,
+       FROM agent_registry WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
     if (row.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
@@ -243,11 +243,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (updates.length === 0) return fail(400, "No fields to update", "VALIDATION_FAILED");
     vals.push(id, tenantId);
     await pool.query(
-      `UPDATE agents SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
+      `UPDATE agent_registry SET ${updates.join(", ")}, updated_at = NOW() WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
       vals,
     );
     const updated = await pool.query(
-      `SELECT id, name, status, webhook_url as "webhookUrl" FROM agents WHERE id = $1 AND tenant_id = $2`,
+      `SELECT id, name, status, webhook_url as "webhookUrl" FROM agent_registry WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
     return ok({ status: "success", data: updated.rows[0], timestamp: ts });
@@ -644,7 +644,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, id] = agentByIdMatch;
     const existing = await pool.query(
-      "SELECT id FROM agents WHERE id = $1 AND tenant_id = $2",
+      "SELECT id FROM agent_registry WHERE id = $1 AND tenant_id = $2",
       [id, tenantId],
     );
     if (existing.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
@@ -652,10 +652,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     // Use subquery to ensure tenant isolation
     await pool.query(
       `DELETE FROM event_subscriptions WHERE agent_id = $1
-       AND agent_id IN (SELECT id FROM agents WHERE tenant_id = $2)`,
+       AND agent_id IN (SELECT id FROM agent_registry WHERE tenant_id = $2)`,
       [id, tenantId],
     );
-    await pool.query("DELETE FROM agents WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
+    await pool.query("DELETE FROM agent_registry WHERE id = $1 AND tenant_id = $2", [id, tenantId]);
     return ok({ status: "success", data: { id, deleted: true }, timestamp: ts });
   }
 
@@ -667,7 +667,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const b = parseBody(event) as { eventType?: string; filterExpression?: Record<string, unknown> | null };
     if (!b.eventType) return fail(400, "eventType is required", "VALIDATION_FAILED");
     const agent = await pool.query(
-      "SELECT id FROM agents WHERE id = $1 AND tenant_id = $2",
+      "SELECT id FROM agent_registry WHERE id = $1 AND tenant_id = $2",
       [agentId, tenantId],
     );
     if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
@@ -700,7 +700,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (agentHealthMatch && method === "POST") {
     const [, agentId] = agentHealthMatch;
     const agent = await pool.query(
-      "SELECT id, health_check_url as healthUrl FROM agents WHERE id = $1 AND tenant_id = $2",
+      "SELECT id, health_check_url as healthUrl FROM agent_registry WHERE id = $1 AND tenant_id = $2",
       [agentId, tenantId],
     );
     if (agent.rows.length === 0) return fail(404, "Agent not found", "NOT_FOUND");
@@ -728,7 +728,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       }
     }
     await pool.query(
-      `UPDATE agents SET last_health_check_at = NOW(), last_health_status = $1,
+      `UPDATE agent_registry SET last_health_check_at = NOW(), last_health_status = $1,
        status = $2, updated_at = NOW() WHERE id = $3 AND tenant_id = $4`,
       [healthStatus, healthStatus === "unhealthy" ? "unhealthy" : "active", agentId, tenantId],
     );
