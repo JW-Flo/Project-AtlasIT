@@ -1,11 +1,8 @@
 name: Deploy Console to S3 + CloudFront
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "console-app/**"
-      - "packages/shared/**"
+  # Push trigger removed — deploy-on-merge.yml handles this now.
+  # Keep workflow_dispatch for manual targeted deploys.
   workflow_dispatch:
 
 concurrency:

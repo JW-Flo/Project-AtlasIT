@@ -1,12 +1,8 @@
 name: Deploy Lambda Functions
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "lambdas/**"
-      - "packages/shared/**"
-      - "scripts/build-lambdas.mjs"
+  # Push trigger removed — deploy-on-merge.yml handles this now.
+  # Keep workflow_dispatch for manual targeted deploys.
   workflow_dispatch:
     inputs:
       function:
