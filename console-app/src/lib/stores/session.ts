@@ -23,6 +23,30 @@ export const sessionLoading = writable(true);
 
 let fetched = false;
 
+/** Check for token-based session (API Gateway / SPA mode). */
+function loadTokenSession(): SessionData | null {
+  if (typeof sessionStorage === "undefined") return null;
+  const token = sessionStorage.getItem("atlasit_token");
+  const userStr = sessionStorage.getItem("atlasit_user");
+  if (!token || !userStr) return null;
+  try {
+    const user = JSON.parse(userStr) as {
+      userId?: string;
+      email?: string;
+      tenantId?: string;
+      role?: string;
+    };
+    return {
+      authenticated: true,
+      email: user.email,
+      roles: user.role ? [user.role] : ["viewer"],
+      tenantId: user.tenantId,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchSession(): Promise<SessionData | null> {
   if (fetched) {
     sessionLoading.set(false);
@@ -30,6 +54,17 @@ export async function fetchSession(): Promise<SessionData | null> {
     session.subscribe((v) => (current = v))();
     return current;
   }
+
+  // Try token-based session first (SPA / API Gateway mode)
+  const tokenSession = loadTokenSession();
+  if (tokenSession) {
+    session.set(tokenSession);
+    fetched = true;
+    sessionLoading.set(false);
+    return tokenSession;
+  }
+
+  // Fall back to server-side session (CF Workers mode)
   try {
     const res = await fetch("/api/auth/session");
     if (!res.ok) {
@@ -52,6 +87,10 @@ export function clearSession() {
   session.set(null);
   fetched = false;
   sessionLoading.set(true);
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem("atlasit_token");
+    sessionStorage.removeItem("atlasit_user");
+  }
 }
 
 /** Force a fresh fetch from the server, bypassing the in-memory cache. */
