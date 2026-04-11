@@ -10,6 +10,7 @@
     "qa": "node scripts/qa-console.mjs",
     "qa:worker": "node scripts/qa-console-worker.mjs",
     "qa:miniflare": "node scripts/qa-console-miniflare.mjs",
+    "build:aws": "SVELTE_CONFIG=svelte.config.aws.js VITE_API_URL=https://ahjoepuw96.execute-api.us-east-1.amazonaws.com svelte-kit sync && SVELTE_CONFIG=svelte.config.aws.js VITE_API_URL=https://ahjoepuw96.execute-api.us-east-1.amazonaws.com vite build",
     "deploy:dry": "wrangler deploy src/worker-entry.ts --name atlasit-console --compatibility-date=2025-09-27 --dry-run",
     "deploy": "wrangler deploy"
   },
