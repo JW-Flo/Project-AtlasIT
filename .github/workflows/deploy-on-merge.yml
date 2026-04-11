@@ -769,7 +769,11 @@ jobs:
         run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
       - name: Build console (static adapter)
         working-directory: console-app
-        run: npx svelte-kit sync && SVELTE_CONFIG=svelte.config.aws.js pnpm run build
+        run: |
+          cp svelte.config.js svelte.config.cf-backup.js
+          cp svelte.config.aws.js svelte.config.js
+          npx svelte-kit sync && pnpm run build
+          mv svelte.config.cf-backup.js svelte.config.js
         env:
           VITE_API_URL: https://ahjoepuw96.execute-api.us-east-1.amazonaws.com
       - uses: aws-actions/configure-aws-credentials@v4
