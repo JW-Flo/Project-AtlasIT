@@ -255,6 +255,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
   // ── Workflow routes ─────────────────────────────────────────────────────────
 
+  // GET /api/v1/workflows — list workflow runs
+  if (path === "/api/v1/workflows" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const result = await pool.query(
+      `SELECT id, tenant_id as "tenantId", definition_id as "definitionId", status,
+              started_at as "startedAt", completed_at as "completedAt", created_at as "createdAt"
+       FROM workflow_runs WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [tenantId, limit, offset],
+    );
+    return ok({ status: "success", data: result.rows, meta: { limit, offset }, timestamp: ts });
+  }
+
   // POST /api/v1/workflows — start a workflow
   if (path === "/api/v1/workflows" && method === "POST") {
     const b = parseBody(event) as {

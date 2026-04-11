@@ -21,7 +21,8 @@ locals {
     FLAGS_TABLE        = aws_dynamodb_table.feature_flags.name
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
-    DATABASE_URL           = "postgresql://atlasit_admin@${aws_db_instance.main.endpoint}/atlasit"
+    # DATABASE_URL set manually via CLI (includes password + SSL params from SSM /atlasit/dev/secrets/database-url)
+    # Do NOT manage via Terraform — it strips the password on every apply
     SSM_PREFIX             = "/atlasit/${var.env}"
   }
 
@@ -152,7 +153,7 @@ resource "aws_lambda_function" "core_api" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -175,7 +176,7 @@ resource "aws_lambda_function" "compliance_api" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -198,7 +199,7 @@ resource "aws_lambda_function" "orchestrator" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -221,7 +222,7 @@ resource "aws_lambda_function" "onboarding_api" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -244,7 +245,7 @@ resource "aws_lambda_function" "scheduler" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -267,7 +268,7 @@ resource "aws_lambda_function" "slack_handler" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
@@ -290,7 +291,7 @@ resource "aws_lambda_function" "dlq_processor" {
   }
 
   lifecycle {
-    ignore_changes = [filename, source_code_hash]
+    ignore_changes = [filename, source_code_hash, environment]
   }
 }
 
