@@ -1,3 +1,4 @@
+#!/usr/bin/env sh
 echo "Running pre-push checks..."
 
 npm run scan:secrets || exit 1

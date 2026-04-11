@@ -127,7 +127,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
       const items = rows.rows.slice(0, limit);
       const hasNext = rows.rows.length > limit;
-      const nextCursor = hasNext ? items[items.length - 1]?.["createdAt"] ?? null : null;
+      const nextCursor = hasNext ? (items[items.length - 1]?.["createdAt"] ?? null) : null;
 
       const countRow = await pool.query(
         `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
@@ -136,11 +136,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
       return ok({
         status: "success",
-        data: { items, nextCursor, count: items.length, total: parseInt(countRow.rows[0]?.cnt ?? "0", 10) },
+        data: {
+          items,
+          nextCursor,
+          count: items.length,
+          total: parseInt(countRow.rows[0]?.cnt ?? "0", 10),
+        },
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] evidence.list.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to list evidence", "INTERNAL_ERROR");
     }
   }
@@ -176,8 +184,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
          ON CONFLICT (source_id) DO NOTHING`,
         [
-          id, tenantId, b.framework ?? null, b.controlId ?? null, b.controlName ?? null,
-          "manual", b.source ?? "api", hash, auth.userId, b.subject ?? null,
+          id,
+          tenantId,
+          b.framework ?? null,
+          b.controlId ?? null,
+          b.controlName ?? null,
+          "manual",
+          b.source ?? "api",
+          hash,
+          auth.userId,
+          b.subject ?? null,
           JSON.stringify({ pack: b.pack, hash }),
         ],
       );
@@ -192,9 +208,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         correlationId: requestId,
       });
 
-      return ok({ status: "success", data: { id, hash, key }, timestamp: new Date().toISOString() }, 201);
+      return ok(
+        { status: "success", data: { id, hash, key }, timestamp: new Date().toISOString() },
+        201,
+      );
     } catch (e) {
-      console.error("[compliance-api] evidence.ingest.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.ingest.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to ingest evidence", "INTERNAL_ERROR");
     }
   }
@@ -207,9 +229,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const content = await svc.evidenceRepo.get(key);
       if (!content) return fail(404, "Evidence not found", "NOT_FOUND");
-      return ok({ status: "success", data: { hash, content: JSON.parse(content) }, timestamp: new Date().toISOString() });
+      return ok({
+        status: "success",
+        data: { hash, content: JSON.parse(content) },
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
-      console.error("[compliance-api] evidence.get.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.get.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to retrieve evidence", "INTERNAL_ERROR");
     }
   }
@@ -224,9 +253,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       if (!content) return fail(404, "Evidence not found", "NOT_FOUND");
       const actualHash = sha256(content);
       const verified = actualHash === hash;
-      return ok({ status: "success", data: { hash, verified, actualHash }, timestamp: new Date().toISOString() });
+      return ok({
+        status: "success",
+        data: { hash, verified, actualHash },
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
-      console.error("[compliance-api] evidence.verify.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.verify.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to verify evidence", "INTERNAL_ERROR");
     }
   }
@@ -239,16 +275,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const cached = await svc.cacheRepo.get<unknown>(cacheKey);
       if (cached) {
-        return ok({ status: "success", data: cached, cached: true, timestamp: new Date().toISOString() });
+        return ok({
+          status: "success",
+          data: cached,
+          cached: true,
+          timestamp: new Date().toISOString(),
+        });
       }
 
       // Build snapshot from PostgreSQL
       const snapshot = await buildComplianceSnapshot(tenantId, pool);
       await svc.cacheRepo.set(cacheKey, snapshot, SNAPSHOT_TTL_SECONDS);
 
-      return ok({ status: "success", data: snapshot, cached: false, timestamp: new Date().toISOString() });
+      return ok({
+        status: "success",
+        data: snapshot,
+        cached: false,
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
-      console.error("[compliance-api] snapshot.error", { requestId, tenantId, error: (e as Error).message });
+      console.error("[compliance-api] snapshot.error", {
+        requestId,
+        tenantId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to build compliance snapshot", "INTERNAL_ERROR");
     }
   }
@@ -265,7 +315,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
       return ok({ status: "success", data: rows.rows, timestamp: new Date().toISOString() });
     } catch (e) {
-      console.error("[compliance-api] policy.templates.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] policy.templates.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       // Return empty list if table doesn't exist yet
       return ok({ status: "success", data: [], timestamp: new Date().toISOString() });
     }
@@ -281,10 +334,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (!b.templateKey) return fail(400, "templateKey is required", "VALIDATION_FAILED");
 
     try {
-      const template = await pool.query(
-        `SELECT * FROM policy_templates WHERE key = $1`,
-        [b.templateKey],
-      );
+      const template = await pool.query(`SELECT * FROM policy_templates WHERE key = $1`, [
+        b.templateKey,
+      ]);
       if (template.rows.length === 0) return fail(404, "Template not found", "NOT_FOUND");
 
       const id = crypto.randomUUID();
@@ -305,13 +357,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         [id, tenantId, b.templateKey, hash],
       );
 
-      return ok({
-        status: "success",
-        data: { id, hash, key, templateKey: b.templateKey },
-        timestamp: new Date().toISOString(),
-      }, 201);
+      return ok(
+        {
+          status: "success",
+          data: { id, hash, key, templateKey: b.templateKey },
+          timestamp: new Date().toISOString(),
+        },
+        201,
+      );
     } catch (e) {
-      console.error("[compliance-api] policy.generate.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] policy.generate.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to generate policy", "INTERNAL_ERROR");
     }
   }
@@ -339,9 +397,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         evaluations.push({ controlId, status: hasEvidence ? "implemented" : "not_started" });
       }
 
-      return ok({ status: "success", data: { hash: b.hash, evaluations }, timestamp: new Date().toISOString() });
+      return ok({
+        status: "success",
+        data: { hash: b.hash, evaluations },
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
-      console.error("[compliance-api] policy.evaluate.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] policy.evaluate.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to evaluate policy", "INTERNAL_ERROR");
     }
   }
@@ -352,7 +417,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const conditions = ["tenant_id = $1"];
       const vals: unknown[] = [tenantId];
-      if (framework) { conditions.push(`framework = $${vals.length + 1}`); vals.push(framework); }
+      if (framework) {
+        conditions.push(`framework = $${vals.length + 1}`);
+        vals.push(framework);
+      }
       const where = conditions.join(" AND ");
 
       const rows = await pool.query(
@@ -372,7 +440,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] policy.coverage.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] policy.coverage.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to compute coverage", "INTERNAL_ERROR");
     }
   }
@@ -385,7 +456,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       const conditions = ["tenant_id = $1"];
       const vals: unknown[] = [tenantId];
-      if (framework) { conditions.push(`framework = $${vals.length + 1}`); vals.push(framework); }
+      if (framework) {
+        conditions.push(`framework = $${vals.length + 1}`);
+        vals.push(framework);
+      }
       const where = conditions.join(" AND ");
 
       const evidenceRows = await pool.query(
@@ -396,24 +470,50 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
 
       // Group by control_id and compute status
-      const controlMap = new Map<string, { controlId: string; framework?: string; evidenceCount: number; latestAt?: string; status: string }>();
+      const controlMap = new Map<
+        string,
+        {
+          controlId: string;
+          framework?: string;
+          evidenceCount: number;
+          latestAt?: string;
+          status: string;
+        }
+      >();
       for (const row of evidenceRows.rows) {
         const key = `${row.framework ?? "unknown"}:${row.controlId}`;
         if (!controlMap.has(key)) {
-          controlMap.set(key, { controlId: row.controlId, framework: row.framework, evidenceCount: 0, status: "not_started" });
+          controlMap.set(key, {
+            controlId: row.controlId,
+            framework: row.framework,
+            evidenceCount: 0,
+            status: "not_started",
+          });
         }
         const entry = controlMap.get(key)!;
         entry.evidenceCount++;
         entry.latestAt = entry.latestAt ?? row.createdAt;
-        entry.status = entry.evidenceCount >= 3 ? "verified" : entry.evidenceCount >= 1 ? "implemented" : "not_started";
+        entry.status =
+          entry.evidenceCount >= 3
+            ? "verified"
+            : entry.evidenceCount >= 1
+              ? "implemented"
+              : "not_started";
       }
 
       const evaluations = Array.from(controlMap.values());
-      const totalScore = evaluations.length === 0 ? 0
-        : evaluations.reduce((sum, e) => {
-          const weights: Record<string, number> = { not_started: 0, in_progress: 0.25, implemented: 0.75, verified: 1.0 };
-          return sum + (weights[e.status] ?? 0);
-        }, 0) / evaluations.length;
+      const totalScore =
+        evaluations.length === 0
+          ? 0
+          : evaluations.reduce((sum, e) => {
+              const weights: Record<string, number> = {
+                not_started: 0,
+                in_progress: 0.25,
+                implemented: 0.75,
+                verified: 1.0,
+              };
+              return sum + (weights[e.status] ?? 0);
+            }, 0) / evaluations.length;
 
       return ok({
         status: "success",
@@ -421,7 +521,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] cdt.evaluate.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] cdt.evaluate.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "CDT evaluation failed", "INTERNAL_ERROR");
     }
   }
@@ -439,7 +542,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const validTypes = ["joiner", "mover", "leaver"];
     if (!validTypes.includes(b.workflowType)) {
-      return fail(400, `workflowType must be one of: ${validTypes.join(", ")}`, "VALIDATION_FAILED");
+      return fail(
+        400,
+        `workflowType must be one of: ${validTypes.join(", ")}`,
+        "VALIDATION_FAILED",
+      );
     }
 
     if (b.idempotencyKey) {
@@ -473,11 +580,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       payload: { subjectRef: b.subjectRef },
     });
 
-    return ok({
-      status: "success",
-      data: { id, status: "pending", idempotentHit: false },
-      timestamp: new Date().toISOString(),
-    }, 202);
+    return ok(
+      {
+        status: "success",
+        data: { id, status: "pending", idempotentHit: false },
+        timestamp: new Date().toISOString(),
+      },
+      202,
+    );
   }
 
   // GET /api/v1/workflows/executions/:id — get workflow execution
@@ -504,7 +614,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     try {
       adapterUrls = JSON.parse(process.env.ADAPTER_URLS ?? "{}") as Record<string, string>;
     } catch (parseErr) {
-      return fail(500, `Invalid ADAPTER_URLS configuration: ${(parseErr as Error).message}`, "CONFIG_ERROR");
+      return fail(
+        500,
+        `Invalid ADAPTER_URLS configuration: ${(parseErr as Error).message}`,
+        "CONFIG_ERROR",
+      );
     }
     if (Object.keys(adapterUrls).length === 0) {
       return ok({
@@ -517,7 +631,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     // Skip adapter calls if API key is not configured
     const internalApiKey = process.env.INTERNAL_API_KEY;
     if (!internalApiKey) {
-      console.warn("[compliance-api] INTERNAL_API_KEY not configured, skipping adapter evidence collection");
+      console.warn(
+        "[compliance-api] INTERNAL_API_KEY not configured, skipping adapter evidence collection",
+      );
       return ok({
         status: "success",
         data: { collected: 0, adapters: [], items: [], warning: "INTERNAL_API_KEY not configured" },
@@ -547,7 +663,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           signal: AbortSignal.timeout(10_000),
         });
         if (res.ok) {
-          const data = await res.json() as { items?: Array<{ type: string; status: string; controlRefs?: string[]; details?: Record<string, unknown> }> };
+          const data = (await res.json()) as {
+            items?: Array<{
+              type: string;
+              status: string;
+              controlRefs?: string[];
+              details?: Record<string, unknown>;
+            }>;
+          };
           if (data.items?.length) {
             adaptersCollected.push(slug);
             for (const item of data.items) {
@@ -586,7 +709,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                       "system",
                       `${slug} ${item.type}`,
                       JSON.stringify({
-                        impact: item.status === "pass" ? "positive" : item.status === "fail" ? "detrimental" : "neutral",
+                        impact:
+                          item.status === "pass"
+                            ? "positive"
+                            : item.status === "fail"
+                              ? "detrimental"
+                              : "neutral",
                         confidence: item.status === "unknown" ? 0.3 : 0.8,
                         details: item.details,
                       }),
@@ -605,12 +733,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           }
         } else {
           const errMsg = `HTTP ${res.status}`;
-          console.error(`[compliance-api] evidence.collect.adapter.error`, { requestId, adapter: slug, error: errMsg });
+          console.error(`[compliance-api] evidence.collect.adapter.error`, {
+            requestId,
+            adapter: slug,
+            error: errMsg,
+          });
           adapterErrors.push({ adapter: slug, error: errMsg });
         }
       } catch (fetchErr) {
         const errMsg = (fetchErr as Error).message;
-        console.error(`[compliance-api] evidence.collect.adapter.error`, { requestId, adapter: slug, error: errMsg });
+        console.error(`[compliance-api] evidence.collect.adapter.error`, {
+          requestId,
+          adapter: slug,
+          error: errMsg,
+        });
         adapterErrors.push({ adapter: slug, error: errMsg });
       }
     }
@@ -688,7 +824,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       [tenantId],
     );
 
-    const evaluations: Array<{ controlId: string; framework: string; status: string; evidenceCount: number }> = [];
+    const evaluations: Array<{
+      controlId: string;
+      framework: string;
+      status: string;
+      evidenceCount: number;
+    }> = [];
     for (const row of evidenceRows.rows) {
       const evidenceCount = parseInt(row.evidence_count, 10);
       let status = "not_started";
@@ -702,11 +843,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       });
     }
 
-    const totalScore = evaluations.length === 0 ? 0
-      : evaluations.reduce((sum, e) => {
-        const weights: Record<string, number> = { not_started: 0, in_progress: 0.25, implemented: 0.75, verified: 1.0 };
-        return sum + (weights[e.status] ?? 0);
-      }, 0) / evaluations.length;
+    const totalScore =
+      evaluations.length === 0
+        ? 0
+        : evaluations.reduce((sum, e) => {
+            const weights: Record<string, number> = {
+              not_started: 0,
+              in_progress: 0.25,
+              implemented: 0.75,
+              verified: 1.0,
+            };
+            return sum + (weights[e.status] ?? 0);
+          }, 0) / evaluations.length;
 
     return ok({
       status: "success",
@@ -772,8 +920,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
          ON CONFLICT (source_id) DO NOTHING`,
         [
-          id, tenantId, null, null, null,
-          "manual", b.pack ?? "api", hash, auth.userId, b.subject ?? null,
+          id,
+          tenantId,
+          null,
+          null,
+          null,
+          "manual",
+          b.pack ?? "api",
+          hash,
+          auth.userId,
+          b.subject ?? null,
           JSON.stringify({ pack: b.pack, hash }),
         ],
       );
@@ -788,9 +944,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         correlationId: requestId,
       });
 
-      return ok({ status: "success", data: { id, hash, key }, timestamp: new Date().toISOString() }, 201);
+      return ok(
+        { status: "success", data: { id, hash, key }, timestamp: new Date().toISOString() },
+        201,
+      );
     } catch (e) {
-      console.error("[compliance-api] evidence.legacy-ingest.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.legacy-ingest.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to ingest evidence", "INTERNAL_ERROR");
     }
   }
@@ -812,12 +974,23 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       if (isVerify) {
         const actualHash = sha256(content);
         const verified = actualHash === hash;
-        return ok({ status: "success", data: { hash, verified, actualHash }, timestamp: new Date().toISOString() });
+        return ok({
+          status: "success",
+          data: { hash, verified, actualHash },
+          timestamp: new Date().toISOString(),
+        });
       }
 
-      return ok({ status: "success", data: { hash, content: JSON.parse(content) }, timestamp: new Date().toISOString() });
+      return ok({
+        status: "success",
+        data: { hash, content: JSON.parse(content) },
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
-      console.error("[compliance-api] evidence.legacy-get.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] evidence.legacy-get.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to retrieve evidence", "INTERNAL_ERROR");
     }
   }
@@ -858,7 +1031,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
       const hasNext = rows.rows.length > limit;
       const items = rows.rows.slice(0, limit);
-      const nextCursor = hasNext ? items[items.length - 1]?.id ?? null : null;
+      const nextCursor = hasNext ? (items[items.length - 1]?.id ?? null) : null;
 
       return ok({
         status: "success",
@@ -866,7 +1039,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] activity.list.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] activity.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to load activity", "INTERNAL_ERROR");
     }
   }
@@ -884,9 +1060,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       const conditions = [`tenant_id = $1`];
       const vals: unknown[] = [tenantId];
 
-      if (status) { conditions.push(`status = $${vals.length + 1}`); vals.push(status); }
-      if (severity) { conditions.push(`severity = $${vals.length + 1}`); vals.push(severity); }
-      if (cursorRaw) { conditions.push(`id < $${vals.length + 1}`); vals.push(cursorRaw); }
+      if (status) {
+        conditions.push(`status = $${vals.length + 1}`);
+        vals.push(status);
+      }
+      if (severity) {
+        conditions.push(`severity = $${vals.length + 1}`);
+        vals.push(severity);
+      }
+      if (cursorRaw) {
+        conditions.push(`id < $${vals.length + 1}`);
+        vals.push(cursorRaw);
+      }
 
       const where = conditions.join(" AND ");
       const rows = await pool.query(
@@ -899,7 +1084,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
       const hasNext = rows.rows.length > limit;
       const items = rows.rows.slice(0, limit);
-      const nextCursor = hasNext ? items[items.length - 1]?.id ?? null : null;
+      const nextCursor = hasNext ? (items[items.length - 1]?.id ?? null) : null;
 
       return ok({
         status: "success",
@@ -907,7 +1092,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] incidents.list.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] incidents.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to list incidents", "INTERNAL_ERROR");
     }
   }
@@ -949,54 +1137,302 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         correlationId: requestId,
       });
 
-      return ok({
-        status: "success",
-        data: { incident: incident.rows[0] },
-        timestamp: new Date().toISOString(),
-      }, 201);
+      return ok(
+        {
+          status: "success",
+          data: { incident: incident.rows[0] },
+          timestamp: new Date().toISOString(),
+        },
+        201,
+      );
     } catch (e) {
-      console.error("[compliance-api] incidents.create.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] incidents.create.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to create incident", "INTERNAL_ERROR");
     }
   }
 
   // ── Access Requests ─────────────────────────────────────────────────────────
-  // Note: access_requests table is not in the PostgreSQL migration schema.
-  // These routes are stubbed with 501 until the table is added in a follow-up migration.
 
   // GET /api/v1/access-requests — list access requests
   if (path === "/api/v1/access-requests" && method === "GET") {
-    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    const status = qs.status ?? undefined;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+
+    try {
+      const conditions = ["tenant_id = $1"];
+      const vals: unknown[] = [tenantId];
+      if (status) {
+        conditions.push(`status = $${vals.length + 1}`);
+        vals.push(status);
+      }
+      const where = conditions.join(" AND ");
+
+      const rows = await pool.query(
+        `SELECT id, tenant_id as "tenantId", requester_id as "requesterId",
+                requester_email as "requesterEmail", resource_type as "resourceType",
+                resource_id as "resourceId", resource_name as "resourceName",
+                justification, status, decided_by as "decidedBy",
+                decided_at as "decidedAt", expires_at as "expiresAt",
+                created_at as "createdAt", updated_at as "updatedAt"
+         FROM access_requests WHERE ${where}
+         ORDER BY created_at DESC LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
+        [...vals, limit, offset],
+      );
+
+      const countRow = await pool.query(
+        `SELECT COUNT(*) as cnt FROM access_requests WHERE ${where}`,
+        vals,
+      );
+
+      return ok({
+        status: "success",
+        data: {
+          items: rows.rows,
+          total: parseInt(countRow.rows[0]?.cnt ?? "0", 10),
+          limit,
+          offset,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] access-requests.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to list access requests", "INTERNAL_ERROR");
+    }
   }
 
   // POST /api/v1/access-requests — create access request
   if (path === "/api/v1/access-requests" && method === "POST") {
-    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    const b = parseBody(event) as {
+      resourceType?: string;
+      resourceId?: string;
+      resourceName?: string;
+      justification?: string;
+      expiresAt?: string;
+    };
+
+    if (!b.resourceType || !b.resourceId) {
+      return fail(400, "resourceType and resourceId are required", "VALIDATION_FAILED");
+    }
+    const validTypes = ["app", "group", "role"];
+    if (!validTypes.includes(b.resourceType)) {
+      return fail(
+        400,
+        `resourceType must be one of: ${validTypes.join(", ")}`,
+        "VALIDATION_FAILED",
+      );
+    }
+
+    try {
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO access_requests
+           (id, tenant_id, requester_id, requester_email, resource_type, resource_id,
+            resource_name, justification, status, expires_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, NOW(), NOW())`,
+        [
+          id,
+          tenantId,
+          auth.userId,
+          auth.email ?? null,
+          b.resourceType,
+          b.resourceId,
+          b.resourceName ?? null,
+          b.justification ?? null,
+          b.expiresAt ?? null,
+        ],
+      );
+
+      await svc.auditRepo.log({
+        tenantId,
+        actorId: auth.userId,
+        actorType: "user",
+        action: "access_request.created",
+        resourceType: "access_request",
+        resourceId: id,
+        correlationId: requestId,
+      });
+
+      const created = await pool.query(
+        `SELECT id, tenant_id as "tenantId", requester_id as "requesterId",
+                resource_type as "resourceType", resource_id as "resourceId",
+                resource_name as "resourceName", justification, status,
+                created_at as "createdAt"
+         FROM access_requests WHERE id = $1 AND tenant_id = $2`,
+        [id, tenantId],
+      );
+
+      return ok(
+        {
+          status: "success",
+          data: created.rows[0],
+          timestamp: new Date().toISOString(),
+        },
+        201,
+      );
+    } catch (e) {
+      console.error("[compliance-api] access-requests.create.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to create access request", "INTERNAL_ERROR");
+    }
   }
 
-  // POST /api/v1/access-requests/:id/* — update access request status
-  const accessRequestUpdateMatch = path.match(/^\/api\/v1\/access-requests\/([^/]+)\/(.+)$/);
+  // POST /api/v1/access-requests/:id/approve or /deny — update access request status
+  const accessRequestUpdateMatch = path.match(
+    /^\/api\/v1\/access-requests\/([^/]+)\/(approve|deny)$/,
+  );
   if (accessRequestUpdateMatch && method === "POST") {
-    return fail(501, "access-requests table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    const [, arId, action] = accessRequestUpdateMatch;
+    const newStatus = action === "approve" ? "approved" : "denied";
+
+    try {
+      const existing = await pool.query(
+        "SELECT id, status FROM access_requests WHERE id = $1 AND tenant_id = $2",
+        [arId, tenantId],
+      );
+      if (existing.rows.length === 0) return fail(404, "Access request not found", "NOT_FOUND");
+      if (existing.rows[0].status !== "pending") {
+        return fail(409, `Request already ${existing.rows[0].status}`, "CONFLICT");
+      }
+
+      await pool.query(
+        `UPDATE access_requests
+         SET status = $1, decided_by = $2, decided_at = NOW(), updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [newStatus, auth.userId, arId, tenantId],
+      );
+
+      await svc.auditRepo.log({
+        tenantId,
+        actorId: auth.userId,
+        actorType: "user",
+        action: `access_request.${action}d`,
+        resourceType: "access_request",
+        resourceId: arId,
+        correlationId: requestId,
+      });
+
+      return ok({
+        status: "success",
+        data: { id: arId, status: newStatus, decidedBy: auth.userId },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] access-requests.update.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to update access request", "INTERNAL_ERROR");
+    }
   }
 
   // ── Notifications ───────────────────────────────────────────────────────────
-  // Note: notifications table is not in the PostgreSQL migration schema.
-  // These routes are stubbed with 501 until the table is added in a follow-up migration.
 
-  // GET /api/v1/notifications — list notifications
+  // GET /api/v1/notifications — list notifications for current user
   if (path === "/api/v1/notifications" && method === "GET") {
-    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    const unreadOnly = qs.unread === "true";
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "20", 10) || 20, 1), 100);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+
+    try {
+      const conditions = ["tenant_id = $1", "user_id = $2"];
+      const vals: unknown[] = [tenantId, auth.userId];
+      if (unreadOnly) {
+        conditions.push("read_at IS NULL");
+      }
+      const where = conditions.join(" AND ");
+
+      const rows = await pool.query(
+        `SELECT id, tenant_id as "tenantId", user_id as "userId", type, channel,
+                title, body, severity, source_type as "sourceType",
+                source_id as "sourceId", source_label as "sourceLabel",
+                read_at as "readAt", action_url as "actionUrl", metadata,
+                created_at as "createdAt"
+         FROM notifications WHERE ${where}
+         ORDER BY created_at DESC LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
+        [...vals, limit, offset],
+      );
+
+      const unreadCount = await pool.query(
+        `SELECT COUNT(*) as cnt FROM notifications
+         WHERE tenant_id = $1 AND user_id = $2 AND read_at IS NULL`,
+        [tenantId, auth.userId],
+      );
+
+      return ok({
+        status: "success",
+        data: {
+          items: rows.rows,
+          unreadCount: parseInt(unreadCount.rows[0]?.cnt ?? "0", 10),
+          limit,
+          offset,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] notifications.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to list notifications", "INTERNAL_ERROR");
+    }
   }
 
-  // POST /api/v1/notifications/read — mark notifications as read
+  // POST /api/v1/notifications/read — mark specific notifications as read
   if (path === "/api/v1/notifications/read" && method === "POST") {
-    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    const b = parseBody(event) as { ids?: string[] };
+    if (!b.ids?.length) return fail(400, "ids array is required", "VALIDATION_FAILED");
+
+    try {
+      const result = await pool.query(
+        `UPDATE notifications SET read_at = NOW()
+         WHERE id = ANY($1::uuid[]) AND tenant_id = $2 AND user_id = $3 AND read_at IS NULL`,
+        [b.ids, tenantId, auth.userId],
+      );
+
+      return ok({
+        status: "success",
+        data: { marked: result.rowCount ?? 0 },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] notifications.read.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to mark notifications as read", "INTERNAL_ERROR");
+    }
   }
 
   // POST /api/v1/notifications/read-all — mark all notifications as read
   if (path === "/api/v1/notifications/read-all" && method === "POST") {
-    return fail(501, "notifications table not yet migrated to PostgreSQL", "NOT_IMPLEMENTED");
+    try {
+      const result = await pool.query(
+        `UPDATE notifications SET read_at = NOW()
+         WHERE tenant_id = $1 AND user_id = $2 AND read_at IS NULL`,
+        [tenantId, auth.userId],
+      );
+
+      return ok({
+        status: "success",
+        data: { marked: result.rowCount ?? 0 },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] notifications.read-all.error", {
+        requestId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to mark all notifications as read", "INTERNAL_ERROR");
+    }
   }
 
   // ── Admin ───────────────────────────────────────────────────────────────────
@@ -1047,7 +1483,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] policies.retention.purge.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] policies.retention.purge.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to run retention purge", "INTERNAL_ERROR");
     }
   }
@@ -1106,8 +1545,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const conditions = [`tenant_id = $1`];
     const vals: unknown[] = [tenantId];
-    if (statusFilter) { conditions.push(`status = $${vals.length + 1}`); vals.push(statusFilter); }
-    if (cursorVal) { conditions.push(`created_at < $${vals.length + 1}`); vals.push(cursorVal); }
+    if (statusFilter) {
+      conditions.push(`status = $${vals.length + 1}`);
+      vals.push(statusFilter);
+    }
+    if (cursorVal) {
+      conditions.push(`created_at < $${vals.length + 1}`);
+      vals.push(cursorVal);
+    }
 
     const where = conditions.join(" AND ");
     try {
@@ -1122,7 +1567,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
       const hasNext = rows.rows.length > limitVal;
       const items = rows.rows.slice(0, limitVal);
-      const nextCursor = hasNext ? items[items.length - 1]?.["createdAt"] ?? null : null;
+      const nextCursor = hasNext ? (items[items.length - 1]?.["createdAt"] ?? null) : null;
 
       return ok({
         status: "success",
@@ -1130,7 +1575,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         timestamp: new Date().toISOString(),
       });
     } catch (e) {
-      console.error("[compliance-api] workflows.executions.list.error", { requestId, error: (e as Error).message });
+      console.error("[compliance-api] workflows.executions.list.error", {
+        requestId,
+        error: (e as Error).message,
+      });
       return fail(500, "Failed to list workflow executions", "INTERNAL_ERROR");
     }
   }
@@ -1154,7 +1602,10 @@ function parseControlRef(ref: string): { framework: string; controlId: string } 
 }
 
 /** Build a compliance snapshot for the tenant from PostgreSQL. */
-async function buildComplianceSnapshot(tenantId: string, pool: pg.Pool): Promise<Record<string, unknown>> {
+async function buildComplianceSnapshot(
+  tenantId: string,
+  pool: pg.Pool,
+): Promise<Record<string, unknown>> {
   const rows = await pool.query(
     `SELECT framework, control_id as "controlId", COUNT(*) as evidence_count
      FROM compliance_evidence WHERE tenant_id = $1
@@ -1162,7 +1613,8 @@ async function buildComplianceSnapshot(tenantId: string, pool: pg.Pool): Promise
     [tenantId],
   );
 
-  const frameworkMap: Record<string, { controls: number; withEvidence: number; score: number }> = {};
+  const frameworkMap: Record<string, { controls: number; withEvidence: number; score: number }> =
+    {};
 
   for (const row of rows.rows) {
     const fw = row.framework ?? "unknown";
@@ -1182,7 +1634,8 @@ async function buildComplianceSnapshot(tenantId: string, pool: pg.Pool): Promise
   return {
     tenantId,
     generatedAt: new Date().toISOString(),
-    overallScore: overallControls > 0 ? Math.round((overallWithEvidence / overallControls) * 100) : 0,
+    overallScore:
+      overallControls > 0 ? Math.round((overallWithEvidence / overallControls) * 100) : 0,
     frameworks: frameworkMap,
   };
 }
