@@ -3,28 +3,22 @@ import { redirect, isRedirect, isHttpError } from "@sveltejs/kit";
 import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
+import {
+  checkBodySizeLimit,
+  parseBodySizeLimit,
+  BODY_METHODS,
+} from "$lib/server/body-size-limit";
 
 /**
  * Default maximum request body size (512 KB).
  * Override at runtime via the BODY_SIZE_LIMIT environment variable.
- * Setting the variable to "0" or "Infinity" disables the limit.
+ * Setting the variable to "0" disables the limit entirely.
  *
  * Mitigates the BODY_SIZE_LIMIT bypass described in the
- * @sveltejs/adapter-node security advisory: the fix validates actual
+ * @sveltejs/adapter-node security advisory: the enforcement validates actual
  * bytes transferred in addition to the (spoofable) Content-Length header.
  */
 const BODY_SIZE_LIMIT_DEFAULT = 512 * 1024; // 512 KB
-
-/** HTTP methods that may carry a request body and should be size-checked. */
-const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-/** Returns a 413 Payload Too Large JSON response. */
-function payloadTooLargeResponse(): Response {
-  return new Response(
-    JSON.stringify({ error: "Payload too large", code: "payload_too_large" }),
-    { status: 413, headers: { "content-type": "application/json" } },
-  );
-}
 
 /**
  * Routes that are intentionally public (no authentication required).
@@ -99,62 +93,23 @@ export const handle: Handle = async ({ event, resolve }) => {
   // ------------------------------------------------------------------
   // 0. Body size enforcement (BODY_SIZE_LIMIT bypass mitigation)
   //    Rejects oversized bodies before any auth or DB work is done.
-  //    Checks Content-Length first (fast path), then streams the body to
-  //    count actual bytes — preventing Content-Length spoofing attacks.
+  //    Delegates to checkBodySizeLimit() which checks Content-Length first
+  //    (fast path) then streams actual bytes — preventing spoofing attacks.
   // ------------------------------------------------------------------
   if (BODY_METHODS.has(event.request.method) && event.request.body) {
-    const rawLimit = parseInt(envRaw?.["BODY_SIZE_LIMIT"] ?? "", 10);
-    const bodySizeLimit =
-      Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : BODY_SIZE_LIMIT_DEFAULT;
-
-    // Fast path: reject based on declared Content-Length header.
-    const clHeader = parseInt(event.request.headers.get("content-length") ?? "", 10);
-    if (!isNaN(clHeader) && clHeader > bodySizeLimit) {
-      return payloadTooLargeResponse();
+    const bodySizeLimit = parseBodySizeLimit(
+      envRaw?.["BODY_SIZE_LIMIT"],
+      BODY_SIZE_LIMIT_DEFAULT,
+    );
+    const result = await checkBodySizeLimit(event.request, bodySizeLimit);
+    if (result.blocked) {
+      return result.response;
     }
-
-    // Slow path: stream-read to enforce the limit regardless of Content-Length.
-    // This prevents an attacker from sending a spoofed low Content-Length
-    // header while smuggling a larger body via chunked transfer encoding.
-    const reader = event.request.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let totalBytes = 0;
-    let oversized = false;
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        totalBytes += value.byteLength;
-        if (totalBytes > bodySizeLimit) {
-          oversized = true;
-          await reader.cancel().catch(() => undefined);
-          break;
-        }
-        chunks.push(value);
-      }
-    } catch {
-      // If the body stream errors, let the route handler deal with it.
-    }
-
-    if (oversized) {
-      return payloadTooLargeResponse();
-    }
-
-    // Reassemble the consumed body so downstream route handlers can read it.
-    const assembled = new Uint8Array(totalBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      assembled.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    // Reconstruct event.request with the pre-read body buffer.
+    // Reconstruct event.request with the pre-read body buffer so downstream
+    // route handlers can still call request.json() / request.text() etc.
     // Object.assign is used to sidestep the TypeScript readonly constraint
     // on RequestEvent.request while remaining safe at runtime.
-    Object.assign(event, {
-      request: new Request(event.request, { body: assembled }),
-    });
+    Object.assign(event, { request: result.request });
   }
 
   // ------------------------------------------------------------------
