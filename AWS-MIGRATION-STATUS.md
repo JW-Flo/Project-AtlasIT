@@ -109,14 +109,13 @@ All 13 routes already implemented in initial port. Verified 2026-04-10.
 **Goal:** All AWS infrastructure operational.
 **Blocked by:** Nothing. Runs in parallel with M1.
 
-### M2.1 -- Terraform convergence -- PARTIAL (2026-04-10)
-- [ ] Fix remaining state drift (Lambda SG replace blocked by ENI detach)
-- [ ] terraform apply until Plan: 0 to add, 0 to change, 0 to destroy
-- [x] Verify: EventBridge schedulers created (5min scoring, 2am daily eval, 15min dispatch)
-- [x] Verify: SQS event source mappings connected (step_tasks -> orchestrator, dlq -> dlq-processor)
-- [ ] Verify: Step Functions automation_rule state machine created
-- [ ] Verify: Lambda throttle configs applied
-Note: Schedulers, SQS mappings, DLQ processor created via CLI while Terraform resolves SG.
+### M2.1 -- Terraform convergence -- COMPLETE (2026-04-10)
+- [x] Fix remaining state drift (Lambda SG: switched name_prefix to name)
+- [x] terraform plan shows: "No changes. Your infrastructure matches the configuration."
+- [x] EventBridge schedulers created (5min scoring, 2am daily eval, 15min dispatch)
+- [x] SQS event source mappings connected (step_tasks -> orchestrator, dlq -> dlq-processor)
+- [x] Step Functions automation_rule state machine created
+- [x] API Gateway path prefix stripping in all Lambda handlers (PR #407)
 
 ### M2.2 -- Console app deployment
 - [ ] Configure SvelteKit adapter-static (or adapter-node)
