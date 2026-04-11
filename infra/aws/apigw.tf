@@ -7,7 +7,9 @@ resource "aws_apigatewayv2_api" "main" {
   description   = "AtlasIT API Gateway (${var.env})"
 
   cors_configuration {
-    allow_origins     = ["https://${var.domain}", "https://www.${var.domain}", "https://${aws_cloudfront_distribution.main.domain_name}"]
+    # Note: CloudFront domain added manually via AWS CLI to avoid cycle.
+    # Terraform manages the domain-based origins; CloudFront origin set via API.
+    allow_origins     = ["https://${var.domain}", "https://www.${var.domain}"]
     allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allow_headers     = ["Authorization", "Content-Type", "x-tenant-id", "x-internal-api-key", "x-request-id", "x-correlation-id", "x-api-key"]
     expose_headers    = ["x-request-id"]
