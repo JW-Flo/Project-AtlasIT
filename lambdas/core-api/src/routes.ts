@@ -404,25 +404,49 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
-  // POST /api/v1/tenant/users/invite — invite a new user (creates record with NULL password_hash)
+  // POST /api/v1/tenant/users/invite — invite a new user, return single-use accept-invite URL
   if (path === "/api/v1/tenant/users/invite" && method === "POST") {
     if (auth.role !== "admin" && auth.role !== "owner") {
       return fail(403, "Admin role required to invite users", "FORBIDDEN");
     }
     const b = body(event) as { email?: string; displayName?: string; role?: string };
     if (!b.email) return fail(400, "email is required", "VALIDATION_FAILED");
-    const id = crypto.randomUUID();
     const role = b.role && ["admin", "member", "viewer"].includes(b.role) ? b.role : "member";
+    const userId = crypto.randomUUID();
+    const email = b.email.toLowerCase();
+    // Raw token returned once (in the response). We store only its SHA-256 hash.
+    const rawToken = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 7 * 86400 * 1000); // 7 days
+
     try {
+      // Create the user with NULL password_hash — they'll set it on accept.
+      // Status 'invited' distinguishes them from active users in lists.
       await pool.query(
         `INSERT INTO users (id, tenant_id, email, display_name, role, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())`,
-        [id, auth.tenantId, b.email.toLowerCase(), b.displayName ?? null, role],
+         VALUES ($1, $2, $3, $4, $5, 'invited', NOW(), NOW())`,
+        [userId, auth.tenantId, email, b.displayName ?? null, role],
       );
+      await pool.query(
+        `INSERT INTO invitation_tokens (token_hash, tenant_id, user_id, email, invited_by_id, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tokenHash, auth.tenantId, userId, email, auth.userId, expiresAt.toISOString()],
+      );
+
+      const consoleBase = process.env.CONSOLE_BASE_URL ?? "https://www.atlasit.pro";
+      const inviteUrl = `${consoleBase}/accept-invite?token=${encodeURIComponent(rawToken)}`;
+
       return ok(
         {
           status: "success",
-          data: { id, email: b.email, role, status: "active" },
+          data: {
+            id: userId,
+            email,
+            role,
+            status: "invited",
+            inviteUrl,
+            expiresAt: expiresAt.toISOString(),
+          },
           timestamp: new Date().toISOString(),
         },
         201,
@@ -431,7 +455,102 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       const msg = (e as Error).message;
       if (msg.includes("duplicate") || msg.includes("unique"))
         return fail(409, "User with this email already exists", "CONFLICT");
+      console.error("[core-api] invite.error", { error: msg });
       return fail(500, "Failed to invite user", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/auth/invite/:token — public, returns invite metadata (for accept page pre-render)
+  {
+    const m = path.match(/^\/api\/v1\/auth\/invite\/([A-Za-z0-9_-]+)$/);
+    if (m && method === "GET") {
+      const rawToken = m[1];
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const row = await pool.query(
+        `SELECT it.email, it.expires_at, it.accepted_at, t.name as tenant_name, u.role, u.display_name
+         FROM invitation_tokens it
+         INNER JOIN tenants t ON t.id = it.tenant_id
+         INNER JOIN users u ON u.id = it.user_id
+         WHERE it.token_hash = $1`,
+        [tokenHash],
+      );
+      if (row.rows.length === 0) return fail(404, "Invalid invitation", "NOT_FOUND");
+      const r = row.rows[0];
+      if (r.accepted_at) return fail(410, "Invitation already accepted", "ACCEPTED");
+      if (new Date(r.expires_at) < new Date()) return fail(410, "Invitation expired", "EXPIRED");
+      return ok({
+        status: "success",
+        data: {
+          email: r.email,
+          role: r.role,
+          displayName: r.display_name,
+          tenantName: r.tenant_name,
+          expiresAt: r.expires_at,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  // POST /api/v1/auth/accept-invite — public, sets password + returns auth token
+  if (path === "/api/v1/auth/accept-invite" && method === "POST") {
+    const b = body(event) as { token?: string; password?: string; displayName?: string };
+    if (!b.token || !b.password)
+      return fail(400, "token and password required", "VALIDATION_FAILED");
+    if (b.password.length < 8)
+      return fail(400, "Password must be at least 8 characters", "VALIDATION_FAILED");
+    const tokenHash = crypto.createHash("sha256").update(b.token).digest("hex");
+    try {
+      const row = await pool.query(
+        `SELECT it.user_id, it.tenant_id, it.email, it.expires_at, it.accepted_at
+         FROM invitation_tokens it WHERE it.token_hash = $1`,
+        [tokenHash],
+      );
+      if (row.rows.length === 0) return fail(404, "Invalid invitation", "NOT_FOUND");
+      const invite = row.rows[0];
+      if (invite.accepted_at) return fail(410, "Invitation already accepted", "ACCEPTED");
+      if (new Date(invite.expires_at) < new Date())
+        return fail(410, "Invitation expired", "EXPIRED");
+
+      const hash = await bcrypt.hash(b.password, 10);
+      await pool.query(
+        `UPDATE users SET password_hash = $1, display_name = COALESCE($2, display_name),
+                          status = 'active', updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [hash, b.displayName?.trim() || null, invite.user_id, invite.tenant_id],
+      );
+      await pool.query(`UPDATE invitation_tokens SET accepted_at = NOW() WHERE token_hash = $1`, [
+        tokenHash,
+      ]);
+
+      // Issue a session token so the console can auto-login on success.
+      const sessionToken = crypto.randomBytes(32).toString("hex");
+      const expiresAtTs = Math.floor(Date.now() / 1000) + 7 * 86400;
+      await svc.authRepo.createSession({
+        token: sessionToken,
+        userId: invite.user_id,
+        tenantId: invite.tenant_id,
+        expiresAt: expiresAtTs,
+      });
+
+      const userRow = await pool.query(
+        `SELECT email, role, display_name FROM users WHERE id = $1`,
+        [invite.user_id],
+      );
+      const u = userRow.rows[0];
+
+      return ok({
+        status: "success",
+        token: sessionToken,
+        userId: invite.user_id,
+        email: u.email,
+        tenantId: invite.tenant_id,
+        role: u.role,
+        expiresAt: expiresAtTs,
+      });
+    } catch (e) {
+      console.error("[core-api] accept-invite.error", { error: (e as Error).message });
+      return fail(500, "Failed to accept invitation", "INTERNAL_ERROR");
     }
   }
 
