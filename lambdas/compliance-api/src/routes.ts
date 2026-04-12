@@ -32,7 +32,12 @@ function getPool(): pg.Pool {
       ssl: { rejectUnauthorized: false },
     });
     // Eagerly connect on module init to avoid cold-start PG latency on first request
-    _pool.connect().then(c => { c.release(); }).catch(() => {});
+    _pool
+      .connect()
+      .then((c) => {
+        c.release();
+      })
+      .catch(() => {});
   }
   return _pool;
 }
@@ -93,7 +98,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       headers: {
         "Access-Control-Allow-Origin": event.headers?.origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
+        "Access-Control-Allow-Headers":
+          "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Max-Age": "7200",
       },
@@ -122,6 +128,54 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
   const { tenantId } = auth;
   const pool = getPool();
+
+  // ── Compliance summary ────────────────────────────────────────────────────
+
+  // GET /api/v1/compliance/summary — per-framework control passing rates + evidence counts
+  if (path === "/api/v1/compliance/summary" && method === "GET") {
+    try {
+      const rows = await pool.query(
+        `SELECT framework,
+                COUNT(DISTINCT control_id) as controls_total,
+                COUNT(DISTINCT control_id) FILTER (WHERE cnt >= 3) as controls_passing,
+                SUM(cnt) as evidence_count
+         FROM (
+           SELECT framework, control_id, COUNT(*) as cnt
+           FROM compliance_evidence
+           WHERE tenant_id = $1 AND framework IS NOT NULL
+           GROUP BY framework, control_id
+         ) t
+         GROUP BY framework ORDER BY framework`,
+        [tenantId],
+      );
+      const frameworks = rows.rows.map((r: Record<string, string>) => ({
+        framework: r.framework,
+        controlsTotal: parseInt(r.controls_total, 10),
+        controlsPassing: parseInt(r.controls_passing, 10),
+        evidenceCount: parseInt(r.evidence_count, 10),
+        score:
+          parseInt(r.controls_total, 10) > 0
+            ? Math.round((parseInt(r.controls_passing, 10) * 100) / parseInt(r.controls_total, 10))
+            : 0,
+      }));
+      const totalRow = await pool.query(
+        `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
+        [tenantId],
+      );
+      return ok({
+        status: "success",
+        data: {
+          frameworks,
+          totalEvidence: parseInt(totalRow.rows[0]?.cnt ?? "0", 10),
+          lastUpdated: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] summary.error", { error: (e as Error).message });
+      return fail(500, "Failed to build compliance summary", "INTERNAL_ERROR");
+    }
+  }
 
   // ── Evidence routes ────────────────────────────────────────────────────────
 
