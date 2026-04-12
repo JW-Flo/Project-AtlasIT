@@ -8,6 +8,7 @@ export default defineConfig({
     // Exclude CF Workers integration tests — miniflare v4 dist broken, and these
     // test the CF Workers path which is being replaced by AWS Lambda (M6).
     exclude: [
+      "dist/**",
       "**/auth-correlation.test.ts",
       "**/integration.test.ts",
       "**/rate-limit.test.ts",
