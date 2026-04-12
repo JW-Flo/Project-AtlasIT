@@ -11,11 +11,13 @@
   "devDependencies": {
     "@atlasit/shared": "workspace:*",
     "@types/aws-lambda": "^8.10.149",
+    "@types/bcryptjs": "^2.4.6",
     "@types/pg": "^8.11.10",
     "typescript": "^5.8.3",
     "esbuild": "^0.25.3"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "pg": "^8.14.1"
   }
 }
