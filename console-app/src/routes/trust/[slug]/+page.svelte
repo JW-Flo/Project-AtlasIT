@@ -1,304 +1,204 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { page } from "$app/stores";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
 
-  interface TrustCenterPublic {
-    tenant: { name: string; slug: string; logoUrl?: string };
-    lastAuditDate: string;
+  interface TrustData {
+    tenant: { name: string; slug: string; industry: string | null; size: string | null };
+    overallScore: number;
+    totals: { controls: number; pass: number; fail: number; unknown: number };
     frameworks: Array<{
-      name: string;
+      label: string;
+      framework: string;
+      controlCount: number;
       score: number;
-      controlsImplemented: number;
-      controlsTotal: number;
-      controls?: Array<{
-        controlId: string;
-        controlName: string;
-        status: string;
-        evidenceCount: number;
-        lastEvidenceAt: string | null;
-      }>;
+      lastEvaluatedAt: string | null;
     }>;
-    connectedApps: Array<{ name: string; logoUrl: string }>;
-    evidenceCount: number;
-    isPublic: boolean;
+    stats: {
+      connectedApps: number;
+      evidenceLast30Days: number;
+      lastSnapshotAt: string | null;
+    };
+    commitment: string;
   }
 
-  interface EvidenceItem {
-    id: string;
-    controlId: string;
-    evidenceType: string;
-    source: string;
-    actor: string;
-    status: string | null;
-    createdAt: string;
-    isFresh: boolean;
-    ageDescription: string;
-  }
-
+  let data: TrustData | null = null;
   let loading = true;
-  let notFound = false;
-  let data: TrustCenterPublic | null = null;
-  let expandedControl: string | null = null;
-  let controlEvidence: Record<string, EvidenceItem[]> = {};
-  let loadingEvidence: string | null = null;
+  let error: string | null = null;
 
   $: slug = $page.params.slug;
 
-  async function loadTrustCenter() {
+  async function load() {
     loading = true;
-    notFound = false;
-
+    error = null;
     try {
-      const res = await fetch(`/api/trust/${slug}`);
+      const res = await fetch(`/api/compliance/api/v1/trust/${encodeURIComponent(slug)}`);
       if (res.status === 404) {
-        notFound = true;
-        data = null;
+        const j = await res.json().catch(() => ({}));
+        error = j.code === "NOT_PUBLISHED"
+          ? "This organization has not published their trust center."
+          : "No trust center found for that URL.";
         return;
       }
-      if (!res.ok) {
-        data = null;
-        return;
-      }
-
-      data = await res.json();
-    } catch {
-      data = null;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      data = json.data;
+    } catch (e) {
+      error = (e as Error).message;
     } finally {
       loading = false;
     }
   }
 
-  function formatDate(value: string): string {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString();
+  onMount(load);
+
+  function scoreColor(score: number): string {
+    if (score >= 80) return "text-green-600 dark:text-green-400";
+    if (score >= 50) return "text-amber-600 dark:text-amber-400";
+    return "text-red-600 dark:text-red-400";
   }
-
-  function scoreVariant(score: number): "success" | "warning" | "destructive" {
-    if (score >= 80) return "success";
-    if (score >= 60) return "warning";
-    return "destructive";
+  function scoreBarColor(score: number): string {
+    if (score >= 80) return "bg-green-500";
+    if (score >= 50) return "bg-amber-500";
+    return "bg-red-500";
   }
-
-  async function toggleControl(controlId: string, framework: string) {
-    if (expandedControl === controlId) {
-      expandedControl = null;
-      return;
-    }
-    expandedControl = controlId;
-    if (controlEvidence[controlId]) return;
-
-    loadingEvidence = controlId;
-    try {
-      const res = await fetch(`/api/trust/${slug}/evidence?control=${encodeURIComponent(controlId)}&framework=${encodeURIComponent(framework)}`);
-      if (res.ok) {
-        const result = await res.json();
-        controlEvidence[controlId] = result.evidence ?? [];
-        controlEvidence = controlEvidence; // trigger reactivity
-      }
-    } catch {
-      // silently fail
-    } finally {
-      loadingEvidence = null;
-    }
+  function frameworkColor(key: string): string {
+    const map: Record<string, string> = {
+      SOC2: "bg-blue-100 text-blue-700",
+      ISO27001: "bg-purple-100 text-purple-700",
+      NIST_CSF: "bg-teal-100 text-teal-700",
+      HIPAA: "bg-orange-100 text-orange-700",
+      GDPR: "bg-pink-100 text-pink-700",
+    };
+    return map[key] ?? "bg-gray-100 text-gray-700";
   }
-
-  function statusLabel(status: string): string {
-    switch (status) {
-      case "verified": return "Verified";
-      case "implemented": return "Implemented";
-      case "in_progress": return "In Progress";
-      default: return "Not Started";
-    }
+  function relativeTime(iso: string | null): string {
+    if (!iso) return "never";
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    return "just now";
   }
-
-  function statusColor(status: string): "success" | "warning" | "destructive" {
-    switch (status) {
-      case "verified": return "success";
-      case "implemented": return "success";
-      case "in_progress": return "warning";
-      default: return "destructive";
-    }
-  }
-
-  function evidenceSourceLabel(source: string): string {
-    if (source.startsWith("adapter:")) return source.replace("adapter:", "").replace(/_/g, " ");
-    return source.replace(/_/g, " ");
-  }
-
-  onMount(loadTrustCenter);
 </script>
 
-<div class="min-h-screen bg-background text-foreground">
-  <div class="mx-auto max-w-6xl px-6 py-10 space-y-8">
+<svelte:head>
+  {#if data}
+    <title>{data.tenant.name} — Trust Center</title>
+    <meta name="description" content="Live compliance posture for {data.tenant.name}. Score: {data.overallScore}%." />
+  {:else}
+    <title>Trust Center — AtlasIT</title>
+  {/if}
+</svelte:head>
+
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <div class="max-w-5xl mx-auto px-6 py-10">
     {#if loading}
       <div class="space-y-4">
-        <Skeleton class="h-12 w-64" />
-        <Skeleton class="h-24 rounded-xl" />
-        <Skeleton class="h-48 rounded-xl" />
+        <div class="h-14 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
+        <div class="h-48 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
+        <div class="h-32 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
       </div>
-    {:else if notFound}
-      <Card class="border-dashed">
-        <CardContent class="py-14 text-center space-y-2">
-          <h1 class="text-2xl font-semibold tracking-tight">Trust Center unavailable</h1>
-          <p class="text-sm text-muted-foreground">
-            This trust page does not exist or is not publicly enabled.
-          </p>
-        </CardContent>
-      </Card>
-    {:else if data}
-      <header class="space-y-3">
-        <div class="flex items-center gap-3">
-          {#if data.tenant.logoUrl}
-            <img src={data.tenant.logoUrl} alt={`${data.tenant.name} logo`} class="h-10 w-10 rounded-md object-cover border" />
-          {:else}
-            <div class="h-10 w-10 rounded-md border bg-muted flex items-center justify-center text-sm font-semibold">
-              {data.tenant.name.slice(0, 1).toUpperCase()}
-            </div>
+    {:else if error || !data}
+      <div class="mt-20 text-center">
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Trust Center Not Available</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{error ?? "Unknown error."}</p>
+        <a href="/" class="mt-6 inline-block text-sm text-blue-600 hover:underline">← Back to AtlasIT</a>
+      </div>
+    {:else}
+      <div class="mb-8 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">Trust Center</div>
+          <h1 class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.tenant.name}</h1>
+          {#if data.tenant.industry}
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {data.tenant.industry}{data.tenant.size ? ` · ${data.tenant.size} employees` : ""}
+            </p>
           {/if}
-          <div>
-            <h1 class="text-3xl font-semibold tracking-tight">{data.tenant.name} Trust Center</h1>
-            <p class="text-sm text-muted-foreground">Public security posture snapshot</p>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500 dark:text-gray-400">Powered by</div>
+          <a href="/" class="text-sm font-semibold text-blue-600 hover:underline">AtlasIT</a>
+        </div>
+      </div>
+
+      <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-8 mb-6 shadow-sm">
+        <div class="flex items-start justify-between flex-wrap gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Continuous Compliance Score
+            </div>
+            <div class="mt-3 flex items-baseline gap-3 flex-wrap">
+              <div class="text-6xl font-bold {scoreColor(data.overallScore)}">{data.overallScore}%</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">
+                {data.totals.pass} passing · {data.totals.fail} failing · {data.totals.unknown} unknown
+                <span class="text-gray-400"> of {data.totals.controls} controls</span>
+              </div>
+            </div>
+            {#if data.stats.lastSnapshotAt}
+              <div class="mt-1 text-xs text-gray-400">Updated {relativeTime(data.stats.lastSnapshotAt)}</div>
+            {/if}
           </div>
         </div>
-      </header>
+        <div class="mt-5 h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div class="h-full {scoreBarColor(data.overallScore)} transition-all duration-700" style="width: {data.overallScore}%"></div>
+        </div>
+        <p class="mt-6 text-sm text-gray-600 dark:text-gray-300 italic leading-relaxed">{data.commitment}</p>
+      </div>
 
-      <section class="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent class="pt-6">
-            <div class="text-sm text-muted-foreground">Evidence records</div>
-            <div class="mt-1 text-2xl font-semibold">{data.evidenceCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="text-sm text-muted-foreground">Last audit update</div>
-            <div class="mt-1 text-2xl font-semibold">{formatDate(data.lastAuditDate)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="text-sm text-muted-foreground">Connected apps</div>
-            <div class="mt-1 text-2xl font-semibold">{data.connectedApps.length}</div>
-          </CardContent>
-        </Card>
-      </section>
+      <h2 class="mt-10 mb-3 text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Frameworks</h2>
+      {#if data.frameworks.length === 0}
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-8 text-center">
+          <p class="text-sm text-gray-500 dark:text-gray-400">No frameworks installed yet.</p>
+        </div>
+      {:else}
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {#each data.frameworks as fw}
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium {frameworkColor(fw.framework)}">{fw.framework}</span>
+              <div class="mt-2 font-medium text-sm text-gray-900 dark:text-white">{fw.label}</div>
+              <div class="mt-2 flex items-baseline gap-2">
+                <div class="text-2xl font-bold {scoreColor(fw.score)}">{fw.score}%</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">{fw.controlCount} controls</div>
+              </div>
+              <div class="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div class="h-full {scoreBarColor(fw.score)}" style="width: {fw.score}%"></div>
+              </div>
+              <p class="mt-2 text-[11px] text-gray-400">Last evaluated {relativeTime(fw.lastEvaluatedAt)}</p>
+            </div>
+          {/each}
+        </div>
+      {/if}
 
-      <section class="space-y-3">
-        <h2 class="text-xl font-semibold">Framework scores</h2>
-        {#if data.frameworks.length === 0}
-          <Card class="border-dashed">
-            <CardContent class="py-8 text-sm text-muted-foreground">
-              No framework data available yet.
-            </CardContent>
-          </Card>
-        {:else}
-          <div class="space-y-4">
-            {#each data.frameworks as framework}
-              <Card>
-                <CardContent class="pt-6 space-y-3">
-                  <div class="flex items-center justify-between gap-3">
-                    <h3 class="font-semibold">{framework.name}</h3>
-                    <Badge variant={scoreVariant(framework.score)}>{framework.score}%</Badge>
-                  </div>
-                  <div class="text-sm text-muted-foreground">
-                    {framework.controlsImplemented}/{framework.controlsTotal} controls implemented
-                  </div>
-                  <div class="h-2 rounded-full bg-muted overflow-hidden">
-                    <div class="h-full bg-primary" style={`width: ${Math.max(0, Math.min(100, framework.score))}%`} />
-                  </div>
+      <h2 class="mt-10 mb-3 text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Operational Stats</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+          <div class="text-xs text-gray-500 dark:text-gray-400">Connected integrations</div>
+          <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.stats.connectedApps}</div>
+          <p class="mt-1 text-xs text-gray-400">Active live-data sources</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+          <div class="text-xs text-gray-500 dark:text-gray-400">Evidence last 30 days</div>
+          <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.stats.evidenceLast30Days.toLocaleString()}</div>
+          <p class="mt-1 text-xs text-gray-400">Operational records scored</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+          <div class="text-xs text-gray-500 dark:text-gray-400">Update cadence</div>
+          <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">Daily</div>
+          <p class="mt-1 text-xs text-gray-400">Nightly re-evaluation at 02:00 UTC</p>
+        </div>
+      </div>
 
-                  {#if framework.controls && framework.controls.length > 0}
-                    <div class="mt-4 space-y-1">
-                      {#each framework.controls as control}
-                        <button
-                          class="w-full text-left px-3 py-2 rounded-lg hover:bg-muted/50 transition-colors"
-                          on:click={() => toggleControl(control.controlId, framework.name)}
-                        >
-                          <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium">{control.controlId}</span>
-                            <Badge variant={statusColor(control.status)} class="text-xs">{statusLabel(control.status)}</Badge>
-                          </div>
-                          <div class="text-xs text-muted-foreground mt-0.5">{control.controlName}</div>
-                        </button>
-
-                        {#if expandedControl === control.controlId}
-                          <div class="ml-4 pl-3 border-l-2 border-muted space-y-2 py-2">
-                            {#if loadingEvidence === control.controlId}
-                              <Skeleton class="h-8 w-full" />
-                            {:else if controlEvidence[control.controlId]?.length}
-                              {#each controlEvidence[control.controlId] as ev}
-                                <div class="flex items-start gap-2 text-xs">
-                                  <div class="mt-0.5">
-                                    {#if ev.isFresh}
-                                      <span class="inline-block h-2 w-2 rounded-full bg-green-500" title="Fresh"></span>
-                                    {:else}
-                                      <span class="inline-block h-2 w-2 rounded-full bg-yellow-500" title="Stale"></span>
-                                    {/if}
-                                  </div>
-                                  <div class="flex-1">
-                                    <div class="font-medium capitalize">{evidenceSourceLabel(ev.source)}</div>
-                                    <div class="text-muted-foreground">
-                                      {ev.evidenceType.replace(/_/g, " ")} &middot; {ev.ageDescription}
-                                      {#if ev.status}
-                                        &middot; <span class={ev.status === "pass" ? "text-green-600" : ev.status === "fail" ? "text-red-600" : ""}>{ev.status}</span>
-                                      {/if}
-                                    </div>
-                                  </div>
-                                </div>
-                              {/each}
-                            {:else}
-                              <div class="text-xs text-muted-foreground">No evidence recorded for this control.</div>
-                            {/if}
-                          </div>
-                        {/if}
-                      {/each}
-                    </div>
-                  {/if}
-                </CardContent>
-              </Card>
-            {/each}
-          </div>
-        {/if}
-      </section>
-
-      <section class="space-y-3">
-        <h2 class="text-xl font-semibold">Connected integrations</h2>
-        {#if data.connectedApps.length === 0}
-          <Card class="border-dashed">
-            <CardContent class="py-8 text-sm text-muted-foreground">
-              No connected integrations published.
-            </CardContent>
-          </Card>
-        {:else}
-          <div class="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {#each data.connectedApps as app}
-              <Card>
-                <CardContent class="py-4 flex flex-col items-center gap-2 text-center">
-                  {#if app.logoUrl}
-                    <img src={app.logoUrl} alt={`${app.name} logo`} class="h-8 w-8 object-contain" />
-                  {:else}
-                    <div class="h-8 w-8 rounded bg-muted flex items-center justify-center text-xs font-semibold">
-                      {app.name.slice(0, 1).toUpperCase()}
-                    </div>
-                  {/if}
-                  <div class="text-xs text-muted-foreground line-clamp-2">{app.name}</div>
-                </CardContent>
-              </Card>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {:else}
-      <Card class="border-dashed">
-        <CardContent class="py-14 text-center text-sm text-muted-foreground">
-          Unable to load Trust Center data right now.
-        </CardContent>
-      </Card>
+      <div class="mt-12 border-t border-gray-200 dark:border-gray-700 pt-6 text-center">
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          This page is publicly accessible. For detailed evidence bundles (auditor package, SOC 2 Type II report),
+          contact {data.tenant.name} directly.
+        </p>
+        <p class="mt-3 text-xs text-gray-400">
+          Verify trust center integrity: scores are generated by AtlasIT's CDT rule engine from live operational data —
+          not self-attestation. <a href="/" class="text-blue-600 hover:underline">Learn more</a>
+        </p>
+      </div>
     {/if}
   </div>
 </div>

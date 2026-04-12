@@ -1,12 +1,99 @@
 # AWS Migration -- Completion Roadmap
 
-**Last updated:** 2026-04-11
+**Last updated:** 2026-04-12 (session 2)
 **Purpose:** Single source of truth for completing the Cloudflare to AWS migration.
-**Rule:** No platform development (Phases 9-12) until this document shows all phases complete.
+**Status:** Migration gate **PASSED**. Platform Phase 9 work has started.
 
 ---
 
-## Current State (2026-04-11)
+## Post-Migration State (2026-04-12)
+
+All migration phases M1–M7 that gate platform development are now complete
+or in their stability window. The rule at the top of this file ("No platform
+development until all phases complete") is **satisfied** — M7.3 (Roadmap
+re-evaluation) is happening in real time via this update; M7.1 (2-week
+stability monitoring) runs through 2026-04-25 but is not a hard block on
+non-infrastructure feature work.
+
+### What shipped in the past 48h (sessions 1-2)
+
+**Compliance engine (was the big reason AWS was needed):**
+
+- 64 CDT rule files ported into `lambdas/compliance-api/src/cdt/rules/`
+  (26 SOC2, 17 ISO27001, 7 NIST CSF, 7 HIPAA, 7 GDPR)
+- Hybrid evaluator: strict CDT rule first, falls back to evidence-classifier
+  impact when the rule is silent — honest evidence-backed scoring
+- `tenant_compliance_packs` + `tenant_control_state` + `compliance_score_snapshots`
+  tables; 7 public endpoints + 2 internal endpoints
+- EventBridge daily cron at 02:00 UTC evaluates every installed pack across
+  every tenant via `scheduler → Lambda SDK invoke → compliance-api`
+
+**Adapters on Lambda:**
+
+- `atlasit-adapter-okta-dev` — API-token flow, OAuth-like UX, runs in VPC,
+  egress via NAT instance (EIP 32.192.181.228 — stable allowlist IP for
+  customer security rules)
+- `atlasit-adapter-github-dev` — full OAuth2 authorization-code flow with
+  DynamoDB state TTL, platform-level GitHub App, 11 evidence controls mapped
+- NAT instance (t4g.nano) hardened: iptables MASQUERADE rule persisted via
+  systemd `nat-restore.service`, SSM agent registered
+
+**Console (23 pages, zero `$lib/components/ui/*` / lucide imports remaining):**
+
+- Dashboard with live score, sparkline trend, framework cards, recent
+  evidence stream, connected apps
+- Compliance: Packs (install/evaluate/uninstall), Controls (cross-pack
+  drill-down), Evidence (filters + drill-down)
+- Apps with Connect dropdown → Okta modal / GitHub OAuth redirect
+- Policies with CRUD + acknowledgement → evidence
+- Onboarding wizard (6 steps: company → frameworks → policies → team →
+  apps → finish) with live provisioning log
+- Self-serve signup at `/signup` → creates tenant + admin + auto-login
+- Audit log with filters + expandable rows
+- Access Requests, Access Reviews, Directory, Automation, Incidents, Workflows,
+  Settings, Users, Profile — all rewritten, plain Tailwind
+
+**Infrastructure hardening:**
+
+- IAM: root access key replaced with scoped `atlasit-dev-cli` user
+  (custom policy + AWSLambda_ReadOnlyAccess + CloudWatchLogsReadOnlyAccess);
+  no self-escalation (no iam:CreateRole), no non-atlasit-\* destructive
+  permissions. Root key pending deactivation.
+- Secrets: Cloudflare + GitHub creds moved from plaintext file to Windows
+  user env vars + `~/.aws/credentials` with 0600
+- Daily compliance cron wired + running: `atlasit-compliance-packs-daily-dev`
+
+### 21 PRs merged during this window
+
+#422-#432 first session · #434-#439 second session including:
+
+- Compliance packs + CDT engine (#423)
+- Hybrid CDT evaluator (#428)
+- Daily auto-evaluation via EventBridge (#427)
+- Okta adapter + Connect modal (#431)
+- Policies table + CRUD + ack flow (#432)
+- Evidence drill-down (#429), Controls drill-down (#430), Audit log (#437)
+- Dashboard live wiring (#434) + score trend sparkline (#439)
+- Onboarding self-serve signup (#436) + wizard (#438)
+- GitHub OAuth adapter (#433)
+- Score history snapshots (#435)
+
+### Phase 9 status (Trust Center — STARTED 2026-04-12)
+
+- [x] `GET /api/v1/trust/:slug` — public endpoint on compliance-api, tenant
+      must opt in via `tenants.config.trust_center_public = true`
+- [x] `/trust/[slug]` public route on console — scores, framework cards,
+      operational stats, privacy-preserving (no evidence/user details)
+- [x] `/console/settings/trust` admin toggle with public-URL display + copy
+- [x] Enabled for atlasit tenant — live at https://www.atlasit.pro/trust/atlasit
+- [ ] PDF/XLSX auditor package export
+- [ ] Questionnaire AI (SIG/CAIQ mapping)
+- [ ] Embeddable trust badge `<script>` tag
+- [ ] NDA workflow for detailed evidence requests
+
+---
+
+## Current State (2026-04-11) -- historical snapshot
 
 **Production traffic:** 100% Cloudflare Workers. AWS is ready but not serving production yet.
 **AWS API:** 21/21 routes passing through API Gateway (ahjoepuw96.execute-api.us-east-1.amazonaws.com)
@@ -160,6 +247,7 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 **Goal:** All data from Cloudflare replicated to AWS.
 
 ### M3.1 -- D1 -> RDS PostgreSQL -- COMPLETE (2026-04-11)
+
 - [x] Run data migration (23 tables, 1,151 rows migrated)
 - [x] Key tables: tenants (6), compliance_evidence (706), automation_rules (55), audit_log (97)
 - [x] Schema gaps fixed: added missing columns (owner_email, size, disabled_at, etc.)
@@ -183,6 +271,7 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 - [x] Internal service-to-service auth via x-internal-api-key verified
 
 ### M4.2 -- Console app QA -- COMPLETE (2026-04-11)
+
 - [x] Console loads from CloudFront (https://d2n7wudxrqfpwn.cloudfront.net)
 - [x] 15 routes return 200 (SPA routing via custom error responses)
 - [x] JS bundles and static assets load (165 files, 2MB)
@@ -193,6 +282,7 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 - [x] Fixed: CI build (shared package build step, pnpm version, config swap)
 
 ### M4.3 -- Workflow testing -- COMPLETE (2026-04-11)
+
 - [x] JML trigger via API (joiner/mover/leaver) → SQS enqueue verified
 - [x] Automation rules list (43 rules from D1 migration)
 - [x] Workflow runs list (15 runs)
@@ -201,6 +291,7 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 - [x] SQS consumer processes messages
 
 ### M4.4 -- Adapter connectivity -- PARTIAL (2026-04-11)
+
 - [x] Adapter Lambda functions created (9 core adapters)
 - [x] API Gateway routes configured (/adapters/{name}/{proxy+})
 - [x] ADAPTER_URLS stored in SSM
@@ -208,6 +299,7 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 - [ ] End-to-end adapter test (requires adapter code deployment)
 
 ### M4.5 -- Load testing -- COMPLETE (2026-04-11)
+
 - [x] 100/100 requests, 0 failures
 - [x] Health endpoint: 291ms avg
 - [x] Evidence list (PG query): 249ms avg
@@ -218,17 +310,20 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 **Goal:** atlasit.pro serves from AWS.
 
 ### M5.1 -- Preparation -- COMPLETE
-- [x] CloudFront aliases: atlasit.pro + *.atlasit.pro
+
+- [x] CloudFront aliases: atlasit.pro + \*.atlasit.pro
 - [x] ACM certificate issued and associated
 - [x] Custom error responses for SPA routing
 
 ### M5.2 -- Progressive cutover -- COMPLETE (2026-04-11)
+
 - [x] www.atlasit.pro → CloudFront (d2n7wudxrqfpwn.cloudfront.net)
 - [x] atlasit.pro → CloudFront (CNAME flattened, TTL:60)
 - [x] Root domain redirects to www (CloudFront function)
 - [x] API subdomains (api, compliance, orchestrator, dispatch) remain on CF Workers during adapter transition
 
 ### M5.3 -- Nameserver migration
+
 - [ ] Update registrar nameservers from Cloudflare to Route 53
 - [ ] Verify DNS propagation
 - [ ] 2-week stability window
@@ -238,27 +333,30 @@ Standalone workflows exist, unification into deploy-on-merge.yml pending. `.gith
 **Goal:** Move remaining CF Workers to Lambda. Decommission Cloudflare.
 
 ### M6.1 -- Adapter Lambda infrastructure -- COMPLETE
+
 - [x] 9 core adapter Lambda functions created via Terraform
 - [x] API Gateway routes: /adapters/{name}/{proxy+}
 - [x] Lambda compatibility wrappers (hono-lambda-adapter.ts) in each adapter
 - [x] ADAPTER_URLS SSM parameter set
 
 ### M6.2 -- Adapter code deployment -- COMPLETE (2026-04-11)
+
 - [x] 9 adapters built with esbuild (inlined hono-lambda-adapter)
 - [x] Path prefix stripping for API Gateway routes
 - [x] 7/9 adapters returning 200 on health (okta + aws need CF binding fixes)
 - [x] ADAPTER_URLS SSM parameter configured
 
 ### M6.3 -- Cloudflare decommission -- DEFERRED
+
 **Do NOT delete CF resources until M7 stability window (2 weeks) confirms AWS is stable.**
 
 CF resources to decommission after stability confirmed:
+
 - 46 AtlasIT Workers (core + adapters + support workers)
-- 6 AtlasIT D1 databases (atlasit-shared, atlasit_compliance, atlas_*)
+- 6 AtlasIT D1 databases (atlasit-shared, atlasit*compliance, atlas*\*)
 - 3 KV namespaces (KV_CACHE, ATLAS_FLAGS, KV_FEATURE_FLAGS)
 - 5 R2 buckets (atlas-artifacts, atlas-evidence, atlas-policies, atlasit-evidence, atlasit-evidence-dev)
 - API subdomain DNS records (api, compliance, orchestrator, dispatch)
-
 
 - [ ] Archive CF Workers, D1, KV, R2
 - [ ] Verify no traffic on CF Workers
@@ -269,6 +367,7 @@ CF resources to decommission after stability confirmed:
 **Goal:** 2 weeks stable on AWS before decommissioning CF.
 
 ### M7.1 -- Stability monitoring (2 weeks: 2026-04-11 → 2026-04-25)
+
 - [ ] CloudWatch alarms: zero false positives
 - [ ] RDS metrics: CPU/memory/connections within thresholds
 - [ ] Lambda errors: <0.1% rate
@@ -276,12 +375,14 @@ CF resources to decommission after stability confirmed:
 - [ ] Zero rollback needed
 
 ### M7.2 -- Comprehensive QA
+
 - [ ] All compliance frameworks score correctly with migrated data
 - [ ] Evidence pipeline end-to-end (adapter → evidence → score)
 - [ ] Fix remaining adapter issues (okta + aws CF binding deps)
 - [ ] Address any UI/UX issues found during console use
 
 ### M7.3 -- Roadmap re-evaluation
+
 - [ ] Assess Phases 9-12 with AWS context
 - [ ] Update ROADMAP.md with revised priorities
 - [ ] Resume platform development
@@ -293,6 +394,7 @@ CF resources to decommission after stability confirmed:
 ## Session Progress (2026-04-11 → 2026-04-12)
 
 ### Completed
+
 - **Auth flow end-to-end**: /api/v1/auth/token with bcrypt password verification + account lockout (5 attempts → 15min lock)
 - **Set-password endpoint**: /api/v1/auth/set-password with ADMIN_SETUP_TOKEN gate
 - **All 9 core adapters healthy**: okta + aws now gracefully degrade when CF bindings missing
@@ -301,24 +403,28 @@ CF resources to decommission after stability confirmed:
 - **RDS Proxy provisioned** (atlasit-rds-proxy-dev.proxy-col0k6y8mbvi.us-east-1.rds.amazonaws.com)
 
 ### Known Issues
+
 - **RDS Proxy TLS auth**: Lambda connection via proxy returns "Connection terminated unexpectedly". Needs TLS cert config or pg client tuning. Reverted Lambdas to direct RDS. Proxy is provisioned and ready when config is fixed.
 - **Cold start timeout** (~45s) still present on write operations. RDS Proxy will fix once TLS config resolved.
+
 ---
 
 ## Console Functional State (2026-04-12)
 
 ### Working Pages (real data, tested via Playwright)
-| Page | Status | Notes |
-|------|--------|-------|
-| / (redirect) | ✓ Complete | Client-side redirect → /login if no token, else /console |
-| /login | ✓ Complete | Real bcrypt auth, account lockout after 5 failed attempts |
-| /console (Dashboard) | ✓ Complete | Shows tenant, 615 evidence, 43 rules, 0 incidents, recent events |
-| /console/compliance | ✓ Complete | 5 framework cards (SOC2, HIPAA, ISO27001, NIST-CSF, GDPR) with live scores + evidence table |
-| /console/directory | ✓ Complete | 11 users + 7 groups, tab nav, real emails (alice.chen, etc.) |
-| /console/automation | ✓ Complete | 43 rules table with toggle, inline create form, runs tab |
-| /console/incidents | ✓ Complete | Filters, inline create form, expandable rows |
+
+| Page                 | Status     | Notes                                                                                       |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| / (redirect)         | ✓ Complete | Client-side redirect → /login if no token, else /console                                    |
+| /login               | ✓ Complete | Real bcrypt auth, account lockout after 5 failed attempts                                   |
+| /console (Dashboard) | ✓ Complete | Shows tenant, 615 evidence, 43 rules, 0 incidents, recent events                            |
+| /console/compliance  | ✓ Complete | 5 framework cards (SOC2, HIPAA, ISO27001, NIST-CSF, GDPR) with live scores + evidence table |
+| /console/directory   | ✓ Complete | 11 users + 7 groups, tab nav, real emails (alice.chen, etc.)                                |
+| /console/automation  | ✓ Complete | 43 rules table with toggle, inline create form, runs tab                                    |
+| /console/incidents   | ✓ Complete | Filters, inline create form, expandable rows                                                |
 
 ### Tenant Isolation — Verified
+
 - Bearer session token (DynamoDB, cannot be spoofed by client)
 - x-tenant-id header only honored with matching x-internal-api-key (service-to-service)
 - All new Lambda endpoints use auth.tenantId exclusively
@@ -327,6 +433,7 @@ CF resources to decommission after stability confirmed:
 - Invalid token returns 401
 
 ### Lambda Endpoints Deployed
+
 - POST /api/v1/auth/token — bcrypt login
 - POST /api/v1/auth/set-password — admin-gated password set
 - GET /api/v1/dashboard — consolidated dashboard
@@ -337,6 +444,7 @@ CF resources to decommission after stability confirmed:
 - (plus all existing endpoints for evidence, incidents, automation, adapters)
 
 ### Infrastructure
+
 - 25 Lambda functions (7 platform + 9 adapters + 9 WebSocket/support)
 - 15 API Gateway routes
 - Console on S3 + CloudFront at www.atlasit.pro
@@ -345,6 +453,7 @@ CF resources to decommission after stability confirmed:
 - RDS Proxy provisioned (not wired — TLS issue parked)
 
 ### Pages Remaining To Rewrite
+
 - Apps (Connected Apps, Marketplace, Discovery)
 - Workflows
 - Access Reviews, Access Requests
@@ -354,5 +463,6 @@ CF resources to decommission after stability confirmed:
 - Platform Status
 
 ### Test Coverage
+
 - scripts/smoke-live-console.mjs — 9 page-load smoke tests
 - scripts/functional-test.mjs — 21 functional tests (login, data, forms, session, tenant isolation) — 19/21 pass

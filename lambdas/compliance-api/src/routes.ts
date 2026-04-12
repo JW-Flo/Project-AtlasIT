@@ -181,6 +181,112 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // ── Public trust center (Phase 9) — no auth required ───────────────────────
+  // GET /api/v1/trust/:slug — returns a safe, aggregated view of a tenant's
+  // compliance posture. Tenant must opt in via tenants.config.trust_center_public = true.
+  {
+    const m = path.match(/^\/api\/v1\/trust\/([a-z0-9-]+)$/);
+    if (m && method === "GET") {
+      const slug = m[1];
+      const pool = getPool();
+      try {
+        const tRow = await pool.query(
+          `SELECT id, name, slug, industry, size, config FROM tenants WHERE slug = $1 OR id = $1 LIMIT 1`,
+          [slug],
+        );
+        if (tRow.rows.length === 0) return fail(404, "Trust center not found", "NOT_FOUND");
+        const tenant = tRow.rows[0];
+        const cfg = (tenant.config ?? {}) as Record<string, unknown>;
+        const publicFlag = Boolean(cfg.trust_center_public);
+        if (!publicFlag) return fail(404, "Trust center not published", "NOT_PUBLISHED");
+
+        const [packs, integrations, recentEvidence, latestSnapshot] = await Promise.all([
+          pool.query(
+            `SELECT p.id, p.name as "label", p.framework_id as "framework",
+                    p.controls_count::int as "controlCount",
+                    tcp.pass_count as "passCount", tcp.fail_count as "failCount",
+                    tcp.unknown_count as "unknownCount", tcp.last_evaluated_at as "lastEvaluatedAt"
+             FROM compliance_packs p
+             INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
+             WHERE tcp.tenant_id = $1
+             ORDER BY p.name`,
+            [tenant.id],
+          ),
+          pool.query(
+            `SELECT COUNT(*) as cnt FROM integrations WHERE tenant_id = $1 AND status = 'active'`,
+            [tenant.id],
+          ),
+          pool.query(
+            `SELECT COUNT(*) as cnt FROM compliance_evidence
+             WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
+            [tenant.id],
+          ),
+          pool.query(
+            `SELECT snapshot_at FROM compliance_score_snapshots
+             WHERE tenant_id = $1 ORDER BY snapshot_at DESC LIMIT 1`,
+            [tenant.id],
+          ),
+        ]);
+
+        const installed = packs.rows;
+        let totalControls = 0;
+        let totalPass = 0;
+        let totalFail = 0;
+        let totalUnknown = 0;
+        for (const p of installed) {
+          totalControls += p.controlCount ?? 0;
+          totalPass += p.passCount ?? 0;
+          totalFail += p.failCount ?? 0;
+          totalUnknown += p.unknownCount ?? 0;
+        }
+        const overallScore = totalControls > 0 ? Math.round((totalPass * 100) / totalControls) : 0;
+
+        return ok({
+          status: "success",
+          data: {
+            tenant: {
+              name: tenant.name,
+              slug: tenant.slug,
+              industry: tenant.industry ?? null,
+              size: tenant.size ?? null,
+            },
+            overallScore,
+            totals: {
+              controls: totalControls,
+              pass: totalPass,
+              fail: totalFail,
+              unknown: totalUnknown,
+            },
+            frameworks: installed.map((p) => ({
+              label: p.label,
+              framework: p.framework,
+              controlCount: p.controlCount,
+              score:
+                (p.controlCount ?? 0) > 0
+                  ? Math.round(((p.passCount ?? 0) * 100) / p.controlCount)
+                  : 0,
+              lastEvaluatedAt: p.lastEvaluatedAt,
+            })),
+            stats: {
+              connectedApps: parseInt(integrations.rows[0]?.cnt ?? "0", 10),
+              evidenceLast30Days: parseInt(recentEvidence.rows[0]?.cnt ?? "0", 10),
+              lastSnapshotAt: latestSnapshot.rows[0]?.snapshot_at ?? null,
+            },
+            commitment:
+              "Scores are generated continuously from live operational evidence, not self-attestation.",
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] trust.public.error", {
+          error: (e as Error).message,
+          slug,
+        });
+        return fail(500, "Trust center unavailable", "INTERNAL_ERROR");
+      }
+    }
+  }
+
   // ── Internal: evaluate all installed packs across all tenants (cron-driven) ──
   // Requires x-internal-api-key. No Bearer token check.
   if (path === "/internal/compliance-packs/evaluate-all" && method === "POST") {
