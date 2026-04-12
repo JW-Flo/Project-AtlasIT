@@ -81,6 +81,7 @@
         { href: "/console/compliance/packs", label: "Packs", icon: FolderCog },
         { href: "/console/compliance/controls", label: "Controls", icon: ShieldCheck },
         { href: "/console/compliance/evidence", label: "Evidence", icon: Activity },
+        { href: "/console/compliance/attestations", label: "Attestations", icon: FileCheck },
         { href: "/console/policies", label: "Policies", icon: FileText },
       ],
     },

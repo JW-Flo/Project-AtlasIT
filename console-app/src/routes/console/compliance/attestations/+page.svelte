@@ -1,14 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardHeader from "$lib/components/ui/card-header.svelte";
-  import CardTitle from "$lib/components/ui/card-title.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { ShieldCheck, Plus, FileCheck, AlertTriangle, Clock, X, ChevronDown, Lightbulb, FileText, Info } from "lucide-svelte";
 
   interface Attestation {
     id: string;
@@ -16,470 +7,363 @@
     controlId: string;
     attestationKey: string;
     status: "active" | "expired" | "revoked";
-    attestedBy: string;
-    evidenceSummary: string;
-    metadata: Record<string, any>;
-    expiresAt: string | null;
+    statement: string;
+    attestedById: string;
+    attestedByEmail: string | null;
+    attestedByName: string | null;
+    attestedAt: string;
+    validUntil: string | null;
+    evidenceRefIds: string[] | null;
+    revokedAt: string | null;
+    revokedBy: string | null;
+    revocationReason: string | null;
     createdAt: string;
-    updatedAt: string;
   }
 
-  interface EvidenceGuidance {
-    summary: string;
-    recommendedDocuments: string[];
-    acceptableFormats: string[];
-    tips: string;
-  }
-
-  interface ControlDef {
-    framework: string;
-    key: string;
-    description: string;
-    cdtFields: string[];
-    evidenceGuidance?: EvidenceGuidance;
-  }
-
+  let items: Attestation[] = [];
+  let facets: Array<{ framework: string; status: string; cnt: string }> = [];
   let loading = true;
-  let attestations: Attestation[] = [];
-  let availableControls: Record<string, ControlDef> = {};
+  let error: string | null = null;
+
   let frameworkFilter = "all";
+  let statusFilter: "all" | "active" | "expired" | "revoked" = "all";
+  let expandedId: string | null = null;
+
   let showForm = false;
-  let saving = false;
+  let formFramework = "SOC2";
+  let formControlId = "";
+  let formKey = "";
+  let formStatement = "";
+  let formValidUntil = "";
+  let formError: string | null = null;
+  let submitting = false;
 
-  // Form state
-  let selectedControlId = "";
-  let evidenceSummary = "";
-  let expiresAt = "";
-  let numericValue: number | null = null;
+  let userRole = "";
 
-  $: filteredAttestations =
-    frameworkFilter === "all"
-      ? attestations
-      : attestations.filter((a) => a.framework === frameworkFilter);
+  const FRAMEWORKS = ["SOC2", "ISO27001", "NIST_CSF", "HIPAA", "GDPR"];
 
-  $: frameworks = [...new Set(Object.values(availableControls).map((c) => c.framework))];
-
-  $: unattestedControls = Object.entries(availableControls).filter(
-    ([id]) => !attestations.some((a) => a.controlId === id && a.status === "active"),
-  );
-
-  $: activeCount = attestations.filter((a) => a.status === "active").length;
-  $: totalControls = Object.keys(availableControls).length;
-
-  $: expiringSoon = attestations.filter((a) => {
-    if (!a.expiresAt || a.status !== "active") return false;
-    const diff = new Date(a.expiresAt).getTime() - Date.now();
-    return diff > 0 && diff < 30 * 24 * 60 * 60 * 1000;
-  });
-
-  $: selectedControl = selectedControlId ? availableControls[selectedControlId] : null;
-  $: needsNumericValue =
-    selectedControl?.key === "unmitigated_high_risks" ||
-    selectedControl?.cdtFields?.some((f: string) => f.includes("days_since"));
-
-  async function loadAttestations() {
+  async function load() {
+    loading = true;
+    error = null;
     try {
-      const res = await fetch("/api/tenant-compliance/attestations?status=all");
-      if (!res.ok) throw new Error("Failed to load attestations");
-      const data = await res.json();
-      attestations = data.attestations || [];
-      availableControls = data.availableControls || {};
-    } catch (err: any) {
-      pushToast({ variant: "error", message: err.message });
+      const p = new URLSearchParams();
+      if (frameworkFilter !== "all") p.set("framework", frameworkFilter);
+      if (statusFilter !== "all") p.set("status", statusFilter);
+      const res = await fetch(`/api/compliance/api/v1/attestations?${p.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      items = j.data?.items ?? [];
+      facets = j.data?.facets?.byFramework ?? [];
+    } catch (e) {
+      error = (e as Error).message;
     } finally {
       loading = false;
     }
   }
 
-  async function submitAttestation() {
-    if (!selectedControlId || !evidenceSummary.trim()) return;
-    saving = true;
+  async function createAttestation() {
+    if (!formControlId.trim() || !formKey.trim() || !formStatement.trim()) return;
+    submitting = true;
+    formError = null;
     try {
-      const metadata: Record<string, any> = {};
-      if (numericValue !== null) {
-        metadata.value = numericValue;
-      }
-
-      const res = await fetch("/api/tenant-compliance/attestations", {
+      const body: Record<string, unknown> = {
+        framework: formFramework,
+        controlId: formControlId.trim(),
+        attestationKey: formKey.trim(),
+        statement: formStatement.trim(),
+      };
+      if (formValidUntil) body.validUntil = new Date(formValidUntil).toISOString();
+      const res = await fetch("/api/compliance/api/v1/attestations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          controlId: selectedControlId,
-          evidenceSummary: evidenceSummary.trim(),
-          expiresAt: expiresAt || undefined,
-          metadata,
-        }),
+        body: JSON.stringify(body),
       });
-
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to save");
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { message?: string }).message ?? `HTTP ${res.status}`);
       }
-
-      pushToast({ variant: "success", message: "Attestation saved and evidence recorded" });
-      resetForm();
-      await loadAttestations();
-    } catch (err: any) {
-      pushToast({ variant: "error", message: err.message });
+      formControlId = "";
+      formKey = "";
+      formStatement = "";
+      formValidUntil = "";
+      showForm = false;
+      await load();
+    } catch (e) {
+      formError = (e as Error).message;
     } finally {
-      saving = false;
+      submitting = false;
     }
   }
 
   async function revokeAttestation(id: string) {
+    const reason = prompt("Reason for revocation (optional):");
+    if (reason === null) return;
     try {
-      const res = await fetch(`/api/tenant-compliance/attestations?id=${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to revoke");
-      pushToast({ variant: "success", message: "Attestation revoked" });
-      await loadAttestations();
-    } catch (err: any) {
-      pushToast({ variant: "error", message: err.message });
+      const res = await fetch(`/api/compliance/api/v1/attestations/${id}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason || null }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await load();
+    } catch (e) {
+      alert(`Revoke failed: ${(e as Error).message}`);
     }
   }
 
-  function resetForm() {
-    showForm = false;
-    selectedControlId = "";
-    evidenceSummary = "";
-    expiresAt = "";
-    numericValue = null;
+  function statusClass(s: string): string {
+    switch (s) {
+      case "active":  return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+      case "expired": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+      case "revoked": return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+    }
   }
 
-  function statusColor(status: string): string {
-    if (status === "active") return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-    if (status === "expired") return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-    return "bg-red-500/10 text-red-500 border-red-500/20";
+  function frameworkColor(key: string): string {
+    const map: Record<string, string> = {
+      SOC2: "bg-blue-100 text-blue-700",
+      ISO27001: "bg-purple-100 text-purple-700",
+      NIST_CSF: "bg-teal-100 text-teal-700",
+      HIPAA: "bg-orange-100 text-orange-700",
+      GDPR: "bg-pink-100 text-pink-700",
+    };
+    return map[key] ?? "bg-gray-100 text-gray-700";
   }
 
-  function relativeDate(iso: string): string {
-    const d = new Date(iso);
-    const diff = Date.now() - d.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days === 0) return "Today";
-    if (days === 1) return "Yesterday";
-    if (days < 30) return `${days}d ago`;
-    return d.toLocaleDateString();
+  function relativeTime(iso: string | null): string {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    return "just now";
   }
 
-  onMount(loadAttestations);
+  function applyFilters() {
+    expandedId = null;
+    load();
+  }
+
+  $: totalActive = facets.filter((f) => f.status === "active").reduce((s, f) => s + parseInt(f.cnt, 10), 0);
+  $: totalRevoked = facets.filter((f) => f.status === "revoked").reduce((s, f) => s + parseInt(f.cnt, 10), 0);
+
+  onMount(() => {
+    try {
+      const u = JSON.parse(sessionStorage.getItem("atlasit_user") ?? "{}");
+      userRole = u.role ?? "";
+    } catch {}
+    load();
+  });
 </script>
 
-<svelte:head>
-  <title>Attestations — Compliance — AtlasIT</title>
-</svelte:head>
-
-<div class="space-y-6">
-  <div class="flex items-center justify-between">
+<div class="p-8 max-w-7xl mx-auto">
+  <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-2xl font-bold">Control Attestations</h1>
-      <p class="text-sm text-muted-foreground mt-1">
-        Provide manual evidence for governance controls that can't be auto-detected
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Attestations</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Formal signed statements that a control is working. Each attestation generates
+        compliance evidence. Revoking one generates negative evidence — your score reflects reality.
       </p>
     </div>
-    <Button on:click={() => (showForm = true)} disabled={showForm}>
-      <Plus class="h-4 w-4 mr-2" /> New Attestation
-    </Button>
+    {#if userRole === "admin" || userRole === "owner"}
+      <button
+        on:click={() => { showForm = !showForm; formError = null; }}
+        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+      >
+        {showForm ? "Cancel" : "New Attestation"}
+      </button>
+    {/if}
   </div>
 
-  <!-- Summary cards -->
-  {#if !loading}
-    <div class="grid gap-4 md:grid-cols-3">
-      <Card>
-        <CardContent class="pt-5">
-          <div class="flex items-center gap-3">
-            <ShieldCheck class="h-5 w-5 text-emerald-500" />
-            <div>
-              <div class="text-2xl font-bold">{activeCount}/{totalControls}</div>
-              <div class="text-xs text-muted-foreground">Controls Attested</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="pt-5">
-          <div class="flex items-center gap-3">
-            <FileCheck class="h-5 w-5 text-blue-500" />
-            <div>
-              <div class="text-2xl font-bold">{unattestedControls.length}</div>
-              <div class="text-xs text-muted-foreground">Pending Attestation</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="pt-5">
-          <div class="flex items-center gap-3">
-            <Clock class="h-5 w-5 text-amber-500" />
-            <div>
-              <div class="text-2xl font-bold">{expiringSoon.length}</div>
-              <div class="text-xs text-muted-foreground">Expiring in 30 days</div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  <div class="mb-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="text-xs text-gray-500 dark:text-gray-400">Total</div>
+      <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{items.length}</div>
     </div>
-  {/if}
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="text-xs text-gray-500 dark:text-gray-400">Active</div>
+      <div class="mt-1 text-2xl font-bold text-green-600">{totalActive}</div>
+    </div>
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="text-xs text-gray-500 dark:text-gray-400">Revoked</div>
+      <div class="mt-1 text-2xl font-bold text-red-600">{totalRevoked}</div>
+    </div>
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="text-xs text-gray-500 dark:text-gray-400">Frameworks covered</div>
+      <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+        {new Set(facets.filter((f) => f.status === "active").map((f) => f.framework)).size}
+      </div>
+    </div>
+  </div>
 
-  <!-- New attestation form -->
-  {#if showForm}
-    <Card>
-      <CardHeader>
-        <div class="flex items-center justify-between">
-          <CardTitle class="text-base">New Attestation</CardTitle>
-          <button on:click={resetForm} class="text-muted-foreground hover:text-foreground">
-            <X class="h-4 w-4" />
-          </button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form on:submit|preventDefault={submitAttestation} class="space-y-4">
-          <div>
-            <label class="text-sm font-medium block mb-1.5">Control</label>
-            <div class="relative">
-              <select
-                bind:value={selectedControlId}
-                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm appearance-none"
-              >
-                <option value="">Select a control to attest...</option>
-                {#each Object.entries(availableControls) as [id, def]}
-                  <option value={id}>{id} — {def.description}</option>
-                {/each}
-              </select>
-              <ChevronDown class="absolute right-3 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
-            </div>
-            {#if selectedControl}
-              <p class="text-xs text-muted-foreground mt-1">
-                Framework: {selectedControl.framework} | Fields: {selectedControl.cdtFields.join(", ")}
-              </p>
-            {/if}
-          </div>
-
-          <!-- Evidence guidance panel -->
-          {#if selectedControl?.evidenceGuidance}
-            {@const guidance = selectedControl.evidenceGuidance}
-            <div class="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
-              <div class="flex items-start gap-2">
-                <Lightbulb class="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <h4 class="text-sm font-semibold text-primary">Evidence Recommendations</h4>
-                  <p class="text-xs text-muted-foreground mt-0.5">{guidance.summary}</p>
-                </div>
-              </div>
-
-              <div>
-                <div class="flex items-center gap-1.5 mb-1.5">
-                  <FileText class="h-3.5 w-3.5 text-muted-foreground" />
-                  <span class="text-xs font-semibold">Recommended documents</span>
-                </div>
-                <ul class="space-y-1 ml-5">
-                  {#each guidance.recommendedDocuments as doc}
-                    <li class="text-xs text-muted-foreground list-disc">{doc}</li>
-                  {/each}
-                </ul>
-              </div>
-
-              <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs">
-                <div>
-                  <span class="font-semibold">Accepted formats:</span>
-                  <span class="text-muted-foreground">{guidance.acceptableFormats.join(", ")}</span>
-                </div>
-              </div>
-
-              <div class="flex items-start gap-1.5 bg-background/60 rounded-md px-3 py-2">
-                <Info class="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                <p class="text-xs text-muted-foreground">{guidance.tips}</p>
-              </div>
-            </div>
-          {/if}
-
-          <div>
-            <label class="text-sm font-medium block mb-1.5">Evidence Summary</label>
-            <textarea
-              bind:value={evidenceSummary}
-              rows="3"
-              placeholder="Describe the evidence supporting this attestation (e.g., board meeting minutes from March 2026 confirm oversight of information security program...)"
-              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
-            />
-          </div>
-
-          {#if needsNumericValue}
-            <div>
-              <label class="text-sm font-medium block mb-1.5">
-                {#if selectedControl?.key === "unmitigated_high_risks"}
-                  Number of Unmitigated High Risks
-                {:else}
-                  Days Since Last Test
-                {/if}
-              </label>
-              <input
-                type="number"
-                bind:value={numericValue}
-                min="0"
-                class="w-32 rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-          {/if}
-
-          <div>
-            <label class="text-sm font-medium block mb-1.5">Expires (optional)</label>
-            <input
-              type="date"
-              bind:value={expiresAt}
-              class="w-48 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-            <p class="text-xs text-muted-foreground mt-1">
-              Leave blank for no expiry. Expired attestations are flagged for renewal.
-            </p>
-          </div>
-
-          <div class="flex gap-2 pt-2">
-            <Button type="submit" disabled={saving || !selectedControlId || evidenceSummary.length < 10}>
-              {saving ? "Saving..." : "Save Attestation"}
-            </Button>
-            <Button variant="outline" on:click={resetForm} type="button">Cancel</Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-  {/if}
-
-  <!-- Framework filter -->
-  {#if !loading && attestations.length > 0}
-    <div class="flex gap-2">
-      <button
-        class="text-xs px-3 py-1 rounded-full border transition-colors {frameworkFilter === 'all'
-          ? 'bg-primary text-primary-foreground border-primary'
-          : 'border-border hover:bg-muted'}"
-        on:click={() => (frameworkFilter = "all")}
-      >
-        All
-      </button>
-      {#each frameworks as fw}
+  <div class="mb-5 flex flex-wrap items-center gap-3">
+    <select
+      bind:value={frameworkFilter}
+      on:change={applyFilters}
+      class="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+    >
+      <option value="all">All frameworks</option>
+      {#each FRAMEWORKS as fw}<option value={fw}>{fw}</option>{/each}
+    </select>
+    <div class="flex gap-1">
+      {#each ["all", "active", "expired", "revoked"] as s}
         <button
-          class="text-xs px-3 py-1 rounded-full border transition-colors {frameworkFilter === fw
-            ? 'bg-primary text-primary-foreground border-primary'
-            : 'border-border hover:bg-muted'}"
-          on:click={() => (frameworkFilter = fw)}
+          type="button"
+          on:click={() => { statusFilter = s as typeof statusFilter; applyFilters(); }}
+          class="px-3 py-1 text-xs font-medium rounded-full border transition-colors
+            {statusFilter === s
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
         >
-          {fw}
+          {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
         </button>
       {/each}
     </div>
-  {/if}
+  </div>
 
-  <!-- Attestations list -->
-  {#if loading}
-    <div class="space-y-3">
-      {#each Array(5) as _}
-        <Skeleton class="h-16 w-full" />
-      {/each}
-    </div>
-  {:else if filteredAttestations.length === 0}
-    <Card>
-      <CardContent class="py-12 text-center">
-        <ShieldCheck class="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-        <p class="text-sm text-muted-foreground">
-          {attestations.length === 0
-            ? "No attestations yet. Create one to provide evidence for governance controls."
-            : "No attestations match the current filter."}
-        </p>
-        {#if attestations.length === 0}
-          <Button class="mt-4" variant="outline" on:click={() => (showForm = true)}>
-            <Plus class="h-4 w-4 mr-2" /> Create First Attestation
-          </Button>
-        {/if}
-      </CardContent>
-    </Card>
-  {:else}
-    <div class="space-y-2">
-      {#each filteredAttestations as att}
-        <Card>
-          <CardContent class="py-4">
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 mb-1">
-                  <Badge variant="outline" class="text-[10px]">{att.framework}</Badge>
-                  <span class="font-mono text-sm font-medium">{att.controlId}</span>
-                  <Badge class="text-[10px] {statusColor(att.status)}">{att.status}</Badge>
-                  {#if att.expiresAt}
-                    {@const daysLeft = Math.ceil((new Date(att.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))}
-                    {#if daysLeft > 0 && daysLeft <= 30}
-                      <Badge class="text-[10px] bg-amber-500/10 text-amber-500 border-amber-500/20">
-                        <AlertTriangle class="h-3 w-3 mr-1" /> Expires in {daysLeft}d
-                      </Badge>
-                    {/if}
-                  {/if}
-                </div>
-                <p class="text-sm text-muted-foreground line-clamp-2">{att.evidenceSummary}</p>
-                <div class="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                  <span>By {att.attestedBy}</span>
-                  <span>{relativeDate(att.updatedAt)}</span>
-                  {#if att.expiresAt}
-                    <span>Expires {new Date(att.expiresAt).toLocaleDateString()}</span>
-                  {/if}
-                </div>
-              </div>
-              {#if att.status === "active"}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="text-red-500 hover:text-red-600 hover:bg-red-500/10 shrink-0"
-                  on:click={() => revokeAttestation(att.id)}
-                >
-                  Revoke
-                </Button>
-              {/if}
-            </div>
-          </CardContent>
-        </Card>
-      {/each}
-    </div>
-  {/if}
-
-  <!-- Unattested controls -->
-  {#if !loading && unattestedControls.length > 0}
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-base flex items-center gap-2">
-          <AlertTriangle class="h-4 w-4 text-amber-500" />
-          Controls Pending Attestation ({unattestedControls.length})
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div class="space-y-2">
-          {#each unattestedControls as [id, def]}
-            <div class="bg-muted/30 rounded-lg px-4 py-3">
-              <div class="flex items-center justify-between">
-                <div>
-                  <div class="flex items-center gap-2">
-                    <Badge variant="outline" class="text-[10px]">{def.framework}</Badge>
-                    <span class="font-mono text-sm">{id}</span>
-                  </div>
-                  <p class="text-xs text-muted-foreground mt-0.5">{def.description}</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  on:click={() => {
-                    selectedControlId = id;
-                    showForm = true;
-                  }}
-                >
-                  Attest
-                </Button>
-              </div>
-              {#if def.evidenceGuidance}
-                <div class="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
-                  <Lightbulb class="h-3 w-3 mt-0.5 shrink-0 text-primary/60" />
-                  <span>
-                    Evidence needed: {def.evidenceGuidance.recommendedDocuments.slice(0, 2).join(", ")}{def.evidenceGuidance.recommendedDocuments.length > 2 ? `, +${def.evidenceGuidance.recommendedDocuments.length - 2} more` : ""}
-                  </span>
-                </div>
-              {/if}
-            </div>
-          {/each}
+  {#if showForm && (userRole === "admin" || userRole === "owner")}
+    <div class="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">New Attestation</h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="att-fw">Framework</label>
+          <select id="att-fw" bind:value={formFramework}
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+            {#each FRAMEWORKS as fw}<option value={fw}>{fw}</option>{/each}
+          </select>
         </div>
-      </CardContent>
-    </Card>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="att-ctrl">Control ID <span class="text-red-500">*</span></label>
+          <input id="att-ctrl" type="text" bind:value={formControlId} placeholder="e.g. CC6.1 or A.9.2.4"
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="att-key">
+            Attestation key <span class="text-red-500">*</span>
+            <span class="text-gray-400 font-normal text-xs">(unique per tenant while active)</span>
+          </label>
+          <input id="att-key" type="text" bind:value={formKey} placeholder="e.g. soc2-access-review-2026-q1"
+            class="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="att-stmt">
+            Statement <span class="text-red-500">*</span>
+          </label>
+          <textarea id="att-stmt" rows="4" bind:value={formStatement}
+            placeholder="e.g. Access reviews for all privileged users were completed on 2026-03-28. No unauthorized privileged access was found. Findings logged in audit-202603.pdf."
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white"></textarea>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="att-valid">
+            Valid until <span class="text-gray-400 font-normal text-xs">(optional)</span>
+          </label>
+          <input id="att-valid" type="date" bind:value={formValidUntil}
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+        </div>
+      </div>
+      {#if formError}
+        <p class="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p>
+      {/if}
+      <div class="mt-4 flex gap-2 justify-end">
+        <button on:click={() => (showForm = false)}
+          class="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+          Cancel
+        </button>
+        <button on:click={createAttestation}
+          disabled={submitting || !formControlId.trim() || !formKey.trim() || !formStatement.trim()}
+          class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md font-medium">
+          {submitting ? "Signing..." : "Sign Attestation"}
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  {#if loading}
+    <div class="space-y-2">
+      {#each [1, 2, 3] as _}<div class="h-16 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>{/each}
+    </div>
+  {:else if error}
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+      <p class="text-red-800 dark:text-red-300">{error}</p>
+      <button on:click={load} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+    </div>
+  {:else if items.length === 0}
+    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center">
+      <p class="text-gray-500 dark:text-gray-400 text-sm">No attestations</p>
+      <p class="mt-1 text-gray-400 dark:text-gray-500 text-xs">
+        {userRole === "admin" || userRole === "owner"
+          ? "Click New Attestation to sign your first."
+          : "Admin or owner role required to sign attestations."}
+      </p>
+    </div>
+  {:else}
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <th class="px-5 py-3 font-medium">Framework</th>
+              <th class="px-5 py-3 font-medium">Control</th>
+              <th class="px-5 py-3 font-medium">Key</th>
+              <th class="px-5 py-3 font-medium">Status</th>
+              <th class="px-5 py-3 font-medium">Attested</th>
+              <th class="px-5 py-3 font-medium">By</th>
+              <th class="px-5 py-3 font-medium"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            {#each items as a (a.id)}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+                on:click={() => (expandedId = expandedId === a.id ? null : a.id)}>
+                <td class="px-5 py-3">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {frameworkColor(a.framework)}">
+                    {a.framework}
+                  </span>
+                </td>
+                <td class="px-5 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{a.controlId}</td>
+                <td class="px-5 py-3 font-mono text-xs text-gray-500 dark:text-gray-400 max-w-[200px] truncate">{a.attestationKey}</td>
+                <td class="px-5 py-3">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize {statusClass(a.status)}">
+                    {a.status}
+                  </span>
+                </td>
+                <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs">{relativeTime(a.attestedAt)}</td>
+                <td class="px-5 py-3 text-xs text-gray-700 dark:text-gray-300">{a.attestedByName ?? a.attestedByEmail ?? "—"}</td>
+                <td class="px-5 py-3 text-right">
+                  {#if a.status === "active" && (userRole === "admin" || userRole === "owner")}
+                    <button type="button" on:click|stopPropagation={() => revokeAttestation(a.id)}
+                      class="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 font-medium">
+                      Revoke
+                    </button>
+                  {/if}
+                </td>
+              </tr>
+              {#if expandedId === a.id}
+                <tr class="bg-gray-50 dark:bg-gray-700/30">
+                  <td colspan="7" class="px-5 py-4">
+                    <div class="space-y-2 text-xs">
+                      <div><span class="font-semibold text-gray-500 uppercase">Statement:</span>
+                        <p class="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{a.statement}</p>
+                      </div>
+                      <dl class="flex flex-wrap gap-x-8 gap-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <div><dt class="font-semibold text-gray-400 uppercase">ID</dt><dd class="font-mono mt-0.5 text-gray-700 dark:text-gray-300">{a.id}</dd></div>
+                        <div><dt class="font-semibold text-gray-400 uppercase">Attested</dt><dd class="mt-0.5 text-gray-700 dark:text-gray-300">{new Date(a.attestedAt).toLocaleString()}</dd></div>
+                        {#if a.validUntil}<div><dt class="font-semibold text-gray-400 uppercase">Valid until</dt><dd class="mt-0.5 text-gray-700 dark:text-gray-300">{new Date(a.validUntil).toLocaleDateString()}</dd></div>{/if}
+                        {#if a.revokedAt}
+                          <div><dt class="font-semibold text-red-500 uppercase">Revoked</dt><dd class="mt-0.5 text-red-700 dark:text-red-300">{new Date(a.revokedAt).toLocaleString()}</dd></div>
+                          {#if a.revocationReason}<div><dt class="font-semibold text-red-500 uppercase">Reason</dt><dd class="mt-0.5 text-red-700 dark:text-red-300">{a.revocationReason}</dd></div>{/if}
+                        {/if}
+                      </dl>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </div>
   {/if}
 </div>
