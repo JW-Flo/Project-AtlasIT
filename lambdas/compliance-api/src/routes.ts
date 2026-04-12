@@ -88,6 +88,74 @@ function sha256(content: string): string {
 }
 
 /**
+ * Render a shields.io-style SVG badge: "[label] | [value]".
+ * Sized + styled to match the de facto README-badge convention so it drops
+ * into GitHub READMEs, marketing sites, and Slack unfurls with no fuss.
+ */
+function renderBadge(
+  label: string,
+  value: string,
+  valueBg: string,
+  style: "flat" | "for-the-badge",
+): string {
+  // Approximate char widths in Verdana 11px to size the pill correctly.
+  // Real text measurement would need a font metrics table; this is close enough.
+  const charWidth = 7;
+  const padding = 12;
+  const labelW = label.length * charWidth + padding;
+  const valueW = value.length * charWidth + padding;
+  const totalW = labelW + valueW;
+  const h = style === "for-the-badge" ? 28 : 20;
+  const fontSize = style === "for-the-badge" ? 10 : 11;
+  const textTransform = style === "for-the-badge" ? 'letter-spacing="1.2" font-weight="bold"' : "";
+  const displayLabel = style === "for-the-badge" ? label.toUpperCase() : label;
+  const displayValue = style === "for-the-badge" ? value.toUpperCase() : value;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${h}" role="img" aria-label="${escapeXml(label)}: ${escapeXml(value)}">
+  <title>${escapeXml(label)}: ${escapeXml(value)}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r"><rect width="${totalW}" height="${h}" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${labelW}" height="${h}" fill="#555"/>
+    <rect x="${labelW}" width="${valueW}" height="${h}" fill="${valueBg}"/>
+    <rect width="${totalW}" height="${h}" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="${fontSize}" ${textTransform}>
+    <text x="${labelW / 2}" y="${h / 2 + fontSize / 3}" fill="#010101" fill-opacity=".3">${escapeXml(displayLabel)}</text>
+    <text x="${labelW / 2}" y="${h / 2 + fontSize / 3 - 1}">${escapeXml(displayLabel)}</text>
+    <text x="${labelW + valueW / 2}" y="${h / 2 + fontSize / 3}" fill="#010101" fill-opacity=".3">${escapeXml(displayValue)}</text>
+    <text x="${labelW + valueW / 2}" y="${h / 2 + fontSize / 3 - 1}">${escapeXml(displayValue)}</text>
+  </g>
+</svg>`;
+}
+
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function svgBadgeResponse(svg: string): APIGatewayProxyResultV2 {
+  return {
+    statusCode: 200,
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      // Short cache — scores refresh with each evaluation. 5 min is a fair tradeoff
+      // between CDN efficiency and freshness for marketing-page embeds.
+      "Cache-Control": "public, max-age=300, s-maxage=300",
+      "Access-Control-Allow-Origin": "*",
+    },
+    body: svg,
+  };
+}
+
+/**
  * Hybrid CDT evaluator.
  *
  * The 64 CDT rule functions were designed for structured events with explicit
@@ -179,6 +247,73 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       timestamp: new Date().toISOString(),
       requestId,
     });
+  }
+
+  // ── Public trust center badge (SVG) — embeds anywhere, no auth, no JS ─────
+  // GET /api/v1/trust/:slug/badge.svg — shields.io-style SVG showing the score.
+  // Query params: ?framework=SOC2|ISO27001|NIST_CSF|HIPAA|GDPR  → per-framework score
+  //               ?style=flat|for-the-badge                     → visual style
+  {
+    const bm = path.match(/^\/api\/v1\/trust\/([a-z0-9-]+)\/badge\.svg$/);
+    if (bm && method === "GET") {
+      const slug = bm[1];
+      const frameworkParam = qs.framework ?? null;
+      const style = qs.style === "for-the-badge" ? "for-the-badge" : "flat";
+      const pool = getPool();
+      try {
+        const tRow = await pool.query(
+          `SELECT id, config FROM tenants WHERE slug = $1 OR id = $1 LIMIT 1`,
+          [slug],
+        );
+        if (tRow.rows.length === 0) {
+          return svgBadgeResponse(renderBadge("compliance", "not found", "#9e9e9e", style));
+        }
+        const cfg = (tRow.rows[0].config ?? {}) as Record<string, unknown>;
+        if (!cfg.trust_center_public) {
+          return svgBadgeResponse(renderBadge("compliance", "private", "#9e9e9e", style));
+        }
+        const tenantId = tRow.rows[0].id as string;
+
+        let label = "compliance";
+        let score = 0;
+        let totalControls = 0;
+        let totalPass = 0;
+        if (frameworkParam) {
+          const fr = await pool.query(
+            `SELECT p.controls_count::int as "controlCount", tcp.pass_count as "passCount"
+             FROM compliance_packs p
+             INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
+             WHERE tcp.tenant_id = $1 AND p.framework_id = $2
+             LIMIT 1`,
+            [tenantId, frameworkParam],
+          );
+          if (fr.rows.length === 0) {
+            return svgBadgeResponse(
+              renderBadge(String(frameworkParam).toLowerCase(), "n/a", "#9e9e9e", style),
+            );
+          }
+          totalControls = fr.rows[0].controlCount ?? 0;
+          totalPass = fr.rows[0].passCount ?? 0;
+          label = String(frameworkParam).toLowerCase().replace("_", " ");
+        } else {
+          const aggregate = await pool.query(
+            `SELECT SUM(p.controls_count::int) as total, SUM(tcp.pass_count) as pass
+             FROM compliance_packs p
+             INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
+             WHERE tcp.tenant_id = $1`,
+            [tenantId],
+          );
+          totalControls = parseInt(aggregate.rows[0]?.total ?? "0", 10);
+          totalPass = parseInt(aggregate.rows[0]?.pass ?? "0", 10);
+        }
+        score = totalControls > 0 ? Math.round((totalPass * 100) / totalControls) : 0;
+        const color = score >= 80 ? "#4c1" : score >= 50 ? "#dfb317" : "#e05d44";
+        return svgBadgeResponse(renderBadge(label, `${score}%`, color, style));
+      } catch (e) {
+        console.error("[compliance-api] trust.badge.error", { error: (e as Error).message, slug });
+        return svgBadgeResponse(renderBadge("compliance", "error", "#9e9e9e", style));
+      }
+    }
   }
 
   // ── Public trust center (Phase 9) — no auth required ───────────────────────
