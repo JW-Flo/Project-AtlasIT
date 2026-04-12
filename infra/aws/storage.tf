@@ -91,6 +91,21 @@ resource "aws_s3_bucket_versioning" "policies" {
   versioning_configuration { status = "Enabled" }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "policies" {
+  bucket = aws_s3_bucket.policies.id
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    filter {}
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 resource "aws_s3_bucket" "artifacts" {
   bucket = "atlasit-artifacts-${var.env}-${var.account_id}"
 }
@@ -100,9 +115,36 @@ resource "aws_s3_bucket_versioning" "artifacts" {
   versioning_configuration { status = "Enabled" }
 }
 
+resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
+  bucket = aws_s3_bucket.artifacts.id
+  rule {
+    id     = "expire-noncurrent-versions"
+    status = "Enabled"
+    filter {}
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 # Console SPA static assets
 resource "aws_s3_bucket" "console" {
   bucket = "atlasit-console-${var.env}-${var.account_id}"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "console" {
+  bucket = aws_s3_bucket.console.id
+  rule {
+    id     = "cleanup-old-deploys"
+    status = "Enabled"
+    filter {}
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "console_oac" {

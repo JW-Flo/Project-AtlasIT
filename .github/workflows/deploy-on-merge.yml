@@ -746,6 +746,29 @@ jobs:
               --zip-file "fileb:///tmp/${FUNC}.zip" \
               --publish || echo "::warning::Failed to deploy ${FUNC}"
           done
+      - name: Prune old Lambda versions (keep last 5)
+        run: |
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          for dir in lambdas/*/; do
+            FUNC=$(basename "$dir")
+            FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
+            # List versions except $LATEST, sorted numerically descending, skip top 5, delete rest
+            aws lambda list-versions-by-function \
+              --function-name "$FUNCTION_NAME" \
+              --query 'Versions[?Version!=`$LATEST`].Version' \
+              --output text 2>/dev/null \
+              | tr '\t' '\n' \
+              | sort -rn \
+              | tail -n +6 \
+              | while read VER; do
+                  [ -z "$VER" ] && continue
+                  echo "Deleting ${FUNCTION_NAME}:${VER}"
+                  aws lambda delete-function \
+                    --function-name "$FUNCTION_NAME" \
+                    --qualifier "$VER" 2>/dev/null || true
+                done
+          done
+
       - name: Health check
         run: |
           API_URL=$(aws ssm get-parameter --name "/atlasit/dev/api-gateway-url" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
