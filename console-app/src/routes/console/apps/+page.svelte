@@ -1,550 +1,230 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import {
-    integrations as allIntegrations,
-    iconMap,
-    type Integration,
-    type CredentialField,
-  } from "$lib/data/integrations";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Label from "$lib/components/ui/label.svelte";
-  import Dialog from "$lib/components/ui/dialog.svelte";
-  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Settings, Trash2, Plus, ArrowRight, ShoppingBag } from "lucide-svelte";
 
-  interface ConnectedApp extends Integration {
-    connectedAt?: string;
-    lastSync?: string;
-    healthy?: boolean;
-  }
-
-  interface GroupAssignment {
+  interface Integration {
     id: string;
-    group_id: string;
-    group_name: string;
+    provider: string;
+    type: string;
+    status: string;
     created_at: string;
+    updated_at: string;
   }
 
-  interface RoleMapping {
-    id: string;
-    source_role: string;
-    target_role: string;
-    created_at: string;
-  }
-
-  let apps: ConnectedApp[] = [];
+  let integrations: Integration[] = [];
   let loading = true;
+  let error: string | null = null;
+  let filter: "all" | "active" | "inactive" | "error" = "all";
 
-  // Tab state
-  $: activeTab = $page.url.searchParams.get("tab") || "connected";
-  $: selectedAppId = $page.url.searchParams.get("app") || "";
-
-  function setTab(tab: string) {
-    const url = new URL($page.url);
-    url.searchParams.set("tab", tab);
-    if (tab === "connected") {
-      url.searchParams.delete("app");
-    }
-    goto(url.toString(), { replaceState: true, noScroll: true });
-  }
-
-  function selectApp(appId: string) {
-    const url = new URL($page.url);
-    url.searchParams.set("app", appId);
-    goto(url.toString(), { replaceState: true, noScroll: true });
-  }
-
-  // Edit modal state
-  let editApp: ConnectedApp | null = null;
-  let editOpen = false;
-  let editValues: Record<string, string> = {};
-  let editLoading = false;
-  let testLoading = false;
-  let testResult: { ok: boolean; message: string } | null = null;
-
-  // Groups state
-  let groups: GroupAssignment[] = [];
-  let groupsLoading = false;
-  let newGroupId = "";
-  let newGroupName = "";
-
-  // Roles state
-  let roles: RoleMapping[] = [];
-  let rolesLoading = false;
-  let newSourceRole = "";
-  let newTargetRole = "";
-
-  onMount(async () => {
+  async function loadIntegrations() {
     loading = true;
+    error = null;
     try {
-      const res = await fetch("/api/apps/status");
-      if (res.ok) {
-        const data: any = await res.json();
-        const statusApps: any[] = data.applications || [];
-        const connected: Record<string, any> = {};
-        for (const sa of statusApps) {
-          if (sa.connected) connected[sa.id] = sa;
-        }
-        apps = allIntegrations
-          .filter((i) => connected[i.id])
-          .map((i) => ({
-            ...i,
-            connected: true,
-            connectedAt: connected[i.id]?.connectedAt,
-            lastSync: connected[i.id]?.lastSync,
-            healthy: connected[i.id]?.healthy ?? true,
-          }));
+      const res = await fetch("/api/v1/apps/integrations");
+      if (!res.ok) {
+        error = `Failed to load integrations (HTTP ${res.status})`;
+        return;
       }
-    } catch {
-      apps = allIntegrations.filter((i) => i.connected).map((i) => ({ ...i }));
+      const result = await res.json();
+      integrations = result.data?.items ?? [];
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      loading = false;
     }
-    loading = false;
+  }
+
+  onMount(() => {
+    loadIntegrations();
   });
 
-  // Fetch groups/roles when app or tab changes
-  $: if (selectedAppId && activeTab === "groups") fetchGroups(selectedAppId);
-  $: if (selectedAppId && activeTab === "roles") fetchRoles(selectedAppId);
+  $: filtered = integrations.filter((i) => {
+    if (filter === "all") return true;
+    if (filter === "active") return i.status === "active";
+    if (filter === "inactive") return i.status === "inactive" || i.status === "disabled";
+    if (filter === "error") return i.status === "error" || i.status === "failed";
+    return true;
+  });
 
-  async function fetchGroups(appId: string) {
-    groupsLoading = true;
-    try {
-      const res = await fetch(`/api/apps/${appId}/groups`);
-      if (res.ok) {
-        const data = await res.json();
-        groups = data.groups || [];
-      } else {
-        groups = [];
-      }
-    } catch {
-      groups = [];
+  $: totalCount = integrations.length;
+  $: activeCount = integrations.filter((i) => i.status === "active").length;
+  $: inactiveCount = integrations.filter(
+    (i) => i.status === "inactive" || i.status === "disabled",
+  ).length;
+
+  function relativeTime(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    const mins = Math.floor(ms / 60000);
+    return `${mins}m ago`;
+  }
+
+  function statusBadgeClass(status: string): string {
+    switch (status) {
+      case "active":
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+      case "inactive":
+      case "disabled":
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+      case "error":
+      case "failed":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+      default:
+        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
     }
-    groupsLoading = false;
   }
 
-  async function addGroup() {
-    if (!selectedAppId || !newGroupId || !newGroupName) return;
-    await fetch(`/api/apps/${selectedAppId}/groups`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ groupId: newGroupId, groupName: newGroupName }),
-    });
-    newGroupId = "";
-    newGroupName = "";
-    await fetchGroups(selectedAppId);
-    pushToast({ message: "Group assignment added", variant: "success" });
-  }
-
-  async function removeGroup(groupId: string) {
-    if (!selectedAppId) return;
-    await fetch(`/api/apps/${selectedAppId}/groups/${encodeURIComponent(groupId)}`, { method: "DELETE" });
-    groups = groups.filter((g) => g.group_id !== groupId);
-    pushToast({ message: "Group assignment removed", variant: "info" });
-  }
-
-  async function fetchRoles(appId: string) {
-    rolesLoading = true;
-    try {
-      const res = await fetch(`/api/apps/${appId}/roles`);
-      if (res.ok) {
-        const data = await res.json();
-        roles = data.roles || [];
-      } else {
-        roles = [];
-      }
-    } catch {
-      roles = [];
-    }
-    rolesLoading = false;
-  }
-
-  async function addRole() {
-    if (!selectedAppId || !newSourceRole || !newTargetRole) return;
-    await fetch(`/api/apps/${selectedAppId}/roles`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sourceRole: newSourceRole, targetRole: newTargetRole }),
-    });
-    newSourceRole = "";
-    newTargetRole = "";
-    await fetchRoles(selectedAppId);
-    pushToast({ message: "Role mapping added", variant: "success" });
-  }
-
-  async function removeRole(sourceRole: string) {
-    if (!selectedAppId) return;
-    await fetch(`/api/apps/${selectedAppId}/roles/${encodeURIComponent(sourceRole)}`, { method: "DELETE" });
-    roles = roles.filter((r) => r.source_role !== sourceRole);
-    pushToast({ message: "Role mapping removed", variant: "info" });
-  }
-
-  // Credential editing
-  function openEdit(app: ConnectedApp) {
-    editApp = app;
-    editValues = {};
-    testResult = null;
-    editOpen = true;
-  }
-
-  async function testConnection() {
-    if (!editApp) return;
-    testLoading = true;
-    testResult = null;
-    try {
-      const res = await fetch("/api/apps/test", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ appId: editApp.id }),
-      });
-      if (res.ok) {
-        const data: any = await res.json();
-        testResult = { ok: data.healthy !== false, message: data.message || "Connection successful" };
-      } else {
-        const errData: any = await res.json().catch(() => null);
-        testResult = {
-          ok: false,
-          message: errData?.error || errData?.message || `Test failed (${res.status}). Verify your credentials are correct and the app's API is accessible.`,
-        };
-      }
-    } catch {
-      testResult = { ok: false, message: "Connection test unavailable. The adapter for this app may not be deployed yet." };
-    }
-    testLoading = false;
-  }
-
-  async function saveCredentials() {
-    if (!editApp) return;
-    editLoading = true;
-    const credentials: Record<string, string> = {};
-    for (const [k, v] of Object.entries(editValues)) {
-      if (v.trim()) credentials[k] = v;
-    }
-    try {
-      const res = await fetch("/api/apps/credentials", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ appId: editApp.id, credentials }),
-      });
-      pushToast({ message: `${editApp.name} credentials updated`, variant: res.ok ? "success" : "info" });
-    } catch {
-      pushToast({ message: `${editApp.name} credentials saved locally`, variant: "info" });
-    }
-    editLoading = false;
-    editOpen = false;
-  }
-
-  async function disconnectApp(app: ConnectedApp) {
-    try {
-      await fetch("/api/apps/disconnect", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ appId: app.id }),
-      });
-    } catch { /* continue locally */ }
-    apps = apps.filter((a) => a.id !== app.id);
-    pushToast({ message: `${app.name} disconnected`, variant: "info" });
-  }
-
-  function authLabel(auth: string): string {
-    if (auth === "platform_oauth" || auth === "tenant_oauth") return "OAuth 2.0";
-    if (auth === "api_key") return "API Key";
-    if (auth === "service_account") return "Service Account";
-    return auth;
-  }
-
-  const tabs = [
-    { id: "connected", label: "Connected" },
-    { id: "groups", label: "Groups" },
-    { id: "roles", label: "Role Mappings" },
+  const filterOptions: { label: string; value: typeof filter }[] = [
+    { label: "All", value: "all" },
+    { label: "Active", value: "active" },
+    { label: "Inactive", value: "inactive" },
+    { label: "Error", value: "error" },
   ];
 </script>
 
-<div class="space-y-6">
-  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+<div class="p-8 max-w-7xl mx-auto">
+  <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Apps</h1>
-      <p class="text-sm text-muted-foreground">
-        Manage connected applications, group assignments, and role mappings
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Connected Apps</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Manage your tenant's connected integrations
       </p>
     </div>
-    <a href="/console/marketplace" class="shrink-0">
-      <Button variant="outline">
-        <ShoppingBag class="h-4 w-4 mr-1.5" />
-        Browse Marketplace
-      </Button>
+    <a
+      href="/console/marketplace"
+      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+    >
+      Connect App
     </a>
   </div>
 
-  <!-- Tab navigation -->
-  <div class="flex gap-1 border-b">
-    {#each tabs as tab}
-      <button
-        type="button"
-        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === tab.id
-          ? 'text-foreground border-b-2 border-primary'
-          : 'text-muted-foreground hover:text-foreground'}"
-        on:click={() => setTab(tab.id)}
-      >
-        {tab.label}
-      </button>
-    {/each}
-  </div>
-
   {#if loading}
-    <div class="space-y-3">
-      {#each [1, 2, 3] as _}
-        <Skeleton class="h-16 rounded-lg" />
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {#each Array(3) as _}
+        <div class="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+      {/each}
+    </div>
+    <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+  {:else if error}
+    <div
+      class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+    >
+      <p class="text-red-800 dark:text-red-300">{error}</p>
+      <button
+        on:click={loadIntegrations}
+        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+      >
+        Retry
+      </button>
+    </div>
+  {:else}
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+      >
+        <div class="text-sm text-gray-500 dark:text-gray-400">Total</div>
+        <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{totalCount}</div>
+      </div>
+      <div
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+      >
+        <div class="text-sm text-gray-500 dark:text-gray-400">Active</div>
+        <div class="mt-1 text-3xl font-bold text-green-600">{activeCount}</div>
+      </div>
+      <div
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+      >
+        <div class="text-sm text-gray-500 dark:text-gray-400">Inactive</div>
+        <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{inactiveCount}</div>
+      </div>
+    </div>
+
+    <!-- Filter pills -->
+    <div class="flex gap-2 mb-4 flex-wrap">
+      {#each filterOptions as opt}
+        <button
+          type="button"
+          on:click={() => (filter = opt.value)}
+          class="px-3 py-1.5 rounded-full text-sm font-medium transition-colors {filter === opt.value
+            ? 'bg-blue-600 text-white'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
+        >
+          {opt.label}
+        </button>
       {/each}
     </div>
 
-  {:else if activeTab === "connected"}
-    <!-- Connected Apps -->
-    {#if apps.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-10 text-center">
-          <ShoppingBag class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
-          <p class="text-lg font-semibold mb-1">No connected apps</p>
-          <p class="text-sm text-muted-foreground mb-5">Connect applications from the Marketplace to get started.</p>
-          <a href="/console/marketplace"><Button>Browse Marketplace</Button></a>
-        </CardContent>
-      </Card>
-    {:else}
-      <div class="space-y-2">
-        {#each apps as app}
-          <Card>
-            <CardContent class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div class="flex items-center gap-3 min-w-0">
-                <div class="w-9 h-9 rounded flex items-center justify-center bg-primary/10">
-                  <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[app.category] || iconMap.productivity} />
-                  </svg>
-                </div>
-                <div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium">{app.name}</span>
-                    <span class="w-2 h-2 rounded-full {app.healthy !== false ? 'bg-green-500' : 'bg-destructive'}"></span>
-                  </div>
-                  <div class="text-xs text-muted-foreground">
-                    {authLabel(app.auth)}{#if app.credentialFields.length > 0} &middot; {app.credentialFields.length} field{app.credentialFields.length !== 1 ? "s" : ""}{/if}
-                    {#if app.connectedAt}
-                      &middot; Connected {new Date(app.connectedAt).toLocaleDateString()}
-                    {/if}
-                  </div>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <Button variant="outline" size="sm" on:click={() => openEdit(app)}>
-                  <Settings class="h-3 w-3 mr-1" />
-                  Edit
-                </Button>
-                <Button variant="destructive" size="sm" on:click={() => disconnectApp(app)}>
-                  Disconnect
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        {/each}
-      </div>
-    {/if}
-
-  {:else if activeTab === "groups" || activeTab === "roles"}
-    <!-- Groups / Roles with app selector -->
-    <div class="flex flex-col md:flex-row gap-4 md:gap-6">
-      <!-- App sidebar -->
-      <div class="md:w-56 shrink-0">
-        <p class="text-xs font-medium text-muted-foreground mb-2">Select App</p>
-        {#if apps.length === 0}
-          <p class="text-xs text-muted-foreground">No connected apps</p>
-        {:else}
-          <div class="space-y-1">
-            {#each apps as app}
-              <button
-                type="button"
-                class="w-full text-left flex items-center gap-2 px-3 py-2 rounded text-sm transition-colors {selectedAppId === app.id
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'}"
-                on:click={() => selectApp(app.id)}
+    <!-- Table -->
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      {#if filtered.length === 0}
+        <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+          {#if integrations.length === 0}
+            <p class="text-base font-medium mb-2">No apps connected</p>
+            <p class="text-sm mb-4">Click Connect App to get started.</p>
+            <a
+              href="/console/marketplace"
+              class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+            >
+              Connect App
+            </a>
+          {:else}
+            No integrations match the selected filter.
+          {/if}
+        </div>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr
+                class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
               >
-                <span class="w-2 h-2 rounded-full shrink-0 {app.healthy !== false ? 'bg-green-500' : 'bg-destructive'}"></span>
-                {app.name}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <!-- Content -->
-      <div class="flex-1 min-w-0">
-        {#if !selectedAppId && apps.length > 0}
-          <div class="text-center py-12 text-muted-foreground">
-            <p class="text-sm">Select an app to manage {activeTab === "groups" ? "group assignments" : "role mappings"}</p>
-          </div>
-        {:else if !selectedAppId}
-          <div class="text-center py-12 text-muted-foreground">
-            <p class="text-sm mb-3">No connected apps to manage {activeTab === "groups" ? "group assignments" : "role mappings"}</p>
-            <a href="/console/marketplace"><Button variant="outline" size="sm">Browse Marketplace</Button></a>
-          </div>
-        {:else if activeTab === "groups"}
-          <!-- Groups tab -->
-          <div class="space-y-4">
-            <h2 class="text-sm font-semibold">
-              Group Assignments -- {apps.find((a) => a.id === selectedAppId)?.name}
-            </h2>
-
-            <!-- Add form -->
-            <div class="flex flex-col sm:flex-row gap-2">
-              <Input type="text" bind:value={newGroupId} placeholder="Group ID" class="sm:flex-1" />
-              <Input type="text" bind:value={newGroupName} placeholder="Display Name" class="sm:flex-1" />
-              <Button class="shrink-0" on:click={addGroup} disabled={!newGroupId || !newGroupName}>
-                <Plus class="h-4 w-4 mr-1" />
-                Add
-              </Button>
-            </div>
-
-            <!-- Table -->
-            {#if groupsLoading}
-              <Skeleton class="h-32 rounded-lg" />
-            {:else if groups.length === 0}
-              <p class="text-xs text-muted-foreground py-4">No group assignments yet</p>
-            {:else}
-              <Card>
-                <CardContent class="p-0">
-                  <table class="w-full text-sm">
-                    <thead>
-                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                        <th class="px-4 py-2 font-medium">Group ID</th>
-                        <th class="px-4 py-2 font-medium">Name</th>
-                        <th class="px-4 py-2 font-medium">Added</th>
-                        <th class="px-4 py-2 font-medium text-right"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each groups as group}
-                        <tr class="border-t hover:bg-muted/50">
-                          <td class="px-4 py-2.5 font-mono">{group.group_id}</td>
-                          <td class="px-4 py-2.5">{group.group_name}</td>
-                          <td class="px-4 py-2.5 text-xs text-muted-foreground">{new Date(group.created_at).toLocaleDateString()}</td>
-                          <td class="px-4 py-2.5 text-right">
-                            <Button variant="ghost" size="sm" on:click={() => removeGroup(group.group_id)}>
-                              <Trash2 class="h-3 w-3 text-destructive" />
-                            </Button>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
-            {/if}
-          </div>
-
-        {:else if activeTab === "roles"}
-          <!-- Roles tab -->
-          <div class="space-y-4">
-            <h2 class="text-sm font-semibold">
-              Role Mappings -- {apps.find((a) => a.id === selectedAppId)?.name}
-            </h2>
-
-            <!-- Add form -->
-            <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Input type="text" bind:value={newSourceRole} placeholder="Source Role (e.g. Admin)" class="sm:flex-1" />
-              <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0 hidden sm:block" />
-              <Input type="text" bind:value={newTargetRole} placeholder="Target Role (e.g. Owner)" class="sm:flex-1" />
-              <Button class="shrink-0" on:click={addRole} disabled={!newSourceRole || !newTargetRole}>
-                <Plus class="h-4 w-4 mr-1" />
-                Add
-              </Button>
-            </div>
-
-            <!-- Table -->
-            {#if rolesLoading}
-              <Skeleton class="h-32 rounded-lg" />
-            {:else if roles.length === 0}
-              <p class="text-xs text-muted-foreground py-4">No role mappings yet</p>
-            {:else}
-              <Card>
-                <CardContent class="p-0">
-                  <table class="w-full text-sm">
-                    <thead>
-                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                        <th class="px-4 py-2 font-medium">Source Role</th>
-                        <th class="px-4 py-2 font-medium"></th>
-                        <th class="px-4 py-2 font-medium">Target Role</th>
-                        <th class="px-4 py-2 font-medium">Added</th>
-                        <th class="px-4 py-2 font-medium text-right"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each roles as role}
-                        <tr class="border-t hover:bg-muted/50">
-                          <td class="px-4 py-2.5 font-mono">{role.source_role}</td>
-                          <td class="px-4 py-2.5 text-xs text-muted-foreground">&rarr;</td>
-                          <td class="px-4 py-2.5 font-mono text-primary">{role.target_role}</td>
-                          <td class="px-4 py-2.5 text-xs text-muted-foreground">{new Date(role.created_at).toLocaleDateString()}</td>
-                          <td class="px-4 py-2.5 text-right">
-                            <Button variant="ghost" size="sm" on:click={() => removeRole(role.source_role)}>
-                              <Trash2 class="h-3 w-3 text-destructive" />
-                            </Button>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
-            {/if}
-          </div>
-        {/if}
-      </div>
+                <th class="px-6 py-3">Provider</th>
+                <th class="px-6 py-3">Type</th>
+                <th class="px-6 py-3">Status</th>
+                <th class="px-6 py-3">Connected</th>
+                <th class="px-6 py-3">Last Sync</th>
+                <th class="px-6 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+              {#each filtered as integration (integration.id)}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <td class="px-6 py-4 font-medium text-gray-900 dark:text-white capitalize">
+                    {integration.provider}
+                  </td>
+                  <td class="px-6 py-4 text-gray-600 dark:text-gray-300 capitalize">
+                    {integration.type}
+                  </td>
+                  <td class="px-6 py-4">
+                    <span
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize {statusBadgeClass(integration.status)}"
+                    >
+                      {integration.status}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                    {relativeTime(integration.created_at)}
+                  </td>
+                  <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                    {relativeTime(integration.updated_at)}
+                  </td>
+                  <td class="px-6 py-4 text-right">
+                    <a
+                      href="/console/marketplace?provider={integration.provider}"
+                      class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+                    >
+                      Manage
+                    </a>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
-
-<!-- Edit Credentials Modal -->
-<Dialog open={editOpen} onClose={() => editOpen = false} title="{editApp?.name || ''} -- Credentials">
-  {#if editApp}
-    {#if editApp.credentialFields.length > 0}
-      <div class="space-y-3 mb-4">
-        {#each editApp.credentialFields as field}
-          <div class="space-y-1.5">
-            <Label>
-              {field.label}{field.required ? " *" : ""}
-            </Label>
-            <Input
-              type={field.type === "password" ? "password" : "text"}
-              bind:value={editValues[field.key]}
-              placeholder="(unchanged)"
-            />
-            {#if field.helpText}
-              <p class="text-xs text-muted-foreground">{field.helpText}</p>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <p class="text-xs text-muted-foreground mb-4">This app uses OAuth. No manual credentials needed.</p>
-    {/if}
-
-    {#if testResult}
-      <div class="mb-3 px-3 py-2 rounded text-xs {testResult.ok ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}">
-        {testResult.message}
-      </div>
-    {/if}
-
-    <DialogFooter>
-      <Button variant="outline" on:click={testConnection} disabled={testLoading}>
-        {testLoading ? "Testing..." : "Test Connection"}
-      </Button>
-      <Button on:click={saveCredentials} disabled={editLoading}>
-        {editLoading ? "Saving..." : "Save Changes"}
-      </Button>
-    </DialogFooter>
-  {/if}
-</Dialog>

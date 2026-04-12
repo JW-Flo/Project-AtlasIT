@@ -1,71 +1,47 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Label from "$lib/components/ui/label.svelte";
-  import {
-    computeCampaignProgress,
-    derivePendingItems,
-    statusLabel,
-    statusVariant,
-    type AccessReviewCampaign,
-  } from "./model";
 
-  interface ConnectedApp {
+  interface AccessReviewCampaign {
     id: string;
-    connected: boolean;
+    name: string;
+    scope: string | null;
+    dueDate: string | null;
+    status: string;
+    totalItems: number;
+    decidedItems: number;
   }
 
-  interface AccessReviewsResponse {
-    campaigns?: AccessReviewCampaign[];
+  interface ListResponse {
+    status: string;
+    data: { items: AccessReviewCampaign[]; total: number };
   }
 
-  let loading = true;
   let campaigns: AccessReviewCampaign[] = [];
-  let connectedApps: ConnectedApp[] = [];
-
+  let loading = true;
+  let error: string | null = null;
   let showForm = false;
-  let creating = false;
+  let submitting = false;
+  let formError = "";
   let formName = "";
   let formDueDate = "";
   let formScope = "";
-  let formResource = "";
-  let formReviewType = "membership";
-  let formError = "";
 
-  let statusUpdatingId: string | null = null;
-
-  async function loadCampaigns() {
+  async function load() {
     loading = true;
-
+    error = null;
     try {
-      const res = await fetch("/api/access-reviews");
+      const res = await fetch("/api/compliance/api/v1/access-reviews");
       if (!res.ok) {
-        campaigns = [];
+        error = `Failed to load campaigns (HTTP ${res.status})`;
         return;
       }
-
-      const data: AccessReviewsResponse = await res.json();
-      campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
-    } catch {
-      campaigns = [];
+      const json: ListResponse = await res.json();
+      campaigns = json.data?.items ?? [];
+    } catch (e) {
+      error = (e as Error).message;
     } finally {
       loading = false;
     }
-  }
-
-  async function loadConnectedApps() {
-    try {
-      const res = await fetch("/api/apps/status");
-      if (res.ok) {
-        const data = await res.json();
-        connectedApps = (data.applications || []).filter((a: any) => a.connected);
-      }
-    } catch {}
   }
 
   async function createCampaign() {
@@ -73,250 +49,201 @@
       formError = "Campaign name is required.";
       return;
     }
-    if (!formResource) {
-      formError = "Select a resource to review.";
-      return;
-    }
-
     formError = "";
-    creating = true;
-
+    submitting = true;
     try {
-      const res = await fetch("/api/access-reviews", {
+      const res = await fetch("/api/compliance/api/v1/access-reviews", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: formName.trim(),
           dueDate: formDueDate || null,
-          scope: formScope.trim() || undefined,
-          resource: formResource,
-          reviewType: formReviewType,
+          scope: formScope.trim() || null,
         }),
       });
-
       if (!res.ok) {
-        const data = await res.json();
-        formError = (data as any).error ?? "Failed to create campaign.";
+        const d = await res.json().catch(() => ({}));
+        formError = (d as { message?: string }).message ?? `Failed (HTTP ${res.status})`;
         return;
       }
-
       formName = "";
       formDueDate = "";
       formScope = "";
-      formResource = "";
-      formReviewType = "membership";
       showForm = false;
-      await loadCampaigns();
-    } catch {
-      formError = "Unexpected error. Please try again.";
+      await load();
+    } catch (e) {
+      formError = (e as Error).message;
     } finally {
-      creating = false;
+      submitting = false;
     }
   }
 
-  async function updateStatus(campaignId: string, status: "active" | "completed") {
-    statusUpdatingId = campaignId;
-
-    try {
-      const res = await fetch(`/api/access-reviews/${campaignId}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-
-      if (!res.ok) return;
-      await loadCampaigns();
-    } catch {
-      // no-op; list retains current state
-    } finally {
-      statusUpdatingId = null;
-    }
+  function formatDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
   }
 
-  function formatDate(value?: string | null): string {
-    if (!value) return "—";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString();
+  function progress(c: AccessReviewCampaign): number {
+    if (!c.totalItems || c.totalItems === 0) return 0;
+    return Math.round((c.decidedItems / c.totalItems) * 100);
   }
 
-  onMount(() => {
-    loadCampaigns();
-    loadConnectedApps();
-  });
+  function statusClass(s: string): string {
+    if (s === "completed")
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+    if (s === "active")
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+  }
+
+  function capitalize(s: string): string {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  onMount(load);
 </script>
 
-<div class="space-y-6">
+<div class="p-8 max-w-7xl mx-auto space-y-6">
+  <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Access Reviews</h1>
-      <p class="text-sm text-muted-foreground">
-        Review campaign status and completion progress across user-to-app entitlements.
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Access Reviews</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Periodically recertify who has access to what across your connected applications.
       </p>
     </div>
-
-    <div class="flex gap-2 shrink-0 self-start sm:self-auto">
-      <Button variant="outline" on:click={loadCampaigns}>Refresh</Button>
-      <Button on:click={() => { showForm = !showForm; formError = ""; }}>
-        {showForm ? "Cancel" : "New Campaign"}
-      </Button>
-    </div>
+    <button
+      on:click={() => { showForm = !showForm; formError = ""; }}
+      class="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+    >
+      {showForm ? "Cancel" : "New Campaign"}
+    </button>
   </div>
 
+  <!-- Inline create form -->
   {#if showForm}
-    <Card>
-      <CardContent class="py-5 space-y-4">
-        <h2 class="text-base font-semibold">New Access Review Campaign</h2>
-
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div class="space-y-1">
-            <Label htmlFor="campaign-name">Campaign Name <span class="text-destructive">*</span></Label>
-            <Input id="campaign-name" type="text" placeholder="Q2 2026 Access Review" bind:value={formName} disabled={creating} />
-          </div>
-
-          <div class="space-y-1">
-            <Label htmlFor="campaign-resource">Resource <span class="text-destructive">*</span></Label>
-            <select
-              id="campaign-resource"
-              bind:value={formResource}
-              disabled={creating}
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">Select application...</option>
-              {#each connectedApps as app}
-                <option value={app.id}>{app.id}</option>
-              {/each}
-            </select>
-          </div>
-
-          <div class="space-y-1">
-            <Label htmlFor="campaign-review-type">Review Type</Label>
-            <select
-              id="campaign-review-type"
-              bind:value={formReviewType}
-              disabled={creating}
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="membership">Membership (who has access)</option>
-              <option value="roles">Roles & Permissions</option>
-              <option value="entitlements">Full Entitlements</option>
-            </select>
-          </div>
-
-          <div class="space-y-1">
-            <Label htmlFor="campaign-due-date">Due Date</Label>
-            <Input id="campaign-due-date" type="date" bind:value={formDueDate} disabled={creating} />
-          </div>
-
-          <div class="space-y-1 lg:col-span-2">
-            <Label htmlFor="campaign-scope">Scope</Label>
-            <Input id="campaign-scope" type="text" placeholder="all users, finance team, engineering…" bind:value={formScope} disabled={creating} />
-          </div>
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-4">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">New Access Review Campaign</h2>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="camp-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Campaign name <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="camp-name"
+            type="text"
+            placeholder="Q2 2026 Access Review"
+            bind:value={formName}
+            disabled={submitting}
+            class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-
-        {#if formError}
-          <p class="text-sm text-destructive">{formError}</p>
-        {/if}
-
-        <div class="flex justify-end">
-          <Button on:click={createCampaign} disabled={creating}>
-            {creating ? "Creating…" : "Create Campaign"}
-          </Button>
+        <div>
+          <label for="camp-due" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Due date
+          </label>
+          <input
+            id="camp-due"
+            type="date"
+            bind:value={formDueDate}
+            disabled={submitting}
+            class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-      </CardContent>
-    </Card>
+        <div>
+          <label for="camp-scope" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Scope
+          </label>
+          <input
+            id="camp-scope"
+            type="text"
+            placeholder="all users, finance team…"
+            bind:value={formScope}
+            disabled={submitting}
+            class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+      {#if formError}
+        <p class="text-sm text-red-600 dark:text-red-400">{formError}</p>
+      {/if}
+      <div class="flex justify-end">
+        <button
+          on:click={createCampaign}
+          disabled={submitting}
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-md"
+        >
+          {submitting ? "Creating…" : "Create Campaign"}
+        </button>
+      </div>
+    </div>
   {/if}
 
+  <!-- Loading -->
   {#if loading}
     <div class="space-y-3">
       {#each [1, 2, 3] as _}
-        <Skeleton class="h-16 rounded-lg" />
+        <div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
       {/each}
     </div>
+  {:else if error}
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+      <p class="text-red-800 dark:text-red-300 text-sm">{error}</p>
+      <button
+        on:click={load}
+        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+      >
+        Retry
+      </button>
+    </div>
   {:else if campaigns.length === 0}
-    <Card class="border-dashed">
-      <CardContent class="py-10 text-center">
-        <p class="text-lg font-semibold mb-1">No access review campaigns yet</p>
-        <p class="text-sm text-muted-foreground">
-          Create a campaign above or let automation generate one.
-        </p>
-      </CardContent>
-    </Card>
+    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg py-16 text-center px-6">
+      <p class="text-gray-900 dark:text-white font-medium">No access review campaigns yet</p>
+      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+        Access reviews let you periodically recertify who has access to what. Create a campaign above to get started.
+      </p>
+    </div>
   {:else}
-    <Card>
-      <CardContent class="p-0">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                <th class="px-4 py-3 font-medium">Campaign</th>
-                <th class="px-4 py-3 font-medium">Status</th>
-                <th class="px-4 py-3 font-medium">Due Date</th>
-                <th class="px-4 py-3 font-medium">Progress</th>
-                <th class="px-4 py-3 font-medium text-right">Actions</th>
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+            <tr class="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <th class="px-4 py-3 font-medium">Name</th>
+              <th class="px-4 py-3 font-medium">Scope</th>
+              <th class="px-4 py-3 font-medium">Due Date</th>
+              <th class="px-4 py-3 font-medium">Progress</th>
+              <th class="px-4 py-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {#each campaigns as c}
+              {@const pct = progress(c)}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{c.name}</td>
+                <td class="px-4 py-3 text-gray-500 dark:text-gray-400">{c.scope ?? "—"}</td>
+                <td class="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {formatDate(c.dueDate)}
+                </td>
+                <td class="px-4 py-3 min-w-[160px]">
+                  <div class="flex items-center gap-2">
+                    <div class="flex-1 h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                      <div class="h-full bg-blue-500 rounded-full" style="width: {pct}%"></div>
+                    </div>
+                    <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {c.decidedItems} / {c.totalItems}
+                    </span>
+                  </div>
+                </td>
+                <td class="px-4 py-3">
+                  <span class={statusClass(c.status)}>{capitalize(c.status)}</span>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {#each campaigns as campaign}
-                {@const progress = computeCampaignProgress(campaign)}
-                {@const pending = derivePendingItems(campaign)}
-                <tr class="border-t hover:bg-muted/50">
-                  <td class="px-4 py-3 align-top">
-                    <div class="font-medium">{campaign.name}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5">Scope: {campaign.scope}</div>
-                  </td>
-
-                  <td class="px-4 py-3 align-top">
-                    <Badge variant={statusVariant(campaign.status)}>{statusLabel(campaign.status)}</Badge>
-                  </td>
-
-                  <td class="px-4 py-3 align-top text-muted-foreground">{formatDate(campaign.dueDate)}</td>
-
-                  <td class="px-4 py-3 align-top min-w-[180px] sm:min-w-[220px]">
-                    <div class="flex items-center justify-between text-xs mb-1">
-                      <span class="text-muted-foreground">{progress}% complete</span>
-                      <span class="text-muted-foreground">{pending} pending</span>
-                    </div>
-                    <div class="h-2 rounded-full bg-muted overflow-hidden">
-                      <div class="h-full bg-primary transition-all" style={`width: ${progress}%`} />
-                    </div>
-                    <div class="text-xs text-muted-foreground mt-1">
-                      {(campaign.approvedItems ?? 0) + (campaign.revokedItems ?? 0)} / {campaign.totalItems ?? 0} reviewed
-                    </div>
-                  </td>
-
-                  <td class="px-4 py-3 align-top text-right">
-                    <div class="flex justify-end gap-2 flex-wrap">
-                      {#if campaign.status === "draft"}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={statusUpdatingId === campaign.id}
-                          on:click={() => updateStatus(campaign.id, "active")}
-                        >
-                          Activate
-                        </Button>
-                      {:else if campaign.status === "active"}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={statusUpdatingId === campaign.id}
-                          on:click={() => updateStatus(campaign.id, "completed")}
-                        >
-                          Complete
-                        </Button>
-                      {/if}
-                      <a href={`/console/access-reviews/${campaign.id}`}>
-                        <Button variant="outline" size="sm">View</Button>
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </div>
   {/if}
 </div>

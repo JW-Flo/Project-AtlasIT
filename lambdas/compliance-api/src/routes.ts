@@ -1734,6 +1734,29 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
+  // ── Access Reviews (placeholder — schema not yet in PG) ────────────────────
+
+  // GET /api/v1/access-reviews — placeholder, returns empty list until schema is added
+  if (path === "/api/v1/access-reviews" && method === "GET") {
+    return ok({
+      status: "success",
+      data: { items: [], total: 0 },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/access-reviews — placeholder
+  if (path === "/api/v1/access-reviews" && method === "POST") {
+    return ok(
+      {
+        status: "success",
+        data: { id: "placeholder", status: "created" },
+        timestamp: new Date().toISOString(),
+      },
+      201,
+    );
+  }
+
   // ── Notifications ───────────────────────────────────────────────────────────
 
   // GET /api/v1/notifications — list notifications for current user
