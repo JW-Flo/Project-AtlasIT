@@ -1,1113 +1,316 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
-  import { integrations } from "$lib/data/integrations";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardHeader from "$lib/components/ui/card-header.svelte";
-  import CardTitle from "$lib/components/ui/card-title.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Label from "$lib/components/ui/label.svelte";
-  import Dialog from "$lib/components/ui/dialog.svelte";
-  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Users, RefreshCw, Sparkles, ChevronLeft, ChevronRight, Link, Check, X, Plus, Trash2, ExternalLink, ScanSearch } from "lucide-svelte";
-
-  // --- Types ---
-  interface SyncStatus {
-    connected: boolean;
-    provider?: string;
-    status?: string;
-    lastSyncAt?: string;
-    userCount?: number;
-    groupCount?: number;
-  }
 
   interface DirectoryUser {
     id: string;
-    name: string;
     email: string;
+    external_id?: string;
     department?: string;
     title?: string;
     status: string;
-    console_user_id?: string;
+    display_name?: string;
+    created_at: string;
   }
 
   interface DirectoryGroup {
     id: string;
     name: string;
     description?: string;
-    memberCount: number;
+    external_id?: string;
+    member_count: number;
   }
 
-  interface Mapping {
-    id: string;
-    groupId: string;
-    groupName: string;
-    appId: string;
-    role: string;
-    suggested: boolean;
+  interface SyncStatus {
+    userCount: number;
+    groupCount: number;
+    connections: Array<{ lastSyncAt?: string }>;
   }
 
-  interface NhiCredential {
-    id: string;
-    name: string;
-    type: string;
-    provider: string;
-    owner?: string;
-    lastUsed?: string;
-    expiry?: string;
-    riskScore: number;
-    status: "active" | "expired" | "revoked" | "rotation_pending";
-  }
-
-  function mapNhiFromApi(raw: Record<string, any>): NhiCredential {
-    return {
-      id: raw.id,
-      name: raw.displayName ?? raw.name ?? raw.display_name ?? "",
-      type: raw.credentialType ?? raw.type ?? raw.credential_type ?? "",
-      provider: raw.provider ?? "",
-      owner: raw.ownerEmail ?? raw.owner ?? raw.owner_email,
-      lastUsed: raw.lastUsedAt ?? raw.lastUsed ?? raw.last_used_at,
-      expiry: raw.expiresAt ?? raw.expiry ?? raw.expires_at,
-      riskScore: raw.riskScore ?? raw.risk_score ?? 0,
-      status: raw.status ?? "active",
-    };
-  }
-
-  // --- State ---
-  let syncStatus: SyncStatus = { connected: false };
   let users: DirectoryUser[] = [];
-  let usersTotal = 0;
   let groups: DirectoryGroup[] = [];
-  let mappings: Mapping[] = [];
+  let syncStatus: SyncStatus | null = null;
+  let loadingUsers = true;
+  let loadingGroups = true;
+  let loadingStatus = true;
+  let errorUsers: string | null = null;
+  let errorGroups: string | null = null;
+  let activeTab: "users" | "groups" = "users";
+  let searchQuery = "";
+  let refreshing = false;
 
-  let nhiCredentials: NhiCredential[] = [];
-  let discoveringNhi = false;
-
-  // NHI search, filters, pagination
-  let nhiSearch = "";
-  let nhiFilterType = "";
-  let nhiFilterProvider = "";
-  let nhiFilterStatus = "";
-  let nhiPage = 0;
-
-  $: filteredNhi = nhiCredentials.filter((n) => {
-    if (nhiSearch) {
-      const q = nhiSearch.toLowerCase();
-      if (
-        !n.name.toLowerCase().includes(q) &&
-        !n.provider.toLowerCase().includes(q) &&
-        !(n.owner || "").toLowerCase().includes(q)
-      ) return false;
-    }
-    if (nhiFilterType && n.type !== nhiFilterType) return false;
-    if (nhiFilterProvider && n.provider !== nhiFilterProvider) return false;
-    if (nhiFilterStatus && n.status !== nhiFilterStatus) return false;
-    return true;
-  });
-
-  $: nhiSearch, nhiFilterType, nhiFilterProvider, nhiFilterStatus, (nhiPage = 0);
-
-  $: pagedNhi = filteredNhi.slice(nhiPage * pageSize, (nhiPage + 1) * pageSize);
-  $: nhiTotalPages = Math.ceil(filteredNhi.length / pageSize);
-
-  $: nhiTypes = [...new Set(nhiCredentials.map((n) => n.type))].sort();
-  $: nhiProviders = [...new Set(nhiCredentials.map((n) => n.provider))].sort();
-
-  let loading = true;
-  let syncing = false;
-  let suggesting = false;
-  let activeTab: "users" | "groups" | "mappings" | "nhi" = "users";
-
-  // Users pagination & search
-  let userSearch = "";
-  let userPage = 0;
-  const pageSize = 20;
-
-  $: filteredUsers = users.filter((u) => {
-    if (!userSearch) return true;
-    const q = userSearch.toLowerCase();
-    return (
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q) ||
-      (u.department || "").toLowerCase().includes(q)
-    );
-  });
-
-  // Reset pagination when search changes
-  $: userSearch, (userPage = 0);
-
-  $: pagedUsers = filteredUsers.slice(userPage * pageSize, (userPage + 1) * pageSize);
-  $: totalPages = Math.ceil(filteredUsers.length / pageSize);
-
-  // Add User dialog state
-  let addUserOpen = false;
-  let addUserLoading = false;
-  let addUserForm = { email: "", displayName: "", department: "", title: "" };
-
-  // Add Group dialog state
-  let addGroupOpen = false;
-  let addGroupLoading = false;
-  let addGroupForm = { name: "", description: "" };
-
-  // Add Mapping dialog state
-  let addMappingOpen = false;
-  let addMappingLoading = false;
-  let addMappingForm = { groupId: "", appId: "", role: "member" };
-  let connectedApps: { appId: string; name: string }[] = [];
-
-  // Inline role editing
-  let editingRoleId: string | null = null;
-  let editingRoleValue = "";
-
-  // Delete confirmation dialog state
-  let deleteOpen = false;
-  let deleteLoading = false;
-  let deleteTarget: { type: "user" | "group"; id: string; name: string } | null = null;
-
-  // --- Data fetching ---
-  async function fetchStatus(): Promise<SyncStatus> {
-    try {
-      const res = await fetch("/api/directory/sync/status");
-      if (res.ok) return await res.json();
-    } catch {}
-    return { connected: false };
+  function relativeTime(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    const mins = Math.floor(ms / 60000);
+    if (mins > 0) return `${mins}m ago`;
+    return "just now";
   }
 
-  async function fetchUsers() {
-    try {
-      const res = await fetch("/api/directory/users?limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        users = (data.users || []).map((u: any) => ({
-          ...u,
-          name: u.displayName || u.display_name || u.name || u.email,
-        }));
-        usersTotal = data.total || users.length;
-      }
-    } catch {}
+  function lastSynced(): string {
+    if (!syncStatus?.connections?.length) return "never";
+    const dates = syncStatus.connections
+      .filter((c) => c.lastSyncAt)
+      .map((c) => new Date(c.lastSyncAt!).getTime());
+    if (!dates.length) return "never";
+    return relativeTime(new Date(Math.max(...dates)).toISOString());
   }
 
-  async function fetchGroups() {
+  async function loadUsers() {
+    loadingUsers = true;
+    errorUsers = null;
     try {
-      const res = await fetch("/api/directory/groups");
-      if (res.ok) {
-        const data = await res.json();
-        groups = data.groups || [];
-      }
-    } catch {}
-  }
-
-  async function fetchMappings() {
-    try {
-      const res = await fetch("/api/directory/mappings");
-      if (res.ok) {
-        const data = await res.json();
-        mappings = data.mappings || [];
-      }
-    } catch {}
-  }
-
-  let nhiFetchError = "";
-
-  async function fetchNhi() {
-    nhiFetchError = "";
-    try {
-      const res = await fetch("/api/nhi?limit=200");
-      if (res.ok) {
-        const data = await res.json();
-        const rawList = data.credentials || [];
-        nhiCredentials = rawList.map(mapNhiFromApi);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        nhiFetchError = data.error || `Failed to load NHI credentials (${res.status})`;
-        pushToast({ message: nhiFetchError, variant: "error" });
-      }
-    } catch (e: any) {
-      nhiFetchError = e?.message || "Failed to connect to NHI service";
-      pushToast({ message: nhiFetchError, variant: "error" });
+      const res = await fetch("/api/v1/directory/users");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      users = result?.data?.items ?? [];
+    } catch (e) {
+      errorUsers = (e as Error).message;
+    } finally {
+      loadingUsers = false;
     }
   }
 
-  async function discoverNhi() {
-    discoveringNhi = true;
+  async function loadGroups() {
+    loadingGroups = true;
+    errorGroups = null;
     try {
-      const res = await fetch("/api/nhi", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        pushToast({ message: data.message || "NHI discovery started", variant: "success" });
-        await fetchNhi();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        pushToast({ message: data.error || data.message || "Discovery failed", variant: "error" });
-      }
+      const res = await fetch("/api/v1/directory/groups");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      groups = result?.data?.items ?? [];
+    } catch (e) {
+      errorGroups = (e as Error).message;
+    } finally {
+      loadingGroups = false;
+    }
+  }
+
+  async function loadSyncStatus() {
+    loadingStatus = true;
+    try {
+      const res = await fetch("/api/v1/directory/sync/status");
+      if (!res.ok) return;
+      const result = await res.json();
+      syncStatus = result?.data ?? null;
     } catch {
-      pushToast({ message: "Discovery request failed", variant: "error" });
-    }
-    discoveringNhi = false;
-  }
-
-  async function loadAll() {
-    loading = true;
-    syncStatus = await fetchStatus();
-    const promises: Promise<void>[] = [fetchUsers(), fetchGroups(), fetchMappings(), fetchNhi(), fetchConnectedApps()];
-    await Promise.all(promises);
-    loading = false;
-
-    // Auto-generate mapping suggestions if there are groups but no mappings yet
-    if (groups.length > 0 && mappings.length === 0) {
-      autoSuggest().catch(() => {});
+      // non-critical
+    } finally {
+      loadingStatus = false;
     }
   }
 
-  // --- Actions ---
-  async function triggerSync() {
-    syncing = true;
-    try {
-      const res = await fetch("/api/directory/sync", { method: "POST" });
-      if (res.ok) {
-        pushToast({ message: "Directory sync started", variant: "success" });
-        await loadAll();
-      } else {
-        pushToast({ message: "Sync failed", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Sync request failed", variant: "error" });
-    }
-    syncing = false;
+  async function refresh() {
+    refreshing = true;
+    await Promise.all([loadUsers(), loadGroups(), loadSyncStatus()]);
+    refreshing = false;
   }
-
-  async function autoSuggest() {
-    suggesting = true;
-    try {
-      const res = await fetch("/api/directory/mappings/suggest", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.suggestions?.length > 0) {
-          pushToast({ message: `${data.suggestions.length} mapping suggestion(s) generated`, variant: "success" });
-        } else {
-          pushToast({ message: data.message || "No suggestions could be generated. Connect apps and sync your directory first.", variant: "info" });
-        }
-        await fetchMappings();
-      } else {
-        pushToast({ message: "Auto-suggest failed", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Auto-suggest request failed", variant: "error" });
-    }
-    suggesting = false;
-  }
-
-  async function confirmMapping(id: string) {
-    try {
-      const res = await fetch(`/api/directory/mappings/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirmed: true }),
-      });
-      if (res.ok) {
-        mappings = mappings.map((m) => (m.id === id ? { ...m, suggested: false } : m));
-        pushToast({ message: "Mapping confirmed", variant: "success" });
-      } else {
-        pushToast({ message: "Failed to confirm mapping", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Confirm request failed", variant: "error" });
-    }
-  }
-
-  async function removeMapping(id: string) {
-    try {
-      const res = await fetch(`/api/directory/mappings/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        mappings = mappings.filter((m) => m.id !== id);
-        pushToast({ message: "Mapping removed", variant: "info" });
-      } else {
-        pushToast({ message: "Failed to remove mapping", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Remove request failed", variant: "error" });
-    }
-  }
-
-  // --- Add User ---
-  async function submitAddUser() {
-    if (!addUserForm.email) return;
-    addUserLoading = true;
-    try {
-      const res = await fetch("/api/directory/users", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email: addUserForm.email,
-          displayName: addUserForm.displayName || undefined,
-          department: addUserForm.department || undefined,
-          title: addUserForm.title || undefined,
-        }),
-      });
-      if (res.ok) {
-        pushToast({ message: "User added", variant: "success" });
-        addUserOpen = false;
-        addUserForm = { email: "", displayName: "", department: "", title: "" };
-        await fetchUsers();
-      } else {
-        const data = await res.json().catch(() => ({ error: "Failed to add user" }));
-        pushToast({ message: data.error || "Failed to add user", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Add user request failed", variant: "error" });
-    }
-    addUserLoading = false;
-  }
-
-  // --- Add Group ---
-  async function submitAddGroup() {
-    if (!addGroupForm.name) return;
-    addGroupLoading = true;
-    try {
-      const res = await fetch("/api/directory/groups", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: addGroupForm.name,
-          description: addGroupForm.description || undefined,
-        }),
-      });
-      if (res.ok) {
-        pushToast({ message: "Group added", variant: "success" });
-        addGroupOpen = false;
-        addGroupForm = { name: "", description: "" };
-        await fetchGroups();
-      } else {
-        const data = await res.json().catch(() => ({ error: "Failed to add group" }));
-        pushToast({ message: data.error || "Failed to add group", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Add group request failed", variant: "error" });
-    }
-    addGroupLoading = false;
-  }
-
-  // --- Delete ---
-  function openDeleteDialog(type: "user" | "group", id: string, name: string) {
-    deleteTarget = { type, id, name };
-    deleteOpen = true;
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    deleteLoading = true;
-    const { type, id } = deleteTarget;
-    const endpoint = type === "user" ? `/api/directory/users/${id}` : `/api/directory/groups/${id}`;
-    try {
-      const res = await fetch(endpoint, { method: "DELETE" });
-      if (res.ok) {
-        pushToast({ message: `${type === "user" ? "User" : "Group"} deleted`, variant: "success" });
-        if (type === "user") await fetchUsers();
-        else await fetchGroups();
-      } else {
-        const data = await res.json().catch(() => ({ error: "Delete failed" }));
-        pushToast({ message: data.error || "Delete failed", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Delete request failed", variant: "error" });
-    }
-    deleteLoading = false;
-    deleteOpen = false;
-    deleteTarget = null;
-  }
-
-  async function fetchConnectedApps() {
-    try {
-      const res = await fetch("/api/integrations/connected");
-      if (res.ok) {
-        const data = await res.json();
-        connectedApps = (data.apps || []).map((a: any) => ({
-          appId: a.app_id || a.appId || a.id,
-          name: getAppName(a.app_id || a.appId || a.id),
-        }));
-      }
-    } catch {}
-  }
-
-  async function submitAddMapping() {
-    if (!addMappingForm.groupId || !addMappingForm.appId) return;
-    addMappingLoading = true;
-    try {
-      const res = await fetch("/api/directory/mappings", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          groupId: addMappingForm.groupId,
-          appId: addMappingForm.appId,
-          role: addMappingForm.role || "member",
-        }),
-      });
-      if (res.ok) {
-        pushToast({ message: "Mapping created", variant: "success" });
-        addMappingOpen = false;
-        addMappingForm = { groupId: "", appId: "", role: "member" };
-        await fetchMappings();
-      } else {
-        const data = await res.json().catch(() => ({ error: "Failed to create mapping" }));
-        pushToast({ message: data.error || "Failed to create mapping", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Create mapping request failed", variant: "error" });
-    }
-    addMappingLoading = false;
-  }
-
-  async function updateMappingRole(id: string, role: string) {
-    try {
-      const res = await fetch(`/api/directory/mappings/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ role }),
-      });
-      if (res.ok) {
-        mappings = mappings.map((m) => (m.id === id ? { ...m, role } : m));
-        pushToast({ message: "Role updated", variant: "success" });
-      } else {
-        pushToast({ message: "Failed to update role", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Update role request failed", variant: "error" });
-    }
-    editingRoleId = null;
-  }
-
-  function startEditRole(mapping: Mapping) {
-    editingRoleId = mapping.id;
-    editingRoleValue = mapping.role;
-  }
-
-  function getAppName(appId: string): string {
-    const app = integrations.find(i => i.id === appId);
-    return app?.name ?? appId;
-  }
-
-  function formatTime(iso: string | undefined): string {
-    if (!iso) return "Never";
-    try {
-      return new Date(iso).toLocaleString();
-    } catch {
-      return iso;
-    }
-  }
-
-  function statusVariant(status: string): "success" | "destructive" | "warning" | "secondary" {
-    switch (status.toLowerCase()) {
-      case "active": return "success";
-      case "suspended":
-      case "disabled": return "destructive";
-      case "pending": return "warning";
-      default: return "secondary";
-    }
-  }
-
-  function nhiRiskClass(score: number): string {
-    if (score <= 30) return "bg-green-100 text-green-800";
-    if (score <= 60) return "bg-yellow-100 text-yellow-800";
-    return "bg-red-100 text-red-800";
-  }
-
-  function nhiStatusClass(status: NhiCredential["status"]): string {
-    switch (status) {
-      case "active": return "bg-green-100 text-green-800";
-      case "expired": return "bg-red-100 text-red-800";
-      case "revoked": return "bg-gray-100 text-gray-800";
-      case "rotation_pending": return "bg-yellow-100 text-yellow-800";
-    }
-  }
-
-  function nhiStatusLabel(status: NhiCredential["status"]): string {
-    switch (status) {
-      case "active": return "Active";
-      case "expired": return "Expired";
-      case "revoked": return "Revoked";
-      case "rotation_pending": return "Rotation Pending";
-    }
-  }
-
-  $: tabs = [
-    { id: "users" as const, label: "Users" },
-    { id: "groups" as const, label: "Groups" },
-    { id: "mappings" as const, label: "Mappings" },
-    { id: "nhi" as const, label: "Non-Human" },
-  ];
-
-  const providerIcons: Record<string, string> = {
-    okta: "Okta",
-    google_workspace: "Google Workspace",
-    microsoft_365: "Microsoft 365",
-    entra_id: "Entra ID",
-  };
 
   onMount(() => {
-    const tabParam = $page.url.searchParams.get("tab");
-    if (tabParam === "mappings" || tabParam === "groups" || tabParam === "users" || tabParam === "nhi") {
-      activeTab = tabParam;
-    }
-    loadAll();
+    loadUsers();
+    loadGroups();
+    loadSyncStatus();
   });
+
+  $: filteredUsers = searchQuery.trim()
+    ? users.filter((u) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          u.email.toLowerCase().includes(q) ||
+          (u.display_name ?? "").toLowerCase().includes(q) ||
+          (u.department ?? "").toLowerCase().includes(q) ||
+          (u.title ?? "").toLowerCase().includes(q)
+        );
+      })
+    : users;
+
+  $: filteredGroups = searchQuery.trim()
+    ? groups.filter((g) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          g.name.toLowerCase().includes(q) ||
+          (g.description ?? "").toLowerCase().includes(q)
+        );
+      })
+    : groups;
 </script>
 
-<div class="space-y-6">
-  {#if loading}
-    <div class="space-y-4">
-      <Skeleton class="h-8 w-48" />
-      <Skeleton class="h-64 w-full rounded-lg" />
-    </div>
-  {:else}
-    <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-4">
-      <div>
-        <div class="flex items-center gap-3 mb-1">
-          <h1 class="text-2xl font-semibold tracking-tight">Directory</h1>
-          {#if syncStatus.connected && syncStatus.provider}
-            <Badge variant="secondary">
-              {providerIcons[syncStatus.provider] || syncStatus.provider}
-            </Badge>
-          {/if}
-        </div>
-        {#if syncStatus.connected}
-          <p class="text-sm text-muted-foreground">
-            Last sync: {formatTime(syncStatus.lastSyncAt)} &middot;
-            {usersTotal || users.length} users &middot;
-            {groups.length} groups
-          </p>
-        {:else}
-          <p class="text-sm text-muted-foreground">
-            Manage users and groups manually, or connect an identity provider for automatic sync
-          </p>
-        {/if}
-      </div>
-      <div class="flex items-center gap-2">
-        {#if activeTab === "nhi"}
-          <Button variant="outline" on:click={discoverNhi} disabled={discoveringNhi}>
-            <ScanSearch class="h-4 w-4 mr-1.5" />
-            {discoveringNhi ? "Discovering..." : "Discover NHIs"}
-          </Button>
-        {:else if !syncStatus.connected}
-          <a href="/console/marketplace">
-            <Button variant="outline">
-              <Link class="h-4 w-4 mr-1.5" />
-              Connect IdP
-            </Button>
-          </a>
-        {:else}
-          <Button on:click={triggerSync} disabled={syncing}>
-            <RefreshCw class="h-4 w-4 mr-1.5 {syncing ? 'animate-spin' : ''}" />
-            {syncing ? "Syncing..." : "Sync Now"}
-          </Button>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex gap-1 border-b">
-      {#each tabs as tab}
-        <button
-          type="button"
-          on:click={() => activeTab = tab.id}
-          class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === tab.id
-            ? 'text-foreground border-b-2 border-primary'
-            : 'text-muted-foreground hover:text-foreground'}"
-        >
-          {tab.label}
-        </button>
-      {/each}
-    </div>
-
-    <!-- Users tab -->
-    {#if activeTab === "users"}
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-4">
-        <Input
-          type="text"
-          bind:value={userSearch}
-          placeholder="Search users..."
-          class="sm:max-w-md"
-        />
-        <Button class="shrink-0" on:click={() => { addUserForm = { email: "", displayName: "", department: "", title: "" }; addUserOpen = true; }}>
-          <Plus class="h-4 w-4 mr-1.5" />
-          Add User
-        </Button>
-      </div>
-
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Email</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Department</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Title</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Access</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each pagedUsers as user}
-                  <tr
-                    class="border-t hover:bg-muted/50 cursor-pointer"
-                    on:click={() => goto(`/console/directory/users/${user.id}`)}
-                  >
-                    <td class="px-3 sm:px-4 py-3">
-                      <div>{user.name}</div>
-                      <div class="text-xs text-muted-foreground sm:hidden">{user.email}</div>
-                    </td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden sm:table-cell">{user.email}</td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.department || "-"}</td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{user.title || "-"}</td>
-                    <td class="px-3 sm:px-4 py-3">
-                      <Badge variant={statusVariant(user.status)} class="capitalize">{user.status}</Badge>
-                    </td>
-                    <td class="px-3 sm:px-4 py-3 hidden md:table-cell">
-                      {#if user.console_user_id}
-                        <Badge variant="secondary">Console</Badge>
-                      {:else}
-                        <span class="text-muted-foreground">—</span>
-                      {/if}
-                    </td>
-                    <td class="px-3 sm:px-4 py-3 text-right">
-                      <!-- svelte-ignore a11y_click_events_have_key_events -->
-                      <button
-                        type="button"
-                        class="inline-flex items-center justify-center rounded-md text-sm font-medium h-8 w-8 hover:bg-muted transition-colors"
-                        on:click|stopPropagation={() => openDeleteDialog("user", user.id, user.name)}
-                        title="Delete user"
-                      >
-                        <Trash2 class="h-4 w-4 text-destructive" />
-                      </button>
-                    </td>
-                  </tr>
-                {:else}
-                  <tr>
-                    <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">No users found</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <!-- Pagination -->
-      {#if totalPages > 1}
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
-          <span class="text-muted-foreground text-center sm:text-left">
-            Showing {userPage * pageSize + 1}–{Math.min((userPage + 1) * pageSize, filteredUsers.length)} of {filteredUsers.length}
-          </span>
-          <div class="flex gap-2">
-            <Button variant="outline" size="sm" on:click={() => userPage = Math.max(0, userPage - 1)} disabled={userPage === 0}>
-              <ChevronLeft class="h-4 w-4 mr-1" />
-              Prev
-            </Button>
-            <Button variant="outline" size="sm" on:click={() => userPage = Math.min(totalPages - 1, userPage + 1)} disabled={userPage >= totalPages - 1}>
-              Next
-              <ChevronRight class="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      {/if}
-    {/if}
-
-    <!-- Groups tab -->
-    {#if activeTab === "groups"}
-      <div class="flex items-center justify-end mb-4">
-        <Button on:click={() => { addGroupForm = { name: "", description: "" }; addGroupOpen = true; }}>
-          <Plus class="h-4 w-4 mr-1.5" />
-          Add Group
-        </Button>
-      </div>
-
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Group Name</th>
-                  <th class="px-4 py-3 font-medium">Members</th>
-                  <th class="px-4 py-3 font-medium">Description</th>
-                  <th class="px-4 py-3 font-medium text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each groups as group}
-                  <tr
-                    class="border-t hover:bg-muted/50 cursor-pointer"
-                    on:click={() => goto(`/console/directory/groups/${group.id}`)}
-                  >
-                    <td class="px-4 py-3 font-medium">{group.name}</td>
-                    <td class="px-4 py-3">
-                      <Badge variant="secondary">{group.memberCount}</Badge>
-                    </td>
-                    <td class="px-4 py-3 text-muted-foreground">{group.description || "-"}</td>
-                    <td class="px-4 py-3 text-right">
-                      <!-- svelte-ignore a11y_click_events_have_key_events -->
-                      <button
-                        type="button"
-                        class="inline-flex items-center justify-center rounded-md text-sm font-medium h-8 w-8 hover:bg-muted transition-colors"
-                        on:click|stopPropagation={() => openDeleteDialog("group", group.id, group.name)}
-                        title="Delete group"
-                      >
-                        <Trash2 class="h-4 w-4 text-destructive" />
-                      </button>
-                    </td>
-                  </tr>
-                {:else}
-                  <tr>
-                    <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">No groups found</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-    {/if}
-
-    <!-- NHI tab -->
-    {#if activeTab === "nhi"}
-      <!-- Filters -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4 flex-wrap">
-        <Input
-          type="text"
-          bind:value={nhiSearch}
-          placeholder="Search by name, provider, owner..."
-          class="sm:max-w-xs"
-        />
-        <select
-          bind:value={nhiFilterType}
-          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">All Types</option>
-          {#each nhiTypes as t}
-            <option value={t}>{t}</option>
-          {/each}
-        </select>
-        <select
-          bind:value={nhiFilterProvider}
-          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">All Providers</option>
-          {#each nhiProviders as p}
-            <option value={p}>{p}</option>
-          {/each}
-        </select>
-        <select
-          bind:value={nhiFilterStatus}
-          class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-        >
-          <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-          <option value="rotation_pending">Rotation Pending</option>
-        </select>
-      </div>
-
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-3 sm:px-4 py-3 font-medium">Name</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden sm:table-cell">Type</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Provider</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Owner</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Last Used</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium hidden xl:table-cell">Expiry</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium">Risk Score</th>
-                  <th class="px-3 sm:px-4 py-3 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each pagedNhi as nhi}
-                  <tr
-                    class="border-t hover:bg-muted/50"
-                  >
-                    <td class="px-3 sm:px-4 py-3 font-medium">
-                      <div>{nhi.name}</div>
-                      <div class="text-xs text-muted-foreground sm:hidden">{nhi.type}</div>
-                    </td>
-                    <td class="px-3 sm:px-4 py-3 hidden sm:table-cell">
-                      <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium">
-                        {nhi.type}
-                      </span>
-                    </td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">{nhi.provider}</td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{nhi.owner || "-"}</td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">{formatTime(nhi.lastUsed)}</td>
-                    <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden xl:table-cell">{formatTime(nhi.expiry)}</td>
-                    <td class="px-3 sm:px-4 py-3">
-                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiRiskClass(nhi.riskScore)}">
-                        {nhi.riskScore}
-                      </span>
-                    </td>
-                    <td class="px-3 sm:px-4 py-3">
-                      <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold {nhiStatusClass(nhi.status)}">
-                        {nhiStatusLabel(nhi.status)}
-                      </span>
-                    </td>
-                  </tr>
-                {:else}
-                  <tr>
-                    <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">
-                      <p>No non-human identities found</p>
-                      <p class="text-xs mt-1">Click "Discover NHIs" to scan for service accounts, API keys, and machine credentials</p>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <!-- NHI Pagination -->
-      {#if nhiTotalPages > 1}
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
-          <span class="text-muted-foreground text-center sm:text-left">
-            Showing {nhiPage * pageSize + 1}–{Math.min((nhiPage + 1) * pageSize, filteredNhi.length)} of {filteredNhi.length}
-          </span>
-          <div class="flex gap-2">
-            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.max(0, nhiPage - 1)} disabled={nhiPage === 0}>
-              <ChevronLeft class="h-4 w-4 mr-1" />
-              Prev
-            </Button>
-            <Button variant="outline" size="sm" on:click={() => nhiPage = Math.min(nhiTotalPages - 1, nhiPage + 1)} disabled={nhiPage >= nhiTotalPages - 1}>
-              Next
-              <ChevronRight class="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      {/if}
-    {/if}
-
-    <!-- Mappings tab -->
-    {#if activeTab === "mappings"}
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <p class="text-sm text-muted-foreground">
-          Map IdP groups to application roles for automatic provisioning
+<div class="p-8 max-w-7xl mx-auto">
+  <!-- Header -->
+  <div class="mb-6 flex items-start justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Directory</h1>
+      {#if !loadingStatus && syncStatus}
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {syncStatus.userCount} users &middot; {syncStatus.groupCount} groups &middot; last synced {lastSynced()}
         </p>
-        <div class="flex gap-2">
-          <Button class="shrink-0" variant="default" on:click={() => { addMappingOpen = true; }}>
-            <Plus class="h-4 w-4 mr-1.5" />
-            Add Mapping
-          </Button>
-          <Button class="shrink-0" variant="secondary" on:click={autoSuggest} disabled={suggesting}>
-            <Sparkles class="h-4 w-4 mr-1.5" />
-            {suggesting ? "Suggesting..." : "Auto-suggest"}
-          </Button>
+      {:else if loadingStatus}
+        <div class="mt-2 h-4 w-64 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+      {/if}
+    </div>
+    <button
+      on:click={refresh}
+      disabled={refreshing}
+      class="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50 transition-colors"
+    >
+      <span class={refreshing ? "animate-spin inline-block" : ""}>&#8635;</span>
+      Refresh
+    </button>
+  </div>
+
+  <!-- Tab Nav -->
+  <div class="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
+    <button
+      on:click={() => { activeTab = "users"; searchQuery = ""; }}
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'users'
+        ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}"
+    >
+      Users {#if !loadingUsers}({users.length}){/if}
+    </button>
+    <button
+      on:click={() => { activeTab = "groups"; searchQuery = ""; }}
+      class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'groups'
+        ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}"
+    >
+      Groups {#if !loadingGroups}({groups.length}){/if}
+    </button>
+  </div>
+
+  <!-- Search -->
+  <div class="mb-4">
+    <input
+      type="text"
+      bind:value={searchQuery}
+      placeholder={activeTab === "users" ? "Search users..." : "Search groups..."}
+      class="w-full max-w-sm px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+  </div>
+
+  <!-- Users Tab -->
+  {#if activeTab === "users"}
+    {#if loadingUsers}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="divide-y divide-gray-100 dark:divide-gray-700">
+          {#each Array(6) as _}
+            <div class="px-6 py-4 flex gap-4">
+              <div class="h-4 w-48 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+              <div class="h-4 w-32 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+              <div class="h-4 w-24 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+            </div>
+          {/each}
         </div>
       </div>
+    {:else if errorUsers}
+      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p class="text-red-800 dark:text-red-300">Failed to load users: {errorUsers}</p>
+        <button
+          on:click={loadUsers}
+          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        >
+          Retry
+        </button>
+      </div>
+    {:else if filteredUsers.length === 0}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-12 text-center">
+        <p class="text-gray-500 dark:text-gray-400">
+          {searchQuery ? "No users match your search." : "No users found."}
+        </p>
+      </div>
+    {:else}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-900/50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Department</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Joined</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {#each filteredUsers as user}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{user.email}</td>
+                <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{user.display_name ?? "—"}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{user.department ?? "—"}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{user.title ?? "—"}</td>
+                <td class="px-6 py-4">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                    {user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : ''}
+                    {user.status === 'inactive' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : ''}
+                    {user.status === 'suspended' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : ''}
+                    {!['active','inactive','suspended'].includes(user.status) ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : ''}">
+                    {user.status}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{relativeTime(user.created_at)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  {/if}
 
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Group</th>
-                  <th class="px-4 py-3 font-medium">App</th>
-                  <th class="px-4 py-3 font-medium">Role</th>
-                  <th class="px-4 py-3 font-medium">Status</th>
-                  <th class="px-4 py-3 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each mappings as mapping}
-                  <tr class="border-t hover:bg-muted/50">
-                    <td class="px-4 py-3 font-medium">{mapping.groupName}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{getAppName(mapping.appId)}</td>
-                    <td class="px-4 py-3 text-muted-foreground">
-                      {#if editingRoleId === mapping.id}
-                        <select
-                          class="bg-background border border-input rounded px-2 py-1 text-sm"
-                          bind:value={editingRoleValue}
-                          on:change={() => updateMappingRole(mapping.id, editingRoleValue)}
-                          on:blur={() => { editingRoleId = null; }}
-                        >
-                          <option value="member">member</option>
-                          <option value="admin">admin</option>
-                          <option value="viewer">viewer</option>
-                          <option value="editor">editor</option>
-                        </select>
-                      {:else}
-                        <button class="hover:underline cursor-pointer" on:click={() => startEditRole(mapping)}>
-                          {mapping.role}
-                        </button>
-                      {/if}
-                    </td>
-                    <td class="px-4 py-3">
-                      {#if mapping.suggested}
-                        <Badge variant="warning">Suggested</Badge>
-                      {:else}
-                        <Badge variant="success">Confirmed</Badge>
-                      {/if}
-                    </td>
-                    <td class="px-4 py-3 text-right">
-                      {#if mapping.suggested}
-                        <Button variant="ghost" size="sm" on:click={() => confirmMapping(mapping.id)}>
-                          <Check class="h-4 w-4 mr-1 text-green-500" />
-                          Confirm
-                        </Button>
-                        <Button variant="ghost" size="sm" on:click={() => removeMapping(mapping.id)}>
-                          <X class="h-4 w-4 mr-1 text-destructive" />
-                          Dismiss
-                        </Button>
-                      {:else}
-                        <Button variant="ghost" size="sm" on:click={() => removeMapping(mapping.id)}>
-                          <X class="h-4 w-4 mr-1 text-destructive" />
-                          Remove
-                        </Button>
-                      {/if}
-                    </td>
-                  </tr>
-                {:else}
-                  <tr>
-                    <td colspan="5" class="px-4 py-8 text-center text-muted-foreground">
-                      <p>No mappings configured</p>
-                      <p class="text-xs mt-1">Use Auto-suggest to generate mappings from your groups</p>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+  <!-- Groups Tab -->
+  {#if activeTab === "groups"}
+    {#if loadingGroups}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="divide-y divide-gray-100 dark:divide-gray-700">
+          {#each Array(4) as _}
+            <div class="px-6 py-4 flex gap-4">
+              <div class="h-4 w-40 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+              <div class="h-4 w-56 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+              <div class="h-4 w-16 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {:else if errorGroups}
+      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p class="text-red-800 dark:text-red-300">Failed to load groups: {errorGroups}</p>
+        <button
+          on:click={loadGroups}
+          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        >
+          Retry
+        </button>
+      </div>
+    {:else if filteredGroups.length === 0}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-12 text-center">
+        <p class="text-gray-500 dark:text-gray-400">
+          {searchQuery ? "No groups match your search." : "No groups found."}
+        </p>
+      </div>
+    {:else}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-900/50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Members</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">External ID</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+            {#each filteredGroups as group}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{group.name}</td>
+                <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{group.description ?? "—"}</td>
+                <td class="px-6 py-4 text-sm text-gray-900 dark:text-white">{group.member_count}</td>
+                <td class="px-6 py-4 text-sm text-gray-400 dark:text-gray-500 font-mono text-xs">{group.external_id ?? "—"}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   {/if}
 </div>
-
-<!-- Add User Dialog -->
-<Dialog open={addUserOpen} onClose={() => addUserOpen = false} title="Add User">
-  <form on:submit|preventDefault={submitAddUser} class="space-y-4">
-    <div class="space-y-1.5">
-      <Label htmlFor="add-user-email">Email *</Label>
-      <Input id="add-user-email" type="email" bind:value={addUserForm.email} placeholder="user@example.com" required />
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-user-name">Display Name</Label>
-      <Input id="add-user-name" type="text" bind:value={addUserForm.displayName} placeholder="Jane Doe" />
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-user-dept">Department</Label>
-      <Input id="add-user-dept" type="text" bind:value={addUserForm.department} placeholder="Engineering" />
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-user-title">Title</Label>
-      <Input id="add-user-title" type="text" bind:value={addUserForm.title} placeholder="Software Engineer" />
-    </div>
-    <DialogFooter>
-      <Button variant="outline" type="button" on:click={() => addUserOpen = false}>Cancel</Button>
-      <Button type="submit" disabled={!addUserForm.email || addUserLoading}>
-        {addUserLoading ? "Adding..." : "Add User"}
-      </Button>
-    </DialogFooter>
-  </form>
-</Dialog>
-
-<!-- Add Group Dialog -->
-<Dialog open={addGroupOpen} onClose={() => addGroupOpen = false} title="Add Group">
-  <form on:submit|preventDefault={submitAddGroup} class="space-y-4">
-    <div class="space-y-1.5">
-      <Label htmlFor="add-group-name">Name *</Label>
-      <Input id="add-group-name" type="text" bind:value={addGroupForm.name} placeholder="Engineering" required />
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-group-desc">Description</Label>
-      <Input id="add-group-desc" type="text" bind:value={addGroupForm.description} placeholder="Engineering team members" />
-    </div>
-    <DialogFooter>
-      <Button variant="outline" type="button" on:click={() => addGroupOpen = false}>Cancel</Button>
-      <Button type="submit" disabled={!addGroupForm.name || addGroupLoading}>
-        {addGroupLoading ? "Adding..." : "Add Group"}
-      </Button>
-    </DialogFooter>
-  </form>
-</Dialog>
-
-<!-- Add Mapping Dialog -->
-<Dialog open={addMappingOpen} onClose={() => addMappingOpen = false} title="Add Mapping">
-  <form on:submit|preventDefault={submitAddMapping} class="space-y-4">
-    <div class="space-y-1.5">
-      <Label htmlFor="add-mapping-group">Group *</Label>
-      <select
-        id="add-mapping-group"
-        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
-        bind:value={addMappingForm.groupId}
-        required
-      >
-        <option value="">Select a group...</option>
-        {#each groups as group}
-          <option value={group.id}>{group.name}</option>
-        {/each}
-      </select>
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-mapping-app">App *</Label>
-      <select
-        id="add-mapping-app"
-        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
-        bind:value={addMappingForm.appId}
-        required
-      >
-        <option value="">Select an app...</option>
-        {#each connectedApps as app}
-          <option value={app.appId}>{app.name}</option>
-        {/each}
-      </select>
-    </div>
-    <div class="space-y-1.5">
-      <Label htmlFor="add-mapping-role">Role</Label>
-      <select
-        id="add-mapping-role"
-        class="w-full bg-background border border-input rounded-md px-3 py-2 text-sm"
-        bind:value={addMappingForm.role}
-      >
-        <option value="member">member</option>
-        <option value="admin">admin</option>
-        <option value="viewer">viewer</option>
-        <option value="editor">editor</option>
-      </select>
-    </div>
-    <DialogFooter>
-      <Button variant="outline" type="button" on:click={() => addMappingOpen = false}>Cancel</Button>
-      <Button type="submit" disabled={!addMappingForm.groupId || !addMappingForm.appId || addMappingLoading}>
-        {addMappingLoading ? "Creating..." : "Create Mapping"}
-      </Button>
-    </DialogFooter>
-  </form>
-</Dialog>
-
-<!-- Delete Confirmation Dialog -->
-<Dialog open={deleteOpen} onClose={() => { deleteOpen = false; deleteTarget = null; }} title="Confirm Delete">
-  {#if deleteTarget}
-    <p class="text-sm text-muted-foreground mb-2">
-      Are you sure you want to delete <strong class="text-foreground">{deleteTarget.name}</strong>?
-    </p>
-    <p class="text-xs text-muted-foreground">
-      This action cannot be undone.{#if deleteTarget.type === "group"} All group memberships and app mappings will also be removed.{/if}
-    </p>
-    <DialogFooter>
-      <Button variant="outline" on:click={() => { deleteOpen = false; deleteTarget = null; }}>Cancel</Button>
-      <Button variant="destructive" on:click={confirmDelete} disabled={deleteLoading}>
-        {deleteLoading ? "Deleting..." : "Delete"}
-      </Button>
-    </DialogFooter>
-  {/if}
-</Dialog>
