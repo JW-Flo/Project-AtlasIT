@@ -285,6 +285,59 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: tenant, timestamp: new Date().toISOString() });
   }
 
+  // GET /api/v1/dashboard — consolidated dashboard data for console
+  if (path === "/api/v1/dashboard" && method === "GET") {
+    try {
+      const [tenant, evidenceCount, rulesCount, incidentCount, recentEvents] = await Promise.all([
+        pool.query(
+          `SELECT id, name, slug, tier, status, industry, created_at FROM tenants WHERE id = $1`,
+          [auth.tenantId],
+        ),
+        pool.query(
+          `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
+          [auth.tenantId],
+        ),
+        pool.query(
+          `SELECT COUNT(*) as cnt, SUM(CASE WHEN enabled THEN 1 ELSE 0 END) as enabled
+           FROM automation_rules WHERE tenant_id = $1`,
+          [auth.tenantId],
+        ),
+        pool.query(
+          `SELECT COUNT(*) as cnt FROM incidents WHERE tenant_id = $1 AND status IN ('open', 'investigating')`,
+          [auth.tenantId],
+        ),
+        pool.query(
+          `SELECT id, type, source, status, created_at FROM events
+           WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 5`,
+          [auth.tenantId],
+        ),
+      ]);
+
+      return ok({
+        status: "success",
+        data: {
+          tenant: tenant.rows[0] ?? null,
+          user: {
+            id: auth.userId,
+            email: auth.email,
+            role: auth.role,
+          },
+          stats: {
+            evidenceCount: parseInt(evidenceCount.rows[0]?.cnt ?? "0", 10),
+            automationRulesTotal: parseInt(rulesCount.rows[0]?.cnt ?? "0", 10),
+            automationRulesEnabled: parseInt(rulesCount.rows[0]?.enabled ?? "0", 10),
+            openIncidents: parseInt(incidentCount.rows[0]?.cnt ?? "0", 10),
+          },
+          recentEvents: recentEvents.rows,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[core-api] dashboard.error", { error: (e as Error).message });
+      return fail(500, "Failed to load dashboard", "INTERNAL_ERROR");
+    }
+  }
+
   // POST /api/v1/tenants — create tenant
   if (path === "/api/v1/tenants" && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
