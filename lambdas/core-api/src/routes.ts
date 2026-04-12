@@ -14,6 +14,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -31,7 +32,12 @@ function getPool(): pg.Pool {
       connectionTimeoutMillis: 10_000,
       ssl: { rejectUnauthorized: false },
     });
-    _pool.connect().then(c => { c.release(); }).catch(() => {});
+    _pool
+      .connect()
+      .then((c) => {
+        c.release();
+      })
+      .catch(() => {});
   }
   return _pool;
 }
@@ -95,15 +101,17 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
-  // POST /api/v1/auth/token — issue session token (dev: email-only, no password yet)
+  // POST /api/v1/auth/token — issue session token (bcrypt password verification + lockout)
   if (path === "/api/v1/auth/token" && method === "POST") {
     const b = body(event) as { email?: string; password?: string; tenantId?: string };
     if (!b.email) return fail(400, "email is required", "VALIDATION_FAILED");
+    if (!b.password) return fail(400, "password is required", "VALIDATION_FAILED");
 
     const pool = getPool();
     // Look up user by email (across all tenants for now; production needs tenantId scoping)
     const result = await pool.query(
-      `SELECT u.id, u.email, u.role, u.status, u.tenant_id, t.name as tenant_name
+      `SELECT u.id, u.email, u.role, u.status, u.tenant_id, u.password_hash,
+              u.failed_login_count, u.locked_until, t.name as tenant_name
        FROM users u JOIN tenants t ON u.tenant_id = t.id
        WHERE u.email = $1 ${b.tenantId ? "AND u.tenant_id = $2" : ""}
        LIMIT 1`,
@@ -118,17 +126,63 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(403, "Account not active", "FORBIDDEN");
     }
 
+    // Account lockout check
+    if (user.locked_until) {
+      const lockedUntil = new Date(user.locked_until).getTime();
+      if (lockedUntil > Date.now()) {
+        const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
+        return fail(
+          429,
+          `Account locked, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+          "LOCKED",
+        );
+      }
+    }
+
+    // Password hash must be set going forward
+    if (!user.password_hash) {
+      return fail(403, "Password not set — contact administrator", "PASSWORD_NOT_SET");
+    }
+
+    // Verify password
+    const valid = await bcrypt.compare(b.password, user.password_hash);
+    if (!valid) {
+      const nextCount = (user.failed_login_count ?? 0) + 1;
+      if (nextCount >= 5) {
+        await pool.query(
+          `UPDATE users SET failed_login_count = $1, locked_until = NOW() + interval '15 minutes' WHERE id = $2`,
+          [nextCount, user.id],
+        );
+      } else {
+        await pool.query(`UPDATE users SET failed_login_count = $1 WHERE id = $2`, [
+          nextCount,
+          user.id,
+        ]);
+      }
+      return fail(401, "Invalid credentials", "UNAUTHORIZED");
+    }
+
+    // Success — reset lockout counters + update last_login_at
+    await pool.query(
+      `UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1`,
+      [user.id],
+    );
+
     // Generate session token and store in DynamoDB sessions table
     const token = crypto.randomBytes(32).toString("hex");
     const ttl = Math.floor(Date.now() / 1000) + 86400; // 24h
     try {
-      await svc.sessionRepo.set(token, {
-        userId: user.id,
-        tenantId: user.tenant_id,
-        email: user.email,
-        role: user.role ?? "viewer",
-        expiresAt: ttl,
-      }, 86400);
+      await svc.sessionRepo.set(
+        token,
+        {
+          userId: user.id,
+          tenantId: user.tenant_id,
+          email: user.email,
+          role: user.role ?? "viewer",
+          expiresAt: ttl,
+        },
+        86400,
+      );
     } catch (e) {
       console.error("[core-api] session.set.error", { error: (e as Error).message });
       return fail(500, "Failed to create session", "INTERNAL_ERROR");
@@ -143,6 +197,46 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       tenantName: user.tenant_name,
       role: user.role ?? "viewer",
       expiresAt: ttl,
+    });
+  }
+
+  // POST /api/v1/auth/set-password — bootstrap / reset password (public, admin-token gated)
+  if (path === "/api/v1/auth/set-password" && method === "POST") {
+    const b = body(event) as { email?: string; newPassword?: string; adminToken?: string };
+    if (!b.email || !b.newPassword || !b.adminToken) {
+      return fail(400, "email, newPassword, and adminToken are required", "VALIDATION_FAILED");
+    }
+    const expected = process.env.ADMIN_SETUP_TOKEN;
+    if (!expected) {
+      return fail(503, "Password reset not configured", "NOT_CONFIGURED");
+    }
+    // Constant-time comparison to avoid timing oracles
+    const a = Buffer.from(b.adminToken);
+    const e2 = Buffer.from(expected);
+    if (a.length !== e2.length || !crypto.timingSafeEqual(a, e2)) {
+      return fail(401, "Invalid admin token", "UNAUTHORIZED");
+    }
+    if (b.newPassword.length < 12) {
+      return fail(400, "newPassword must be at least 12 characters", "VALIDATION_FAILED");
+    }
+
+    const pool = getPool();
+    const hash = await bcrypt.hash(b.newPassword, 12);
+    const updateResult = await pool.query(
+      `UPDATE users SET password_hash = $1, failed_login_count = 0, locked_until = NULL
+       WHERE email = $2 RETURNING id, email, tenant_id`,
+      [hash, b.email],
+    );
+    if (updateResult.rows.length === 0) {
+      return fail(404, "User not found", "NOT_FOUND");
+    }
+    const u = updateResult.rows[0];
+    return ok({
+      status: "success",
+      userId: u.id,
+      email: u.email,
+      tenantId: u.tenant_id,
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -220,14 +314,35 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (tenantPatchMatch && method === "PATCH") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, id] = tenantPatchMatch;
-    const b = body(event) as { name?: string; industry?: string; status?: string; tier?: string; config?: unknown };
+    const b = body(event) as {
+      name?: string;
+      industry?: string;
+      status?: string;
+      tier?: string;
+      config?: unknown;
+    };
     const updates: string[] = [];
     const vals: unknown[] = [];
-    if (b.name !== undefined) { updates.push(`name = $${vals.length + 1}`); vals.push(b.name); }
-    if (b.industry !== undefined) { updates.push(`industry = $${vals.length + 1}`); vals.push(b.industry); }
-    if (b.status !== undefined) { updates.push(`status = $${vals.length + 1}`); vals.push(b.status); }
-    if (b.tier !== undefined) { updates.push(`tier = $${vals.length + 1}`); vals.push(b.tier); }
-    if (b.config !== undefined) { updates.push(`config = $${vals.length + 1}`); vals.push(JSON.stringify(b.config)); }
+    if (b.name !== undefined) {
+      updates.push(`name = $${vals.length + 1}`);
+      vals.push(b.name);
+    }
+    if (b.industry !== undefined) {
+      updates.push(`industry = $${vals.length + 1}`);
+      vals.push(b.industry);
+    }
+    if (b.status !== undefined) {
+      updates.push(`status = $${vals.length + 1}`);
+      vals.push(b.status);
+    }
+    if (b.tier !== undefined) {
+      updates.push(`tier = $${vals.length + 1}`);
+      vals.push(b.tier);
+    }
+    if (b.config !== undefined) {
+      updates.push(`config = $${vals.length + 1}`);
+      vals.push(JSON.stringify(b.config));
+    }
     if (updates.length === 0) return fail(400, "No fields to update", "VALIDATION_FAILED");
     vals.push(id);
     await pool.query(
@@ -275,10 +390,21 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     await pool.query(
       `INSERT INTO events (id, tenant_id, type, source, payload, status, idempotency_key, created_at)
        VALUES ($1, $2, $3, $4, $5, 'pending', $6, NOW())`,
-      [id, b.tenantId, b.type, b.source, b.payload ? JSON.stringify(b.payload) : null, b.idempotencyKey ?? null],
+      [
+        id,
+        b.tenantId,
+        b.type,
+        b.source,
+        b.payload ? JSON.stringify(b.payload) : null,
+        b.idempotencyKey ?? null,
+      ],
     );
     return ok(
-      { status: "success", data: { id, type: b.type, source: b.source, status: "pending" }, timestamp: new Date().toISOString() },
+      {
+        status: "success",
+        data: { id, type: b.type, source: b.source, status: "pending" },
+        timestamp: new Date().toISOString(),
+      },
       201,
     );
   }
@@ -323,7 +449,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (flagMatch && method === "PUT") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, name] = flagMatch;
-    const b = body(event) as { enabled?: boolean; rolloutPct?: number; tenantOverrides?: Record<string, boolean> };
+    const b = body(event) as {
+      enabled?: boolean;
+      rolloutPct?: number;
+      tenantOverrides?: Record<string, boolean>;
+    };
     await svc.flagRepo.set({
       name,
       enabled: b.enabled ?? true,
@@ -388,7 +518,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const existing = await svc.flagRepo.get(key);
     if (!existing) return fail(404, "Flag not found", "NOT_FOUND");
     await svc.flagRepo.delete(key);
-    return ok({ status: "success", data: { key, deleted: true }, timestamp: new Date().toISOString() });
+    return ok({
+      status: "success",
+      data: { key, deleted: true },
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // POST /api/v1/flags/:key/evaluate — evaluate flag for given context
@@ -435,7 +569,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const existing = await pool.query("SELECT id FROM tenants WHERE id = $1", [id]);
     if (existing.rows.length === 0) return fail(404, "Tenant not found", "NOT_FOUND");
     await pool.query("DELETE FROM tenants WHERE id = $1", [id]);
-    return ok({ status: "success", data: { id, deleted: true }, timestamp: new Date().toISOString() });
+    return ok({
+      status: "success",
+      data: { id, deleted: true },
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // ── Event routes (continued) ────────────────────────────────────────────────
@@ -459,7 +597,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // POST /api/v1/auth/token — placeholder for token issuance
   if (path === "/api/v1/auth/token" && method === "POST") {
     const b = body(event) as { email?: string; tenantId?: string };
-    if (!b.email || !b.tenantId) return fail(400, "email and tenantId are required", "VALIDATION_FAILED");
+    if (!b.email || !b.tenantId)
+      return fail(400, "email and tenantId are required", "VALIDATION_FAILED");
     const user = await pool.query(
       `SELECT id, email, role, status FROM users WHERE email = $1 AND tenant_id = $2`,
       [b.email, b.tenantId],
@@ -476,7 +615,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // POST /api/v1/credentials — store credential
   if (path === "/api/v1/credentials" && method === "POST") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
-    const b = body(event) as { tenantId?: string; appId?: string; credentials?: Record<string, string> };
+    const b = body(event) as {
+      tenantId?: string;
+      appId?: string;
+      credentials?: Record<string, string>;
+    };
     if (!b.tenantId || !b.appId || !b.credentials) {
       return fail(400, "tenantId, appId, and credentials are required", "VALIDATION_FAILED");
     }
@@ -497,11 +640,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       [id, b.tenantId, b.appId, encodedCredentials],
     );
     const persistedId = result.rows[0]?.id ?? id;
-    return ok({
-      status: "success",
-      data: { id: persistedId, appId: b.appId, tenantId: b.tenantId },
-      timestamp: new Date().toISOString(),
-    }, 201);
+    return ok(
+      {
+        status: "success",
+        data: { id: persistedId, appId: b.appId, tenantId: b.tenantId },
+        timestamp: new Date().toISOString(),
+      },
+      201,
+    );
   }
 
   // GET /api/v1/credentials — list credentials (metadata only)
@@ -568,7 +714,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (credGetMatch && method === "DELETE") {
     if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
     const [, credTenantId, appId] = credGetMatch;
-    await pool.query("DELETE FROM app_credentials WHERE tenant_id = $1 AND app_id = $2", [credTenantId, appId]);
+    await pool.query("DELETE FROM app_credentials WHERE tenant_id = $1 AND app_id = $2", [
+      credTenantId,
+      appId,
+    ]);
     return ok({
       status: "success",
       data: { tenantId: credTenantId, appId, deleted: true },
