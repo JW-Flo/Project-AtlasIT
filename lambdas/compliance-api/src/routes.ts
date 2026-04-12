@@ -87,6 +87,68 @@ function sha256(content: string): string {
   return crypto.createHash("sha256").update(content).digest("hex");
 }
 
+/**
+ * Hybrid CDT evaluator.
+ *
+ * The 64 CDT rule functions were designed for structured events with explicit
+ * boolean flags (e.g. `least_privilege_enforced === true`). Most real evidence
+ * records carry a different but meaningful shape produced by the evidence
+ * classifier: `{ impact: 'positive'|'neutral'|'negative', eventType, reasoning }`.
+ *
+ * Strategy:
+ *   1. Run the strict CDT rule. A `pass` is always respected (strongest signal).
+ *   2. When the rule returns `fail` or `unknown`, fall back to the evidence
+ *      pipeline's own classification: impact='positive' → pass,
+ *      impact='negative' → fail, otherwise keep the rule's original decision.
+ *
+ * This lets both structured CDT-native events AND the existing classifier
+ * output contribute to scoring without discarding either source of truth.
+ */
+type Decision = {
+  decision: "pass" | "fail" | "unknown";
+  rationale: string[];
+  references: string[];
+};
+
+function evaluateEvidence(
+  rule: { fn: (ev: CdtEvent) => Decision } | undefined,
+  controlId: string,
+  cdtEv: CdtEvent,
+): Decision {
+  const ruleDecision: Decision = rule
+    ? rule.fn(cdtEv)
+    : {
+        decision: "unknown",
+        rationale: ["No rule implementation registered"],
+        references: [controlId],
+      };
+
+  if (ruleDecision.decision === "pass") return ruleDecision;
+
+  const md = cdtEv.payload as { impact?: string; eventType?: string; reasoning?: string };
+  const impact = md?.impact;
+  const eventType = md?.eventType ?? cdtEv.type;
+  const reasoning = md?.reasoning;
+
+  if (impact === "positive") {
+    return {
+      decision: "pass",
+      rationale: [`Classifier: ${eventType}${reasoning ? ` — ${reasoning}` : ""}`],
+      references: [controlId],
+    };
+  }
+  if (impact === "negative") {
+    return {
+      decision: "fail",
+      rationale: [
+        `Classifier flagged ${eventType} as negative${reasoning ? ` — ${reasoning}` : ""}`,
+      ],
+      references: [controlId],
+    };
+  }
+  return ruleDecision;
+}
+
 export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const path = event.rawPath;
   const method = event.requestContext.http.method.toUpperCase();
@@ -175,7 +237,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
             }
             let state: "pass" | "fail" | "unknown" = "unknown";
             let rationale: string[] = ["No evidence in last 30 days"];
-            if (rule && evs.length > 0) {
+            if (evs.length > 0) {
               let anyPass = false;
               const fails: string[] = [];
               for (const r of evs) {
@@ -187,7 +249,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                   payload: (r.metadata ?? {}) as Record<string, unknown>,
                   trace_id: (r.actor as string) ?? "",
                 };
-                const dec = rule.fn(cdtEv);
+                const dec = evaluateEvidence(rule, controlId, cdtEv);
                 if (dec.decision === "pass") {
                   anyPass = true;
                   rationale = dec.rationale;
@@ -538,7 +600,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           let state: "pass" | "fail" | "unknown" = "unknown";
           let rationale: string[] = ["No evidence in the last 30 days"];
 
-          if (rule && ev.length > 0) {
+          if (ev.length > 0) {
             let anyPass = false;
             const fails: string[] = [];
             for (const row of ev) {
@@ -551,7 +613,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                 payload: metadata,
                 trace_id: (row.actor as string) ?? "",
               };
-              const dec = rule.fn(cdtEv);
+              const dec = evaluateEvidence(rule, controlId, cdtEv);
               if (dec.decision === "pass") {
                 anyPass = true;
                 rationale = dec.rationale;
@@ -561,8 +623,6 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
             }
             state = anyPass ? "pass" : fails.length > 0 ? "fail" : "unknown";
             if (!anyPass && fails.length > 0) rationale = Array.from(new Set(fails)).slice(0, 5);
-          } else if (!rule) {
-            rationale = ["No rule implementation registered"];
           }
 
           if (state === "pass") passCount++;
