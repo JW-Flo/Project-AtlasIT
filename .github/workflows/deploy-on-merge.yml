@@ -752,7 +752,9 @@ jobs:
           if [ -n "$API_URL" ]; then
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" --max-time 10 || echo "000")
             echo "Health: $API_URL/health → HTTP $STATUS"
-            [ "$STATUS" != "200" ] && echo "::warning::Health check returned $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "::warning::Health check returned $STATUS"
+            fi
           fi
 
   # ── AWS Console (S3 + CloudFront) ────────────────────────────────────────
