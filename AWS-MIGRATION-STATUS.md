@@ -303,3 +303,56 @@ CF resources to decommission after stability confirmed:
 ### Known Issues
 - **RDS Proxy TLS auth**: Lambda connection via proxy returns "Connection terminated unexpectedly". Needs TLS cert config or pg client tuning. Reverted Lambdas to direct RDS. Proxy is provisioned and ready when config is fixed.
 - **Cold start timeout** (~45s) still present on write operations. RDS Proxy will fix once TLS config resolved.
+---
+
+## Console Functional State (2026-04-12)
+
+### Working Pages (real data, tested via Playwright)
+| Page | Status | Notes |
+|------|--------|-------|
+| / (redirect) | ✓ Complete | Client-side redirect → /login if no token, else /console |
+| /login | ✓ Complete | Real bcrypt auth, account lockout after 5 failed attempts |
+| /console (Dashboard) | ✓ Complete | Shows tenant, 615 evidence, 43 rules, 0 incidents, recent events |
+| /console/compliance | ✓ Complete | 5 framework cards (SOC2, HIPAA, ISO27001, NIST-CSF, GDPR) with live scores + evidence table |
+| /console/directory | ✓ Complete | 11 users + 7 groups, tab nav, real emails (alice.chen, etc.) |
+| /console/automation | ✓ Complete | 43 rules table with toggle, inline create form, runs tab |
+| /console/incidents | ✓ Complete | Filters, inline create form, expandable rows |
+
+### Tenant Isolation — Verified
+- Bearer session token (DynamoDB, cannot be spoofed by client)
+- x-tenant-id header only honored with matching x-internal-api-key (service-to-service)
+- All new Lambda endpoints use auth.tenantId exclusively
+- Cross-tenant flag access returns 403
+- Unique (email, tenant_id) constraint on users table
+- Invalid token returns 401
+
+### Lambda Endpoints Deployed
+- POST /api/v1/auth/token — bcrypt login
+- POST /api/v1/auth/set-password — admin-gated password set
+- GET /api/v1/dashboard — consolidated dashboard
+- GET /api/v1/directory/users — list users (tenant-scoped)
+- GET /api/v1/directory/groups — list groups
+- GET /api/v1/directory/sync/status — sync metadata
+- GET /api/v1/compliance/summary — framework scores
+- (plus all existing endpoints for evidence, incidents, automation, adapters)
+
+### Infrastructure
+- 25 Lambda functions (7 platform + 9 adapters + 9 WebSocket/support)
+- 15 API Gateway routes
+- Console on S3 + CloudFront at www.atlasit.pro
+- Aurora PostgreSQL with migrated data
+- Lambda warmer (EventBridge 4min ping) prevents cold starts
+- RDS Proxy provisioned (not wired — TLS issue parked)
+
+### Pages Remaining To Rewrite
+- Apps (Connected Apps, Marketplace, Discovery)
+- Workflows
+- Access Reviews, Access Requests
+- Settings (Users, Billing, Security, Notifications, Trust, Audit Log)
+- Evidence, Controls, Policies, Insights, Attestations, Packs (compliance sub-pages)
+- NHI Governance, JML Changelog
+- Platform Status
+
+### Test Coverage
+- scripts/smoke-live-console.mjs — 9 page-load smoke tests
+- scripts/functional-test.mjs — 21 functional tests (login, data, forms, session, tenant isolation) — 19/21 pass
