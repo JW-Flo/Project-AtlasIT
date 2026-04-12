@@ -184,6 +184,11 @@
   }
 
   onMount(() => { loadRules(); });
+
+  const cls = "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const th = "px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider";
+  const thLeft = th + " text-left";
+  function tabCls(t: string) { return "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"); }
 </script>
 
 <div class="p-8 max-w-7xl mx-auto">
@@ -224,7 +229,6 @@
     <div class="mb-6 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">New Automation Rule</h2>
       {#if createError}<div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-300">{createError}</div>{/if}
-      {@const cls = "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name <span class="text-red-500">*</span></label>
@@ -257,7 +261,6 @@
   {/if}
 
   <!-- Tab nav -->
-  {@const tabCls = (t: string) => "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300")}
   <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
     <nav class="-mb-px flex gap-6">
       <button on:click={() => switchTab("rules")} class={tabCls("rules")}>Rules</button>
@@ -284,7 +287,6 @@
       <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-900">
-            {@const th = "px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"}
             <tr>
               <th class="{th} text-left">Name</th>
               <th class="{th} text-left hidden sm:table-cell">Trigger</th>
@@ -362,7 +364,6 @@
       <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead class="bg-gray-50 dark:bg-gray-900">
-            {@const th = "px-4 py-3 text-xs font-medium text-left text-gray-500 dark:text-gray-400 uppercase tracking-wider"}
             <tr>
               <th class={th}>Type</th>
               <th class={th}>Status</th>
