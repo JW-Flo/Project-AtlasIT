@@ -1,574 +1,454 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
-  import { page } from "$app/stores";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import { integrations, categories, iconMap } from "$lib/data/integrations";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Label from "$lib/components/ui/label.svelte";
-  import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle, ArrowRight, ArrowLeft, Check, ChevronDown, Zap, Clock } from "lucide-svelte";
+  import { onMount } from "svelte";
+  import { POLICY_TEMPLATES, defaultTemplatesFor } from "$lib/data/policy-templates";
 
-  // Read plan from URL query (from pricing page)
-  $: selectedPlan = $page.url.searchParams.get("plan") || "free";
-  $: selectedCycle = $page.url.searchParams.get("cycle") || "monthly";
+  // ── Wizard state ──────────────────────────────────────────────────────────
 
-  let step = 1;
-  let loading = false;
-  let error = "";
-
-  // Post-creation narration state (step 7)
-  let narrationPhase = 0;
-  let narrationScore = 0;
-  let narrationEvidenceCount = 0;
-  let narrationControlsCount = 0;
-
-  const NARRATION_STEPS = [
-    { label: "Creating organization...", icon: "org" },
-    { label: "Syncing directory users...", icon: "users" },
-    { label: "Classifying compliance evidence...", icon: "evidence" },
-    { label: "Scoring controls across frameworks...", icon: "score" },
-    { label: "Your compliance posture is ready!", icon: "done" },
+  type StepId = "company" | "frameworks" | "policies" | "team" | "integration" | "finish";
+  const STEPS: { id: StepId; label: string; description: string }[] = [
+    { id: "company",     label: "Company",     description: "Industry, size, goals" },
+    { id: "frameworks",  label: "Frameworks",  description: "Which regulations you care about" },
+    { id: "policies",    label: "Policies",    description: "Starter policies to customize" },
+    { id: "team",        label: "Team",        description: "Invite teammates (optional)" },
+    { id: "integration", label: "Apps",        description: "Connect your first integration (optional)" },
+    { id: "finish",      label: "Finish",      description: "Review and go" },
   ];
+  let currentStep: StepId = "company";
 
-  async function runNarration() {
-    for (let i = 0; i < NARRATION_STEPS.length; i++) {
-      narrationPhase = i;
-      await new Promise((r) => setTimeout(r, i === 0 ? 800 : 1200));
-
-      if (i === 2) {
-        // Simulate evidence count climbing
-        for (let e = 0; e < 12; e++) {
-          narrationEvidenceCount = e + 1;
-          narrationControlsCount = Math.min(e + 1, 8);
-          await new Promise((r) => setTimeout(r, 80));
-        }
-      }
-      if (i === 3) {
-        // Simulate score climbing
-        const targetScore = frameworks.length >= 3 ? 35 : frameworks.length >= 1 ? 25 : 15;
-        for (let s = 0; s <= targetScore; s += 5) {
-          narrationScore = s;
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        narrationScore = targetScore;
-      }
-    }
-  }
-
-  // Step 1: Organization
-  let orgName = "";
+  // ── Step 1: Company ──────────────────────────────────────────────────────
   let industry = "";
-  let companySize = "";
+  let size = "";
+  let useCases: string[] = [];
 
-  // Step 2: Owner account
-  let ownerName = "";
-  let ownerEmail = "";
-  let ownerPassword = "";
-
-  // Step 3: Compliance frameworks
-  let frameworks: string[] = [];
-
-  // Step 4: Directory / IdP
-  let selectedIdp: 'okta' | 'google_workspace' | 'microsoft_365' | null = null;
-  let selectedIdpDomain = '';
-
-  // Step 5: Apps
-  let selectedApps: string[] = [];
-  let expandedCategories: Record<string, boolean> = {};
-
-  const industries = [
-    "Technology",
+  const INDUSTRIES = [
+    "Technology / SaaS",
+    "Financial services",
     "Healthcare",
-    "Finance",
-    "Retail",
-    "Manufacturing",
+    "E-commerce / Retail",
     "Education",
+    "Manufacturing",
+    "Media / Entertainment",
     "Government",
     "Other",
   ];
-
-  const sizes = [
-    "1-10 employees",
-    "11-50 employees",
-    "51-200 employees",
-    "201-1000 employees",
-    "1000+ employees",
+  const SIZES = ["1-10", "11-50", "51-200", "201-1000", "1000+"];
+  const USE_CASES = [
+    { id: "soc2-prep",      label: "SOC 2 audit prep" },
+    { id: "iso-cert",       label: "ISO 27001 certification" },
+    { id: "hipaa",          label: "HIPAA compliance" },
+    { id: "gdpr",           label: "GDPR / privacy compliance" },
+    { id: "continuous",     label: "Continuous monitoring" },
+    { id: "vendor-risk",    label: "Vendor risk management" },
   ];
 
-  const availableFrameworks = [
-    { id: "SOC2", name: "SOC 2", desc: "Service organization controls for security, availability, and confidentiality" },
-    { id: "ISO27001", name: "ISO 27001", desc: "International standard for information security management" },
-    { id: "NIST CSF", name: "NIST CSF", desc: "Cybersecurity framework for managing and reducing risk" },
-    { id: "HIPAA", name: "HIPAA", desc: "Health Insurance Portability and Accountability Act compliance" },
-    { id: "GDPR", name: "GDPR", desc: "General Data Protection Regulation for EU data privacy" },
-  ];
-
-  // Group apps by category (exclude "all")
-  const appCategories = categories.filter((c) => c.id !== "all");
-  const appsByCategory: Record<string, typeof integrations> = {};
-  for (const cat of appCategories) {
-    appsByCategory[cat.id] = integrations.filter((i) => i.category === cat.id);
+  function toggleUseCase(id: string) {
+    useCases = useCases.includes(id) ? useCases.filter((u) => u !== id) : [...useCases, id];
+    if (id === "soc2-prep" && useCases.includes("soc2-prep")) frameworks = [...new Set([...frameworks, "pack-soc2-builtin"])];
+    if (id === "iso-cert" && useCases.includes("iso-cert")) frameworks = [...new Set([...frameworks, "pack-iso27001-builtin"])];
+    if (id === "hipaa" && useCases.includes("hipaa")) frameworks = [...new Set([...frameworks, "pack-hipaa-builtin"])];
+    if (id === "gdpr" && useCases.includes("gdpr")) frameworks = [...new Set([...frameworks, "pack-gdpr-builtin"])];
   }
+
+  // ── Step 2: Frameworks ───────────────────────────────────────────────────
+  const FRAMEWORKS = [
+    { id: "pack-soc2-builtin",     label: "SOC 2 Type II",     frameworkKey: "SOC2",      controlCount: 26, tagline: "US trust-services criteria — common for B2B SaaS" },
+    { id: "pack-iso27001-builtin", label: "ISO 27001:2022",    frameworkKey: "ISO27001",  controlCount: 17, tagline: "International infosec management standard" },
+    { id: "pack-nist-csf-builtin", label: "NIST CSF 2.0",      frameworkKey: "NIST_CSF",  controlCount: 7,  tagline: "US critical-infrastructure cybersecurity framework" },
+    { id: "pack-hipaa-builtin",    label: "HIPAA Security",    frameworkKey: "HIPAA",     controlCount: 7,  tagline: "US healthcare PHI protection" },
+    { id: "pack-gdpr-builtin",     label: "GDPR",              frameworkKey: "GDPR",      controlCount: 7,  tagline: "EU data-subject rights and data protection" },
+  ];
+  let frameworks: string[] = [];
 
   function toggleFramework(id: string) {
-    if (frameworks.includes(id)) {
-      frameworks = frameworks.filter((f) => f !== id);
-    } else {
-      frameworks = [...frameworks, id];
-    }
+    frameworks = frameworks.includes(id) ? frameworks.filter((f) => f !== id) : [...frameworks, id];
   }
 
-  function toggleApp(id: string) {
-    if (selectedApps.includes(id)) {
-      selectedApps = selectedApps.filter((a) => a !== id);
-    } else {
-      selectedApps = [...selectedApps, id];
-    }
+  // ── Step 3: Policies ─────────────────────────────────────────────────────
+  let selectedTemplates: string[] = [];
+  $: selectedFrameworkKeys = FRAMEWORKS.filter((f) => frameworks.includes(f.id)).map((f) => f.frameworkKey);
+  $: suggestedTemplates = defaultTemplatesFor(selectedFrameworkKeys);
+
+  function toggleTemplate(id: string) {
+    selectedTemplates = selectedTemplates.includes(id) ? selectedTemplates.filter((t) => t !== id) : [...selectedTemplates, id];
   }
 
-  function toggleCategory(catId: string) {
-    expandedCategories[catId] = !expandedCategories[catId];
-    expandedCategories = expandedCategories;
+  // ── Step 4: Team ─────────────────────────────────────────────────────────
+  let invitees: Array<{ email: string; displayName: string; role: string }> = [];
+  function addInviteeRow() {
+    invitees = [...invitees, { email: "", displayName: "", role: "member" }];
+  }
+  function removeInviteeRow(i: number) {
+    invitees = invitees.filter((_, idx) => idx !== i);
   }
 
-  function nextStep() {
-    error = "";
-    if (step === 1 && !orgName.trim()) { error = "Organization name is required"; return; }
-    if (step === 1 && !industry) { error = "Please select an industry"; return; }
-    if (step === 2 && !ownerEmail) { error = "Owner email is required"; return; }
-    if (step === 2 && !ownerPassword) { error = "Password is required"; return; }
-    if (step === 2 && ownerPassword.length < 8) { error = "Password must be at least 8 characters"; return; }
-    if (step === 4 && selectedIdp === 'okta' && !selectedIdpDomain.trim()) { error = "Okta domain is required"; return; }
-    if (step < 6) step++;
+  // ── Provisioning execution ───────────────────────────────────────────────
+  let submitting = false;
+  let provisioningLog: Array<{ kind: "info" | "ok" | "err"; msg: string }> = [];
+  let provisioningDone = false;
+  let provisioningError: string | null = null;
+
+  async function pushLog(kind: "info" | "ok" | "err", msg: string) {
+    provisioningLog = [...provisioningLog, { kind, msg }];
   }
 
-  function prevStep() {
-    error = "";
-    if (step > 1) step--;
-  }
+  async function runProvisioning() {
+    submitting = true;
+    provisioningLog = [];
+    provisioningError = null;
 
-  async function finish() {
-    loading = true;
-    error = "";
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          orgName,
-          industry,
-          companySize,
-          frameworks,
-          selectedIdp,
-          selectedIdpDomain,
-          selectedApps,
-          ownerName,
-          ownerEmail,
-          ownerPassword,
-          plan: selectedPlan,
-          billingCycle: selectedCycle,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        error = data.error || "Registration failed";
-        loading = false;
-        return;
+      await pushLog("info", "Saving company profile...");
+      const userRaw = sessionStorage.getItem("atlasit_user");
+      const tenantId = userRaw ? JSON.parse(userRaw).tenantId : null;
+      if (!tenantId) throw new Error("No tenant in session — log in again");
+      if (industry || size) {
+        const r = await fetch(`/api/v1/tenants/${tenantId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(industry ? { industry } : {}),
+            ...(size ? { size } : {}),
+            config: { useCases },
+          }),
+        });
+        if (r.ok) await pushLog("ok", `Profile saved (industry: ${industry || "—"}, size: ${size || "—"})`);
+        else await pushLog("err", `Profile save returned ${r.status} — continuing`);
       }
 
-      // Auto-login
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: ownerEmail, password: ownerPassword }),
-      });
+      for (const packId of frameworks) {
+        const label = FRAMEWORKS.find((f) => f.id === packId)?.label ?? packId;
+        await pushLog("info", `Installing ${label}...`);
+        const r = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}/install`, { method: "POST" });
+        if (r.ok) await pushLog("ok", `${label} installed`);
+        else await pushLog("err", `${label} install failed (HTTP ${r.status})`);
+      }
 
-      if (loginRes.ok) {
-        // Show narration before redirecting
-        step = 7;
-        loading = false;
-        await runNarration();
-        pushToast({ message: `Welcome to AtlasIT! ${data.orgName} is ready.`, variant: "success" });
-        await new Promise((r) => setTimeout(r, 1500));
+      for (const tplId of selectedTemplates) {
+        const tpl = POLICY_TEMPLATES.find((t) => t.id === tplId);
+        if (!tpl) continue;
+        await pushLog("info", `Creating policy: ${tpl.name}...`);
+        const r = await fetch(`/api/compliance/api/v1/policies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: tpl.name,
+            category: tpl.category,
+            version: "1.0",
+            content: tpl.content,
+            framework_refs: tpl.applicableFrameworks,
+          }),
+        });
+        if (r.ok) await pushLog("ok", `${tpl.name} drafted`);
+        else await pushLog("err", `${tpl.name} failed (HTTP ${r.status})`);
+      }
 
-        // If a paid plan was selected, redirect to checkout
-        if (selectedPlan !== "free" && selectedPlan !== "enterprise") {
-          try {
-            const checkoutRes = await fetch("/api/billing/checkout", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ plan: selectedPlan, cycle: selectedCycle }),
-            });
-            const checkoutData = await checkoutRes.json();
-            if (checkoutData.url) {
-              window.location.href = checkoutData.url;
-              return;
-            }
-          } catch {
-            // Fall through to dashboard if checkout fails
-          }
+      for (const inv of invitees) {
+        if (!inv.email.trim()) continue;
+        await pushLog("info", `Inviting ${inv.email}...`);
+        const r = await fetch(`/api/v1/tenant/users/invite`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: inv.email.trim(), displayName: inv.displayName.trim() || undefined, role: inv.role }),
+        });
+        if (r.ok) await pushLog("ok", `Invited ${inv.email}`);
+        else await pushLog("err", `Invite to ${inv.email} failed (HTTP ${r.status})`);
+      }
+
+      if (frameworks.length > 0) {
+        await pushLog("info", "Running initial compliance evaluation...");
+        for (const packId of frameworks) {
+          await fetch(`/api/compliance/api/v1/compliance-packs/${packId}/evaluate`, { method: "POST" }).catch(() => {});
         }
-
-        goto(selectedIdp ? "/console?setup=idp" : "/console");
-        return;
-      } else {
-        // L-6 FIX: Retry login once, then redirect to dashboard (session may already exist)
-        pushToast({ message: "Organization created. Redirecting...", variant: "info" });
-        goto("/console");
+        await pushLog("ok", "Initial evaluation complete");
       }
-    } catch (e: any) {
-      error = e?.message || "Setup failed";
+
+      provisioningDone = true;
+    } catch (e) {
+      provisioningError = (e as Error).message;
+      await pushLog("err", `Fatal: ${provisioningError}`);
+    } finally {
+      submitting = false;
     }
-    loading = false;
+  }
+
+  function goToStep(id: StepId) { currentStep = id; }
+  function next() {
+    const idx = STEPS.findIndex((s) => s.id === currentStep);
+    if (idx < STEPS.length - 1) currentStep = STEPS[idx + 1].id;
+  }
+  function back() {
+    const idx = STEPS.findIndex((s) => s.id === currentStep);
+    if (idx > 0) currentStep = STEPS[idx - 1].id;
+  }
+
+  $: currentIdx = STEPS.findIndex((s) => s.id === currentStep);
+  $: canSkip = currentStep === "team" || currentStep === "integration" || currentStep === "policies";
+
+  $: if (frameworks.length > 0 && selectedTemplates.length === 0) {
+    selectedTemplates = suggestedTemplates;
+  }
+
+  onMount(() => {
+    const tok = sessionStorage.getItem("atlasit_token");
+    if (!tok) window.location.href = "/login";
+  });
+
+  function frameworkColor(key: string): string {
+    const map: Record<string, string> = {
+      SOC2: "bg-blue-100 text-blue-700",
+      ISO27001: "bg-purple-100 text-purple-700",
+      NIST_CSF: "bg-teal-100 text-teal-700",
+      HIPAA: "bg-orange-100 text-orange-700",
+      GDPR: "bg-pink-100 text-pink-700",
+    };
+    return map[key] ?? "bg-gray-100 text-gray-700";
   }
 </script>
 
-<div class="min-h-screen flex items-center justify-center bg-background">
-  <div class="max-w-2xl w-full px-4 py-8">
-    <div class="text-center mb-8">
-      <div class="text-4xl font-bold mb-2 text-primary">AtlasIT</div>
-      <p class="text-sm text-muted-foreground">Set up your organization in minutes</p>
-      <div class="flex items-center justify-center gap-2 mt-3 text-xs text-muted-foreground">
-        <Clock class="w-3.5 h-3.5" />
-        <span>Connect your first app and see your compliance score in under 10 minutes</span>
-      </div>
-      {#if selectedPlan !== "free"}
-        <div class="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
-          <Zap class="w-3.5 h-3.5" />
-          {selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} plan selected
-          {#if selectedPlan !== "enterprise"}&middot; 14-day free trial{/if}
-        </div>
-      {/if}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <div class="max-w-4xl mx-auto px-6 py-10">
+    <div class="mb-8 text-center">
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Welcome to AtlasIT</h1>
+      <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        A few quick questions and we'll set you up with real compliance scoring.
+      </p>
     </div>
 
-    <!-- Progress -->
-    {#if step <= 6}
-      <div class="flex items-center justify-center gap-2 mb-8">
-        {#each [1, 2, 3, 4, 5, 6] as s}
-          <div
-            class="h-2 rounded-full transition-all {s <= step ? 'bg-primary' : 'bg-muted'}"
-            style="width: {s <= step ? '40px' : '20px'};"
-          ></div>
-        {/each}
-      </div>
-    {/if}
-
-    <Card>
-      <CardContent class="pt-8 pb-8 px-8">
-        {#if step === 1}
-          <h2 class="text-xl font-semibold mb-1">Organization Details</h2>
-          <p class="text-sm text-muted-foreground mb-6">Tell us about your organization</p>
-
-          <div class="space-y-4">
-            <div class="space-y-1.5">
-              <Label>Organization Name *</Label>
-              <Input type="text" bind:value={orgName} placeholder="Acme Corp" />
+    <div class="mb-8 flex items-center justify-between">
+      {#each STEPS as step, i}
+        <div class="flex-1 flex items-center">
+          <button
+            type="button"
+            on:click={() => i < currentIdx && goToStep(step.id)}
+            disabled={i > currentIdx}
+            class="flex flex-col items-center gap-1 {i <= currentIdx ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}"
+          >
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2
+              {i < currentIdx ? 'bg-blue-600 border-blue-600 text-white'
+                : i === currentIdx ? 'border-blue-600 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400'
+                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400'}">
+              {i < currentIdx ? "✓" : i + 1}
             </div>
-            <div class="space-y-1.5">
-              <Label>Industry *</Label>
-              <select bind:value={industry} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">Select industry...</option>
-                {#each industries as ind}
-                  <option value={ind}>{ind}</option>
-                {/each}
-              </select>
-            </div>
-            <div class="space-y-1.5">
-              <Label>Company Size</Label>
-              <select bind:value={companySize} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">Select size...</option>
-                {#each sizes as s}
-                  <option value={s}>{s}</option>
-                {/each}
-              </select>
-            </div>
-          </div>
-
-        {:else if step === 2}
-          <h2 class="text-xl font-semibold mb-1">Owner Account</h2>
-          <p class="text-sm text-muted-foreground mb-6">Create the organization owner account</p>
-
-          <div class="space-y-4">
-            <div class="space-y-1.5">
-              <Label>Full Name</Label>
-              <Input type="text" bind:value={ownerName} placeholder="Jane Smith" />
-            </div>
-            <div class="space-y-1.5">
-              <Label>Email *</Label>
-              <Input type="email" bind:value={ownerEmail} placeholder="jane@acme.com" />
-            </div>
-            <div class="space-y-1.5">
-              <Label>Password *</Label>
-              <Input type="password" bind:value={ownerPassword} placeholder="Min 8 characters" />
-            </div>
-          </div>
-
-        {:else if step === 3}
-          <h2 class="text-xl font-semibold mb-1">Compliance Frameworks</h2>
-          <p class="text-sm text-muted-foreground mb-6">Select the frameworks relevant to your organization</p>
-
-          <div class="space-y-3">
-            {#each availableFrameworks as fw}
-              <button
-                type="button"
-                class="w-full text-left p-4 rounded-lg border transition-colors {frameworks.includes(fw.id)
-                  ? 'bg-primary/5 border-primary'
-                  : 'bg-muted border-transparent hover:border-border'}"
-                on:click={() => toggleFramework(fw.id)}
-              >
-                <div class="flex items-center justify-between">
-                  <div>
-                    <div class="text-sm font-medium">{fw.name}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5">{fw.desc}</div>
-                  </div>
-                  <div class="w-5 h-5 rounded border flex items-center justify-center shrink-0 {frameworks.includes(fw.id) ? 'bg-primary border-primary' : 'border-border'}">
-                    {#if frameworks.includes(fw.id)}
-                      <Check class="w-3 h-3 text-primary-foreground" />
-                    {/if}
-                  </div>
-                </div>
-              </button>
-            {/each}
-          </div>
-
-        {:else if step === 4}
-          <h2 class="text-xl font-semibold mb-1">Connect Your Directory</h2>
-          <p class="text-sm text-muted-foreground mb-6">Choose your identity provider to sync users and groups</p>
-
-          <div class="grid grid-cols-3 gap-4">
-            <button
-              class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'okta' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
-              on:click={() => selectedIdp = 'okta'}
-            >
-              <div class="text-lg font-semibold mb-1">Okta</div>
-              <div class="text-sm text-muted-foreground">SSO & directory with SCIM support</div>
-            </button>
-
-            <button
-              class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'google_workspace' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
-              on:click={() => { selectedIdp = 'google_workspace'; selectedIdpDomain = ''; }}
-            >
-              <div class="text-lg font-semibold mb-1">Google Workspace</div>
-              <div class="text-sm text-muted-foreground">Sync users and groups from Google</div>
-            </button>
-
-            <button
-              class="p-5 rounded-lg border-2 text-left transition-all {selectedIdp === 'microsoft_365' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
-              on:click={() => { selectedIdp = 'microsoft_365'; selectedIdpDomain = ''; }}
-            >
-              <div class="text-lg font-semibold mb-1">Microsoft 365 / Entra ID</div>
-              <div class="text-sm text-muted-foreground">Azure AD directory and SSO</div>
-            </button>
-          </div>
-
-          {#if selectedIdp === 'okta'}
-            <div class="mt-4 space-y-1.5">
-              <Label>Okta Domain *</Label>
-              <Input type="text" bind:value={selectedIdpDomain} placeholder="your-org.okta.com" />
-            </div>
-          {/if}
-
-          <div class="mt-4 text-center">
-            <button
-              type="button"
-              class="text-sm text-muted-foreground hover:text-foreground underline"
-              on:click={() => { selectedIdp = null; selectedIdpDomain = ''; step++; }}
-            >
-              Skip for now
-            </button>
-          </div>
-
-        {:else if step === 5}
-          <h2 class="text-xl font-semibold mb-1">Select Your Apps</h2>
-          <p class="text-sm text-muted-foreground mb-6">Choose the apps your organization uses (optional)</p>
-
-          <div class="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-            {#each appCategories as cat}
-              {@const catApps = appsByCategory[cat.id] || []}
-              {@const selectedInCat = catApps.filter((a) => selectedApps.includes(a.id)).length}
-              <div>
-                <button
-                  type="button"
-                  class="w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors bg-muted border border-transparent hover:border-border"
-                  on:click={() => toggleCategory(cat.id)}
-                >
-                  <div class="flex items-center gap-3">
-                    <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d={iconMap[cat.id] || iconMap.productivity} />
-                    </svg>
-                    <span class="text-sm font-medium">{cat.label}</span>
-                    {#if selectedInCat > 0}
-                      <Badge variant="secondary">{selectedInCat}</Badge>
-                    {/if}
-                  </div>
-                  <ChevronDown class="w-4 h-4 text-muted-foreground transition-transform {expandedCategories[cat.id] ? 'rotate-180' : ''}" />
-                </button>
-                {#if expandedCategories[cat.id]}
-                  <div class="grid grid-cols-2 gap-2 mt-2 ml-2">
-                    {#each catApps as app}
-                      <button
-                        type="button"
-                        class="text-left p-3 rounded-lg border transition-colors {selectedApps.includes(app.id)
-                          ? 'bg-primary/5 border-primary'
-                          : 'bg-muted border-transparent hover:border-border'}"
-                        on:click={() => toggleApp(app.id)}
-                      >
-                        <div class="flex items-center justify-between">
-                          <span class="text-xs font-medium">{app.name}</span>
-                          <div class="w-4 h-4 rounded border flex items-center justify-center shrink-0 {selectedApps.includes(app.id) ? 'bg-primary border-primary' : 'border-border'}">
-                            {#if selectedApps.includes(app.id)}
-                              <Check class="w-2.5 h-2.5 text-primary-foreground" />
-                            {/if}
-                          </div>
-                        </div>
-                      </button>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-
-          {#if selectedApps.length > 0}
-            <div class="mt-4 text-xs text-muted-foreground">
-              {selectedApps.length} app{selectedApps.length !== 1 ? 's' : ''} selected
-            </div>
-          {/if}
-
-        {:else}
-          <h2 class="text-xl font-semibold mb-1">Review & Create</h2>
-          <p class="text-sm text-muted-foreground mb-6">Confirm your organization setup</p>
-
-          <div class="space-y-4">
-            <div class="rounded-lg p-4 bg-muted">
-              <div class="text-xs uppercase tracking-wider text-muted-foreground mb-2">Organization</div>
-              <div class="text-sm font-medium">{orgName}</div>
-              {#if industry}<div class="text-xs text-muted-foreground mt-1">{industry} {companySize ? `- ${companySize}` : ''}</div>{/if}
-            </div>
-            <div class="rounded-lg p-4 bg-muted">
-              <div class="text-xs uppercase tracking-wider text-muted-foreground mb-2">Owner</div>
-              <div class="text-sm font-medium">{ownerName || ownerEmail}</div>
-              <div class="text-xs text-muted-foreground mt-1">{ownerEmail}</div>
-            </div>
-            {#if frameworks.length > 0}
-              <div class="rounded-lg p-4 bg-muted">
-                <div class="text-xs uppercase tracking-wider text-muted-foreground mb-2">Frameworks</div>
-                <div class="flex flex-wrap gap-2">
-                  {#each frameworks as fw}
-                    <Badge variant="secondary">{fw}</Badge>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-            {#if selectedIdp}
-              <div class="rounded-lg p-4 bg-muted">
-                <div class="text-xs uppercase tracking-wider text-muted-foreground mb-2">Identity Provider</div>
-                <div class="text-sm font-medium">
-                  {selectedIdp === 'okta' ? 'Okta' : selectedIdp === 'google_workspace' ? 'Google Workspace' : 'Microsoft 365 / Entra ID'}
-                </div>
-                {#if selectedIdp === 'okta' && selectedIdpDomain}
-                  <div class="text-xs text-muted-foreground mt-1">{selectedIdpDomain}</div>
-                {/if}
-              </div>
-            {/if}
-            {#if selectedApps.length > 0}
-              <div class="rounded-lg p-4 bg-muted">
-                <div class="text-xs uppercase tracking-wider text-muted-foreground mb-2">Apps</div>
-                <div class="flex flex-wrap gap-2">
-                  {#each selectedApps as appId}
-                    {@const app = integrations.find((i) => i.id === appId)}
-                    <Badge variant="success">{app?.name || appId}</Badge>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </div>
-        {/if}
-
-        {#if step === 7}
-          <div class="text-center py-4 space-y-6">
-            <h2 class="text-xl font-semibold">Setting up your compliance engine</h2>
-            <div class="space-y-3">
-              {#each NARRATION_STEPS as ns, i}
-                <div class="flex items-center gap-3 {i <= narrationPhase ? 'opacity-100' : 'opacity-30'} transition-opacity">
-                  <div class="w-6 h-6 rounded-full flex items-center justify-center shrink-0 {i < narrationPhase ? 'bg-green-500 text-white' : i === narrationPhase ? 'bg-primary text-white' : 'bg-muted'}">
-                    {#if i < narrationPhase}
-                      <Check class="w-3.5 h-3.5" />
-                    {:else if i === narrationPhase}
-                      <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                    {:else}
-                      <span class="text-[10px]">{i + 1}</span>
-                    {/if}
-                  </div>
-                  <span class="text-sm">{ns.label}</span>
-                </div>
-              {/each}
-            </div>
-
-            {#if narrationPhase >= 2}
-              <div class="rounded-lg border bg-muted/50 p-4 space-y-2">
-                <div class="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div class="text-2xl font-bold text-primary">{narrationEvidenceCount}</div>
-                    <div class="text-xs text-muted-foreground">Evidence Items</div>
-                  </div>
-                  <div>
-                    <div class="text-2xl font-bold text-primary">{narrationControlsCount}</div>
-                    <div class="text-xs text-muted-foreground">Controls Covered</div>
-                  </div>
-                  <div>
-                    <div class="text-2xl font-bold {narrationScore >= 25 ? 'text-green-500' : 'text-primary'}">{narrationScore}%</div>
-                    <div class="text-xs text-muted-foreground">Compliance Score</div>
-                  </div>
-                </div>
-                {#if narrationScore > 0}
-                  <div class="h-2 rounded-full bg-muted overflow-hidden">
-                    <div class="h-full bg-green-500 rounded-full transition-all" style="width: {narrationScore}%"></div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
-
-            {#if narrationPhase >= 4}
-              <p class="text-sm text-muted-foreground">Your first compliance evidence was collected automatically. Redirecting to dashboard...</p>
-            {/if}
-          </div>
-
-        {:else if error}
-          <Alert variant="destructive" class="mt-4">
-            <AlertTriangle class="h-4 w-4" />
-            <p class="pl-7">{error}</p>
-          </Alert>
-        {/if}
-
-        <div class="flex justify-between mt-8">
-          {#if step > 1}
-            <Button variant="outline" on:click={prevStep}>
-              <ArrowLeft class="h-4 w-4 mr-1.5" />
-              Back
-            </Button>
-          {:else}
-            <a href="/console/login">
-              <Button variant="outline">Sign In Instead</Button>
-            </a>
-          {/if}
-
-          {#if step < 6}
-            <Button on:click={nextStep}>
-              {step === 4 ? (selectedIdp ? "Continue" : "Skip") : step === 5 ? (selectedApps.length > 0 ? "Continue" : "Skip") : "Continue"}
-              <ArrowRight class="h-4 w-4 ml-1.5" />
-            </Button>
-          {:else}
-            <Button on:click={finish} disabled={loading}>
-              {loading ? "Creating..." : "Create Organization"}
-            </Button>
+            <div class="text-xs font-medium hidden sm:block">{step.label}</div>
+          </button>
+          {#if i < STEPS.length - 1}
+            <div class="flex-1 h-0.5 mx-1 {i < currentIdx ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}"></div>
           {/if}
         </div>
-      </CardContent>
-    </Card>
+      {/each}
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 sm:p-8">
+      {#if currentStep === "company"}
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Tell us about your company</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">We'll use this to recommend frameworks and starter policies.</p>
+
+        <div class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="o-industry">Industry</label>
+            <select id="o-industry" bind:value={industry} class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
+              <option value="">Select an industry</option>
+              {#each INDUSTRIES as ind}<option value={ind}>{ind}</option>{/each}
+            </select>
+          </div>
+
+          <div>
+            <div class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Company size</div>
+            <div class="flex flex-wrap gap-2">
+              {#each SIZES as s}
+                <button
+                  type="button"
+                  on:click={() => (size = s)}
+                  class="px-3 py-1.5 text-sm rounded-md border transition-colors
+                    {size === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400'}"
+                >{s}</button>
+              {/each}
+            </div>
+          </div>
+
+          <div>
+            <div class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Which best describes your goals?</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {#each USE_CASES as uc}
+                <button
+                  type="button"
+                  on:click={() => toggleUseCase(uc.id)}
+                  class="text-left p-3 rounded-md border transition-colors
+                    {useCases.includes(uc.id) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-900 dark:text-blue-200'
+                      : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-blue-400'}"
+                >
+                  <div class="text-sm font-medium">{uc.label}</div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+
+      {:else if currentStep === "frameworks"}
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Choose your frameworks</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+          We'll install these compliance packs and start scoring your evidence against their controls.
+        </p>
+        <div class="space-y-2">
+          {#each FRAMEWORKS as fw}
+            <button
+              type="button"
+              on:click={() => toggleFramework(fw.id)}
+              class="w-full text-left p-4 rounded-md border transition-colors flex items-start gap-3
+                {frameworks.includes(fw.id) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
+            >
+              <div class="mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0
+                {frameworks.includes(fw.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-400 dark:border-gray-500'}">
+                {#if frameworks.includes(fw.id)}<span class="text-white text-xs">✓</span>{/if}
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <div class="font-medium text-gray-900 dark:text-white">{fw.label}</div>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {frameworkColor(fw.frameworkKey)}">{fw.frameworkKey}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{fw.controlCount} controls</span>
+                </div>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{fw.tagline}</p>
+              </div>
+            </button>
+          {/each}
+        </div>
+
+      {:else if currentStep === "policies"}
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Seed starter policies</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+          We'll create draft policies based on your chosen frameworks. You can edit before publishing.
+          {suggestedTemplates.length} suggested based on your selection.
+        </p>
+        <div class="space-y-2 max-h-96 overflow-y-auto pr-1">
+          {#each POLICY_TEMPLATES as tpl}
+            {@const suggested = suggestedTemplates.includes(tpl.id)}
+            <button
+              type="button"
+              on:click={() => toggleTemplate(tpl.id)}
+              class="w-full text-left p-3 rounded-md border transition-colors flex items-start gap-3
+                {selectedTemplates.includes(tpl.id) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-600 hover:border-blue-400'}"
+            >
+              <div class="mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0
+                {selectedTemplates.includes(tpl.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-400 dark:border-gray-500'}">
+                {#if selectedTemplates.includes(tpl.id)}<span class="text-white text-xs">✓</span>{/if}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <div class="font-medium text-sm text-gray-900 dark:text-white">{tpl.name}</div>
+                  {#if suggested}<span class="text-[10px] uppercase font-semibold bg-blue-200 dark:bg-blue-800 text-blue-900 dark:text-blue-100 px-1.5 py-0.5 rounded">Suggested</span>{/if}
+                  {#each tpl.applicableFrameworks as fw}
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium {frameworkColor(fw)}">{fw}</span>
+                  {/each}
+                </div>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{tpl.tagline}</p>
+              </div>
+            </button>
+          {/each}
+        </div>
+
+      {:else if currentStep === "team"}
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Invite your team</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+          Invite teammates who should have access. You can always invite more later from Settings → Users.
+        </p>
+        <div class="space-y-2">
+          {#each invitees as inv, i}
+            <div class="flex gap-2 items-start">
+              <input type="email" bind:value={inv.email} placeholder="email@company.com"
+                class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+              <input type="text" bind:value={inv.displayName} placeholder="Full name"
+                class="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white" />
+              <select bind:value={inv.role}
+                class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300">
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+                <option value="viewer">Viewer</option>
+              </select>
+              <button type="button" on:click={() => removeInviteeRow(i)} class="px-3 py-2 text-gray-400 hover:text-red-600" title="Remove">×</button>
+            </div>
+          {/each}
+          <button type="button" on:click={addInviteeRow} class="text-sm text-blue-600 dark:text-blue-400 hover:underline">+ Add another</button>
+        </div>
+
+      {:else if currentStep === "integration"}
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Connect your first app</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+          Adapters pull live evidence from your tools. Skip to connect later from the Apps page.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <a href="/console/apps" class="p-4 border border-gray-200 dark:border-gray-700 rounded-md hover:border-blue-400 transition-colors">
+            <div class="font-medium text-gray-900 dark:text-white">Okta</div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Identity, MFA, access provisioning. Uses an API token.</p>
+          </a>
+          <a href="/console/apps" class="p-4 border border-gray-200 dark:border-gray-700 rounded-md hover:border-blue-400 transition-colors">
+            <div class="font-medium text-gray-900 dark:text-white">GitHub</div>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Branch protection, required reviews, signed commits. OAuth one-click.</p>
+          </a>
+        </div>
+        <p class="mt-4 text-xs text-gray-500 dark:text-gray-400">More coming: Google Workspace, Microsoft 365, Slack, AWS, Azure.</p>
+
+      {:else if currentStep === "finish"}
+        {#if !submitting && !provisioningDone && !provisioningError}
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Ready to go</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Here's what we'll set up:</p>
+          <ul class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+            <li class="flex gap-2"><span class="text-blue-600">→</span>Save company profile: {industry || "—"}, {size || "—"}, {useCases.length} use case{useCases.length === 1 ? "" : "s"}</li>
+            <li class="flex gap-2"><span class="text-blue-600">→</span>Install {frameworks.length} compliance pack{frameworks.length === 1 ? "" : "s"}</li>
+            <li class="flex gap-2"><span class="text-blue-600">→</span>Create {selectedTemplates.length} starter polic{selectedTemplates.length === 1 ? "y" : "ies"} (drafts)</li>
+            <li class="flex gap-2"><span class="text-blue-600">→</span>Invite {invitees.filter((i) => i.email.trim()).length} teammate{invitees.filter((i) => i.email.trim()).length === 1 ? "" : "s"}</li>
+            <li class="flex gap-2"><span class="text-blue-600">→</span>Run initial evidence evaluation</li>
+          </ul>
+        {:else}
+          <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Setting up your tenant</h2>
+          <div class="space-y-1 font-mono text-xs max-h-80 overflow-y-auto">
+            {#each provisioningLog as entry}
+              <div class="flex gap-2">
+                <span class="{entry.kind === 'ok' ? 'text-green-600 dark:text-green-400' : entry.kind === 'err' ? 'text-red-600 dark:text-red-400' : 'text-gray-500'}">
+                  {entry.kind === "ok" ? "✓" : entry.kind === "err" ? "✗" : "•"}
+                </span>
+                <span class="text-gray-700 dark:text-gray-300">{entry.msg}</span>
+              </div>
+            {/each}
+          </div>
+          {#if provisioningDone}
+            <div class="mt-6 p-4 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+              <p class="text-sm text-green-800 dark:text-green-300">All set. Head to your dashboard.</p>
+            </div>
+          {:else if provisioningError}
+            <div class="mt-6 p-4 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <p class="text-sm text-red-800 dark:text-red-300">Setup hit an error: {provisioningError}</p>
+              <p class="mt-1 text-xs text-red-700 dark:text-red-400">Anything that succeeded above is saved — continue to the dashboard.</p>
+            </div>
+          {/if}
+        {/if}
+      {/if}
+
+      <div class="mt-8 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 pt-5">
+        <button type="button" on:click={back} disabled={currentIdx === 0 || submitting}
+          class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed">← Back</button>
+        <div class="flex gap-2">
+          {#if canSkip && currentStep !== "finish"}
+            <button type="button" on:click={next} disabled={submitting}
+              class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Skip</button>
+          {/if}
+          {#if currentStep === "finish"}
+            {#if provisioningDone}
+              <a href="/console" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">Go to dashboard →</a>
+            {:else if !submitting && !provisioningError}
+              <button type="button" on:click={runProvisioning} class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">Set everything up</button>
+            {:else if provisioningError}
+              <a href="/console" class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">Continue anyway →</a>
+            {/if}
+          {:else}
+            <button type="button" on:click={next} disabled={submitting || (currentStep === "frameworks" && frameworks.length === 0)}
+              class="px-5 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium disabled:opacity-50">Continue →</button>
+          {/if}
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-5 text-center">
+      <a href="/console" class="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Skip setup for now</a>
+    </div>
   </div>
 </div>

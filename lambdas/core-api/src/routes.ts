@@ -608,6 +608,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const b = body(event) as {
       name?: string;
       industry?: string;
+      size?: string;
       status?: string;
       tier?: string;
       config?: unknown;
@@ -621,6 +622,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (b.industry !== undefined) {
       updates.push(`industry = $${vals.length + 1}`);
       vals.push(b.industry);
+    }
+    if (b.size !== undefined) {
+      updates.push(`size = $${vals.length + 1}`);
+      vals.push(b.size);
     }
     if (b.status !== undefined) {
       updates.push(`status = $${vals.length + 1}`);

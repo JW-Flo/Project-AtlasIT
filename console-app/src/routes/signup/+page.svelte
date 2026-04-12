@@ -109,7 +109,7 @@
           role: tokenData.role ?? "admin",
         }),
       );
-      window.location.href = "/console";
+      window.location.href = "/console/onboarding";
     } catch (e) {
       globalError = (e as Error).message ?? "An unexpected error occurred";
     } finally {
