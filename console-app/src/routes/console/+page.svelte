@@ -43,12 +43,49 @@
     updated_at: string;
   }
 
+  interface TrendPoint {
+    day: string;
+    avgScore: number;
+    snapshotCount: number;
+  }
+
   let dashboard: DashboardData | null = null;
   let packs: Pack[] = [];
   let evidence: EvidenceItem[] = [];
   let integrations: Integration[] = [];
+  let trend: TrendPoint[] = [];
   let loading = true;
   let error: string | null = null;
+
+  // Sparkline + trend delta computed from the /history/aggregate series.
+  // If fewer than 2 data points we just show a flat line (no delta).
+  $: sparklineWidth = 160;
+  $: sparklineHeight = 40;
+  $: sparklinePath = (() => {
+    if (trend.length < 2) return "";
+    const scores = trend.map((t) => t.avgScore);
+    const min = Math.max(0, Math.min(...scores) - 5);
+    const max = Math.min(100, Math.max(...scores) + 5);
+    const range = max - min || 1;
+    const step = sparklineWidth / (trend.length - 1);
+    return trend
+      .map((t, i) => {
+        const x = (i * step).toFixed(1);
+        const y = (sparklineHeight - ((t.avgScore - min) / range) * sparklineHeight).toFixed(1);
+        return `${i === 0 ? "M" : "L"}${x},${y}`;
+      })
+      .join(" ");
+  })();
+  $: sparklineAreaPath = sparklinePath
+    ? `${sparklinePath} L${sparklineWidth},${sparklineHeight} L0,${sparklineHeight} Z`
+    : "";
+  $: trendDelta = (() => {
+    if (trend.length < 2) return null;
+    const first = trend[0].avgScore;
+    const last = trend[trend.length - 1].avgScore;
+    const diff = last - first;
+    return { diff, first, last, days: trend.length };
+  })();
 
   $: installedPacks = packs.filter((p) => p.installedAt);
   $: totalControls = installedPacks.reduce((s, p) => s + (p.controlCount ?? 0), 0);
@@ -66,16 +103,18 @@
     loading = true;
     error = null;
     try {
-      const [dRes, pRes, eRes, iRes] = await Promise.all([
+      const [dRes, pRes, eRes, iRes, tRes] = await Promise.all([
         fetch("/api/v1/dashboard"),
         fetch("/api/compliance/api/v1/compliance-packs"),
         fetch("/api/compliance/api/v1/evidence?limit=10"),
         fetch("/api/v1/apps/integrations"),
+        fetch("/api/compliance/api/v1/compliance-packs/history/aggregate?days=30"),
       ]);
       if (dRes.ok) dashboard = (await dRes.json()).data ?? null;
       if (pRes.ok) packs = (await pRes.json()).data?.items ?? [];
       if (eRes.ok) evidence = (await eRes.json()).data?.items ?? [];
       if (iRes.ok) integrations = (await iRes.json()).data?.items ?? [];
+      if (tRes.ok) trend = (await tRes.json()).data?.series ?? [];
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -141,13 +180,13 @@
       <button on:click={loadAll} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
     </div>
   {:else}
-    <!-- Hero: overall compliance score -->
+    <!-- Hero: overall compliance score + trend sparkline -->
     {#if installedPacks.length > 0}
       <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
         <div class="flex items-start justify-between flex-wrap gap-4">
-          <div>
+          <div class="flex-1 min-w-0">
             <div class="text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Overall Compliance Score</div>
-            <div class="mt-2 flex items-baseline gap-3">
+            <div class="mt-2 flex items-baseline gap-3 flex-wrap">
               <div class="text-5xl font-bold {scoreColor(overallScore)}">{overallScore}%</div>
               <div class="text-sm text-gray-500 dark:text-gray-400">
                 {totalPass} passing · {totalFail} failing · {totalUnknown} unknown of {totalControls} controls
@@ -155,6 +194,26 @@
             </div>
             <div class="mt-1 text-xs text-gray-400">Last evaluated {relativeTime(lastEvaluated)}</div>
           </div>
+          {#if sparklinePath}
+            <div class="flex flex-col items-end gap-1">
+              <div class="text-xs text-gray-500 dark:text-gray-400">Last {trendDelta?.days ?? 0} days</div>
+              <svg width={sparklineWidth} height={sparklineHeight} viewBox="0 0 {sparklineWidth} {sparklineHeight}" class="overflow-visible">
+                <defs>
+                  <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="currentColor" stop-opacity="0.2" />
+                    <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={sparklineAreaPath} fill="url(#trendFill)" class="{scoreColor(overallScore)}" />
+                <path d={sparklinePath} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="{scoreColor(overallScore)}" />
+              </svg>
+              {#if trendDelta && Math.abs(trendDelta.diff) >= 0.1}
+                <div class="text-xs font-medium {trendDelta.diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                  {trendDelta.diff > 0 ? '↑' : '↓'} {Math.abs(trendDelta.diff).toFixed(1)} pts
+                </div>
+              {/if}
+            </div>
+          {/if}
           <a href="/console/compliance/packs" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">
             Manage packs →
           </a>
