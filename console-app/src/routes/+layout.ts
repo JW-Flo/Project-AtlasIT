@@ -1,9 +1,5 @@
-// Disable SSR globally for static SPA mode.
-// This prevents SvelteKit from trying to fetch __data.json files from the static bundle.
+// Static SPA mode config — disables SSR and prevents __data.json fetches
 export const ssr = false;
-
-// Allow trailing slash variants
+export const csr = true;
+export const prerender = false;
 export const trailingSlash = "ignore";
-
-// No server-side data to load in SPA mode; everything is fetched client-side.
-export const load = () => ({});
