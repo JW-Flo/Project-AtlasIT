@@ -731,6 +731,13 @@ jobs:
               cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
               cd "${GITHUB_WORKSPACE}/${dir}dist"
             fi
+            if grep -q 'require.*"bcryptjs"' handler.js 2>/dev/null; then
+              mkdir -p /tmp/bcrypt-deps && cd /tmp/bcrypt-deps
+              echo '{"dependencies":{"bcryptjs":"^2.4.3"}}' > package.json
+              npm install --production --silent
+              cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
+              cd "${GITHUB_WORKSPACE}/${dir}dist"
+            fi
             zip -r "/tmp/${FUNC}.zip" .
             cd "${GITHUB_WORKSPACE}"
             echo "Deploying ${FUNCTION_NAME}..."
