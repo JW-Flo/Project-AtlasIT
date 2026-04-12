@@ -39,7 +39,7 @@
   let formResourceId = "";
   let formJustification = "";
 
-  // Stats
+  // Stats derived from all requests (unfiltered load — recomputed on each fetch)
   let statTotal = 0;
   let statPending = 0;
   let statApproved = 0;
@@ -62,6 +62,7 @@
       requests = json.data?.items ?? [];
       total = json.data?.total ?? requests.length;
 
+      // Recompute stats from this batch (accurate when no filter is active)
       if (filterStatus === "all") {
         statTotal = total;
         statPending = requests.filter((r) => r.status === "pending").length;
@@ -214,7 +215,7 @@
             class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <div>
+        <div class="sm:col-span-1">
           <label for="justification" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Justification
           </label>
@@ -284,6 +285,7 @@
       <p class="text-gray-500 dark:text-gray-400 text-sm">No access requests found.</p>
     </div>
   {:else}
+    <!-- Table -->
     <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
