@@ -277,6 +277,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
              WHERE tenant_id = $1 AND pack_id = $2`,
             [tId, pId, at, pass, fail_, unknown],
           );
+          const totalCtrls = ctrls.rows.length;
+          const snapPct =
+            totalCtrls > 0 ? Math.round(((pass * 100.0) / totalCtrls) * 100) / 100 : 0;
+          await pool.query(
+            `INSERT INTO compliance_score_snapshots (tenant_id, pack_id, pass_count, fail_count, unknown_count, total_controls, score_pct, snapshot_at, source)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [tId, pId, pass, fail_, unknown, totalCtrls, snapPct, at, "cron"],
+          );
           results.push({
             tenantId: tId,
             packId: pId,
@@ -415,6 +423,84 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     } catch (e) {
       console.error("[compliance-api] packs.installed.error", { error: (e as Error).message });
       return fail(500, "Failed to list installed packs", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/compliance-packs/history?packId=...&days=30 — score history for one pack
+  // NOTE: must be registered BEFORE /:id route to avoid matching "history" as a pack id
+  if (path === "/api/v1/compliance-packs/history" && method === "GET") {
+    const packId = qs.packId as string | undefined;
+    const days = Math.min(Math.max(parseInt(qs.days ?? "30", 10) || 30, 1), 365);
+    if (!packId) return fail(400, "packId query parameter is required", "INVALID_PARAMS");
+    try {
+      const rows = await pool.query(
+        `SELECT pass_count as "passCount", fail_count as "failCount", unknown_count as "unknownCount",
+                total_controls as "totalControls", score_pct as "score",
+                snapshot_at as "snapshotAt", source
+         FROM compliance_score_snapshots
+         WHERE tenant_id = $1 AND pack_id = $2
+           AND snapshot_at > NOW() - make_interval(days => $3)
+         ORDER BY snapshot_at ASC
+         LIMIT 200`,
+        [tenantId, packId, days],
+      );
+      return ok({
+        status: "success",
+        data: {
+          packId,
+          days,
+          series: rows.rows.map((r) => ({
+            snapshotAt: (r.snapshotAt as Date)?.toISOString?.() ?? String(r.snapshotAt),
+            passCount: Number(r.passCount),
+            failCount: Number(r.failCount),
+            unknownCount: Number(r.unknownCount),
+            totalControls: Number(r.totalControls),
+            score: parseFloat(r.score),
+            source: r.source as string,
+          })),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] history.error", { error: (e as Error).message, packId });
+      return fail(500, "Failed to fetch history", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/compliance-packs/history/aggregate?days=30 — avg score trend across all packs
+  // NOTE: must be registered BEFORE /:id route to avoid matching "history" as a pack id
+  if (path === "/api/v1/compliance-packs/history/aggregate" && method === "GET") {
+    const days = Math.min(Math.max(parseInt(qs.days ?? "30", 10) || 30, 1), 365);
+    try {
+      const rows = await pool.query(
+        `WITH daily AS (
+           SELECT date_trunc('day', snapshot_at) AS day,
+                  AVG(score_pct) AS avg_score,
+                  COUNT(*) AS snap_count
+           FROM compliance_score_snapshots
+           WHERE tenant_id = $1
+             AND snapshot_at > NOW() - make_interval(days => $2)
+           GROUP BY day
+           ORDER BY day ASC
+         )
+         SELECT day, avg_score, snap_count FROM daily`,
+        [tenantId, days],
+      );
+      return ok({
+        status: "success",
+        data: {
+          days,
+          series: rows.rows.map((r) => ({
+            day: (r.day as Date)?.toISOString?.().slice(0, 10) ?? String(r.day),
+            avgScore: parseFloat(parseFloat(r.avg_score).toFixed(2)),
+            snapshotCount: Number(r.snap_count),
+          })),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] history.aggregate.error", { error: (e as Error).message });
+      return fail(500, "Failed to fetch aggregate history", "INTERNAL_ERROR");
     }
   }
 
@@ -646,6 +732,25 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
            SET last_evaluated_at = $3, pass_count = $4, fail_count = $5, unknown_count = $6
            WHERE tenant_id = $1 AND pack_id = $2`,
           [tenantId, packId, evaluatedAt, passCount, failCount, unknownCount],
+        );
+
+        const totalControls = controls.length;
+        const scorePct =
+          totalControls > 0 ? Math.round(((passCount * 100.0) / totalControls) * 100) / 100 : 0;
+        await pool.query(
+          `INSERT INTO compliance_score_snapshots (tenant_id, pack_id, pass_count, fail_count, unknown_count, total_controls, score_pct, snapshot_at, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            tenantId,
+            packId,
+            passCount,
+            failCount,
+            unknownCount,
+            totalControls,
+            scorePct,
+            evaluatedAt,
+            "manual",
+          ],
         );
 
         return ok({
