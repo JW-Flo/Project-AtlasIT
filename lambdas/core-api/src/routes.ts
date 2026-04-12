@@ -451,6 +451,79 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // GET /api/v1/audit-log — tenant-scoped audit trail with cursor pagination + filters
+  if (path === "/api/v1/audit-log" && method === "GET") {
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "50", 10) || 50, 1), 200);
+    const cursor = qs.cursor ?? null;
+    const actorFilter = qs.actorId ?? null;
+    const actionFilter = qs.action ?? null;
+    const resourceTypeFilter = qs.resourceType ?? null;
+    try {
+      const conditions = [`tenant_id = $1`];
+      const bindings: unknown[] = [auth.tenantId];
+      if (cursor) {
+        conditions.push(`created_at < $${bindings.length + 1}`);
+        bindings.push(cursor);
+      }
+      if (actorFilter) {
+        conditions.push(`actor_id = $${bindings.length + 1}`);
+        bindings.push(actorFilter);
+      }
+      if (actionFilter) {
+        conditions.push(`action ILIKE $${bindings.length + 1}`);
+        bindings.push(`%${actionFilter}%`);
+      }
+      if (resourceTypeFilter) {
+        conditions.push(`resource_type = $${bindings.length + 1}`);
+        bindings.push(resourceTypeFilter);
+      }
+      const rows = await pool.query(
+        `SELECT id, actor_id as "actorId", actor_type as "actorType", action,
+                resource_type as "resourceType", resource_id as "resourceId",
+                details, ip_address as "ipAddress", correlation_id as "correlationId",
+                created_at as "createdAt"
+         FROM audit_log
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY created_at DESC
+         LIMIT $${bindings.length + 1}`,
+        [...bindings, limit + 1],
+      );
+      const items = rows.rows.slice(0, limit);
+      const hasNext = rows.rows.length > limit;
+      const nextCursor = hasNext ? (items[items.length - 1]?.createdAt ?? null) : null;
+      const totalRow = await pool.query(
+        `SELECT COUNT(*) as cnt FROM audit_log WHERE tenant_id = $1`,
+        [auth.tenantId],
+      );
+      const distinctActions = await pool.query(
+        `SELECT DISTINCT action FROM audit_log WHERE tenant_id = $1 ORDER BY action LIMIT 100`,
+        [auth.tenantId],
+      );
+      const distinctResourceTypes = await pool.query(
+        `SELECT DISTINCT resource_type FROM audit_log WHERE tenant_id = $1 AND resource_type IS NOT NULL ORDER BY resource_type LIMIT 50`,
+        [auth.tenantId],
+      );
+      return ok({
+        status: "success",
+        data: {
+          items,
+          total: parseInt(totalRow.rows[0]?.cnt ?? "0", 10),
+          nextCursor,
+          facets: {
+            actions: distinctActions.rows.map((r: { action: string }) => r.action),
+            resourceTypes: distinctResourceTypes.rows.map(
+              (r: { resource_type: string }) => r.resource_type,
+            ),
+          },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[core-api] audit-log.list.error", { error: (e as Error).message });
+      return fail(500, "Failed to load audit log", "INTERNAL_ERROR");
+    }
+  }
+
   // GET /api/v1/dashboard — consolidated dashboard data for console
   if (path === "/api/v1/dashboard" && method === "GET") {
     try {
