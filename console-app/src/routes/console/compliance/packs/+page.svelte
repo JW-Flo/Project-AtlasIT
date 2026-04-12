@@ -1,387 +1,343 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import { session, fetchSession } from "$lib/stores/session";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardHeader from "$lib/components/ui/card-header.svelte";
-  import CardTitle from "$lib/components/ui/card-title.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Label from "$lib/components/ui/label.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import Alert from "$lib/components/ui/alert.svelte";
-  import { Package, Plus, Download, Trash2, ShieldCheck, Search } from "lucide-svelte";
 
-  interface CompliancePack {
+  interface Pack {
     id: string;
-    name: string;
-    slug: string;
+    label: string;
+    framework: string;
+    controlCount: number;
     description: string | null;
-    author: string;
     version: string;
-    framework_id: string;
-    controls_count: number;
-    status: "draft" | "published" | "deprecated";
-    is_builtin: boolean;
-    installed: boolean;
+    status: string;
+    installedAt: string | null;
+    lastEvaluatedAt: string | null;
+    passCount: number | null;
+    failCount: number | null;
+    unknownCount: number | null;
   }
 
+  interface Control {
+    controlId: string;
+    title: string;
+    ruleFn: string;
+    state: "pass" | "fail" | "unknown";
+    rationale: string[] | null;
+    evaluatedAt: string | null;
+    evidenceSampleSize: number;
+  }
+
+  let packs: Pack[] = [];
   let loading = true;
   let error: string | null = null;
-  let packs: CompliancePack[] = [];
-  let searchQuery = "";
-  let frameworkFilter = "all";
-  let showCreateForm = false;
-  let creating = false;
-  let togglingPackId: string | null = null;
 
-  // Create form state
-  let newName = "";
-  let newSlug = "";
-  let newDescription = "";
-  let newFrameworkId = "";
-  let createError: string | null = null;
+  let selectedPackId: string | null = null;
+  let detailLoading = false;
+  let detail: { pack: Pack; controls: Control[] } | null = null;
 
-  $: isAdmin =
-    $session?.superAdmin ||
-    $session?.roles?.includes("owner") ||
-    $session?.roles?.includes("admin") ||
-    false;
+  let busyPackId: string | null = null;
+  let banner: { type: "info" | "error"; msg: string } | null = null;
 
-  $: frameworks = [...new Set(packs.map((p) => p.framework_id))].sort();
-
-  $: filteredPacks = packs.filter((p) => {
-    const matchesSearch =
-      !searchQuery ||
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.description ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.author.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFramework =
-      frameworkFilter === "all" || p.framework_id === frameworkFilter;
-    return matchesSearch && matchesFramework;
-  });
-
-  $: installedCount = packs.filter((p) => p.installed).length;
+  $: installedPacks = packs.filter((p) => p.installedAt);
+  $: totalControls = installedPacks.reduce((s, p) => s + (p.controlCount ?? 0), 0);
+  $: totalPass = installedPacks.reduce((s, p) => s + (p.passCount ?? 0), 0);
+  $: totalFail = installedPacks.reduce((s, p) => s + (p.failCount ?? 0), 0);
+  $: totalUnknown = installedPacks.reduce((s, p) => s + (p.unknownCount ?? 0), 0);
+  $: overallScore = totalControls > 0 ? Math.round((totalPass * 100) / totalControls) : 0;
 
   async function loadPacks() {
     loading = true;
     error = null;
     try {
-      const res = await fetch("/api/compliance-packs");
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? `Failed to load packs (${res.status})`);
-      }
-      const data = await res.json();
-      packs = data.packs ?? [];
-    } catch (e: any) {
-      error = e.message ?? "Failed to load compliance packs";
+      const res = await fetch("/api/compliance/api/v1/compliance-packs");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      packs = j.data?.items ?? [];
+    } catch (e) {
+      error = (e as Error).message;
     } finally {
       loading = false;
     }
   }
 
-  async function installPack(pack: CompliancePack) {
-    togglingPackId = pack.id;
+  async function loadDetail(packId: string) {
+    selectedPackId = packId;
+    detailLoading = true;
+    detail = null;
     try {
-      const res = await fetch("/api/compliance-packs/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packId: pack.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Install failed");
-      packs = packs.map((p) => (p.id === pack.id ? { ...p, installed: true } : p));
-      pushToast({ variant: "success", message: `"${pack.name}" installed successfully` });
-    } catch (e: any) {
-      pushToast({ variant: "error", message: e.message ?? "Failed to install pack" });
+      const res = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      detail = j.data;
+    } catch (e) {
+      banner = { type: "error", msg: `Failed to load detail: ${(e as Error).message}` };
     } finally {
-      togglingPackId = null;
+      detailLoading = false;
     }
   }
 
-  async function uninstallPack(pack: CompliancePack) {
-    togglingPackId = pack.id;
+  async function install(packId: string) {
+    busyPackId = packId;
+    banner = null;
     try {
-      const res = await fetch("/api/compliance-packs/install", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packId: pack.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Uninstall failed");
-      packs = packs.map((p) => (p.id === pack.id ? { ...p, installed: false } : p));
-      pushToast({ variant: "success", message: `"${pack.name}" uninstalled` });
-    } catch (e: any) {
-      pushToast({ variant: "error", message: e.message ?? "Failed to uninstall pack" });
-    } finally {
-      togglingPackId = null;
-    }
-  }
-
-  async function createPack() {
-    createError = null;
-    if (!newName.trim() || !newSlug.trim() || !newFrameworkId.trim()) {
-      createError = "Name, slug, and framework are required";
-      return;
-    }
-    creating = true;
-    try {
-      const res = await fetch("/api/compliance-packs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newName.trim(),
-          slug: newSlug.trim(),
-          description: newDescription.trim() || undefined,
-          frameworkId: newFrameworkId.trim(),
-          controls: [],
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? "Create failed");
-      pushToast({ variant: "success", message: `"${newName}" pack created` });
-      resetCreateForm();
+      const res = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}/install`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      banner = { type: "info", msg: "Pack installed. Click Evaluate to run CDT rules against your evidence." };
       await loadPacks();
-    } catch (e: any) {
-      createError = e.message ?? "Failed to create pack";
+    } catch (e) {
+      banner = { type: "error", msg: `Install failed: ${(e as Error).message}` };
     } finally {
-      creating = false;
+      busyPackId = null;
     }
   }
 
-  function resetCreateForm() {
-    newName = "";
-    newSlug = "";
-    newDescription = "";
-    newFrameworkId = "";
-    createError = null;
-    showCreateForm = false;
-  }
-
-  function slugify(value: string): string {
-    return value
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-]/g, "")
-      .replace(/-+/g, "-");
-  }
-
-  function handleNameInput() {
-    if (!newSlug || newSlug === slugify(newName.slice(0, -1))) {
-      newSlug = slugify(newName);
+  async function uninstall(packId: string) {
+    if (!confirm("Uninstall this pack? Control state for this pack will be removed.")) return;
+    busyPackId = packId;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}/install`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      banner = { type: "info", msg: "Pack uninstalled." };
+      if (selectedPackId === packId) { selectedPackId = null; detail = null; }
+      await loadPacks();
+    } catch (e) {
+      banner = { type: "error", msg: `Uninstall failed: ${(e as Error).message}` };
+    } finally {
+      busyPackId = null;
     }
   }
 
-  onMount(async () => {
-    await fetchSession();
-    await loadPacks();
-  });
+  async function evaluate(packId: string) {
+    busyPackId = packId;
+    banner = null;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}/evaluate`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      const r = j.data;
+      banner = {
+        type: "info",
+        msg: `Evaluated ${r.controlCount} controls in ${r.durationMs}ms — ${r.passCount} pass, ${r.failCount} fail, ${r.unknownCount} unknown (score ${r.score}%).`,
+      };
+      await loadPacks();
+      if (selectedPackId === packId) await loadDetail(packId);
+    } catch (e) {
+      banner = { type: "error", msg: `Evaluate failed: ${(e as Error).message}` };
+    } finally {
+      busyPackId = null;
+    }
+  }
+
+  function stateClass(s: string): string {
+    switch (s) {
+      case "pass":    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+      case "fail":    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+    }
+  }
+
+  function relativeTime(iso: string | null): string {
+    if (!iso) return "never";
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    const mins = Math.floor(ms / 60000);
+    return mins > 0 ? `${mins}m ago` : "just now";
+  }
+
+  onMount(loadPacks);
 </script>
 
-<svelte:head>
-  <title>Compliance Packs — AtlasIT</title>
-</svelte:head>
-
-<div class="space-y-6 p-6">
-  <!-- Header -->
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">Compliance Packs</h1>
-      <p class="text-muted-foreground mt-1 text-sm">
-        Browse and install third-party compliance packs to extend your coverage.
-        {#if installedCount > 0}
-          <span class="font-medium">{installedCount} installed.</span>
-        {/if}
-      </p>
-    </div>
-    {#if isAdmin}
-      <Button on:click={() => (showCreateForm = !showCreateForm)} variant="default">
-        <Plus class="mr-2 h-4 w-4" />
-        Create Pack
-      </Button>
-    {/if}
+<div class="p-8 max-w-7xl mx-auto">
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Compliance Packs</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      CDT-backed framework packs. Installing a pack binds its controls to your tenant; evaluation runs the live rule engine against your recent evidence.
+    </p>
   </div>
 
-  <!-- Create Pack Form -->
-  {#if showCreateForm && isAdmin}
-    <Card>
-      <CardHeader>
-        <CardTitle>New Compliance Pack</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {#if createError}
-          <Alert variant="destructive" class="mb-4">{createError}</Alert>
-        {/if}
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-1">
-            <Label for="pack-name">Name</Label>
-            <Input
-              id="pack-name"
-              bind:value={newName}
-              on:input={handleNameInput}
-              placeholder="My Custom Pack"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label for="pack-slug">Slug</Label>
-            <Input
-              id="pack-slug"
-              bind:value={newSlug}
-              placeholder="my-custom-pack"
-            />
-          </div>
-          <div class="space-y-1">
-            <Label for="pack-framework">Framework ID</Label>
-            <Input
-              id="pack-framework"
-              bind:value={newFrameworkId}
-              placeholder="SOC2, ISO27001, NIST-CSF…"
-            />
-          </div>
-          <div class="space-y-1 sm:col-span-2">
-            <Label for="pack-description">Description (optional)</Label>
-            <Input
-              id="pack-description"
-              bind:value={newDescription}
-              placeholder="Brief description of this pack"
-            />
-          </div>
-        </div>
-        <div class="mt-4 flex gap-2">
-          <Button on:click={createPack} disabled={creating}>
-            {#if creating}Creating…{:else}Create Pack{/if}
-          </Button>
-          <Button variant="outline" on:click={resetCreateForm} disabled={creating}>
-            Cancel
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+  {#if banner}
+    <div
+      class="mb-5 rounded-lg p-4 text-sm border
+        {banner.type === 'error'
+          ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300'
+          : 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300'}"
+    >
+      {banner.msg}
+    </div>
   {/if}
 
-  <!-- Filters -->
-  <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-    <div class="relative flex-1">
-      <Search class="text-muted-foreground absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-      <Input
-        bind:value={searchQuery}
-        placeholder="Search packs…"
-        class="pl-9"
-      />
+  {#if !loading && installedPacks.length > 0}
+    <div class="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <div class="text-xs uppercase text-gray-500">Overall score</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{overallScore}%</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <div class="text-xs uppercase text-gray-500">Installed packs</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{installedPacks.length}</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <div class="text-xs uppercase text-gray-500">Controls passing</div>
+        <div class="text-2xl font-bold text-green-700 dark:text-green-400 mt-1">{totalPass}</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <div class="text-xs uppercase text-gray-500">Controls failing</div>
+        <div class="text-2xl font-bold text-red-700 dark:text-red-400 mt-1">{totalFail}</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+        <div class="text-xs uppercase text-gray-500">Unknown</div>
+        <div class="text-2xl font-bold text-gray-500 dark:text-gray-400 mt-1">{totalUnknown}</div>
+      </div>
     </div>
-    <div class="flex gap-2">
-      <select
-        bind:value={frameworkFilter}
-        class="border-input bg-background ring-offset-background focus:ring-ring h-9 rounded-md border px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-offset-2"
-      >
-        <option value="all">All frameworks</option>
-        {#each frameworks as fw}
-          <option value={fw}>{fw}</option>
-        {/each}
-      </select>
-    </div>
-  </div>
+  {/if}
 
-  <!-- Pack Grid -->
   {#if loading}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {#each Array(6) as _}
-        <Card>
-          <CardHeader>
-            <Skeleton class="h-5 w-2/3" />
-          </CardHeader>
-          <CardContent class="space-y-2">
-            <Skeleton class="h-4 w-full" />
-            <Skeleton class="h-4 w-4/5" />
-            <Skeleton class="mt-4 h-8 w-24" />
-          </CardContent>
-        </Card>
+      {#each [1, 2, 3, 4, 5] as _}
+        <div class="h-44 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if error}
-    <Alert variant="destructive">{error}</Alert>
-  {:else if filteredPacks.length === 0}
-    <div class="text-muted-foreground flex flex-col items-center justify-center py-16 text-center">
-      <Package class="mb-3 h-10 w-10 opacity-40" />
-      <p class="text-base font-medium">No packs found</p>
-      <p class="mt-1 text-sm">
-        {#if searchQuery || frameworkFilter !== "all"}
-          Try adjusting your search or filter.
-        {:else}
-          No compliance packs are available yet.
-        {/if}
-      </p>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+      <p class="text-red-800 dark:text-red-300">{error}</p>
+      <button on:click={loadPacks} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
     </div>
   {:else}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {#each filteredPacks as pack (pack.id)}
-        <Card class="flex flex-col">
-          <CardHeader class="pb-2">
-            <div class="flex items-start justify-between gap-2">
-              <CardTitle class="text-base leading-tight">{pack.name}</CardTitle>
-              <div class="flex shrink-0 flex-wrap gap-1">
-                {#if pack.installed}
-                  <Badge variant="success">Installed</Badge>
-                {/if}
-                {#if pack.is_builtin}
-                  <Badge variant="secondary">Built-in</Badge>
-                {/if}
-                {#if pack.status === "deprecated"}
-                  <Badge variant="destructive">Deprecated</Badge>
-                {:else if pack.status === "draft"}
-                  <Badge variant="outline">Draft</Badge>
+      {#each packs as p (p.id)}
+        {@const score = p.controlCount > 0 && p.passCount !== null ? Math.round((p.passCount * 100) / p.controlCount) : null}
+        <div
+          class="bg-white dark:bg-gray-800 border rounded-lg p-5 hover:border-blue-400 cursor-pointer transition-colors
+            {selectedPackId === p.id ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900' : 'border-gray-200 dark:border-gray-700'}"
+          on:click={() => loadDetail(p.id)}
+          on:keydown={(e) => e.key === 'Enter' && loadDetail(p.id)}
+          role="button"
+          tabindex="0"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-gray-900 dark:text-white truncate">{p.label}</h3>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{p.framework} · {p.controlCount} controls · v{p.version}</p>
+            </div>
+            {#if p.installedAt}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                Installed
+              </span>
+            {/if}
+          </div>
+
+          {#if p.description}
+            <p class="mt-3 text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{p.description}</p>
+          {/if}
+
+          {#if p.installedAt}
+            <div class="mt-4 space-y-2">
+              <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                <span>Score</span>
+                <span class="font-semibold text-gray-900 dark:text-white">{score ?? "—"}%</span>
+              </div>
+              <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                {#if score !== null}
+                  <div
+                    class="h-full {score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}"
+                    style="width: {score}%"
+                  ></div>
                 {/if}
               </div>
-            </div>
-          </CardHeader>
-          <CardContent class="flex flex-1 flex-col justify-between gap-4">
-            <div class="space-y-2">
-              {#if pack.description}
-                <p class="text-muted-foreground text-sm leading-relaxed">
-                  {pack.description}
-                </p>
-              {/if}
-              <div class="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                <span class="flex items-center gap-1">
-                  <ShieldCheck class="h-3.5 w-3.5" />
-                  {pack.framework_id}
-                </span>
-                <span>{pack.controls_count} control{pack.controls_count !== 1 ? "s" : ""}</span>
-                <span>v{pack.version}</span>
+              <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                <span><span class="text-green-600 dark:text-green-400 font-medium">{p.passCount ?? 0}</span> pass</span>
+                <span><span class="text-red-600 dark:text-red-400 font-medium">{p.failCount ?? 0}</span> fail</span>
+                <span><span class="font-medium">{p.unknownCount ?? 0}</span> unknown</span>
               </div>
-              <p class="text-muted-foreground text-xs">
-                By <span class="font-medium">{pack.author}</span>
-              </p>
+              <p class="text-xs text-gray-400">Last evaluated {relativeTime(p.lastEvaluatedAt)}</p>
             </div>
-            <div class="flex gap-2">
-              {#if pack.installed}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={togglingPackId === pack.id}
-                  on:click={() => uninstallPack(pack)}
-                >
-                  <Trash2 class="mr-1.5 h-3.5 w-3.5" />
-                  {togglingPackId === pack.id ? "Removing…" : "Uninstall"}
-                </Button>
-              {:else}
-                <Button
-                  variant="default"
-                  size="sm"
-                  disabled={togglingPackId === pack.id || pack.status !== "published"}
-                  on:click={() => installPack(pack)}
-                >
-                  <Download class="mr-1.5 h-3.5 w-3.5" />
-                  {togglingPackId === pack.id ? "Installing…" : "Install"}
-                </Button>
-              {/if}
+
+            <div class="mt-4 flex gap-2">
+              <button
+                on:click|stopPropagation={() => evaluate(p.id)}
+                disabled={busyPackId === p.id}
+                class="flex-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
+              >
+                {busyPackId === p.id ? "Running..." : "Evaluate"}
+              </button>
+              <button
+                on:click|stopPropagation={() => uninstall(p.id)}
+                disabled={busyPackId === p.id}
+                class="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
+              >
+                Remove
+              </button>
             </div>
-          </CardContent>
-        </Card>
+          {:else}
+            <div class="mt-4">
+              <button
+                on:click|stopPropagation={() => install(p.id)}
+                disabled={busyPackId === p.id}
+                class="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
+              >
+                {busyPackId === p.id ? "Installing..." : "Install pack"}
+              </button>
+            </div>
+          {/if}
+        </div>
       {/each}
+    </div>
+  {/if}
+
+  {#if selectedPackId}
+    <div class="mt-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="border-b border-gray-200 dark:border-gray-700 px-5 py-3 flex items-center justify-between">
+        <h2 class="font-semibold text-gray-900 dark:text-white">
+          {detail?.pack?.label ?? "Pack controls"}
+        </h2>
+        <button on:click={() => { selectedPackId = null; detail = null; }} class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+          Close
+        </button>
+      </div>
+      {#if detailLoading}
+        <div class="p-8 text-center text-sm text-gray-500">Loading controls...</div>
+      {:else if !detail}
+        <div class="p-8 text-center text-sm text-gray-500">No detail loaded.</div>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <th class="px-5 py-3 font-medium">Control</th>
+                <th class="px-5 py-3 font-medium">Title</th>
+                <th class="px-5 py-3 font-medium">State</th>
+                <th class="px-5 py-3 font-medium">Evidence</th>
+                <th class="px-5 py-3 font-medium">Rationale</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+              {#each detail.controls as c (c.controlId)}
+                <tr>
+                  <td class="px-5 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{c.controlId}</td>
+                  <td class="px-5 py-3 text-gray-900 dark:text-white">{c.title}</td>
+                  <td class="px-5 py-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize {stateClass(c.state)}">
+                      {c.state}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs">
+                    {c.evidenceSampleSize} record{c.evidenceSampleSize === 1 ? "" : "s"}
+                  </td>
+                  <td class="px-5 py-3 text-xs text-gray-600 dark:text-gray-400 max-w-md">
+                    {#if c.rationale && c.rationale.length > 0}
+                      {c.rationale.slice(0, 2).join("; ")}{c.rationale.length > 2 ? "…" : ""}
+                    {:else}
+                      <span class="text-gray-400">—</span>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

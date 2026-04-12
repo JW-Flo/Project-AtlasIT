@@ -14,6 +14,8 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
+import { CONTROL_REGISTRY, listControls } from "./cdt/registry.js";
+import type { CdtEvent } from "./cdt/models.js";
 import crypto from "crypto";
 import pg from "pg";
 
@@ -175,6 +177,329 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       console.error("[compliance-api] summary.error", { error: (e as Error).message });
       return fail(500, "Failed to build compliance summary", "INTERNAL_ERROR");
     }
+  }
+
+  // ── Compliance Packs (CDT-backed) ─────────────────────────────────────────
+
+  // GET /api/v1/compliance-packs — list all available packs with control counts
+  if (path === "/api/v1/compliance-packs" && method === "GET") {
+    try {
+      const packs = await pool.query(
+        `SELECT p.id, p.name as "label", p.framework_id as "framework",
+                p.controls_count::int as "controlCount",
+                p.description, p.version, p.status,
+                tcp.installed_at as "installedAt",
+                tcp.last_evaluated_at as "lastEvaluatedAt",
+                tcp.pass_count as "passCount",
+                tcp.fail_count as "failCount",
+                tcp.unknown_count as "unknownCount"
+         FROM compliance_packs p
+         LEFT JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id AND tcp.tenant_id = $1
+         ORDER BY p.name`,
+        [tenantId],
+      );
+      return ok({
+        status: "success",
+        data: { items: packs.rows, total: packs.rows.length },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] packs.list.error", { error: (e as Error).message });
+      return fail(500, "Failed to list packs", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/compliance-packs/installed — packs installed for this tenant
+  if (path === "/api/v1/compliance-packs/installed" && method === "GET") {
+    try {
+      const rows = await pool.query(
+        `SELECT p.id, p.name as "label", p.framework_id as "framework",
+                p.controls_count::int as "controlCount",
+                tcp.installed_at as "installedAt",
+                tcp.last_evaluated_at as "lastEvaluatedAt",
+                tcp.pass_count as "passCount",
+                tcp.fail_count as "failCount",
+                tcp.unknown_count as "unknownCount"
+         FROM tenant_compliance_packs tcp
+         INNER JOIN compliance_packs p ON p.id = tcp.pack_id
+         WHERE tcp.tenant_id = $1
+         ORDER BY tcp.installed_at DESC`,
+        [tenantId],
+      );
+      return ok({
+        status: "success",
+        data: { items: rows.rows, total: rows.rows.length },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] packs.installed.error", { error: (e as Error).message });
+      return fail(500, "Failed to list installed packs", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/compliance-packs/:id — pack detail + control list + current state
+  {
+    const m = path.match(/^\/api\/v1\/compliance-packs\/([A-Za-z0-9_-]+)$/);
+    if (m && method === "GET") {
+      const packId = m[1];
+      try {
+        const packRow = await pool.query(
+          `SELECT id, name as "label", framework_id as "framework",
+                  controls_count::int as "controlCount",
+                  description, version, status
+           FROM compliance_packs WHERE id = $1`,
+          [packId],
+        );
+        if (packRow.rows.length === 0) return fail(404, "Pack not found", "NOT_FOUND");
+
+        const controls = await pool.query(
+          `SELECT c.control_id as "controlId", c.title, c.rule_fn as "ruleFn",
+                  COALESCE(s.state, 'unknown') as state,
+                  s.rationale,
+                  s.evaluated_at as "evaluatedAt",
+                  s.evidence_sample_size as "evidenceSampleSize"
+           FROM compliance_pack_controls c
+           LEFT JOIN tenant_control_state s
+             ON s.pack_id = c.pack_id AND s.control_id = c.control_id AND s.tenant_id = $1
+           WHERE c.pack_id = $2
+           ORDER BY c.control_id`,
+          [tenantId, packId],
+        );
+
+        const installed = await pool.query(
+          `SELECT installed_at as "installedAt", last_evaluated_at as "lastEvaluatedAt",
+                  pass_count as "passCount", fail_count as "failCount", unknown_count as "unknownCount"
+           FROM tenant_compliance_packs WHERE tenant_id = $1 AND pack_id = $2`,
+          [tenantId, packId],
+        );
+
+        return ok({
+          status: "success",
+          data: {
+            pack: packRow.rows[0],
+            installation: installed.rows[0] ?? null,
+            controls: controls.rows,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] packs.detail.error", {
+          error: (e as Error).message,
+          packId,
+        });
+        return fail(500, "Failed to load pack detail", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // POST /api/v1/compliance-packs/:id/install — install pack for tenant
+  {
+    const m = path.match(/^\/api\/v1\/compliance-packs\/([A-Za-z0-9_-]+)\/install$/);
+    if (m && method === "POST") {
+      const packId = m[1];
+      try {
+        const exists = await pool.query(`SELECT id FROM compliance_packs WHERE id = $1`, [packId]);
+        if (exists.rows.length === 0) return fail(404, "Pack not found", "NOT_FOUND");
+        await pool.query(
+          `INSERT INTO tenant_compliance_packs (tenant_id, pack_id) VALUES ($1, $2)
+           ON CONFLICT (tenant_id, pack_id) DO NOTHING`,
+          [tenantId, packId],
+        );
+        if (svc.auditRepo) {
+          await svc.auditRepo
+            .log({
+              tenantId,
+              actor: auth.userId,
+              action: "compliance_pack.install",
+              target: packId,
+            })
+            .catch(() => {});
+        }
+        return ok({
+          status: "success",
+          data: { packId, installed: true },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] packs.install.error", {
+          error: (e as Error).message,
+          packId,
+        });
+        return fail(500, "Failed to install pack", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // DELETE /api/v1/compliance-packs/:id/install — uninstall pack
+  {
+    const m = path.match(/^\/api\/v1\/compliance-packs\/([A-Za-z0-9_-]+)\/install$/);
+    if (m && method === "DELETE") {
+      const packId = m[1];
+      try {
+        await pool.query(
+          `DELETE FROM tenant_compliance_packs WHERE tenant_id = $1 AND pack_id = $2`,
+          [tenantId, packId],
+        );
+        await pool.query(`DELETE FROM tenant_control_state WHERE tenant_id = $1 AND pack_id = $2`, [
+          tenantId,
+          packId,
+        ]);
+        return ok({
+          status: "success",
+          data: { packId, uninstalled: true },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        return fail(500, "Failed to uninstall pack", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // POST /api/v1/compliance-packs/:id/evaluate — run CDT rules against recent evidence
+  {
+    const m = path.match(/^\/api\/v1\/compliance-packs\/([A-Za-z0-9_-]+)\/evaluate$/);
+    if (m && method === "POST") {
+      const packId = m[1];
+      const startedAt = Date.now();
+      try {
+        const installed = await pool.query(
+          `SELECT 1 FROM tenant_compliance_packs WHERE tenant_id = $1 AND pack_id = $2`,
+          [tenantId, packId],
+        );
+        if (installed.rows.length === 0) return fail(400, "Pack is not installed", "NOT_INSTALLED");
+
+        const controlsRow = await pool.query(
+          `SELECT control_id as "controlId", rule_fn as "ruleFn"
+           FROM compliance_pack_controls WHERE pack_id = $1`,
+          [packId],
+        );
+        const controls = controlsRow.rows as Array<{ controlId: string; ruleFn: string }>;
+
+        // Pull recent evidence for this tenant (last 30 days) grouped by normalized control key
+        const evidenceRows = await pool.query(
+          `SELECT control_id as "controlId", framework, source, actor, metadata, created_at as "createdAt"
+           FROM compliance_evidence
+           WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days' AND control_id IS NOT NULL`,
+          [tenantId],
+        );
+
+        // Normalize keys to handle mismatch between registry ("SOC2-CC6.1") and evidence ("CC6.1"):
+        // strip non-alphanumerics and uppercase. Registry "SOC2-CC6.1" → "SOC2CC61"; evidence "CC6.1" → "CC61".
+        // Match if registry key ends with evidence key (post-strip).
+        const norm = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+        const byControl = new Map<string, Array<Record<string, unknown>>>();
+        for (const row of evidenceRows.rows) {
+          const cid = row.controlId as string | null;
+          if (!cid) continue;
+          const key = norm(cid);
+          if (!byControl.has(key)) byControl.set(key, []);
+          byControl.get(key)!.push(row);
+        }
+
+        function lookupEvidence(regControlId: string): Array<Record<string, unknown>> {
+          const regKey = norm(regControlId);
+          // Direct match
+          if (byControl.has(regKey)) return byControl.get(regKey)!;
+          // Strip framework prefix — try suffix match (evidence often omits the prefix)
+          for (const [evKey, rows] of byControl) {
+            if (regKey.endsWith(evKey) && evKey.length >= 3) return rows;
+          }
+          return [];
+        }
+
+        let passCount = 0;
+        let failCount = 0;
+        let unknownCount = 0;
+        const evaluatedAt = new Date().toISOString();
+
+        // Evaluate each control: pass if ANY evidence event passes, fail if ALL fail, unknown if no evidence
+        for (const { controlId } of controls) {
+          const rule = CONTROL_REGISTRY[controlId];
+          const ev = lookupEvidence(controlId);
+          let state: "pass" | "fail" | "unknown" = "unknown";
+          let rationale: string[] = ["No evidence in the last 30 days"];
+
+          if (rule && ev.length > 0) {
+            let anyPass = false;
+            const fails: string[] = [];
+            for (const row of ev) {
+              const metadata = (row.metadata ?? {}) as Record<string, unknown>;
+              const cdtEv: CdtEvent = {
+                type: (row.source as string) ?? "evidence",
+                tenant: tenantId,
+                occurred_at:
+                  (row.createdAt as Date)?.toISOString?.() ?? String(row.createdAt ?? evaluatedAt),
+                payload: metadata,
+                trace_id: (row.actor as string) ?? "",
+              };
+              const dec = rule.fn(cdtEv);
+              if (dec.decision === "pass") {
+                anyPass = true;
+                rationale = dec.rationale;
+                break;
+              }
+              if (dec.decision === "fail") fails.push(...dec.rationale);
+            }
+            state = anyPass ? "pass" : fails.length > 0 ? "fail" : "unknown";
+            if (!anyPass && fails.length > 0) rationale = Array.from(new Set(fails)).slice(0, 5);
+          } else if (!rule) {
+            rationale = ["No rule implementation registered"];
+          }
+
+          if (state === "pass") passCount++;
+          else if (state === "fail") failCount++;
+          else unknownCount++;
+
+          await pool.query(
+            `INSERT INTO tenant_control_state (tenant_id, pack_id, control_id, state, rationale, evaluated_at, evidence_sample_size)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (tenant_id, pack_id, control_id) DO UPDATE SET
+               state = EXCLUDED.state,
+               rationale = EXCLUDED.rationale,
+               evaluated_at = EXCLUDED.evaluated_at,
+               evidence_sample_size = EXCLUDED.evidence_sample_size`,
+            [tenantId, packId, controlId, state, rationale, evaluatedAt, ev.length],
+          );
+        }
+
+        await pool.query(
+          `UPDATE tenant_compliance_packs
+           SET last_evaluated_at = $3, pass_count = $4, fail_count = $5, unknown_count = $6
+           WHERE tenant_id = $1 AND pack_id = $2`,
+          [tenantId, packId, evaluatedAt, passCount, failCount, unknownCount],
+        );
+
+        return ok({
+          status: "success",
+          data: {
+            packId,
+            evaluatedAt,
+            controlCount: controls.length,
+            passCount,
+            failCount,
+            unknownCount,
+            score: controls.length > 0 ? Math.round((passCount * 100) / controls.length) : 0,
+            durationMs: Date.now() - startedAt,
+          },
+          timestamp: evaluatedAt,
+        });
+      } catch (e) {
+        console.error("[compliance-api] packs.evaluate.error", {
+          error: (e as Error).message,
+          packId,
+        });
+        return fail(500, "Evaluation failed", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // GET /api/v1/compliance-packs/registry/controls — introspect loaded CDT rules (debug/admin)
+  if (path === "/api/v1/compliance-packs/registry/controls" && method === "GET") {
+    return ok({
+      status: "success",
+      data: { items: listControls(), total: Object.keys(CONTROL_REGISTRY).length },
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // ── Evidence routes ────────────────────────────────────────────────────────
