@@ -11,18 +11,73 @@
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch.bind(window);
 
+    // Stub responses for paths with no Lambda implementation (checked before pathMap)
+    const stubMap: Record<string, unknown> = {
+      "/api/auth/mfa": { enabled: false, enrolledAt: null },
+      "/api/tenant/sso": { sso: null },
+      "/api/billing/seats": { seats: 5, activeUsers: 0, hasSubscription: false },
+      "/api/billing/checkout": { url: null },
+      "/api/billing/portal": { url: null },
+      "/api/analytics/report": { report: null },
+      "/api/incidents/sla-config": { slaHours: { low: 72, medium: 24, high: 4, critical: 1 } },
+      "/api/operations/metrics": { metrics: {} },
+      "/api/platform/health-deep": { status: "healthy", services: {} },
+      "/api/platform/journey-metrics": { metrics: {} },
+      "/api/compliance-intelligence/anomalies": { anomalies: [] },
+      "/api/marketplace": { data: { items: [] } },
+      "/api/apps/connect": { success: true },
+      "/api/apps/disconnect": { success: true },
+      "/api/apps/test": { healthy: true },
+      "/api/apps/credentials": { credentials: [] },
+      "/api/directory/mappings": { mappings: [] },
+      "/api/health": { status: "healthy" },
+      "/api/support": { message: "Support request submitted" },
+      "/api/privacy": { message: "Request received" },
+    };
+
+    // Real Lambda path mappings (legacy UI paths → Lambda API Gateway paths)
     const pathMap: Record<string, string> = {
+      // Dashboard / Analytics
       "/api/tenant/dashboard": "/api/v1/dashboard",
       "/api/platform/dashboard": "/api/v1/dashboard",
+      "/api/analytics/dashboard": "/api/v1/dashboard",
+      // Compliance
       "/api/tenant-compliance/scores": "/api/compliance/api/v1/policies/coverage",
+      "/api/tenant-compliance/controls": "/api/compliance/api/v1/compliance-packs/registry/controls",
       "/api/evidence-feed": "/api/compliance/api/v1/evidence",
+      "/api/evidence-collection/collect": "/api/compliance/api/v1/evidence/collect",
       "/api/incidents": "/api/compliance/api/v1/incidents",
+      "/api/compliance-intelligence/gaps": "/api/compliance/api/v1/policies/coverage",
+      "/api/compliance-intelligence/drift": "/api/compliance/api/v1/compliance-packs/history/aggregate",
+      // Notifications
+      "/api/notifications": "/api/compliance/api/v1/notifications",
+      // Access
+      "/api/access-reviews": "/api/compliance/api/v1/access-reviews",
+      "/api/access-requests": "/api/compliance/api/v1/access-requests",
+      // Automation / Orchestrator
       "/api/automation/executions": "/orchestrator/api/v1/automation/rules",
       "/api/automation/rules": "/orchestrator/api/v1/automation/rules",
-      "/api/access-reviews": "/api/compliance/api/v1/access-requests",
-      "/api/access-requests": "/api/compliance/api/v1/access-requests",
+      "/api/automation/nl": "/orchestrator/api/v1/automation/nl",
+      "/api/dead-letter": "/orchestrator/api/v1/dead-letter",
+      "/api/jml/runs": "/orchestrator/api/v1/jml/runs",
+      "/api/jml/policy": "/orchestrator/api/v1/jml/policy",
+      "/api/jml/changelog": "/orchestrator/api/v1/jml/changelog",
+      "/api/nhi": "/orchestrator/api/v1/nhi/discover",
+      // Directory / Tenant / Users
+      "/api/directory/groups": "/api/v1/directory/groups",
+      "/api/directory/users": "/api/v1/directory/users",
+      "/api/admin/tenants": "/api/v1/tenants",
+      "/api/tenant/security": "/api/v1/tenant/settings",
+      "/api/tenants/preferences": "/api/v1/tenant/settings",
+      "/api/user/preferences": "/api/v1/user/profile",
+      // Apps / Integrations
+      "/api/apps/status": "/api/v1/apps/integrations",
+      // Events
       "/api/analytics/events": "/orchestrator/api/v1/events",
+      // Auth session
       "/api/auth/session": "/api/v1/auth/validate",
+      // Billing
+      "/api/billing": "/api/v1/billing",
     };
 
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -30,7 +85,6 @@
 
       // Intercept SvelteKit's __data.json fetches (static mode has no server data)
       if (url.includes("__data.json")) {
-        // Return valid empty SvelteKit data payload
         return Promise.resolve(
           new Response(
             JSON.stringify({ type: "data", nodes: [null, null, null] }),
@@ -39,9 +93,23 @@
         );
       }
 
-      // Intercept /api/, /orchestrator/, and /adapters/ paths (all map to API Gateway)
+      // Only intercept /api/, /orchestrator/, and /adapters/ paths
       if (!url.startsWith("/api/") && !url.startsWith("/orchestrator/") && !url.startsWith("/adapters/")) {
         return originalFetch(input, init);
+      }
+
+      const [urlPath, urlQuery] = url.split("?");
+
+      // Check stub map first — these paths have no Lambda implementation yet
+      for (const [from, stubBody] of Object.entries(stubMap)) {
+        if (urlPath === from || urlPath.startsWith(from + "/")) {
+          return Promise.resolve(
+            new Response(JSON.stringify(stubBody), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
       }
 
       const headers = new Headers(init?.headers ?? {});
@@ -53,7 +121,6 @@
       } catch {}
       if (!headers.has("x-correlation-id")) headers.set("x-correlation-id", crypto.randomUUID());
 
-      const [urlPath, urlQuery] = url.split("?");
       let mappedPath = "";
       // Legacy path map (UI paths → Lambda paths)
       for (const [from, to] of Object.entries(pathMap)) {
@@ -94,7 +161,7 @@
 
     const token = sessionStorage.getItem("atlasit_token");
     const path = window.location.pathname;
-    const isPublic = ["/login", "/signup", "/", "/support", "/trust", "/faq", "/privacy", "/developers"].some(
+    const isPublic = ["/login", "/signup", "/", "/support", "/trust", "/faq", "/privacy", "/developers", "/accept-invite"].some(
       (r) => path === r || path.startsWith(r + "/"),
     );
     if (!token && !isPublic) {
@@ -104,7 +171,7 @@
   });
 
   // Public routes that should not use the AppFrame shell
-  const PUBLIC_ROUTES = ["/login", "/signup", "/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers"];
+  const PUBLIC_ROUTES = ["/login", "/signup", "/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers", "/accept-invite"];
 
   $: isBare =
     $page.url.pathname === "/" ||
