@@ -661,13 +661,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (flagEvaluateMatch && method === "POST") {
     const [, key] = flagEvaluateMatch;
     const b = body(event) as { tenantId?: string; tenantTier?: string; userId?: string };
-    if (!b.tenantId) return fail(400, "tenantId is required", "VALIDATION_FAILED");
+    // Tenant isolation: non-admins can only evaluate flags for their own tenant
+    const targetTenantId = b.tenantId ?? auth.tenantId;
+    if (auth.role !== "admin" && targetTenantId !== auth.tenantId) {
+      return fail(403, "Cannot evaluate flags for other tenants", "FORBIDDEN");
+    }
     const flag = await svc.flagRepo.get(key);
     if (!flag) return fail(404, "Flag not found", "NOT_FOUND");
-    // Simple evaluation logic based on persisted flag fields only.
     let enabled = flag.enabled;
-    if (flag.tenantOverrides?.[b.tenantId] !== undefined) {
-      enabled = flag.tenantOverrides[b.tenantId];
+    if (flag.tenantOverrides?.[targetTenantId] !== undefined) {
+      enabled = flag.tenantOverrides[targetTenantId];
     }
     return ok({
       status: "success",
@@ -723,23 +726,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: result.rows[0], timestamp: new Date().toISOString() });
   }
 
-  // ── Auth routes (continued) ─────────────────────────────────────────────────
-
-  // POST /api/v1/auth/token — placeholder for token issuance
-  if (path === "/api/v1/auth/token" && method === "POST") {
-    const b = body(event) as { email?: string; tenantId?: string };
-    if (!b.email || !b.tenantId)
-      return fail(400, "email and tenantId are required", "VALIDATION_FAILED");
-    const user = await pool.query(
-      `SELECT id, email, role, status FROM users WHERE email = $1 AND tenant_id = $2`,
-      [b.email, b.tenantId],
-    );
-    if (user.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
-    const u = user.rows[0];
-    if (u.status !== "active") return fail(403, "User account is not active", "FORBIDDEN");
-    // Token issuance not yet implemented — return 501
-    return fail(501, "Token issuance not yet implemented", "NOT_IMPLEMENTED");
-  }
+  // Note: /api/v1/auth/token is handled at the top of this function (before auth extraction)
+  // to allow unauthenticated login. The dead placeholder that was here has been removed.
 
   // ── Credential routes ───────────────────────────────────────────────────────
 
