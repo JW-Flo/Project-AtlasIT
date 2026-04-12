@@ -132,6 +132,61 @@
       {/if}
     </div>
 
+    {#if trustPublic && publicUrl}
+      {@const apiBase = typeof window !== 'undefined' ? window.location.origin : 'https://www.atlasit.pro'}
+      {@const badgeUrl = `${apiBase}/api/compliance/api/v1/trust/${tenantSlug}/badge.svg`}
+      {@const iframeUrl = `${apiBase}/trust/${tenantSlug}/embed`}
+      <div class="mt-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+        <h3 class="font-medium text-gray-900 dark:text-white text-sm mb-1">Embed on your site</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Add your live compliance score to your marketing site, GitHub README, or any page.
+          Both options update automatically as your score changes.
+        </p>
+
+        <div class="space-y-4">
+          <!-- SVG badge -->
+          <div>
+            <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">SVG badge (README / HTML)</div>
+            <div class="flex items-center gap-3 mb-2">
+              <img src={badgeUrl} alt="Compliance badge" class="h-5" />
+              <span class="text-xs text-gray-500 dark:text-gray-400">← live preview</span>
+            </div>
+            <label class="block text-[11px] text-gray-500 dark:text-gray-400 mt-1" for="badge-md">Markdown</label>
+            <textarea id="badge-md" readonly rows="1"
+              class="w-full px-3 py-2 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
+              on:click={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+            >[![Compliance]({badgeUrl})]({publicUrl})</textarea>
+            <label class="block text-[11px] text-gray-500 dark:text-gray-400 mt-2" for="badge-html">HTML</label>
+            <textarea id="badge-html" readonly rows="1"
+              class="w-full px-3 py-2 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
+              on:click={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+            >&lt;a href="{publicUrl}"&gt;&lt;img src="{badgeUrl}" alt="Compliance"&gt;&lt;/a&gt;</textarea>
+            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+              Per-framework: append <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px]">?framework=SOC2</code>
+              (or ISO27001, NIST_CSF, HIPAA, GDPR). Style: <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px]">?style=for-the-badge</code>.
+            </p>
+          </div>
+
+          <!-- Iframe embed -->
+          <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Iframe widget</div>
+            <div class="mb-2 border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden" style="height: 140px;">
+              <iframe src={iframeUrl} class="w-full h-full" title="Live trust widget preview" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+            </div>
+            <label class="block text-[11px] text-gray-500 dark:text-gray-400 mt-1" for="iframe-html">HTML</label>
+            <textarea id="iframe-html" readonly rows="2"
+              class="w-full px-3 py-2 text-xs font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white resize-none"
+              on:click={(e) => (e.currentTarget as HTMLTextAreaElement).select()}
+            >&lt;iframe src="{iframeUrl}" width="100%" height="140" frameborder="0" title="Trust center"&gt;&lt;/iframe&gt;</textarea>
+            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+              Theme: append <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px]">?theme=dark</code>.
+              Compact: <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px]">?size=compact</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     <div class="mt-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
       <h3 class="font-medium text-gray-900 dark:text-white text-sm">What's shown on the public page?</h3>
       <ul class="mt-3 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
