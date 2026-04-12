@@ -2185,6 +2185,367 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
+  // ── Policy CRUD + acknowledgement routes ────────────────────────────────────
+
+  // GET /api/v1/policies — list policies for tenant
+  if (path === "/api/v1/policies" && method === "GET") {
+    const status = qs.status ?? undefined;
+    const category = qs.category ?? undefined;
+    const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+
+    const conditions = ["tenant_id = $1"];
+    const vals: unknown[] = [tenantId];
+
+    if (status) {
+      conditions.push(`status = $${vals.length + 1}`);
+      vals.push(status);
+    }
+    if (category) {
+      conditions.push(`category = $${vals.length + 1}`);
+      vals.push(category);
+    }
+
+    const where = conditions.join(" AND ");
+    try {
+      const rows = await pool.query(
+        `SELECT p.id, p.tenant_id as "tenantId", p.name, p.category, p.version, p.status,
+                p.framework_refs as "frameworkRefs", p.created_by as "createdBy",
+                p.created_at as "createdAt", p.updated_at as "updatedAt",
+                p.published_at as "publishedAt",
+                COUNT(a.id)::int as "ackCount"
+         FROM policies p
+         LEFT JOIN policy_acknowledgements a ON a.policy_id = p.id AND a.tenant_id = p.tenant_id
+         WHERE ${where}
+         GROUP BY p.id
+         ORDER BY p.updated_at DESC
+         LIMIT $${vals.length + 1} OFFSET $${vals.length + 2}`,
+        [...vals, limit, offset],
+      );
+      const countRow = await pool.query(
+        `SELECT COUNT(*) as cnt FROM policies WHERE ${where}`,
+        vals,
+      );
+      return ok({
+        status: "success",
+        data: {
+          items: rows.rows,
+          total: parseInt(countRow.rows[0]?.cnt ?? "0", 10),
+          limit,
+          offset,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] policies.list.error", {
+        requestId,
+        tenantId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to list policies", "INTERNAL_ERROR");
+    }
+  }
+
+  // POST /api/v1/policies — create policy (admin only)
+  if (path === "/api/v1/policies" && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const b = parseBody(event) as {
+      name?: string;
+      category?: string;
+      version?: string;
+      content?: string;
+      frameworkRefs?: string[];
+    };
+    if (!b.name?.trim()) return fail(400, "name is required", "VALIDATION_FAILED");
+    if (!b.category?.trim()) return fail(400, "category is required", "VALIDATION_FAILED");
+    if (!b.content?.trim()) return fail(400, "content is required", "VALIDATION_FAILED");
+
+    const VALID_CATEGORIES = [
+      "access-control",
+      "incident-response",
+      "data-protection",
+      "vendor",
+      "acceptable-use",
+      "byod",
+      "retention",
+      "other",
+    ];
+    if (!VALID_CATEGORIES.includes(b.category)) {
+      return fail(
+        400,
+        `category must be one of: ${VALID_CATEGORIES.join(", ")}`,
+        "VALIDATION_FAILED",
+      );
+    }
+
+    try {
+      const id = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO policies (id, tenant_id, name, category, version, content, status, framework_refs, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'draft', $7, $8, NOW(), NOW())`,
+        [
+          id,
+          tenantId,
+          b.name.trim(),
+          b.category,
+          b.version?.trim() ?? "1.0",
+          b.content.trim(),
+          b.frameworkRefs ?? [],
+          auth.email ?? auth.userId,
+        ],
+      );
+      const row = await pool.query(
+        `SELECT id, tenant_id as "tenantId", name, category, version, status,
+                framework_refs as "frameworkRefs", created_by as "createdBy",
+                created_at as "createdAt", updated_at as "updatedAt", published_at as "publishedAt"
+         FROM policies WHERE id = $1`,
+        [id],
+      );
+      return ok({ status: "success", data: row.rows[0], timestamp: new Date().toISOString() }, 201);
+    } catch (e) {
+      console.error("[compliance-api] policies.create.error", {
+        requestId,
+        tenantId,
+        error: (e as Error).message,
+      });
+      return fail(500, "Failed to create policy", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/policies/:id — fetch single policy + ack count
+  {
+    const m = path.match(/^\/api\/v1\/policies\/([^/]+)$/);
+    if (m && method === "GET") {
+      const policyId = m[1];
+      try {
+        const row = await pool.query(
+          `SELECT p.id, p.tenant_id as "tenantId", p.name, p.category, p.version, p.content,
+                  p.status, p.framework_refs as "frameworkRefs", p.created_by as "createdBy",
+                  p.created_at as "createdAt", p.updated_at as "updatedAt",
+                  p.published_at as "publishedAt",
+                  COUNT(a.id)::int as "ackCount"
+           FROM policies p
+           LEFT JOIN policy_acknowledgements a ON a.policy_id = p.id AND a.tenant_id = p.tenant_id
+           WHERE p.id = $1 AND p.tenant_id = $2
+           GROUP BY p.id`,
+          [policyId, tenantId],
+        );
+        if (row.rows.length === 0) return fail(404, "Policy not found", "NOT_FOUND");
+        return ok({ status: "success", data: row.rows[0], timestamp: new Date().toISOString() });
+      } catch (e) {
+        console.error("[compliance-api] policies.get.error", {
+          requestId,
+          tenantId,
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to get policy", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // PATCH /api/v1/policies/:id — update policy (admin only)
+  {
+    const m = path.match(/^\/api\/v1\/policies\/([^/]+)$/);
+    if (m && method === "PATCH") {
+      if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+      const policyId = m[1];
+      const b = parseBody(event) as {
+        name?: string;
+        category?: string;
+        version?: string;
+        content?: string;
+        status?: string;
+        frameworkRefs?: string[];
+      };
+
+      try {
+        const existing = await pool.query(
+          `SELECT id, status FROM policies WHERE id = $1 AND tenant_id = $2`,
+          [policyId, tenantId],
+        );
+        if (existing.rows.length === 0) return fail(404, "Policy not found", "NOT_FOUND");
+
+        const VALID_STATUSES = ["draft", "published", "archived"];
+        if (b.status && !VALID_STATUSES.includes(b.status)) {
+          return fail(
+            400,
+            `status must be one of: ${VALID_STATUSES.join(", ")}`,
+            "VALIDATION_FAILED",
+          );
+        }
+
+        const sets: string[] = ["updated_at = NOW()"];
+        const vals: unknown[] = [];
+
+        if (b.name !== undefined) {
+          vals.push(b.name.trim());
+          sets.push(`name = $${vals.length}`);
+        }
+        if (b.category !== undefined) {
+          vals.push(b.category);
+          sets.push(`category = $${vals.length}`);
+        }
+        if (b.version !== undefined) {
+          vals.push(b.version.trim());
+          sets.push(`version = $${vals.length}`);
+        }
+        if (b.content !== undefined) {
+          vals.push(b.content.trim());
+          sets.push(`content = $${vals.length}`);
+        }
+        if (b.frameworkRefs !== undefined) {
+          vals.push(b.frameworkRefs);
+          sets.push(`framework_refs = $${vals.length}`);
+        }
+        if (b.status !== undefined) {
+          vals.push(b.status);
+          sets.push(`status = $${vals.length}`);
+          if (b.status === "published" && existing.rows[0].status !== "published") {
+            sets.push("published_at = NOW()");
+          }
+        }
+
+        vals.push(policyId, tenantId);
+        await pool.query(
+          `UPDATE policies SET ${sets.join(", ")} WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
+          vals,
+        );
+
+        const updated = await pool.query(
+          `SELECT id, tenant_id as "tenantId", name, category, version, content, status,
+                  framework_refs as "frameworkRefs", created_by as "createdBy",
+                  created_at as "createdAt", updated_at as "updatedAt", published_at as "publishedAt"
+           FROM policies WHERE id = $1`,
+          [policyId],
+        );
+        return ok({
+          status: "success",
+          data: updated.rows[0],
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] policies.update.error", {
+          requestId,
+          tenantId,
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to update policy", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // POST /api/v1/policies/:id/acknowledge — current user acknowledges current version
+  {
+    const m = path.match(/^\/api\/v1\/policies\/([^/]+)\/acknowledge$/);
+    if (m && method === "POST") {
+      const policyId = m[1];
+      try {
+        const policyRow = await pool.query(
+          `SELECT id, name, version, status FROM policies WHERE id = $1 AND tenant_id = $2`,
+          [policyId, tenantId],
+        );
+        if (policyRow.rows.length === 0) return fail(404, "Policy not found", "NOT_FOUND");
+
+        const policy = policyRow.rows[0] as {
+          id: string;
+          name: string;
+          version: string;
+          status: string;
+        };
+        if (policy.status !== "published") {
+          return fail(400, "Only published policies can be acknowledged", "VALIDATION_FAILED");
+        }
+
+        const ackId = crypto.randomUUID();
+        await pool.query(
+          `INSERT INTO policy_acknowledgements (id, tenant_id, policy_id, user_id, user_email, acknowledged_at, policy_version)
+           VALUES ($1, $2, $3, $4, $5, NOW(), $6)
+           ON CONFLICT (tenant_id, policy_id, user_id, policy_version) DO NOTHING`,
+          [ackId, tenantId, policyId, auth.userId, auth.email ?? null, policy.version],
+        );
+
+        // Emit compliance evidence for CDT scoring
+        const evidenceId = crypto.randomUUID();
+        const evidenceMeta = {
+          impact: "positive",
+          eventType: "policy.acknowledged",
+          reasoning: `User ${auth.email ?? auth.userId} acknowledged policy "${policy.name}" v${policy.version}`,
+        };
+        await pool.query(
+          `INSERT INTO compliance_evidence
+             (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+           ON CONFLICT DO NOTHING`,
+          [
+            evidenceId,
+            tenantId,
+            "SOC2",
+            "CC1.1",
+            "Policies and Procedures",
+            "manual",
+            "policy",
+            policyId,
+            auth.email ?? auth.userId,
+            policy.name,
+            JSON.stringify(evidenceMeta),
+          ],
+        );
+
+        return ok(
+          {
+            status: "success",
+            data: { acknowledged: true, policyId, version: policy.version },
+            timestamp: new Date().toISOString(),
+          },
+          201,
+        );
+      } catch (e) {
+        console.error("[compliance-api] policies.acknowledge.error", {
+          requestId,
+          tenantId,
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to record acknowledgement", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // GET /api/v1/policies/:id/acknowledgements — list who has acknowledged
+  {
+    const m = path.match(/^\/api\/v1\/policies\/([^/]+)\/acknowledgements$/);
+    if (m && method === "GET") {
+      const policyId = m[1];
+      try {
+        const exists = await pool.query(
+          `SELECT id FROM policies WHERE id = $1 AND tenant_id = $2`,
+          [policyId, tenantId],
+        );
+        if (exists.rows.length === 0) return fail(404, "Policy not found", "NOT_FOUND");
+
+        const rows = await pool.query(
+          `SELECT id, user_id as "userId", user_email as "userEmail",
+                  acknowledged_at as "acknowledgedAt", policy_version as "policyVersion"
+           FROM policy_acknowledgements
+           WHERE policy_id = $1 AND tenant_id = $2
+           ORDER BY acknowledged_at DESC`,
+          [policyId, tenantId],
+        );
+        return ok({
+          status: "success",
+          data: { items: rows.rows, total: rows.rows.length },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] policies.acks.list.error", {
+          requestId,
+          tenantId,
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to list acknowledgements", "INTERNAL_ERROR");
+      }
+    }
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
 
