@@ -1,239 +1,115 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { Search, ScanSearch, ChevronDown, ChevronRight, Shield, ShieldOff, Eye, X, Package, AlertTriangle, ArrowRight } from "lucide-svelte";
 
-  // --- Types ---
   interface DiscoveredApp {
     id: string;
-    appName: string;
-    category?: string;
-    provider?: string;
-    userCount: number;
-    riskTier: "approved" | "under_review" | "blocked" | "unknown";
-    isAiTool: number | boolean;
-    marketplaceMatch?: string | null;
-    firstSeenAt?: string;
-    lastSeenAt?: string;
-    status?: string;
-    metadata?: Record<string, unknown>;
+    app_name: string;
+    risk_tier: "approved" | "under_review" | "blocked" | "unknown";
+    first_seen_at: string;
+    status: string;
   }
 
   interface OAuthGrant {
     id: string;
-    userEmail: string;
-    scopes?: string;
-    scopesList?: string[];
-    grantedAt?: string;
-    lastUsedAt?: string;
-    clientId?: string;
-    status: string;
-    metadata?: Record<string, unknown>;
+    app_name: string;
+    user_email: string;
+    scopes: string;
+    granted_at: string;
   }
 
-  // --- State ---
+  let activeTab: "apps" | "grants" = "apps";
   let apps: DiscoveredApp[] = [];
-  let loading = true;
+  let grants: OAuthGrant[] = [];
+  let loadingApps = true;
+  let loadingGrants = true;
   let scanning = false;
+  let appsError: string | null = null;
+  let grantsError: string | null = null;
+  let actionLoading: string | null = null;
 
-  // Filters
-  let filterRiskTier = "";
-  let filterAiOnly = false;
-  let searchQuery = "";
+  const ORCHESTRATOR_BASE = "/orchestrator/api/v1";
 
-  // Actions dropdown state
-  let openActionDropdown: string | null = null;
-
-  // Expand/detail state
-  let expandedAppId: string | null = null;
-  let expandedGrants: OAuthGrant[] = [];
-  let expandLoading = false;
-  let expandedApp: DiscoveredApp | null = null;
-
-  // Governance action in-progress
-  let governanceLoading: string | null = null;
-
-  // --- Derived stats ---
-  $: totalDiscovered = apps.length;
-  $: aiToolsCount = apps.filter((a) => a.isAiTool === true || a.isAiTool === 1).length;
-  $: highRiskCount = apps.filter(
-    (a) => a.riskTier === "unknown" && a.userCount > 1,
-  ).length;
-  $: managedCount = apps.filter((a) => a.marketplaceMatch != null).length;
-
-  // --- Filtered list ---
-  $: filteredApps = apps.filter((a) => {
-    if (filterRiskTier && a.riskTier !== filterRiskTier) return false;
-    if (filterAiOnly && a.isAiTool !== true && a.isAiTool !== 1) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (
-        !a.appName.toLowerCase().includes(q) &&
-        !(a.category || "").toLowerCase().includes(q) &&
-        !(a.provider || "").toLowerCase().includes(q)
-      ) {
-        return false;
-      }
-    }
-    return true;
-  });
-
-  // Reset dropdown when filters change
-  $: filterRiskTier, filterAiOnly, searchQuery, (openActionDropdown = null);
-
-  // --- Data fetching ---
-  let fetchError = "";
-
-  async function fetchApps() {
-    fetchError = "";
+  async function loadApps() {
+    loadingApps = true;
+    appsError = null;
     try {
-      const res = await fetch("/api/discovery");
-      if (res.ok) {
-        const data = await res.json();
-        apps = data.apps || [];
-      } else {
-        const data = await res.json().catch(() => ({}));
-        fetchError = data.error || `Failed to load discovered apps (${res.status})`;
-        pushToast({ message: fetchError, variant: "error" });
+      const res = await fetch(`${ORCHESTRATOR_BASE}/discovery/apps?limit=50`);
+      if (!res.ok) {
+        appsError = `Failed to load apps (HTTP ${res.status})`;
+        return;
       }
-    } catch (e: any) {
-      fetchError = e?.message || "Failed to connect to discovery service";
-      pushToast({ message: fetchError, variant: "error" });
+      const result = await res.json();
+      apps = result.data?.items ?? result.apps ?? result.data ?? [];
+    } catch (e) {
+      appsError = (e as Error).message;
+    } finally {
+      loadingApps = false;
     }
   }
 
-  // --- Expand / Detail ---
-  async function toggleExpand(app: DiscoveredApp) {
-    if (expandedAppId === app.id) {
-      expandedAppId = null;
-      expandedGrants = [];
-      expandedApp = null;
-      return;
-    }
-
-    expandedAppId = app.id;
-    expandedApp = app;
-    expandLoading = true;
-    expandedGrants = [];
-
+  async function loadGrants() {
+    loadingGrants = true;
+    grantsError = null;
     try {
-      const res = await fetch(`/api/discovery/${app.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        expandedGrants = data.grants || [];
-      } else {
-        pushToast({ message: "Failed to load OAuth grants", variant: "error" });
+      const res = await fetch(`${ORCHESTRATOR_BASE}/discovery/grants?limit=50`);
+      if (!res.ok) {
+        grantsError = `Failed to load grants (HTTP ${res.status})`;
+        return;
       }
-    } catch {
-      pushToast({ message: "Failed to fetch grant details", variant: "error" });
+      const result = await res.json();
+      grants = result.data?.items ?? result.grants ?? result.data ?? [];
+    } catch (e) {
+      grantsError = (e as Error).message;
+    } finally {
+      loadingGrants = false;
     }
-    expandLoading = false;
   }
 
-  // --- Actions ---
   async function triggerScan() {
     scanning = true;
     try {
-      const res = await fetch("/api/discovery", { method: "POST" });
-      if (res.ok) {
-        pushToast({ message: "OAuth grant scan started", variant: "success" });
-        await fetchApps();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        pushToast({ message: data.message || "Scan failed", variant: "error" });
-      }
+      await fetch(`${ORCHESTRATOR_BASE}/discovery/scan`, { method: "POST" });
+      await Promise.all([loadApps(), loadGrants()]);
     } catch {
-      pushToast({ message: "Scan request failed", variant: "error" });
+      // scan may still succeed; refresh data anyway
+      await Promise.all([loadApps(), loadGrants()]);
+    } finally {
+      scanning = false;
     }
-    scanning = false;
   }
 
-  async function updateRiskTier(
-    id: string,
-    riskTier: "approved" | "under_review" | "blocked" | "unknown",
-  ) {
-    openActionDropdown = null;
+  async function updateRiskTier(app: DiscoveredApp, tier: DiscoveredApp["risk_tier"]) {
+    actionLoading = app.id;
     try {
-      const res = await fetch(`/api/discovery/${id}`, {
+      const res = await fetch(`${ORCHESTRATOR_BASE}/discovery/apps/${app.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ riskTier }),
+        body: JSON.stringify({ risk_tier: tier }),
       });
       if (res.ok) {
-        apps = apps.map((a) => (a.id === id ? { ...a, riskTier } : a));
-        pushToast({ message: "Risk tier updated", variant: "success" });
-      } else {
-        const data = await res.json().catch(() => ({}));
-        pushToast({ message: data.error || "Update failed", variant: "error" });
+        apps = apps.map((a) => (a.id === app.id ? { ...a, risk_tier: tier } : a));
       }
     } catch {
-      pushToast({ message: "Update request failed", variant: "error" });
+      // silent fail — UI stays consistent
+    } finally {
+      actionLoading = null;
     }
   }
 
-  // --- Governance Playbook Actions ---
-  async function executeGovernanceAction(app: DiscoveredApp, action: "approve" | "block" | "review") {
-    openActionDropdown = null;
-    governanceLoading = `${app.id}:${action}`;
-
-    try {
-      const res = await fetch(`/api/discovery/${app.id}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        const newTier = data.riskTier as DiscoveredApp["riskTier"];
-        apps = apps.map((a) => (a.id === app.id ? { ...a, riskTier: newTier } : a));
-
-        if (action === "approve") {
-          pushToast({ message: `${app.appName} approved`, variant: "success" });
-        } else if (action === "block") {
-          pushToast({
-            message: `${app.appName} blocked — ${data.grantsRevoked ?? 0} grant(s) revoked`,
-            variant: "success",
-          });
-        } else if (action === "review") {
-          pushToast({
-            message: `Access review campaign created for ${app.appName}`,
-            variant: "success",
-          });
-        }
-
-        // Refresh grants if the expanded app was acted on
-        if (expandedAppId === app.id) {
-          await toggleExpand(app);
-          await toggleExpand({ ...app, riskTier: newTier });
-        }
-      } else {
-        pushToast({ message: data.error || `${action} failed`, variant: "error" });
-      }
-    } catch {
-      pushToast({ message: `${action} request failed`, variant: "error" });
-    }
-
-    governanceLoading = null;
-  }
-
-  // --- Helpers ---
-  function riskTierClass(tier: string): string {
+  function riskBadgeClass(tier: string): string {
     switch (tier) {
-      case "approved": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "under_review": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "blocked": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      default: return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+      case "approved":
+        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+      case "under_review":
+        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+      case "blocked":
+        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+      default:
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
     }
   }
 
-  function riskTierLabel(tier: string): string {
+  function riskLabel(tier: string): string {
     switch (tier) {
       case "approved": return "Approved";
       case "under_review": return "Under Review";
@@ -242,465 +118,234 @@
     }
   }
 
-  function formatDate(iso: string | undefined): string {
+  function relativeTime(iso: string | undefined): string {
     if (!iso) return "—";
-    try {
-      return new Date(iso).toLocaleDateString();
-    } catch {
-      return iso;
-    }
-  }
-
-  function isAiApp(app: DiscoveredApp): boolean {
-    return app.isAiTool === true || app.isAiTool === 1;
-  }
-
-  function handleClickOutside(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (!target.closest(".action-dropdown-container")) {
-      openActionDropdown = null;
-    }
-  }
-
-  function truncateScopes(scopes: string[], max: number = 3): { visible: string[]; remaining: number } {
-    return {
-      visible: scopes.slice(0, max),
-      remaining: Math.max(0, scopes.length - max),
-    };
-  }
-
-  // --- Data flow categorization ---
-  interface DataFlowCategory {
-    label: string;
-    icon: string;
-    risk: "high" | "medium" | "low";
-    scopes: string[];
-  }
-
-  const SCOPE_CATEGORIES: { pattern: RegExp; label: string; icon: string; risk: "high" | "medium" | "low" }[] = [
-    { pattern: /mail|gmail|email|messages/i, label: "Email", icon: "mail", risk: "high" },
-    { pattern: /drive|files|storage|documents|onedrive|sharepoint/i, label: "Files & Docs", icon: "file", risk: "high" },
-    { pattern: /contacts|people|directory/i, label: "Contacts", icon: "users", risk: "medium" },
-    { pattern: /calendar|schedule|events/i, label: "Calendar", icon: "calendar", risk: "low" },
-    { pattern: /admin|management|org|tenant/i, label: "Admin", icon: "settings", risk: "high" },
-    { pattern: /profile|userinfo|openid|user\.read/i, label: "Profile", icon: "user", risk: "low" },
-  ];
-
-  function categorizeDataFlows(grants: OAuthGrant[]): DataFlowCategory[] {
-    const allScopes = grants.flatMap(g => g.scopesList || (g.scopes ? g.scopes.split(",").map(s => s.trim()) : []));
-    const categories: DataFlowCategory[] = [];
-
-    for (const cat of SCOPE_CATEGORIES) {
-      const matched = allScopes.filter(s => cat.pattern.test(s));
-      if (matched.length > 0) {
-        categories.push({
-          label: cat.label,
-          icon: cat.icon,
-          risk: cat.risk,
-          scopes: [...new Set(matched)],
-        });
-      }
-    }
-    return categories;
-  }
-
-  function isScopeHighRisk(scope: string): boolean {
-    return /mail|drive|admin|full[_\-]?access|\.all|\.write|manage|files/i.test(scope);
-  }
-
-  function formatMarketplaceId(id: string): string {
-    return id.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    const mins = Math.floor(ms / 60000);
+    return `${mins}m ago`;
   }
 
   onMount(() => {
-    fetchApps().finally(() => (loading = false));
+    loadApps();
+    loadGrants();
   });
 </script>
 
-<svelte:window on:click={handleClickOutside} />
-
-<div class="space-y-6">
-  {#if loading}
-    <div class="space-y-4">
-      <Skeleton class="h-8 w-56" />
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {#each Array(4) as _}
-          <Skeleton class="h-24 rounded-lg" />
-        {/each}
-      </div>
-      <Skeleton class="h-64 w-full rounded-lg" />
+<div class="p-8 max-w-7xl mx-auto">
+  <!-- Header -->
+  <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">App Discovery</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Detect shadow IT via OAuth grant scanning
+      </p>
     </div>
-  {:else}
-    <!-- Header -->
-    <div class="flex items-center justify-between flex-wrap gap-4">
-      <div>
-        <h1 class="text-2xl font-semibold tracking-tight">SaaS & AI Discovery</h1>
-        <p class="text-sm text-muted-foreground mt-1">
-          Shadow IT detection via OAuth grant scanning and network telemetry
-        </p>
-      </div>
-      <Button on:click={triggerScan} disabled={scanning}>
-        <ScanSearch class="h-4 w-4 mr-1.5" />
-        {scanning ? "Scanning..." : "Scan OAuth Grants"}
-      </Button>
-    </div>
+    <button
+      type="button"
+      on:click={triggerScan}
+      disabled={scanning}
+      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-md transition-colors"
+    >
+      {scanning ? "Scanning..." : "Scan Now"}
+    </button>
+  </div>
 
-    <!-- Stats cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-      <Card>
-        <CardContent class="p-4">
-          <div class="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total Discovered</div>
-          <div class="text-3xl font-bold">{totalDiscovered}</div>
-        </CardContent>
-      </Card>
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
+    <button
+      type="button"
+      on:click={() => (activeTab = "apps")}
+      class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === 'apps'
+        ? 'text-gray-900 dark:text-white border-b-2 border-blue-600'
+        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+    >
+      Discovered Apps
+    </button>
+    <button
+      type="button"
+      on:click={() => (activeTab = "grants")}
+      class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === 'grants'
+        ? 'text-gray-900 dark:text-white border-b-2 border-blue-600'
+        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+    >
+      OAuth Grants
+    </button>
+  </div>
 
-      <Card>
-        <CardContent class="p-4">
-          <div class="text-xs text-muted-foreground uppercase tracking-wider mb-1">AI Tools</div>
-          <div class="text-3xl font-bold text-red-500 dark:text-red-400">{aiToolsCount}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent class="p-4">
-          <div class="text-xs text-muted-foreground uppercase tracking-wider mb-1">High Risk</div>
-          <div class="text-3xl font-bold">{highRiskCount}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent class="p-4">
-          <div class="text-xs text-muted-foreground uppercase tracking-wider mb-1">Managed</div>
-          <div class="text-3xl font-bold">{managedCount}</div>
-        </CardContent>
-      </Card>
-    </div>
-
-    <!-- Filter bar -->
-    <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-      <div class="relative flex-1 max-w-sm">
-        <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-        <Input
-          type="text"
-          bind:value={searchQuery}
-          placeholder="Search apps..."
-          class="pl-9"
-        />
-      </div>
-
-      <select
-        bind:value={filterRiskTier}
-        class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+  <!-- Apps Tab -->
+  {#if activeTab === "apps"}
+    {#if loadingApps}
+      <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+    {:else if appsError}
+      <div
+        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
       >
-        <option value="">All Risk Tiers</option>
-        <option value="approved">Approved</option>
-        <option value="under_review">Under Review</option>
-        <option value="blocked">Blocked</option>
-        <option value="unknown">Unknown</option>
-      </select>
-
-      <label class="flex items-center gap-2 text-sm font-medium cursor-pointer select-none shrink-0">
-        <input
-          type="checkbox"
-          bind:checked={filterAiOnly}
-          class="h-4 w-4 rounded border-input accent-primary"
-        />
-        AI Tools Only
-      </label>
-    </div>
-
-    <!-- Table -->
-    <Card>
-      <CardContent class="p-0">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                <th class="px-2 py-3 font-medium w-8"></th>
-                <th class="px-3 sm:px-4 py-3 font-medium">App Name</th>
-                <th class="px-3 sm:px-4 py-3 font-medium hidden md:table-cell">Category</th>
-                <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">Provider</th>
-                <th class="px-3 sm:px-4 py-3 font-medium text-right">Users</th>
-                <th class="px-3 sm:px-4 py-3 font-medium">Risk Tier</th>
-                <th class="px-3 sm:px-4 py-3 font-medium hidden lg:table-cell">First Seen</th>
-                <th class="px-3 sm:px-4 py-3 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each filteredApps as app (app.id)}
-                <!-- Main row -->
+        <p class="text-red-800 dark:text-red-300">{appsError}</p>
+        <button
+          on:click={loadApps}
+          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        >
+          Retry
+        </button>
+      </div>
+    {:else}
+      <div
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+      >
+        {#if apps.length === 0}
+          <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+            <p class="text-base font-medium mb-2">No apps discovered yet</p>
+            <p class="text-sm">Run a scan to detect OAuth grants and shadow IT.</p>
+          </div>
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
                 <tr
-                  class="border-t hover:bg-muted/50 transition-colors cursor-pointer"
-                  on:click={() => toggleExpand(app)}
+                  class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
                 >
-                  <td class="px-2 py-3 text-muted-foreground">
-                    {#if expandedAppId === app.id}
-                      <ChevronDown class="h-4 w-4" />
-                    {:else}
-                      <ChevronRight class="h-4 w-4" />
-                    {/if}
-                  </td>
-                  <td class="px-3 sm:px-4 py-3">
-                    <div class="flex items-center gap-2">
-                      <span class="font-medium">{app.appName}</span>
-                      {#if isAiApp(app)}
-                        <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                          AI
-                        </span>
-                      {/if}
-                      {#if app.marketplaceMatch}
-                        <span class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400" title="Available in marketplace as {formatMarketplaceId(app.marketplaceMatch)}">
-                          <Package class="h-2.5 w-2.5" />
-                          Catalog
-                        </span>
-                      {/if}
-                    </div>
-                    <div class="text-xs text-muted-foreground md:hidden">{app.category || "—"}</div>
-                  </td>
-                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {app.category || "—"}
-                  </td>
-                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                    {app.provider || "—"}
-                  </td>
-                  <td class="px-3 sm:px-4 py-3 text-right tabular-nums">
-                    {app.userCount}
-                  </td>
-                  <td class="px-3 sm:px-4 py-3">
-                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {riskTierClass(app.riskTier)}">
-                      {riskTierLabel(app.riskTier)}
-                    </span>
-                  </td>
-                  <td class="px-3 sm:px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                    {formatDate(app.firstSeenAt)}
-                  </td>
-                  <td class="px-3 sm:px-4 py-3 text-right" on:click|stopPropagation>
-                    <div class="action-dropdown-container relative inline-block">
-                      <button
-                        type="button"
-                        class="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
-                        on:click|stopPropagation={() =>
-                          openActionDropdown = openActionDropdown === app.id ? null : app.id}
-                        aria-label="Actions for {app.appName}"
-                      >
-                        Governance
-                        <ChevronDown class="h-3 w-3" />
-                      </button>
-
-                      {#if openActionDropdown === app.id}
-                        <div class="absolute right-0 top-full mt-1 w-52 rounded-lg border bg-card shadow-lg z-20 overflow-hidden">
-                          <div class="px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground border-b">
-                            Governance Playbook
-                          </div>
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            disabled={governanceLoading === `${app.id}:approve`}
-                            on:click|stopPropagation={() => executeGovernanceAction(app, "approve")}
-                          >
-                            <Shield class="h-3.5 w-3.5 text-green-600" />
-                            <div>
-                              <div class="font-medium">Approve</div>
-                              <div class="text-xs text-muted-foreground">Add to managed catalog</div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                            disabled={governanceLoading === `${app.id}:review`}
-                            on:click|stopPropagation={() => executeGovernanceAction(app, "review")}
-                          >
-                            <Eye class="h-3.5 w-3.5 text-yellow-600" />
-                            <div>
-                              <div class="font-medium">Review</div>
-                              <div class="text-xs text-muted-foreground">Create access review campaign</div>
-                            </div>
-                          </button>
-                          <button
-                            type="button"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left text-destructive"
-                            disabled={governanceLoading === `${app.id}:block`}
-                            on:click|stopPropagation={() => executeGovernanceAction(app, "block")}
-                          >
-                            <ShieldOff class="h-3.5 w-3.5" />
-                            <div>
-                              <div class="font-medium">Block</div>
-                              <div class="text-xs text-muted-foreground">Revoke all OAuth grants</div>
-                            </div>
-                          </button>
-                        </div>
-                      {/if}
-                    </div>
-                  </td>
+                  <th class="px-6 py-3">App Name</th>
+                  <th class="px-6 py-3">Risk Tier</th>
+                  <th class="px-6 py-3">First Seen</th>
+                  <th class="px-6 py-3">Status</th>
+                  <th class="px-6 py-3 text-right">Actions</th>
                 </tr>
-
-                <!-- Expand row: OAuth grants detail + data flow mapping -->
-                {#if expandedAppId === app.id}
-                  <tr class="bg-muted/30">
-                    <td colspan="8" class="px-4 py-4">
-                      {#if expandLoading}
-                        <div class="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                          <div class="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                          Loading OAuth grants...
-                        </div>
-                      {:else}
-                        <div class="space-y-4">
-                          <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold">{app.appName} — Details</h3>
-                            <button
-                              type="button"
-                              class="text-muted-foreground hover:text-foreground"
-                              on:click|stopPropagation={() => { expandedAppId = null; expandedGrants = []; expandedApp = null; }}
-                            >
-                              <X class="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          <!-- Marketplace install suggestion -->
-                          {#if app.marketplaceMatch}
-                            <div class="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30 px-4 py-3">
-                              <Package class="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
-                              <div class="flex-1 text-sm">
-                                <span class="font-medium">Available in marketplace</span> as
-                                <span class="font-semibold">{formatMarketplaceId(app.marketplaceMatch)}</span>.
-                                Install to enable managed provisioning, compliance tracking, and automated offboarding.
-                              </div>
-                              <a
-                                href="/console/marketplace?install={app.marketplaceMatch}"
-                                class="shrink-0 inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
-                                on:click|stopPropagation
-                              >
-                                Install
-                                <ArrowRight class="h-3 w-3" />
-                              </a>
-                            </div>
-                          {/if}
-
-                          <!-- Data flow mapping -->
-                          {#if categorizeDataFlows(expandedGrants).length > 0}
-                          {@const dataFlows = categorizeDataFlows(expandedGrants)}
-                            <div class="space-y-2">
-                              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                Data Flow Analysis
-                              </h4>
-                              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                                {#each dataFlows as flow}
-                                  <div class="rounded-lg border px-3 py-2 {flow.risk === 'high' ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20' : flow.risk === 'medium' ? 'border-yellow-200 bg-yellow-50/50 dark:border-yellow-900 dark:bg-yellow-950/20' : 'border-border bg-card'}">
-                                    <div class="flex items-center gap-1.5 mb-1">
-                                      {#if flow.risk === "high"}
-                                        <AlertTriangle class="h-3 w-3 text-red-500" />
-                                      {/if}
-                                      <span class="text-xs font-semibold">{flow.label}</span>
-                                    </div>
-                                    <div class="text-[10px] text-muted-foreground">
-                                      {flow.scopes.length} scope{flow.scopes.length !== 1 ? "s" : ""}
-                                      {#if flow.risk === "high"}
-                                        <span class="text-red-500 font-medium"> — High risk</span>
-                                      {/if}
-                                    </div>
-                                  </div>
-                                {/each}
-                              </div>
-                            </div>
-                          {/if}
-
-                          <!-- OAuth grants table -->
-                          {#if expandedGrants.length === 0}
-                            <div class="text-sm text-muted-foreground py-2">
-                              No individual OAuth grants recorded for this app.
-                            </div>
-                          {:else}
-                            <div class="space-y-2">
-                              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                OAuth Grants ({expandedGrants.length})
-                              </h4>
-                              <div class="overflow-x-auto rounded-md border bg-card">
-                                <table class="w-full text-sm">
-                                  <thead>
-                                    <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                                      <th class="px-3 py-2 font-medium">User</th>
-                                      <th class="px-3 py-2 font-medium">Scopes</th>
-                                      <th class="px-3 py-2 font-medium hidden sm:table-cell">Granted</th>
-                                      <th class="px-3 py-2 font-medium hidden md:table-cell">Last Used</th>
-                                      <th class="px-3 py-2 font-medium">Status</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {#each expandedGrants as grant (grant.id)}
-                                      {@const scopes = grant.scopesList || (grant.scopes ? grant.scopes.split(",").map(s => s.trim()) : [])}
-                                      {@const scopeInfo = truncateScopes(scopes, 4)}
-                                      <tr class="border-t">
-                                        <td class="px-3 py-2 font-medium">{grant.userEmail}</td>
-                                        <td class="px-3 py-2">
-                                          <div class="flex flex-wrap gap-1">
-                                            {#each scopeInfo.visible as scope}
-                                              <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-mono {isScopeHighRisk(scope) ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400' : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'}">
-                                                {#if isScopeHighRisk(scope)}<AlertTriangle class="h-2.5 w-2.5 mr-0.5 inline" />{/if}
-                                                {scope}
-                                              </span>
-                                            {/each}
-                                            {#if scopeInfo.remaining > 0}
-                                              <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                                +{scopeInfo.remaining} more
-                                              </span>
-                                            {/if}
-                                            {#if scopes.length === 0}
-                                              <span class="text-xs text-muted-foreground">—</span>
-                                            {/if}
-                                          </div>
-                                        </td>
-                                        <td class="px-3 py-2 text-muted-foreground hidden sm:table-cell text-xs">
-                                          {formatDate(grant.grantedAt)}
-                                        </td>
-                                        <td class="px-3 py-2 text-muted-foreground hidden md:table-cell text-xs">
-                                          {formatDate(grant.lastUsedAt)}
-                                        </td>
-                                        <td class="px-3 py-2">
-                                          {#if grant.status === "active"}
-                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                                              Active
-                                            </span>
-                                          {:else if grant.status === "revoked"}
-                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-                                              Revoked
-                                            </span>
-                                          {:else}
-                                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                                              {grant.status}
-                                            </span>
-                                          {/if}
-                                        </td>
-                                      </tr>
-                                    {/each}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          {/if}
-                        </div>
-                      {/if}
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                {#each apps as app (app.id)}
+                  <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      {app.app_name}
+                    </td>
+                    <td class="px-6 py-4">
+                      <span
+                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {riskBadgeClass(app.risk_tier)}"
+                      >
+                        {riskLabel(app.risk_tier)}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {relativeTime(app.first_seen_at)}
+                    </td>
+                    <td class="px-6 py-4 text-gray-600 dark:text-gray-300 capitalize">
+                      {app.status || "—"}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                      <div class="flex items-center justify-end gap-2">
+                        {#if app.risk_tier !== "approved"}
+                          <button
+                            type="button"
+                            disabled={actionLoading === app.id}
+                            on:click={() => updateRiskTier(app, "approved")}
+                            class="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 dark:text-green-300 dark:bg-green-900/20 dark:hover:bg-green-900/40 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                        {/if}
+                        {#if app.risk_tier !== "blocked"}
+                          <button
+                            type="button"
+                            disabled={actionLoading === app.id}
+                            on:click={() => updateRiskTier(app, "blocked")}
+                            class="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 dark:text-red-300 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-md transition-colors disabled:opacity-50"
+                          >
+                            Block
+                          </button>
+                        {/if}
+                      </div>
                     </td>
                   </tr>
-                {/if}
-              {:else}
-                <tr>
-                  <td colspan="8" class="px-4 py-12 text-center text-muted-foreground">
-                    {apps.length === 0
-                      ? "No apps discovered yet. Run a scan to detect OAuth grants."
-                      : "No apps match your filters."}
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  {/if}
 
-    {#if filteredApps.length > 0}
-      <p class="text-xs text-muted-foreground text-right">
-        Showing {filteredApps.length} of {apps.length} discovered app{apps.length !== 1 ? "s" : ""}
-      </p>
+  <!-- Grants Tab -->
+  {#if activeTab === "grants"}
+    {#if loadingGrants}
+      <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+    {:else if grantsError}
+      <div
+        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+      >
+        <p class="text-red-800 dark:text-red-300">{grantsError}</p>
+        <button
+          on:click={loadGrants}
+          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        >
+          Retry
+        </button>
+      </div>
+    {:else}
+      <div
+        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+      >
+        {#if grants.length === 0}
+          <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+            <p class="text-base font-medium mb-2">No OAuth grants found</p>
+            <p class="text-sm">Run a scan to discover OAuth grants across your directory.</p>
+          </div>
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr
+                  class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
+                >
+                  <th class="px-6 py-3">App</th>
+                  <th class="px-6 py-3">User Email</th>
+                  <th class="px-6 py-3">Scopes</th>
+                  <th class="px-6 py-3">Granted At</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                {#each grants as grant (grant.id)}
+                  <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                      {grant.app_name}
+                    </td>
+                    <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                      {grant.user_email}
+                    </td>
+                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                      <div class="flex flex-wrap gap-1 max-w-xs">
+                        {#each (grant.scopes ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4) as scope}
+                          <span
+                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
+                          >
+                            {scope}
+                          </span>
+                        {/each}
+                        {#if (grant.scopes ?? "").split(",").filter(Boolean).length > 4}
+                          <span
+                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          >
+                            +{(grant.scopes ?? "").split(",").filter(Boolean).length - 4} more
+                          </span>
+                        {/if}
+                        {#if !grant.scopes}
+                          <span class="text-gray-400">—</span>
+                        {/if}
+                      </div>
+                    </td>
+                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {relativeTime(grant.granted_at)}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
     {/if}
   {/if}
 </div>

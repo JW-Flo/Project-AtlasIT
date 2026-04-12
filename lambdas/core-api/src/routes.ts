@@ -85,7 +85,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       headers: {
         "Access-Control-Allow-Origin": event.headers?.origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
+        "Access-Control-Allow-Headers":
+          "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Max-Age": "7200",
       },
@@ -363,6 +364,93 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // GET /api/v1/tenant/settings — tenant configuration
+  if (path === "/api/v1/tenant/settings" && method === "GET") {
+    const tenant = await pool.query(
+      `SELECT id, name, slug, tier, status, industry, size, config, created_at
+       FROM tenants WHERE id = $1`,
+      [auth.tenantId],
+    );
+    const prefs = await pool.query(
+      `SELECT key, value FROM tenant_preferences WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    const prefMap: Record<string, unknown> = {};
+    for (const row of prefs.rows) {
+      try {
+        prefMap[row.key] = JSON.parse(row.value);
+      } catch {
+        prefMap[row.key] = row.value;
+      }
+    }
+    return ok({
+      status: "success",
+      data: { tenant: tenant.rows[0] ?? null, preferences: prefMap },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/tenant/users — list users in tenant
+  if (path === "/api/v1/tenant/users" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT id, email, display_name, role, status, last_login_at, created_at
+       FROM users WHERE tenant_id = $1 ORDER BY email ASC`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: { items: rows.rows, total: rows.rows.length },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/tenant/users/invite — invite a new user (creates record with NULL password_hash)
+  if (path === "/api/v1/tenant/users/invite" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required to invite users", "FORBIDDEN");
+    }
+    const b = body(event) as { email?: string; displayName?: string; role?: string };
+    if (!b.email) return fail(400, "email is required", "VALIDATION_FAILED");
+    const id = crypto.randomUUID();
+    const role = b.role && ["admin", "member", "viewer"].includes(b.role) ? b.role : "member";
+    try {
+      await pool.query(
+        `INSERT INTO users (id, tenant_id, email, display_name, role, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())`,
+        [id, auth.tenantId, b.email.toLowerCase(), b.displayName ?? null, role],
+      );
+      return ok(
+        {
+          status: "success",
+          data: { id, email: b.email, role, status: "active" },
+          timestamp: new Date().toISOString(),
+        },
+        201,
+      );
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes("duplicate") || msg.includes("unique"))
+        return fail(409, "User with this email already exists", "CONFLICT");
+      return fail(500, "Failed to invite user", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/user/profile — get current user's profile
+  if (path === "/api/v1/user/profile" && method === "GET") {
+    const user = await pool.query(
+      `SELECT u.id, u.email, u.display_name, u.role, u.last_login_at, u.created_at,
+              t.name as tenant_name, t.slug as tenant_slug
+       FROM users u JOIN tenants t ON u.tenant_id = t.id
+       WHERE u.id = $1`,
+      [auth.userId],
+    );
+    return ok({
+      status: "success",
+      data: user.rows[0] ?? null,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // GET /api/v1/dashboard — consolidated dashboard data for console
   if (path === "/api/v1/dashboard" && method === "GET") {
     try {
@@ -371,10 +459,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           `SELECT id, name, slug, tier, status, industry, created_at FROM tenants WHERE id = $1`,
           [auth.tenantId],
         ),
-        pool.query(
-          `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
-          [auth.tenantId],
-        ),
+        pool.query(`SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`, [
+          auth.tenantId,
+        ]),
         pool.query(
           `SELECT COUNT(*) as cnt, SUM(CASE WHEN enabled THEN 1 ELSE 0 END) as enabled
            FROM automation_rules WHERE tenant_id = $1`,
@@ -862,6 +949,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({
       status: "success",
       data: { tenantId: credTenantId, appId, healthy: true, testedAt: new Date().toISOString() },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/apps/integrations — list connected integrations for tenant
+  if (path === "/api/v1/apps/integrations" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT id, provider, type, status, created_at, updated_at FROM integrations
+       WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: { items: rows.rows, total: rows.rows.length },
       timestamp: new Date().toISOString(),
     });
   }
