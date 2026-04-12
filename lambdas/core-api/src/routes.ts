@@ -1150,6 +1150,26 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // GET /api/v1/billing — return tenant plan info
+  if (path === "/api/v1/billing" && method === "GET") {
+    const tenant = await pool.query(`SELECT tier, status FROM tenants WHERE id = $1`, [
+      auth.tenantId,
+    ]);
+    const row = tenant.rows[0];
+    return ok({
+      status: "success",
+      billing: {
+        plan: row?.tier ?? "free",
+        status: row?.status ?? "active",
+        billingCycle: "monthly",
+        currentPeriodEnd: null,
+      },
+      usage: {},
+      invoices: [],
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // GET /api/v1/apps/integrations — list connected integrations for tenant
   if (path === "/api/v1/apps/integrations" && method === "GET") {
     const rows = await pool.query(
