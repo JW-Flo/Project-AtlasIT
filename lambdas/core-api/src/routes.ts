@@ -1034,8 +1034,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // GET /api/v1/apps/integrations — list connected integrations for tenant
   if (path === "/api/v1/apps/integrations" && method === "GET") {
     const rows = await pool.query(
-      `SELECT id, provider, type, status, created_at, updated_at FROM integrations
-       WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      `SELECT id, provider, type, status, installed_at as created_at, updated_at FROM integrations
+       WHERE tenant_id = $1 ORDER BY installed_at DESC`,
       [auth.tenantId],
     );
     return ok({
