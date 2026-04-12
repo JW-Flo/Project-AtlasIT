@@ -39,8 +39,8 @@
         );
       }
 
-      // Only intercept /api/ paths
-      if (!url.startsWith("/api/")) {
+      // Intercept /api/, /orchestrator/, and /adapters/ paths (all map to API Gateway)
+      if (!url.startsWith("/api/") && !url.startsWith("/orchestrator/") && !url.startsWith("/adapters/")) {
         return originalFetch(input, init);
       }
 
@@ -63,8 +63,14 @@
         }
       }
 
-      // Pass-through for Lambda API paths that already match (/api/v1/*, /api/compliance/*, /orchestrator/*, /adapters/*)
-      if (!mappedPath && (urlPath.startsWith("/api/v1/") || urlPath.startsWith("/api/compliance/") || urlPath.startsWith("/api/onboarding/"))) {
+      // Pass-through for Lambda API paths that already match API Gateway routes
+      if (!mappedPath && (
+        urlPath.startsWith("/api/v1/") ||
+        urlPath.startsWith("/api/compliance/") ||
+        urlPath.startsWith("/api/onboarding/") ||
+        urlPath.startsWith("/orchestrator/") ||
+        urlPath.startsWith("/adapters/")
+      )) {
         mappedPath = url;
       }
 
