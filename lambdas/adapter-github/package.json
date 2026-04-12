@@ -1,0 +1,21 @@
+{
+  "name": "@atlasit/lambda-adapter-github",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --format=esm --outdir=dist --sourcemap --external:@aws-sdk/* --external:@atlasit/*",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@atlasit/shared": "workspace:*",
+    "@types/aws-lambda": "^8.10.149",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.8.3",
+    "esbuild": "^0.25.3"
+  },
+  "dependencies": {
+    "pg": "^8.14.1"
+  }
+}
