@@ -1,10 +1,10 @@
 /**
- * One-off migration runner. Invoke via:
- *   aws lambda invoke --function-name atlasit-migration-runner \
- *     --cli-binary-format raw-in-base64-out \
- *     --payload '{"statements":["CREATE TABLE ..."]}' output.json
+ * Migration runner. Supports two shapes:
+ *   {"statements": ["SELECT 1", ...]}
+ *   {"statements": [{"sql": "INSERT ...", "params": [...]}, ...]}
+ * Returns rowCount + sample rows (first 50) for SELECT queries.
  */
-const pg = require('pg');
+const pg = require("pg");
 
 exports.handler = async (event) => {
   const pool = new pg.Pool({
@@ -13,10 +13,17 @@ exports.handler = async (event) => {
   });
   const results = [];
   try {
-    for (const sql of event.statements || []) {
+    for (const entry of event.statements || []) {
+      const sql = typeof entry === "string" ? entry : entry.sql;
+      const params = typeof entry === "string" ? undefined : entry.params;
       try {
-        const r = await pool.query(sql);
-        results.push({ ok: true, rows: r.rowCount, preview: sql.substring(0, 80) });
+        const r = await pool.query(sql, params);
+        results.push({
+          ok: true,
+          rowCount: r.rowCount,
+          rows: (r.rows || []).slice(0, 50),
+          preview: sql.substring(0, 80),
+        });
       } catch (e) {
         results.push({ ok: false, error: e.message, preview: sql.substring(0, 80) });
       }
