@@ -3,6 +3,22 @@ import { redirect, isRedirect, isHttpError } from "@sveltejs/kit";
 import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
+import {
+  checkBodySizeLimit,
+  parseBodySizeLimit,
+  BODY_METHODS,
+} from "$lib/server/body-size-limit";
+
+/**
+ * Default maximum request body size (512 KB).
+ * Override at runtime via the BODY_SIZE_LIMIT environment variable.
+ * Setting the variable to "0" disables the limit entirely.
+ *
+ * Mitigates the BODY_SIZE_LIMIT bypass described in the
+ * @sveltejs/adapter-node security advisory: the enforcement validates actual
+ * bytes transferred in addition to the (spoofable) Content-Length header.
+ */
+const BODY_SIZE_LIMIT_DEFAULT = 512 * 1024; // 512 KB
 
 /**
  * Routes that are intentionally public (no authentication required).
@@ -73,6 +89,28 @@ export const handle: Handle = async ({ event, resolve }) => {
   const envAny = event.platform?.env as Record<string, unknown> | undefined;
 
   const devBypass = isDevAuthBypass(envRaw ?? {});
+
+  // ------------------------------------------------------------------
+  // 0. Body size enforcement (BODY_SIZE_LIMIT bypass mitigation)
+  //    Rejects oversized bodies before any auth or DB work is done.
+  //    Delegates to checkBodySizeLimit() which checks Content-Length first
+  //    (fast path) then streams actual bytes — preventing spoofing attacks.
+  // ------------------------------------------------------------------
+  if (BODY_METHODS.has(event.request.method) && event.request.body) {
+    const bodySizeLimit = parseBodySizeLimit(
+      envRaw?.["BODY_SIZE_LIMIT"],
+      BODY_SIZE_LIMIT_DEFAULT,
+    );
+    const result = await checkBodySizeLimit(event.request, bodySizeLimit);
+    if (result.blocked) {
+      return result.response;
+    }
+    // Reconstruct event.request with the pre-read body buffer so downstream
+    // route handlers can still call request.json() / request.text() etc.
+    // Object.assign is used to sidestep the TypeScript readonly constraint
+    // on RequestEvent.request while remaining safe at runtime.
+    Object.assign(event, { request: result.request });
+  }
 
   // ------------------------------------------------------------------
   // 1. Authentication is session-based (email/password via /api/auth/login)
