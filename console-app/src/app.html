@@ -17,6 +17,22 @@
         try { var s = localStorage.getItem('atlasit.theme'); if (s === 'light' || s === 'dark') t = s; } catch(e) {}
         document.documentElement.setAttribute('data-theme', t);
       })();
+
+      // Static SPA mode: intercept SvelteKit __data.json fetches (no server data in static bundle)
+      // Must run before SvelteKit bundle bootstraps.
+      (function() {
+        var _fetch = window.fetch.bind(window);
+        window.fetch = function(input, init) {
+          var url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input && input.url) || '');
+          if (url.indexOf('__data.json') !== -1) {
+            return Promise.resolve(new Response(
+              JSON.stringify({ type: 'data', nodes: [null, null, null] }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            ));
+          }
+          return _fetch(input, init);
+        };
+      })();
     </script>
     %sveltekit.head%
   </head>
