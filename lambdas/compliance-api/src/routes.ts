@@ -86,6 +86,21 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   const qs = event.queryStringParameters ?? {};
   const requestId = event.requestContext.requestId;
 
+  // ── CORS preflight (no auth, handle before everything) ──────────────────
+  if (method === "OPTIONS") {
+    return {
+      statusCode: 204,
+      headers: {
+        "Access-Control-Allow-Origin": event.headers?.origin ?? "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "7200",
+      },
+      body: "",
+    };
+  }
+
   // ── Health (no auth) ──────────────────────────────────────────────────────
   if (path === "/health" && method === "GET") {
     return ok({
