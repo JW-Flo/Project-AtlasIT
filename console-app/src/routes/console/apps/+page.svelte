@@ -153,9 +153,85 @@
     { label: "Error", value: "error" },
   ];
 
+  let githubConnecting = false;
+  async function connectGitHub() {
+    showConnectMenu = false;
+    githubConnecting = true;
+    banner = null;
+    try {
+      const res = await fetch("/adapters/github/oauth/init");
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.message ?? `HTTP ${res.status}`);
+      const url = j.data?.authorizeUrl;
+      if (!url) throw new Error("No authorize URL returned");
+      window.location.href = url;
+    } catch (e) {
+      banner = { type: "error", msg: `GitHub connect failed: ${(e as Error).message}` };
+      githubConnecting = false;
+    }
+  }
+
+  async function resyncGitHub() {
+    connectingProvider = "github";
+    banner = null;
+    try {
+      const res = await fetch("/adapters/github/sync", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.message ?? `HTTP ${res.status}`);
+      const d = json.data;
+      if (d?.error) throw new Error(d.error);
+      banner = {
+        type: "info",
+        msg: `GitHub re-synced — ${d.orgs} orgs, ${d.repos} repos, ${d.evidenceCount} new evidence records in ${d.durationMs}ms.`,
+      };
+      await loadIntegrations();
+    } catch (e) {
+      banner = { type: "error", msg: `Sync failed: ${(e as Error).message}` };
+    } finally {
+      connectingProvider = null;
+    }
+  }
+
+  async function disconnectGitHub() {
+    if (!confirm("Disconnect GitHub? Stored access token will be removed.")) return;
+    connectingProvider = "github";
+    banner = null;
+    try {
+      const res = await fetch("/adapters/github/integration", { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      banner = { type: "info", msg: "GitHub disconnected." };
+      await loadIntegrations();
+    } catch (e) {
+      banner = { type: "error", msg: `Disconnect failed: ${(e as Error).message}` };
+    } finally {
+      connectingProvider = null;
+    }
+  }
+
+  // Handle the OAuth callback return — the Lambda redirects to /console/apps?github=connected
+  onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    const gh = params.get("github");
+    if (gh === "connected") {
+      const login = params.get("login");
+      const evidence = params.get("evidence");
+      banner = {
+        type: "info",
+        msg: `GitHub connected as ${login ?? "user"}. Synced ${evidence ?? "?"} new evidence records.`,
+      };
+      // Clean the URL so a refresh doesn't re-show the banner
+      window.history.replaceState({}, "", "/console/apps");
+    } else if (gh === "error") {
+      const reason = params.get("reason") ?? "unknown";
+      banner = { type: "error", msg: `GitHub connect failed: ${reason}` };
+      window.history.replaceState({}, "", "/console/apps");
+    }
+  });
+
   // Available adapters to connect. As more adapter Lambdas land, add them here.
   const AVAILABLE_ADAPTERS = [
     { provider: "okta", name: "Okta", tagline: "Identity provider — users, groups, access events", action: () => { showOktaModal = true; showConnectMenu = false; } },
+    { provider: "github", name: "GitHub", tagline: "Repos, branch protection, MFA enforcement, CI policies", action: connectGitHub },
   ];
 </script>
 
@@ -303,6 +379,23 @@
                         type="button"
                         on:click={disconnectOkta}
                         disabled={connectingProvider === "okta"}
+                        class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium disabled:opacity-50"
+                      >
+                        Disconnect
+                      </button>
+                    {:else if integration.provider === "github"}
+                      <button
+                        type="button"
+                        on:click={resyncGitHub}
+                        disabled={connectingProvider === "github"}
+                        class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium disabled:opacity-50"
+                      >
+                        {connectingProvider === "github" ? "Syncing…" : "Re-sync"}
+                      </button>
+                      <button
+                        type="button"
+                        on:click={disconnectGitHub}
+                        disabled={connectingProvider === "github"}
                         class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium disabled:opacity-50"
                       >
                         Disconnect
