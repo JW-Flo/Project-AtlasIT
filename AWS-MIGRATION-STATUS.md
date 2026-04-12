@@ -287,3 +287,19 @@ CF resources to decommission after stability confirmed:
 - [ ] Resume platform development
 
 **Exit criteria:** 2 weeks stable. QA clean. CF decommissioned. Ready for Phase 9.
+
+---
+
+## Session Progress (2026-04-11 → 2026-04-12)
+
+### Completed
+- **Auth flow end-to-end**: /api/v1/auth/token with bcrypt password verification + account lockout (5 attempts → 15min lock)
+- **Set-password endpoint**: /api/v1/auth/set-password with ADMIN_SETUP_TOKEN gate
+- **All 9 core adapters healthy**: okta + aws now gracefully degrade when CF bindings missing
+- **Migration 0050 applied**: password_hash, failed_login_count, locked_until columns on users
+- **Joe admin user created** with password verified
+- **RDS Proxy provisioned** (atlasit-rds-proxy-dev.proxy-col0k6y8mbvi.us-east-1.rds.amazonaws.com)
+
+### Known Issues
+- **RDS Proxy TLS auth**: Lambda connection via proxy returns "Connection terminated unexpectedly". Needs TLS cert config or pg client tuning. Reverted Lambdas to direct RDS. Proxy is provisioned and ready when config is fixed.
+- **Cold start timeout** (~45s) still present on write operations. RDS Proxy will fix once TLS config resolved.
