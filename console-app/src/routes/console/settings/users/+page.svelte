@@ -19,6 +19,8 @@
   let inviting = false;
   let inviteError: string | null = null;
   let inviteSuccess: string | null = null;
+  let lastInviteUrl: string | null = null;
+  let copiedLink = false;
 
   session.subscribe((s) => {
     if (s) {
@@ -49,12 +51,21 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: inviteEmail.trim(), displayName: inviteDisplayName.trim() || undefined, role: inviteRole }),
       });
-      const result = await res.json();
+      const result = await res.json() as { message?: string; data?: { inviteUrl?: string } };
       if (!res.ok) { inviteError = result.message ?? "Failed to invite user"; return; }
-      inviteSuccess = `${inviteEmail.trim()} added successfully.`;
+      inviteSuccess = `Invite created for ${inviteEmail.trim()}.`;
+      lastInviteUrl = result.data?.inviteUrl ?? null;
+      copiedLink = false;
       inviteEmail = ""; inviteDisplayName = ""; inviteRole = "member";
       await loadUsers();
     } catch (e) { inviteError = (e as Error).message; } finally { inviting = false; }
+  }
+
+  async function copyInviteLink() {
+    if (!lastInviteUrl) return;
+    await navigator.clipboard.writeText(lastInviteUrl);
+    copiedLink = true;
+    setTimeout(() => { copiedLink = false; }, 2500);
   }
 
   function roleBadgeClass(role: string): string {
@@ -91,7 +102,7 @@
     </div>
     {#if isAdmin}
       <button
-        on:click={() => { showInvite = !showInvite; inviteError = null; inviteSuccess = null; }}
+        on:click={() => { showInvite = !showInvite; inviteError = null; inviteSuccess = null; lastInviteUrl = null; copiedLink = false; }}
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
       >
         {showInvite ? "Cancel" : "Invite User"}
@@ -124,7 +135,29 @@
         </div>
       </div>
       {#if inviteError}<p class="mt-3 text-sm text-red-600 dark:text-red-400">{inviteError}</p>{/if}
-      {#if inviteSuccess}<p class="mt-3 text-sm text-green-600 dark:text-green-400">{inviteSuccess}</p>{/if}
+      {#if inviteSuccess}
+        <div class="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <p class="text-sm text-green-700 dark:text-green-300 font-medium mb-2">{inviteSuccess} Share this invite link:</p>
+          {#if lastInviteUrl}
+            <div class="flex items-center gap-2">
+              <input
+                type="text"
+                readonly
+                value={lastInviteUrl}
+                class="flex-1 text-xs px-2 py-1.5 border border-green-300 dark:border-green-700 rounded bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 font-mono truncate"
+              />
+              <button
+                type="button"
+                on:click={copyInviteLink}
+                class="shrink-0 px-3 py-1.5 text-xs font-medium rounded border transition-colors {copiedLink ? 'bg-green-600 border-green-600 text-white' : 'bg-white dark:bg-gray-800 border-green-400 dark:border-green-600 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/30'}"
+              >
+                {copiedLink ? "Copied!" : "Copy Link"}
+              </button>
+            </div>
+            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Link expires in 7 days. Share it directly with the invitee.</p>
+          {/if}
+        </div>
+      {/if}
       <div class="mt-4">
         <button on:click={submitInvite} disabled={inviting}
           class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
