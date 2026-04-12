@@ -7,6 +7,9 @@
 
 import type { ScheduledEvent } from "aws-lambda";
 import { randomUUID } from "crypto";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+
+const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION ?? "us-east-1" });
 
 function log(level: string, event: string, data: Record<string, unknown> = {}): void {
   console.log(JSON.stringify({ ts: new Date().toISOString(), level, event, ...data }));
@@ -37,9 +40,10 @@ const RULE_TO_JOB: Record<string, string[]> = {
   "atlasit-daily-etl": ["daily_etl"],
   "atlasit-quarter-hour": ["quarter_hour_monitor"],
   "atlasit-compliance-refresh": ["compliance_snapshot_refresh"],
+  "atlasit-compliance-packs-daily-dev": ["compliance_packs_evaluate"],
   "atlasit-discovery-sync": ["discovery_sync"],
-  // Default: run all cron jobs
-  "default": ["daily_etl", "quarter_hour_monitor", "compliance_snapshot_refresh", "discovery_sync"],
+  // Default: run all cron jobs (covers the legacy 15-min rule)
+  default: ["daily_etl", "quarter_hour_monitor", "compliance_snapshot_refresh", "discovery_sync"],
 };
 
 /** Extract the EventBridge rule name from the event resource ARN. */
@@ -64,10 +68,18 @@ async function executeJob(name: string): Promise<{ ok: boolean; error?: string; 
     "Content-Type": "application/json",
   };
 
-  const jobMap: Record<string, { url: string; method: string; body?: string }> = {
+  const internalKey = process.env.INTERNAL_API_KEY ?? "";
+
+  const jobMap: Record<
+    string,
+    { url: string; method: string; body?: string; headers?: Record<string, string> }
+  > = {
     daily_etl: { url: `${orchestratorBase}/internal/etl/run`, method: "POST" },
     quarter_hour_monitor: { url: `${orchestratorBase}/health`, method: "GET" },
-    compliance_snapshot_refresh: { url: `${orchestratorBase}/internal/compliance/refresh`, method: "POST" },
+    compliance_snapshot_refresh: {
+      url: `${orchestratorBase}/internal/compliance/refresh`,
+      method: "POST",
+    },
     discovery_sync: {
       url: `${orchestratorBase}/api/v1/discovery/sync`,
       method: "POST",
@@ -75,12 +87,49 @@ async function executeJob(name: string): Promise<{ ok: boolean; error?: string; 
     },
   };
 
+  // Lambda-direct invocations for jobs that call private VPC lambdas (no NAT available)
+  if (name === "compliance_packs_evaluate") {
+    const started = Date.now();
+    try {
+      const res = await lambdaClient.send(
+        new InvokeCommand({
+          FunctionName: process.env.COMPLIANCE_API_LAMBDA ?? "atlasit-compliance-api-dev",
+          InvocationType: "RequestResponse",
+          Payload: Buffer.from(
+            JSON.stringify({
+              version: "2.0",
+              rawPath: "/internal/compliance-packs/evaluate-all",
+              requestContext: {
+                http: { method: "POST", path: "/internal/compliance-packs/evaluate-all" },
+              },
+              headers: { "x-internal-api-key": internalKey, "content-type": "application/json" },
+              body: "{}",
+              isBase64Encoded: false,
+            }),
+          ),
+        }),
+      );
+      const decoded = res.Payload ? JSON.parse(Buffer.from(res.Payload).toString("utf8")) : null;
+      if (decoded?.statusCode && decoded.statusCode >= 400) {
+        return {
+          ok: false,
+          error: `compliance-api returned ${decoded.statusCode}: ${decoded.body?.slice(0, 200)}`,
+          ms: Date.now() - started,
+        };
+      }
+      return { ok: true, ms: Date.now() - started };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message, ms: Date.now() - started };
+    }
+  }
+
   const job = jobMap[name];
   if (!job) return { ok: false, error: `Unknown job: ${name}`, ms: 0 };
 
+  const mergedHeaders = { ...headers, ...(job.headers ?? {}) };
   const started = Date.now();
   try {
-    await fetchWithRetry(job.url, { method: job.method, headers, body: job.body });
+    await fetchWithRetry(job.url, { method: job.method, headers: mergedHeaders, body: job.body });
     return { ok: true, ms: Date.now() - started };
   } catch (err) {
     return { ok: false, error: (err as Error).message, ms: Date.now() - started };
