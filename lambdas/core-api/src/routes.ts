@@ -300,6 +300,69 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", data: tenant, timestamp: new Date().toISOString() });
   }
 
+  // GET /api/v1/directory/users — list synced directory users
+  if (path === "/api/v1/directory/users" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "100", 10) || 100, 500);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const rows = await pool.query(
+      `SELECT id, email, external_id, department, title, status, display_name, created_at
+       FROM directory_users WHERE tenant_id = $1 ORDER BY email ASC LIMIT $2 OFFSET $3`,
+      [auth.tenantId, limit, offset],
+    );
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as cnt FROM directory_users WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: { items: rows.rows, total: parseInt(countRow.rows[0]?.cnt ?? "0", 10) },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/directory/groups — list synced directory groups
+  if (path === "/api/v1/directory/groups" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT g.id, g.name, g.description, g.external_id, g.created_at,
+              COUNT(m.user_id) as member_count
+       FROM directory_groups g
+       LEFT JOIN directory_memberships m ON g.id = m.group_id
+       WHERE g.tenant_id = $1
+       GROUP BY g.id ORDER BY g.name ASC`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: { items: rows.rows, total: rows.rows.length },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/directory/sync/status — directory sync status per provider
+  if (path === "/api/v1/directory/sync/status" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT provider, status, last_sync_at, created_at FROM directory_connections WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    const userCount = await pool.query(
+      `SELECT COUNT(*) as cnt FROM directory_users WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    const groupCount = await pool.query(
+      `SELECT COUNT(*) as cnt FROM directory_groups WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: {
+        connections: rows.rows,
+        userCount: parseInt(userCount.rows[0]?.cnt ?? "0", 10),
+        groupCount: parseInt(groupCount.rows[0]?.cnt ?? "0", 10),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // GET /api/v1/dashboard — consolidated dashboard data for console
   if (path === "/api/v1/dashboard" && method === "GET") {
     try {
