@@ -119,6 +119,125 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // ── Internal: evaluate all installed packs across all tenants (cron-driven) ──
+  // Requires x-internal-api-key. No Bearer token check.
+  if (path === "/internal/compliance-packs/evaluate-all" && method === "POST") {
+    const providedKey =
+      event.headers?.["x-internal-api-key"] ?? event.headers?.["X-Internal-Api-Key"];
+    const expectedKey = process.env.INTERNAL_API_KEY;
+    if (!expectedKey || providedKey !== expectedKey) {
+      return fail(401, "Internal key required", "UNAUTHORIZED");
+    }
+    const startedAt = Date.now();
+    const pool = getPool();
+    try {
+      const installs = await pool.query(
+        `SELECT tenant_id, pack_id FROM tenant_compliance_packs ORDER BY tenant_id, pack_id`,
+      );
+      const norm = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      const results: Array<Record<string, unknown>> = [];
+
+      for (const row of installs.rows) {
+        const tId = row.tenant_id as string;
+        const pId = row.pack_id as string;
+        try {
+          const ctrls = await pool.query(
+            `SELECT control_id FROM compliance_pack_controls WHERE pack_id = $1`,
+            [pId],
+          );
+          const ev = await pool.query(
+            `SELECT control_id, source, actor, metadata, created_at
+             FROM compliance_evidence
+             WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days' AND control_id IS NOT NULL`,
+            [tId],
+          );
+          const byControl = new Map<string, Array<Record<string, unknown>>>();
+          for (const e of ev.rows) {
+            const k = norm(e.control_id as string);
+            if (!byControl.has(k)) byControl.set(k, []);
+            byControl.get(k)!.push(e);
+          }
+          let pass = 0;
+          let fail_ = 0;
+          let unknown = 0;
+          const at = new Date().toISOString();
+          for (const c of ctrls.rows) {
+            const controlId = c.control_id as string;
+            const rule = CONTROL_REGISTRY[controlId];
+            const regKey = norm(controlId);
+            let evs = byControl.get(regKey) ?? [];
+            if (evs.length === 0) {
+              for (const [k, v] of byControl)
+                if (regKey.endsWith(k) && k.length >= 3) {
+                  evs = v;
+                  break;
+                }
+            }
+            let state: "pass" | "fail" | "unknown" = "unknown";
+            let rationale: string[] = ["No evidence in last 30 days"];
+            if (rule && evs.length > 0) {
+              let anyPass = false;
+              const fails: string[] = [];
+              for (const r of evs) {
+                const cdtEv: CdtEvent = {
+                  type: (r.source as string) ?? "evidence",
+                  tenant: tId,
+                  occurred_at:
+                    (r.created_at as Date)?.toISOString?.() ?? String(r.created_at ?? at),
+                  payload: (r.metadata ?? {}) as Record<string, unknown>,
+                  trace_id: (r.actor as string) ?? "",
+                };
+                const dec = rule.fn(cdtEv);
+                if (dec.decision === "pass") {
+                  anyPass = true;
+                  rationale = dec.rationale;
+                  break;
+                }
+                if (dec.decision === "fail") fails.push(...dec.rationale);
+              }
+              state = anyPass ? "pass" : fails.length > 0 ? "fail" : "unknown";
+              if (!anyPass && fails.length > 0) rationale = Array.from(new Set(fails)).slice(0, 5);
+            }
+            if (state === "pass") pass++;
+            else if (state === "fail") fail_++;
+            else unknown++;
+            await pool.query(
+              `INSERT INTO tenant_control_state (tenant_id, pack_id, control_id, state, rationale, evaluated_at, evidence_sample_size)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (tenant_id, pack_id, control_id) DO UPDATE SET
+                 state = EXCLUDED.state, rationale = EXCLUDED.rationale,
+                 evaluated_at = EXCLUDED.evaluated_at, evidence_sample_size = EXCLUDED.evidence_sample_size`,
+              [tId, pId, controlId, state, rationale, at, evs.length],
+            );
+          }
+          await pool.query(
+            `UPDATE tenant_compliance_packs SET last_evaluated_at = $3, pass_count = $4, fail_count = $5, unknown_count = $6
+             WHERE tenant_id = $1 AND pack_id = $2`,
+            [tId, pId, at, pass, fail_, unknown],
+          );
+          results.push({
+            tenantId: tId,
+            packId: pId,
+            pass,
+            fail: fail_,
+            unknown,
+            controlCount: ctrls.rows.length,
+          });
+        } catch (e) {
+          results.push({ tenantId: tId, packId: pId, error: (e as Error).message });
+        }
+      }
+      return ok({
+        status: "success",
+        data: { installs: installs.rows.length, results, durationMs: Date.now() - startedAt },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] evaluate-all.error", { error: (e as Error).message });
+      return fail(500, "Batch evaluation failed", "INTERNAL_ERROR");
+    }
+  }
+
   // All remaining routes require authentication
   let auth: Awaited<ReturnType<typeof extractAuth>>;
   try {
