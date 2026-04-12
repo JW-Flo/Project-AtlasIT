@@ -55,6 +55,7 @@
 
       const [urlPath, urlQuery] = url.split("?");
       let mappedPath = "";
+      // Legacy path map (UI paths → Lambda paths)
       for (const [from, to] of Object.entries(pathMap)) {
         if (urlPath === from || urlPath.startsWith(from + "/")) {
           mappedPath = to + urlPath.substring(from.length) + (urlQuery ? "?" + urlQuery : "");
@@ -62,7 +63,12 @@
         }
       }
 
-      // Unmapped path → return empty JSON so pages don't crash on .json()
+      // Pass-through for Lambda API paths that already match (/api/v1/*, /api/compliance/*, /orchestrator/*, /adapters/*)
+      if (!mappedPath && (urlPath.startsWith("/api/v1/") || urlPath.startsWith("/api/compliance/") || urlPath.startsWith("/api/onboarding/"))) {
+        mappedPath = url;
+      }
+
+      // Unmapped legacy path → return empty JSON so pages don't crash on .json()
       if (!mappedPath) {
         return Promise.resolve(
           new Response(JSON.stringify({ authenticated: false, data: null, items: [] }), {
