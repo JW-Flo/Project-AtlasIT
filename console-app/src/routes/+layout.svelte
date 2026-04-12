@@ -40,7 +40,7 @@
   // Public routes that should not use the AppFrame shell (sidebar + topbar)
   const PUBLIC_ROUTES = ["/login", "/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers"];
 
-  $: isBare = PUBLIC_ROUTES.some((r) => $page.url.pathname === r || $page.url.pathname.startsWith(r + "/"));
+  $: isBare = $page.url.pathname === "/" || PUBLIC_ROUTES.some((r) => $page.url.pathname === r || $page.url.pathname.startsWith(r + "/"));
 
   // Server-side session data from +layout.server.ts
   $: serverSession = $page.data?.session;
