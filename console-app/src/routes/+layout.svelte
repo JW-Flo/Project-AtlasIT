@@ -28,6 +28,17 @@
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
 
+      // Intercept SvelteKit's __data.json fetches (static mode has no server data)
+      if (url.includes("__data.json")) {
+        // Return valid empty SvelteKit data payload
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ type: "data", nodes: [null, null, null] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+
       // Only intercept /api/ paths
       if (!url.startsWith("/api/")) {
         return originalFetch(input, init);
