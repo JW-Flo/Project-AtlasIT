@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Bindings, AwsConfig, SyncResult } from "./types.js";
 import { authMiddleware } from "./auth.js";
 import { signAwsRequest } from "./sigv4.js";
@@ -11,6 +12,34 @@ type Variables = {
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// ─── Lambda compatibility helpers ────────────────────────────────────────────
+// When running on AWS Lambda (via lambda-handler.ts), Cloudflare bindings
+// (DB) are not available on c.env. These helpers let the worker fail
+// gracefully for binding-dependent routes while keeping the health endpoint
+// and stateless routes functional.
+
+type AdapterContext = Context<{ Bindings: Bindings; Variables: Variables }>;
+
+function getEnv(c: AdapterContext): Partial<Bindings> {
+  return (c.env ?? {}) as Partial<Bindings>;
+}
+
+function getDb(c: AdapterContext): D1Database | null {
+  const env = getEnv(c);
+  return (env.DB as D1Database | undefined) ?? null;
+}
+
+function notAvailableInLambda(c: AdapterContext, resource: string): Response {
+  return c.json(
+    {
+      error: `${resource} not available in Lambda mode`,
+      code: "NOT_IMPLEMENTED",
+      correlationId: c.get("correlationId"),
+    },
+    501,
+  );
+}
 
 // --- Middleware ---
 
@@ -59,7 +88,10 @@ app.use("/api/*", async (c, next) => {
 
 // --- Helper ---
 
-function buildAwsConfig(env: Bindings): AwsConfig {
+function buildAwsConfig(env: Partial<Bindings>): AwsConfig | null {
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    return null;
+  }
   return {
     accessKeyId: env.AWS_ACCESS_KEY_ID,
     secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -70,13 +102,14 @@ function buildAwsConfig(env: Bindings): AwsConfig {
 // --- Routes ---
 
 app.get("/health", (c) => {
+  const env = getEnv(c);
   return c.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
     service: "aws-connector",
     connector: {
-      id: c.env.CONNECTOR_ID ?? "aws",
+      id: env.CONNECTOR_ID ?? "aws",
       name: "AWS",
       provider: "Amazon Web Services",
       capabilities: ["user-provisioning", "user-deprovisioning", "group-management"],
@@ -97,11 +130,23 @@ app.post("/webhook", async (c) => {
 
   const rawBody = await c.req.text();
 
+  const env = getEnv(c);
+  if (!env.ADAPTER_SECRET) {
+    return c.json(
+      {
+        error: "ADAPTER_SECRET not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId,
+      },
+      501,
+    );
+  }
+
   // Verify HMAC signature
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
-    encoder.encode(c.env.ADAPTER_SECRET),
+    encoder.encode(env.ADAPTER_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -147,7 +192,22 @@ app.post("/api/sync", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
   }
 
-  const config = buildAwsConfig(c.env);
+  const env = getEnv(c);
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "Directory sync (requires D1 database)");
+  }
+  const config = buildAwsConfig(env);
+  if (!config) {
+    return c.json(
+      {
+        error: "AWS credentials not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId,
+      },
+      501,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -161,8 +221,8 @@ app.post("/api/sync", async (c) => {
 
   try {
     // Users must sync before groups (memberships reference user rows)
-    const userResult = await syncUsers(config, c.env.DB, tenantId);
-    const groupResult = await syncGroups(config, c.env.DB, tenantId);
+    const userResult = await syncUsers(config, db, tenantId);
+    const groupResult = await syncGroups(config, db, tenantId);
 
     const result: SyncResult = {
       users: userResult,
@@ -170,11 +230,11 @@ app.post("/api/sync", async (c) => {
     };
 
     // Update connection status
-    await updateConnectionStatus(c.env.DB, tenantId, userResult.total, groupResult.total);
+    await updateConnectionStatus(db, tenantId, userResult.total, groupResult.total);
 
     // Publish sync-completed event to orchestrator
     await publishEvent({
-      orchestratorUrl: c.env.ORCHESTRATOR_URL,
+      orchestratorUrl: env.ORCHESTRATOR_URL ?? "",
       tenantId,
       type: "directory.sync.completed",
       source: "adapter-aws",
@@ -208,7 +268,7 @@ app.post("/api/sync", async (c) => {
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
 
-    await updateConnectionStatus(c.env.DB, tenantId, 0, 0, errorMsg);
+    await updateConnectionStatus(db, tenantId, 0, 0, errorMsg);
 
     console.error(
       JSON.stringify({
@@ -232,10 +292,20 @@ app.post("/api/sync/users", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
   }
 
-  const config = buildAwsConfig(c.env);
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "User sync (requires D1 database)");
+  }
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      { error: "AWS credentials not configured", code: "NOT_IMPLEMENTED", correlationId },
+      501,
+    );
+  }
 
   try {
-    const result = await syncUsers(config, c.env.DB, tenantId);
+    const result = await syncUsers(config, db, tenantId);
     return c.json({ status: "synced", correlationId, data: result });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
@@ -251,10 +321,20 @@ app.post("/api/sync/groups", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
   }
 
-  const config = buildAwsConfig(c.env);
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "Group sync (requires D1 database)");
+  }
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      { error: "AWS credentials not configured", code: "NOT_IMPLEMENTED", correlationId },
+      501,
+    );
+  }
 
   try {
-    const result = await syncGroups(config, c.env.DB, tenantId);
+    const result = await syncGroups(config, db, tenantId);
     return c.json({ status: "synced", correlationId, data: result });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown sync error";
@@ -270,9 +350,15 @@ app.get("/api/status", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
   }
 
-  const connection = await c.env.DB.prepare(
-    "SELECT status, error_msg, last_sync_at, user_count, group_count FROM directory_connections WHERE tenant_id = ?",
-  )
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "Connection status (requires D1 database)");
+  }
+
+  const connection = await db
+    .prepare(
+      "SELECT status, error_msg, last_sync_at, user_count, group_count FROM directory_connections WHERE tenant_id = ?",
+    )
     .bind(tenantId)
     .first<{
       status: string;
@@ -401,7 +487,17 @@ app.post("/api/provision", async (c) => {
   }
 
   const username = deriveIamUsername(email);
-  const config = buildAwsConfig(c.env);
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      {
+        error: "AWS credentials not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -517,7 +613,17 @@ app.post("/api/deprovision", async (c) => {
   }
 
   const username = deriveIamUsername(email);
-  const config = buildAwsConfig(c.env);
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      {
+        error: "AWS credentials not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -651,7 +757,17 @@ app.post("/api/nhi/discovery", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header", correlationId }, 400);
   }
 
-  const config = buildAwsConfig(c.env);
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      {
+        error: "AWS credentials not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
   const identities: NHIIdentity[] = [];
 
   // --- 1. IAM Roles (service-linked or service account roles) ---
@@ -731,7 +847,7 @@ app.post("/api/nhi/discovery", async (c) => {
         }
 
         const isTruncated = res.xml.match(/<IsTruncated>([^<]+)<\/IsTruncated>/)?.[1] === "true";
-        marker = isTruncated ? (res.xml.match(/<Marker>([^<]+)<\/Marker>/)?.[1]) : undefined;
+        marker = isTruncated ? res.xml.match(/<Marker>([^<]+)<\/Marker>/)?.[1] : undefined;
       } else {
         marker = undefined;
       }
@@ -761,10 +877,7 @@ app.post("/api/nhi/discovery", async (c) => {
         if (!userName) continue;
 
         try {
-          const keysRes = await iamPost(
-            { Action: "ListAccessKeys", UserName: userName },
-            config,
-          );
+          const keysRes = await iamPost({ Action: "ListAccessKeys", UserName: userName }, config);
           if (!keysRes.ok) continue;
 
           const keyBlocks = [...keysRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
@@ -865,10 +978,9 @@ app.post("/api/nhi/discovery", async (c) => {
           : undefined;
 
         // Fetch tags for owner email
-        const tagsRes = await iamPost(
-          { Action: "ListUserTags", UserName: userName },
-          config,
-        ).catch(() => null);
+        const tagsRes = await iamPost({ Action: "ListUserTags", UserName: userName }, config).catch(
+          () => null,
+        );
         let ownerEmail: string | undefined;
         if (tagsRes?.ok) {
           const tagBlocks = [...tagsRes.xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map(
@@ -958,7 +1070,17 @@ app.post("/api/evidence", async (c) => {
     details: Record<string, unknown>;
   };
 
-  const config = buildAwsConfig(c.env);
+  const config = buildAwsConfig(getEnv(c));
+  if (!config) {
+    return c.json(
+      {
+        error: "AWS credentials not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
 
   // mfa_enforcement — IAM GetAccountSummary via SigV4
   let mfaItem: EvidenceItem;

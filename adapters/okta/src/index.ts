@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { Bindings, SyncResult } from "./types.js";
 import { syncDirectory } from "./sync.js";
 import { handleVerification, handleEventHook } from "./webhooks.js";
@@ -6,16 +7,45 @@ import { scimRouter } from "./scim/router.js";
 
 const app = new Hono<{ Bindings: Bindings; Variables: { correlationId: string } }>();
 
+// ─── Lambda compatibility helpers ────────────────────────────────────────────
+// When running on AWS Lambda (via lambda-handler.ts), Cloudflare bindings
+// (DB/KV) are not available on c.env. These helpers let the worker fail
+// gracefully for binding-dependent routes while keeping the health endpoint
+// and stateless routes functional.
+
+type AdapterContext = Context<{ Bindings: Bindings; Variables: { correlationId: string } }>;
+
+function getEnv(c: AdapterContext): Partial<Bindings> {
+  return (c.env ?? {}) as Partial<Bindings>;
+}
+
+function getDb(c: AdapterContext): D1Database | null {
+  const env = getEnv(c);
+  return (env.DB as D1Database | undefined) ?? null;
+}
+
+function notAvailableInLambda(c: AdapterContext, resource: string): Response {
+  return c.json(
+    {
+      error: `${resource} not available in Lambda mode`,
+      code: "NOT_IMPLEMENTED",
+      correlationId: c.get("correlationId"),
+    },
+    501,
+  );
+}
+
 // Mount SCIM 2.0 provisioning endpoints
 app.route("/scim/v2", scimRouter);
 
 app.get("/health", (c) => {
+  const env = getEnv(c);
   return c.json({
     status: "healthy",
     timestamp: new Date().toISOString(),
     version: "0.1.0",
     service: "okta-connector",
-    connectorId: c.env.CONNECTOR_ID,
+    connectorId: env.CONNECTOR_ID ?? "okta",
   });
 });
 
@@ -57,13 +87,17 @@ app.post("/api/sync", async (c) => {
     }),
   );
 
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "Directory sync (requires D1 database)");
+  }
+  const env = getEnv(c);
+  if (!env.OKTA_API_TOKEN) {
+    return c.json({ error: "OKTA_API_TOKEN not configured", correlationId }, 500);
+  }
+
   try {
-    const result: SyncResult = await syncDirectory(
-      c.env.DB,
-      body.orgUrl,
-      c.env.OKTA_API_TOKEN,
-      tenantId,
-    );
+    const result: SyncResult = await syncDirectory(db, body.orgUrl, env.OKTA_API_TOKEN, tenantId);
 
     console.log(
       JSON.stringify({
@@ -98,9 +132,15 @@ app.get("/api/status", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header" }, 400);
   }
 
-  const connection = await c.env.DB.prepare(
-    "SELECT status, error_msg, last_sync_at, user_count, group_count FROM directory_connections WHERE tenant_id = ?1",
-  )
+  const db = getDb(c);
+  if (!db) {
+    return notAvailableInLambda(c, "Connection status (requires D1 database)");
+  }
+
+  const connection = await db
+    .prepare(
+      "SELECT status, error_msg, last_sync_at, user_count, group_count FROM directory_connections WHERE tenant_id = ?1",
+    )
     .bind(tenantId)
     .first<{
       status: string;
@@ -162,18 +202,26 @@ async function fetchOktaPolicies(
   }
 }
 
-function evaluateMfaPolicy(
-  policies: Array<Record<string, unknown>> | null,
-): AdapterEvidenceItem {
+function evaluateMfaPolicy(policies: Array<Record<string, unknown>> | null): AdapterEvidenceItem {
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.4.2", "HIPAA-164.312(d)"];
 
   if (policies === null) {
-    return { type: "mfa_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch MFA policies" } };
+    return {
+      type: "mfa_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch MFA policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "mfa_policy", controlRefs, status: "fail", details: { reason: "No active MFA enrollment policy found" } };
+    return {
+      type: "mfa_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active MFA enrollment policy found" },
+    };
   }
 
   const hasRequired = active.some((p) => {
@@ -184,7 +232,12 @@ function evaluateMfaPolicy(
     return Object.values(factors).some((f) => f?.enroll?.self === "REQUIRED");
   });
 
-  return { type: "mfa_policy", controlRefs, status: hasRequired ? "pass" : "fail", details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired } };
+  return {
+    type: "mfa_policy",
+    controlRefs,
+    status: hasRequired ? "pass" : "fail",
+    details: { activePolicyCount: active.length, hasRequiredFactor: hasRequired },
+  };
 }
 
 function evaluatePasswordPolicy(
@@ -193,16 +246,28 @@ function evaluatePasswordPolicy(
   const controlRefs = ["SOC2-CC6.1", "ISO-27001-A.9.3.1"];
 
   if (policies === null) {
-    return { type: "password_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch password policies" } };
+    return {
+      type: "password_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch password policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "password_policy", controlRefs, status: "fail", details: { reason: "No active password policy found" } };
+    return {
+      type: "password_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active password policy found" },
+    };
   }
 
   const complexity = (
-    (active[0].settings as Record<string, unknown> | undefined)?.password as Record<string, unknown> | undefined
+    (active[0].settings as Record<string, unknown> | undefined)?.password as
+      | Record<string, unknown>
+      | undefined
   )?.complexity as Record<string, number> | undefined;
 
   const minLength = complexity?.minLength ?? 0;
@@ -212,7 +277,12 @@ function evaluatePasswordPolicy(
 
   const pass = minLength >= 8 && (minLowerCase > 0 || minUpperCase > 0 || minNumber > 0);
 
-  return { type: "password_policy", controlRefs, status: pass ? "pass" : "fail", details: { minLength, minLowerCase, minUpperCase, minNumber } };
+  return {
+    type: "password_policy",
+    controlRefs,
+    status: pass ? "pass" : "fail",
+    details: { minLength, minLowerCase, minUpperCase, minNumber },
+  };
 }
 
 function evaluateSessionPolicy(
@@ -221,20 +291,41 @@ function evaluateSessionPolicy(
   const controlRefs = ["SOC2-CC6.7", "ISO-27001-A.9.4.2"];
 
   if (policies === null) {
-    return { type: "session_policy", controlRefs, status: "unknown", details: { error: "Failed to fetch sign-on policies" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "unknown",
+      details: { error: "Failed to fetch sign-on policies" },
+    };
   }
 
   const active = policies.filter((p) => p.status === "ACTIVE");
   if (active.length === 0) {
-    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "No active sign-on policy found" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "No active sign-on policy found" },
+    };
   }
 
-  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)?.maxSessionIdleMinutes;
+  const maxSessionIdleMinutes = (active[0].settings as Record<string, number> | undefined)
+    ?.maxSessionIdleMinutes;
   if (maxSessionIdleMinutes === undefined) {
-    return { type: "session_policy", controlRefs, status: "fail", details: { reason: "maxSessionIdleMinutes not configured" } };
+    return {
+      type: "session_policy",
+      controlRefs,
+      status: "fail",
+      details: { reason: "maxSessionIdleMinutes not configured" },
+    };
   }
 
-  return { type: "session_policy", controlRefs, status: maxSessionIdleMinutes <= 60 ? "pass" : "fail", details: { maxSessionIdleMinutes } };
+  return {
+    type: "session_policy",
+    controlRefs,
+    status: maxSessionIdleMinutes <= 60 ? "pass" : "fail",
+    details: { maxSessionIdleMinutes },
+  };
 }
 
 interface UserProfile {
@@ -276,8 +367,19 @@ app.post("/api/provision", async (c) => {
   }
 
   const correlationId = c.get("correlationId");
-  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
-  const token = c.env.OKTA_API_TOKEN;
+  const env = getEnv(c);
+  if (!env.OKTA_ORG_URL || !env.OKTA_API_TOKEN) {
+    return c.json(
+      {
+        error: "OKTA_ORG_URL / OKTA_API_TOKEN not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId,
+      },
+      501,
+    );
+  }
+  const orgUrl = env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = env.OKTA_API_TOKEN;
 
   console.log(
     JSON.stringify({
@@ -311,7 +413,11 @@ app.post("/api/provision", async (c) => {
       const errText = await res.text();
       // Idempotent: if user already exists, treat as success
       if (res.status === 400 && errText.includes("E0000001")) {
-        return c.json({ status: "provisioned", correlationId, note: "user already exists in Okta" });
+        return c.json({
+          status: "provisioned",
+          correlationId,
+          note: "user already exists in Okta",
+        });
       }
       console.error(
         JSON.stringify({
@@ -375,8 +481,19 @@ app.post("/api/deprovision", async (c) => {
   }
 
   const correlationId = c.get("correlationId");
-  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
-  const token = c.env.OKTA_API_TOKEN;
+  const env = getEnv(c);
+  if (!env.OKTA_ORG_URL || !env.OKTA_API_TOKEN) {
+    return c.json(
+      {
+        error: "OKTA_ORG_URL / OKTA_API_TOKEN not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId,
+      },
+      501,
+    );
+  }
+  const orgUrl = env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = env.OKTA_API_TOKEN;
 
   console.log(
     JSON.stringify({
@@ -522,15 +639,12 @@ async function fetchServiceApps(
   token: string,
 ): Promise<Array<Record<string, unknown>> | null> {
   try {
-    const res = await fetch(
-      `${orgUrl}/api/v1/apps?filter=status+eq+"ACTIVE"&limit=200`,
-      {
-        headers: {
-          Authorization: `SSWS ${token}`,
-          Accept: "application/json",
-        },
+    const res = await fetch(`${orgUrl}/api/v1/apps?filter=status+eq+"ACTIVE"&limit=200`, {
+      headers: {
+        Authorization: `SSWS ${token}`,
+        Accept: "application/json",
       },
-    );
+    });
     if (!res.ok) return null;
     return (await res.json()) as Array<Record<string, unknown>>;
   } catch {
@@ -543,8 +657,19 @@ app.post("/api/oauth-grants", async (c) => {
   const tenantId = c.req.header("X-Tenant-ID");
   if (!tenantId) return c.json({ error: "Missing X-Tenant-ID header" }, 400);
 
-  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
-  const token = c.env.OKTA_API_TOKEN;
+  const env = getEnv(c);
+  if (!env.OKTA_ORG_URL || !env.OKTA_API_TOKEN) {
+    return c.json(
+      {
+        error: "OKTA_ORG_URL / OKTA_API_TOKEN not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
+  const orgUrl = env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = env.OKTA_API_TOKEN;
 
   type OAuthGrant = {
     appName: string;
@@ -566,7 +691,12 @@ app.post("/api/oauth-grants", async (c) => {
     });
 
     if (!appsRes.ok) {
-      return c.json({ provider: "okta", grants: [], discoveredAt: new Date().toISOString(), error: `Apps API: HTTP ${appsRes.status}` });
+      return c.json({
+        provider: "okta",
+        grants: [],
+        discoveredAt: new Date().toISOString(),
+        error: `Apps API: HTTP ${appsRes.status}`,
+      });
     }
 
     const apps = (await appsRes.json()) as Array<{
@@ -580,7 +710,10 @@ app.post("/api/oauth-grants", async (c) => {
 
     // Filter to OAuth/OIDC apps
     const oauthApps = apps.filter(
-      (a) => a.signOnMode === "OPENID_CONNECT" || a.signOnMode === "OAUTH_2_0" || a.name?.includes("oidc"),
+      (a) =>
+        a.signOnMode === "OPENID_CONNECT" ||
+        a.signOnMode === "OAUTH_2_0" ||
+        a.name?.includes("oidc"),
     );
 
     // For each OAuth app, list assigned users (limited to first 50 users per app)
@@ -635,8 +768,19 @@ app.post("/api/nhi/discovery", async (c) => {
   }
 
   const correlationId = c.get("correlationId");
-  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
-  const token = c.env.OKTA_API_TOKEN;
+  const env = getEnv(c);
+  if (!env.OKTA_ORG_URL || !env.OKTA_API_TOKEN) {
+    return c.json(
+      {
+        error: "OKTA_ORG_URL / OKTA_API_TOKEN not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId,
+      },
+      501,
+    );
+  }
+  const orgUrl = env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = env.OKTA_API_TOKEN;
 
   console.log(
     JSON.stringify({
@@ -737,8 +881,19 @@ app.post("/api/evidence", async (c) => {
     return c.json({ error: "Missing X-Tenant-ID header" }, 400);
   }
 
-  const orgUrl = c.env.OKTA_ORG_URL.replace(/\/$/, "");
-  const token = c.env.OKTA_API_TOKEN;
+  const env = getEnv(c);
+  if (!env.OKTA_ORG_URL || !env.OKTA_API_TOKEN) {
+    return c.json(
+      {
+        error: "OKTA_ORG_URL / OKTA_API_TOKEN not configured",
+        code: "NOT_IMPLEMENTED",
+        correlationId: c.get("correlationId"),
+      },
+      501,
+    );
+  }
+  const orgUrl = env.OKTA_ORG_URL.replace(/\/$/, "");
+  const token = env.OKTA_API_TOKEN;
 
   const [mfaPolicies, passwordPolicies, sessionPolicies] = await Promise.all([
     fetchOktaPolicies(orgUrl, token, "MFA_ENROLL"),
