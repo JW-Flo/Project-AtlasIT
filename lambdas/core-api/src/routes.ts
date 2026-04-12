@@ -28,11 +28,14 @@ function getPool(): pg.Pool {
       connectionString: process.env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 10_000,
+      ssl: { rejectUnauthorized: false },
     });
+    _pool.connect().then(c => { c.release(); }).catch(() => {});
   }
   return _pool;
 }
+getPool();
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -90,6 +93,57 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       if (e instanceof AuthError) return fail(e.status, e.message, "UNAUTHORIZED");
       return fail(401, "Authentication failed", "UNAUTHORIZED");
     }
+  }
+
+  // POST /api/v1/auth/token — issue session token (dev: email-only, no password yet)
+  if (path === "/api/v1/auth/token" && method === "POST") {
+    const b = body(event) as { email?: string; password?: string; tenantId?: string };
+    if (!b.email) return fail(400, "email is required", "VALIDATION_FAILED");
+
+    const pool = getPool();
+    // Look up user by email (across all tenants for now; production needs tenantId scoping)
+    const result = await pool.query(
+      `SELECT u.id, u.email, u.role, u.status, u.tenant_id, t.name as tenant_name
+       FROM users u JOIN tenants t ON u.tenant_id = t.id
+       WHERE u.email = $1 ${b.tenantId ? "AND u.tenant_id = $2" : ""}
+       LIMIT 1`,
+      b.tenantId ? [b.email, b.tenantId] : [b.email],
+    );
+
+    if (result.rows.length === 0) {
+      return fail(401, "Invalid credentials", "UNAUTHORIZED");
+    }
+    const user = result.rows[0];
+    if (user.status && user.status !== "active") {
+      return fail(403, "Account not active", "FORBIDDEN");
+    }
+
+    // Generate session token and store in DynamoDB sessions table
+    const token = crypto.randomBytes(32).toString("hex");
+    const ttl = Math.floor(Date.now() / 1000) + 86400; // 24h
+    try {
+      await svc.sessionRepo.set(token, {
+        userId: user.id,
+        tenantId: user.tenant_id,
+        email: user.email,
+        role: user.role ?? "viewer",
+        expiresAt: ttl,
+      }, 86400);
+    } catch (e) {
+      console.error("[core-api] session.set.error", { error: (e as Error).message });
+      return fail(500, "Failed to create session", "INTERNAL_ERROR");
+    }
+
+    return ok({
+      status: "success",
+      token,
+      userId: user.id,
+      email: user.email,
+      tenantId: user.tenant_id,
+      tenantName: user.tenant_name,
+      role: user.role ?? "viewer",
+      expiresAt: ttl,
+    });
   }
 
   // All remaining routes require authentication
