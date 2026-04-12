@@ -1,1916 +1,398 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-  import { integrations, iconMap } from "$lib/data/integrations";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import CardHeader from "$lib/components/ui/card-header.svelte";
-  import CardTitle from "$lib/components/ui/card-title.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Input from "$lib/components/ui/input.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import Alert from "$lib/components/ui/alert.svelte";
-  import Dialog from "$lib/components/ui/dialog.svelte";
-  import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
 
-  // ---- Types ----------------------------------------------------------------
   interface AutomationRule {
     id: string;
     name: string;
     description?: string;
+    trigger_type: string;
     enabled: boolean;
-    triggerType: string;
-    triggerConfig: Record<string, any>;
-    lastRunAt?: string;
-    lastStatus?: string;
-    runCount: number;
-    errorCount: number;
-  }
-
-  interface Execution {
-    id: string;
-    ruleId: string;
-    status: string;
-    actionsRun: number;
-    actionsFailed: number;
-    startedAt: string;
-    completedAt?: string;
-    durationMs?: number;
-    triggerEvent?: Record<string, any>;
-  }
-
-  function extractAffectedUser(exec: Execution): string {
-    const te = exec.triggerEvent;
-    if (!te) return "—";
-    return te.email || te.userEmail || te.payload?.email || te.payload?.userEmail || te.displayName || "—";
-  }
-
-  interface ExecutionDetail extends Execution {
-    ruleName: string;
-    triggerType?: string;
-    triggerEvent: Record<string, any>;
-    results: Array<{
-      actionType: string;
-      status: string;
-      message?: string;
-      details?: Record<string, any>;
-    }>;
-  }
-
-  interface HealthCheck {
-    appId: string;
-    healthy: boolean;
-    responseMs?: number;
-    checkedAt: string;
-  }
-
-  interface ComplianceImpact {
-    frameworks: string[];
-    controls: { id: string; name: string }[];
-    reasoning: string;
-  }
-
-  interface Suggestion {
-    templateId: string;
-    reason: string;
-    priority: string;
-    ruleInput: any;
-    complianceImpact?: ComplianceImpact;
-  }
-
-  interface JmlPolicy {
-    enabled: boolean;
-    autoJoiner: boolean;
-    autoLeaver: boolean;
-    autoMover: boolean;
-    leaverGraceMs: number;
-    notifyManager: boolean;
-    notifyUser: boolean;
-    requireJoinerApproval: boolean;
+    run_count: number;
+    error_count: number;
+    last_run_at?: string;
+    last_status?: string;
+    created_at: string;
   }
 
   interface WorkflowRun {
     id: string;
-    type: string;
-    userId: string;
-    email: string;
+    definitionId: string;
     status: string;
-    trigger: string;
-    stepsTotal: number;
-    stepsDone: number;
-    startedAt: string;
-    completedAt: string | null;
-    durationMs: number | null;
+    started_at: string;
+    completed_at?: string;
   }
 
-  interface ActivityItem {
-    id: number;
-    eventType: string;
-    title: string;
-    detail: string | null;
-    severity: string;
-    entityType: string | null;
-    entityId: string | null;
-    createdAt: string;
+  interface Stats {
+    total_rules: number;
+    total_runs: number;
+    total_errors: number;
   }
-
-  // ---- State ----------------------------------------------------------------
-  let activeTab: "overview" | "rules" | "health" | "history" | "jml" | "live" | "simulations" = "overview";
-  let loading = true;
-  let error: string | null = null;
 
   let rules: AutomationRule[] = [];
-  let executions: Execution[] = [];
-  let healthChecks: HealthCheck[] = [];
-  let suggestions: Suggestion[] = [];
-  let selectedExecution: ExecutionDetail | null = null;
-  let loadingDetail = false;
+  let runs: WorkflowRun[] = [];
+  let stats: Stats | null = null;
+  let rulesLoading = true;
+  let rulesError: string | null = null;
+  let runsLoading = false;
+  let runsError: string | null = null;
 
-  // JML state
-  let jmlPolicy: JmlPolicy | null = null;
-  let jmlRuns: WorkflowRun[] = [];
-  let jmlSaving = false;
-
-  // Live activity state
-  let activities: ActivityItem[] = [];
-  let activityPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Delete confirmation (P0 #1)
-  let showDeleteDialog = false;
-  let pendingDeleteRule: AutomationRule | null = null;
-
-  // Search & filter (P3 #13, #15)
-  let searchRules = "";
-  let searchHistory = "";
-  let historyStatusFilter = "";
-
-  // Pagination (P3 #14)
-  let historyPage = 1;
-  const pageSize = 20;
-
-  // Apply loading (P5 #24)
-  let applyingId: string | null = null;
-
-  // NL automation builder
-  let showNlDialog = false;
-  let nlPrompt = "";
-  let nlLoading = false;
-  let nlResult: any = null;
-  let nlError: string | null = null;
-
-  // Dry-run simulation
-  let showSimDialog = false;
-  let simLoading = false;
-  let simTargetEmail = "";
-  let simResult: {
-    ruleId: string;
-    ruleName: string;
-    triggered: boolean;
-    triggerMatch: boolean;
-    conditionResults: Array<{ field: string; operator: string; expected: unknown; actual: unknown; passed: boolean }>;
-    actionsPreview: Array<{ type: string; order: number; config: Record<string, any>; interpolated: Record<string, string>; description: string }>;
-    complianceImpact: Array<{ framework: string; controls: Array<{ id: string; name: string }> }>;
-  } | null = null;
-  let simCustomPayload = "";
-  let simShowCustom = false;
-
-  // Simulation history
-  interface SimulationRecord {
-    id: string;
-    ruleId: string;
-    ruleName: string;
-    matched: boolean;
-    actions: any[];
-    ranBy: string;
-    createdAt: string;
-  }
-  let simHistory: SimulationRecord[] = [];
-  let simHistoryTotal = 0;
-  let simHistoryLoading = false;
-  let simSelectedRuleId = "";
-
-  async function fetchSimHistory() {
-    simHistoryLoading = true;
-    try {
-      const res = await fetch("/api/automation/simulations?limit=50");
-      if (res.ok) {
-        const data = await res.json();
-        simHistory = data.simulations ?? [];
-        simHistoryTotal = data.total ?? 0;
-      }
-    } catch { /* non-fatal */ }
-    finally { simHistoryLoading = false; }
-  }
-
-  // Suggestions error tracking
-  let suggestionsError = false;
-
-  // Execution stats
-  let execStats: {
-    totals: { executions: number; success: number; failed: number; partial: number; avgDurationMs: number };
-    topRules: Array<{ ruleId: string; ruleName: string; executions: number; successRate: number }>;
-  } | null = null;
-
-  // Compliance mapping for rule detail
+  let activeTab: "rules" | "runs" = "rules";
+  let search = "";
+  let showCreateForm = false;
   let expandedRuleId: string | null = null;
-  let complianceLoading = false;
-  let complianceError = false;
-  let complianceData: {
-    ruleName: string;
-    actions: Array<{ type: string; controls: Array<{ framework: string; controlId: string; controlName: string; evidenceType: string }> }>;
-    summary: { totalControls: number; frameworks: string[] };
-  } | null = null;
 
-  // ---- Data fetching --------------------------------------------------------
-  async function fetchAll() {
-    loading = true;
-    error = null;
+  let createName = "";
+  let createDescription = "";
+  let createTriggerType = "event.created";
+  let createActions = "";
+  let createSubmitting = false;
+  let createError: string | null = null;
+
+  const TRIGGER_TYPES = [
+    "event.created",
+    "schedule.cron",
+    "user.created",
+    "integration.sync.completed",
+  ];
+
+  const API_BASE = "/orchestrator/api/v1";
+
+  async function loadRules() {
+    rulesLoading = true;
+    rulesError = null;
     try {
-      await Promise.all([fetchRules(), fetchExecutions(), fetchHealth(), fetchSuggestions(), fetchJmlPolicy(), fetchJmlRuns(), fetchActivities(), fetchExecStats()]);
-    } catch (e: any) {
-      error = e?.message || "Failed to load automation data";
+      const [rulesRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/automation/rules`),
+        fetch(`${API_BASE}/automation/stats`),
+      ]);
+      if (!rulesRes.ok) throw new Error(`Rules fetch failed (HTTP ${rulesRes.status})`);
+      const rulesJson = await rulesRes.json();
+      rules = rulesJson.data ?? [];
+      if (statsRes.ok) {
+        const statsJson = await statsRes.json();
+        stats = statsJson.data?.summary ?? null;
+      }
+    } catch (e) {
+      rulesError = (e as Error).message;
     } finally {
-      loading = false;
+      rulesLoading = false;
     }
   }
 
-  async function fetchRules() {
-    const res = await fetch("/api/automation/rules");
-    if (!res.ok) throw new Error("Failed to load rules");
-    const data: any = await res.json();
-    rules = data.rules || [];
-  }
-
-  async function fetchExecutions() {
-    const res = await fetch("/api/automation/executions?limit=100");
-    if (!res.ok) throw new Error("Failed to load executions");
-    const data: any = await res.json();
-    executions = data.executions || [];
-  }
-
-  async function fetchHealth() {
-    const res = await fetch("/api/automation/health");
-    if (!res.ok) throw new Error("Failed to load health data");
-    const data: any = await res.json();
-    healthChecks = data.checks || [];
-  }
-
-  async function fetchSuggestions() {
-    suggestionsError = false;
+  async function loadRuns() {
+    runsLoading = true;
+    runsError = null;
     try {
-      const res = await fetch("/api/automation/suggestions");
-      if (!res.ok) {
-        suggestionsError = true;
-        return;
-      }
-      const data: any = await res.json();
-      suggestions = data.suggestions || [];
-    } catch {
-      suggestionsError = true;
-    }
-  }
-
-  async function fetchJmlPolicy() {
-    try {
-      const res = await fetch("/api/jml/policy");
-      const data: any = await res.json();
-      jmlPolicy = data.policy ?? { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
-    } catch {
-      jmlPolicy = { enabled: true, autoJoiner: true, autoLeaver: true, autoMover: true, leaverGraceMs: 0, notifyManager: true, notifyUser: false, requireJoinerApproval: false };
-    }
-  }
-
-  async function fetchJmlRuns() {
-    const res = await fetch("/api/jml/runs?limit=20");
-    if (!res.ok) return;
-    const data: any = await res.json();
-    jmlRuns = data.runs || [];
-  }
-
-  async function fetchActivities() {
-    const res = await fetch("/api/activity?limit=50");
-    if (!res.ok) return;
-    const data: any = await res.json();
-    activities = data.activities || [];
-  }
-
-  async function fetchExecStats() {
-    try {
-      const res = await fetch("/api/automation/stats?days=30");
-      if (res.ok) {
-        execStats = await res.json();
-      }
-    } catch {
-      // non-critical
-    }
-  }
-
-  async function saveJmlPolicy() {
-    if (!jmlPolicy) return;
-    jmlSaving = true;
-    try {
-      const res = await fetch("/api/jml/policy", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(jmlPolicy),
-      });
-      if (res.ok) {
-        pushToast({ message: "JML policy updated", variant: "success" });
-      }
-    } catch {
-      pushToast({ message: "Failed to save JML policy", variant: "error" });
+      const res = await fetch(`${API_BASE}/workflows?limit=20`);
+      if (!res.ok) throw new Error(`Workflow fetch failed (HTTP ${res.status})`);
+      const json = await res.json();
+      runs = json.data ?? [];
+    } catch (e) {
+      runsError = (e as Error).message;
     } finally {
-      jmlSaving = false;
+      runsLoading = false;
     }
   }
 
-  function startActivityPoll() {
-    if (activityPollTimer) return;
-    activityPollTimer = setInterval(async () => {
-      const lastId = activities.length > 0 ? activities[0].id : 0;
-      const res = await fetch(`/api/activity?after=${lastId}&limit=20`).catch(() => null);
-      if (!res?.ok) return;
-      const data: any = await res.json();
-      if (data.activities?.length > 0) {
-        activities = [...data.activities, ...activities].slice(0, 100);
-      }
-    }, 3000);
-  }
-
-  function stopActivityPoll() {
-    if (activityPollTimer) {
-      clearInterval(activityPollTimer);
-      activityPollTimer = null;
-    }
-  }
-
-  // ---- Actions --------------------------------------------------------------
   async function toggleRule(rule: AutomationRule) {
+    const prev = rule.enabled;
+    rule.enabled = !rule.enabled;
+    rules = [...rules];
     try {
-      const res = await fetch(`/api/automation/rules/${rule.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ enabled: !rule.enabled }),
-      });
-      if (res.ok) {
-        rule.enabled = !rule.enabled;
-        rules = rules;
-        pushToast({ message: `${rule.name} ${rule.enabled ? "enabled" : "paused"}`, variant: "success" });
-      }
+      const res = await fetch(`${API_BASE}/automation/rules/${rule.id}/toggle`, { method: "POST" });
+      if (!res.ok) throw new Error("Toggle failed");
     } catch {
-      pushToast({ message: "Failed to update rule", variant: "error" });
+      rule.enabled = prev;
+      rules = [...rules];
     }
   }
 
-  async function applySuggestion(suggestion: Suggestion) {
-    applyingId = suggestion.templateId;
+  async function deleteRule(rule: AutomationRule) {
+    if (!confirm(`Delete rule "${rule.name}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch("/api/automation/rules", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(suggestion.ruleInput),
-      });
-      if (res.ok) {
-        suggestions = suggestions.filter((s) => s !== suggestion);
-        await fetchRules();
-        pushToast({ message: `"${suggestion.ruleInput.name}" activated`, variant: "success" });
-      }
-    } catch {
-      pushToast({ message: "Failed to create rule", variant: "error" });
-    } finally {
-      applyingId = null;
+      const res = await fetch(`${API_BASE}/automation/rules/${rule.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Delete failed (HTTP ${res.status})`);
+      rules = rules.filter((r) => r.id !== rule.id);
+    } catch (e) {
+      alert((e as Error).message);
     }
   }
 
-  async function dismissSuggestion(suggestion: Suggestion) {
-    suggestions = suggestions.filter((s) => s !== suggestion);
+  async function submitCreate() {
+    createError = null;
+    if (!createName.trim()) { createError = "Name is required"; return; }
+    let parsedActions: unknown;
     try {
-      await fetch("/api/automation/suggestions", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ templateId: suggestion.templateId }),
-      });
+      parsedActions = JSON.parse(createActions || "[]");
     } catch {
-      // Dismissal already applied optimistically in UI
-    }
-  }
-
-  async function runHealthCheck() {
-    try {
-      const res = await fetch("/api/automation/health", { method: "POST" });
-      if (res.ok) {
-        await fetchHealth();
-        pushToast({ message: "Health check completed", variant: "success" });
-      }
-    } catch {
-      pushToast({ message: "Health check failed", variant: "error" });
-    }
-  }
-
-  // Delete confirmation flow (P0 #1)
-  function requestDeleteRule(rule: AutomationRule) {
-    pendingDeleteRule = rule;
-    showDeleteDialog = true;
-  }
-
-  async function confirmDeleteRule() {
-    if (!pendingDeleteRule) return;
-    const rule = pendingDeleteRule;
-    showDeleteDialog = false;
-    pendingDeleteRule = null;
-    try {
-      const res = await fetch(`/api/automation/rules/${rule.id}`, { method: "DELETE" });
-      if (res.ok) {
-        rules = rules.filter((r) => r.id !== rule.id);
-        pushToast({ message: `"${rule.name}" deleted`, variant: "success" });
-      }
-    } catch {
-      pushToast({ message: "Failed to delete rule", variant: "error" });
-    }
-  }
-
-  async function duplicateRule(rule: AutomationRule) {
-    try {
-      const res = await fetch(`/api/automation/rules/${rule.id}/duplicate`, { method: "POST" });
-      if (res.ok) {
-        await fetchRules();
-        pushToast({ message: `"${rule.name}" duplicated`, variant: "success" });
-      } else {
-        pushToast({ message: "Failed to duplicate rule", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Failed to duplicate rule", variant: "error" });
-    }
-  }
-
-  async function viewExecution(exec: Execution) {
-    loadingDetail = true;
-    selectedExecution = null;
-    try {
-      const res = await fetch(`/api/automation/executions/${exec.id}`);
-      if (res.ok) {
-        const data: any = await res.json();
-        selectedExecution = data.execution;
-      } else {
-        pushToast({ message: "Failed to load execution details", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Failed to load execution details", variant: "error" });
-    } finally {
-      loadingDetail = false;
-    }
-  }
-
-  function closeExecutionDetail() {
-    selectedExecution = null;
-    loadingDetail = false;
-  }
-
-  // ---- Compliance Mapping ---------------------------------------------------
-  async function toggleComplianceView(ruleId: string) {
-    if (expandedRuleId === ruleId) {
-      expandedRuleId = null;
-      complianceData = null;
+      createError = "Actions must be valid JSON";
       return;
     }
-    expandedRuleId = ruleId;
-    complianceLoading = true;
-    complianceData = null;
-    complianceError = false;
+    createSubmitting = true;
     try {
-      const res = await fetch(`/api/automation/rules/${ruleId}/compliance`);
-      if (res.ok) {
-        complianceData = await res.json();
-      } else {
-        complianceError = true;
-      }
-    } catch {
-      complianceError = true;
-    } finally {
-      complianceLoading = false;
-    }
-  }
-
-  // ---- Dry Run Simulation ---------------------------------------------------
-  async function simulateDryRun(ruleId: string) {
-    simLoading = true;
-    simResult = null;
-    simCustomPayload = "";
-    simShowCustom = false;
-    showSimDialog = true;
-    try {
-      const reqBody: Record<string, unknown> = { ruleId };
-      if (simTargetEmail.trim()) {
-        const rule = rules.find((r) => r.id === ruleId);
-        reqBody.testEvent = {
-          type: rule?.triggerType || "user_created",
-          payload: { email: simTargetEmail.trim(), displayName: simTargetEmail.trim().split("@")[0] },
-        };
-      }
-      const res = await fetch("/api/automation/simulate", {
+      const res = await fetch(`${API_BASE}/automation/rules`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(reqBody),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: createName.trim(),
+          description: createDescription.trim() || undefined,
+          triggerType: createTriggerType,
+          actions: parsedActions,
+          enabled: true,
+        }),
       });
-      if (res.ok) {
-        simResult = await res.json();
-        // Invalidate simulation history so it refreshes on next view
-        simHistory = [];
-      } else {
-        pushToast({ message: "Simulation failed", variant: "error" });
-        showSimDialog = false;
-      }
-    } catch {
-      pushToast({ message: "Simulation request failed", variant: "error" });
-      showSimDialog = false;
-    } finally {
-      simLoading = false;
-    }
-  }
-
-  async function rerunSimulation() {
-    if (!simResult) return;
-
-    let testEvent: { type: string; payload: Record<string, unknown> } | undefined;
-    if (simCustomPayload.trim()) {
-      try {
-        const parsed = JSON.parse(simCustomPayload);
-        testEvent = { type: parsed.type || rules.find(r => r.id === simResult!.ruleId)?.triggerType, payload: parsed.payload || parsed };
-      } catch {
-        pushToast({ message: "Invalid JSON payload", variant: "error" });
-        return;
-      }
-    }
-
-    simLoading = true;
-    try {
-      const res = await fetch("/api/automation/simulate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ruleId: simResult.ruleId, ...(testEvent ? { testEvent } : {}) }),
-      });
-      if (res.ok) {
-        simResult = await res.json();
-        simHistory = [];
-      } else {
-        pushToast({ message: "Simulation failed", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Simulation request failed", variant: "error" });
-    } finally {
-      simLoading = false;
-    }
-  }
-
-  // ---- NL Builder -----------------------------------------------------------
-  async function buildFromNL() {
-    if (!nlPrompt.trim() || nlPrompt.length < 5) return;
-    nlLoading = true;
-    nlError = null;
-    nlResult = null;
-    try {
-      const res = await fetch("/api/automation/nl", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: nlPrompt }),
-      });
-      const data = await res.json();
       if (!res.ok) {
-        nlError = data.error || "Failed to generate automation";
-        return;
+        const json = await res.json().catch(() => ({}));
+        throw new Error((json as { message?: string }).message ?? `HTTP ${res.status}`);
       }
-      nlResult = data.data;
-    } catch {
-      nlError = "Request failed. Please try again.";
+      const json = await res.json();
+      if (json.data) rules = [json.data, ...rules];
+      showCreateForm = false;
+      createName = "";
+      createDescription = "";
+      createActions = "";
+      createTriggerType = "event.created";
+    } catch (e) {
+      createError = (e as Error).message;
     } finally {
-      nlLoading = false;
+      createSubmitting = false;
     }
   }
 
-  async function applyNlResult() {
-    if (!nlResult?.rule) return;
-    try {
-      const res = await fetch("/api/automation/rules", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(nlResult.rule),
-      });
-      if (res.ok) {
-        pushToast({ message: `Rule "${nlResult.rule.name}" created`, variant: "success" });
-        showNlDialog = false;
-        nlPrompt = "";
-        nlResult = null;
-        await fetchRules();
-      } else {
-        pushToast({ message: "Failed to create rule", variant: "error" });
-      }
-    } catch {
-      pushToast({ message: "Failed to create rule", variant: "error" });
-    }
+  function relativeTime(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const d = Math.floor(ms / 86400000); if (d > 0) return `${d}d ago`;
+    const h = Math.floor(ms / 3600000); if (h > 0) return `${h}h ago`;
+    return `${Math.floor(ms / 60000)}m ago`;
   }
 
-  // ---- Helpers --------------------------------------------------------------
-  function appName(id: string): string {
-    return integrations.find((i) => i.id === id)?.name ?? id;
+  function statusBadgeClass(s: string): string {
+    if (s === "completed" || s === "success") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+    if (s === "failed" || s === "error") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+    if (s === "running") return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+    if (s === "pending") return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+    return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
   }
 
-  function triggerLabel(type: string): string {
-    const labels: Record<string, string> = {
-      user_joined_group: "User joined group",
-      user_left_group: "User left group",
-      user_created: "New user detected",
-      user_deactivated: "User deactivated",
-      app_connected: "App connected",
-      app_disconnected: "App disconnected",
-      app_health_changed: "App health changed",
-      schedule: "Scheduled",
-      compliance_score_changed: "Compliance score changed",
-    };
-    return labels[type] ?? type;
+  $: filteredRules = rules.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()));
+  $: enabledCount = rules.filter((r) => r.enabled).length;
+  $: disabledCount = rules.filter((r) => !r.enabled).length;
+
+  function switchTab(tab: "rules" | "runs") {
+    activeTab = tab;
+    if (tab === "runs" && runs.length === 0 && !runsLoading) loadRuns();
   }
 
-  function statusVariant(status: string): "success" | "warning" | "destructive" | "secondary" {
-    if (status === "success") return "success";
-    if (status === "partial") return "warning";
-    if (status === "failed") return "destructive";
-    return "secondary";
-  }
-
-  function priorityVariant(p: string): "destructive" | "warning" | "default" {
-    if (p === "high") return "destructive";
-    if (p === "medium") return "warning";
-    return "default";
-  }
-
-  function actionTypeLabel(type: string): string {
-    return type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  }
-
-  function timeAgo(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  }
-
-  // ---- Reactive -------------------------------------------------------------
-  $: activeRules = rules.filter((r) => r.enabled);
-  $: totalExecutions = rules.reduce((sum, r) => sum + r.runCount, 0);
-  $: healthyCount = healthChecks.filter((h) => h.healthy).length;
-  $: unhealthyCount = healthChecks.filter((h) => !h.healthy).length;
-
-  // Filtered rules (P3 #15)
-  $: filteredRules = searchRules
-    ? rules.filter((r) =>
-        r.name.toLowerCase().includes(searchRules.toLowerCase()) ||
-        (r.description ?? "").toLowerCase().includes(searchRules.toLowerCase())
-      )
-    : rules;
-
-  // Grouped rules by trigger type for table view
-  $: groupedRulesByTrigger = (() => {
-    const groups: { triggerType: string; label: string; rules: typeof filteredRules }[] = [];
-    const seen = new Map<string, typeof filteredRules>();
-    for (const rule of filteredRules) {
-      const existing = seen.get(rule.triggerType);
-      if (existing) {
-        existing.push(rule);
-      } else {
-        const arr = [rule];
-        seen.set(rule.triggerType, arr);
-        groups.push({ triggerType: rule.triggerType, label: triggerLabel(rule.triggerType), rules: arr });
-      }
-    }
-    return groups;
-  })();
-
-  // Filtered executions (P3 #13)
-  $: filteredExecutions = executions.filter((e) => {
-    if (historyStatusFilter && e.status !== historyStatusFilter) return false;
-    if (searchHistory) {
-      const rule = rules.find((r) => r.id === e.ruleId);
-      const name = rule?.name ?? e.ruleId;
-      if (!name.toLowerCase().includes(searchHistory.toLowerCase())) return false;
-    }
-    return true;
-  });
-
-  // Pagination (P3 #14)
-  $: totalHistoryPages = Math.max(1, Math.ceil(filteredExecutions.length / pageSize));
-  $: pagedExecutions = filteredExecutions.slice((historyPage - 1) * pageSize, historyPage * pageSize);
-  $: if (historyPage > totalHistoryPages) historyPage = totalHistoryPages;
-
-  $: if (activeTab === "live") { startActivityPoll(); } else { stopActivityPoll(); }
-  $: if (activeTab === "simulations" && simHistory.length === 0 && !simHistoryLoading) { fetchSimHistory(); }
-
-  // ---- Compliance gap → rule wiring ----------------------------------------
-  // Reverse-lookup: controlId + framework → action types that address the gap.
-  // Mirrors ACTION_COMPLIANCE_MAP from packages/shared without a client-side import.
-  const CONTROL_ACTION_MAP: Record<string, Record<string, string[]>> = {
-    SOC2: {
-      "CC6.1": ["provision_app_access", "revoke_app_access", "assign_role", "remove_role", "sync_directory", "rotate_nhi_credential", "revoke_nhi_token", "request_access_review"],
-      "CC6.2": ["provision_app_access"],
-      "CC6.3": ["revoke_app_access", "run_workflow", "revoke_nhi_token", "request_access_review"],
-      "CC6.6": ["rotate_nhi_credential", "revoke_nhi_token"],
-      "CC7.3": ["create_incident"],
-      "CC7.4": ["create_incident"],
-      "CC8.1": ["run_workflow"],
-      "CC4.1": ["update_compliance_status"],
-      "CC4.2": ["update_compliance_status"],
-      "CC2.1": ["send_notification"],
-    },
-    ISO27001: {
-      "A.9.2.1": ["sync_directory"],
-      "A.9.2.2": ["provision_app_access"],
-      "A.9.2.3": ["provision_app_access", "assign_role", "remove_role", "rotate_nhi_credential"],
-      "A.9.2.5": ["request_access_review"],
-      "A.9.2.6": ["revoke_app_access", "rotate_nhi_credential", "revoke_nhi_token"],
-      "A.9.4.1": ["assign_role"],
-      "A.7.3.1": ["run_workflow"],
-      "A.16.1.2": ["create_incident", "send_notification"],
-      "A.16.1.4": ["create_incident"],
-      "A.18.2.1": ["update_compliance_status"],
-    },
-    NIST_CSF: {
-      "PR.AC-1": ["provision_app_access", "revoke_app_access", "sync_directory", "rotate_nhi_credential", "revoke_nhi_token"],
-      "PR.AC-3": ["revoke_nhi_token"],
-      "PR.AC-4": ["assign_role", "remove_role"],
-      "PR.IP-3": ["run_workflow"],
-      "RS.CO-2": ["create_incident"],
-    },
-    HIPAA: {
-      "164.312(a)(1)": ["provision_app_access", "request_access_review"],
-      "164.312(a)(2)(i)": ["revoke_app_access"],
-      "164.312(b)": ["create_incident"],
-      "164.312(d)": ["rotate_nhi_credential", "revoke_nhi_token"],
-    },
-    GDPR: {
-      "Art.5(1)(f)": ["revoke_app_access", "revoke_nhi_token"],
-    },
-  };
-
-  function lookupActionsForControl(framework: string, controlId: string): string[] {
-    return CONTROL_ACTION_MAP[framework]?.[controlId] ?? [];
-  }
-
-  async function autoCreateComplianceRule(framework: string, controlId: string) {
-    const actionTypes = lookupActionsForControl(framework, controlId);
-    if (actionTypes.length === 0) {
-      // Fall back to NL dialog pre-seeded with the gap context
-      nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
-      showNlDialog = true;
-      nlResult = null;
-      nlError = null;
-      return;
-    }
-
-    const primaryAction = actionTypes[0];
-    const ruleInput = {
-      name: `Auto: ${framework} ${controlId} compliance monitoring`,
-      description: `Automatically created from compliance gap for ${framework} control ${controlId}`,
-      enabled: true,
-      triggerType: "compliance_score_changed",
-      triggerConfig: { framework, controlId },
-      conditions: [],
-      actions: [
-        {
-          type: primaryAction,
-          order: 1,
-          config: {},
-        },
-      ],
-    };
-
-    try {
-      const res = await fetch("/api/automation/rules", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(ruleInput),
-      });
-      if (res.ok) {
-        await fetchRules();
-        pushToast({ message: `Rule created for ${framework} ${controlId}`, variant: "success" });
-      } else {
-        // On failure, fall back to NL dialog
-        nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
-        showNlDialog = true;
-        nlResult = null;
-        nlError = null;
-      }
-    } catch {
-      nlPrompt = `Create a rule for ${framework} control ${controlId} compliance monitoring`;
-      showNlDialog = true;
-      nlResult = null;
-      nlError = null;
-    }
-  }
-
-  onMount(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get("tab");
-    const controlId = params.get("controlId");
-    const framework = params.get("framework");
-
-    if (tabParam === "rules") {
-      activeTab = "rules";
-    }
-
-    // Kick off data fetch first so rules list and UI are ready
-    fetchAll().then(() => {
-      if (controlId && framework) {
-        autoCreateComplianceRule(framework, controlId);
-      }
-    });
-
-    return () => stopActivityPoll();
-  });
+  onMount(() => { loadRules(); });
 </script>
 
-<div class="px-5 py-5 max-w-[1200px] mx-auto">
-  <!-- Header (P2 #11, #12) -->
-  <div class="flex items-center justify-between mb-6">
+<div class="p-8 max-w-7xl mx-auto">
+  <!-- Header -->
+  <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Automation</h1>
-      <p class="text-sm text-muted-foreground">
-        Automated environment management for your connected apps
-      </p>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Automation</h1>
+      <div class="mt-2 flex gap-2 flex-wrap">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+          {stats?.total_rules ?? rules.length} total
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+          {enabledCount} enabled
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+          {disabledCount} disabled
+        </span>
+      </div>
     </div>
-    <Button variant="outline" size="sm" on:click={runHealthCheck}>Run Health Check</Button>
-  </div>
-
-  <!-- Tabs (P1 #7, P2 #10) -->
-  <div class="flex gap-1 border-b mb-6">
-    {#each [
-      { id: "overview", label: "Overview" },
-      { id: "jml", label: "JML" },
-      { id: "live", label: "Live Feed" },
-      { id: "rules", label: "Rules" },
-      { id: "health", label: "Environment Health" },
-      { id: "history", label: "History" },
-      { id: "simulations", label: "Simulations" },
-    ] as tab}
+    <div class="flex gap-3 items-center">
+      <input
+        type="search"
+        bind:value={search}
+        placeholder="Search rules..."
+        class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+      />
       <button
-        type="button"
-        on:click={() => (activeTab = tab.id)}
-        class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === tab.id
-          ? 'text-foreground border-b-2 border-primary'
-          : 'text-muted-foreground hover:text-foreground'}"
+        on:click={() => { showCreateForm = !showCreateForm; createError = null; }}
+        class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
       >
-        {tab.label}
+        {showCreateForm ? "Cancel" : "New Rule"}
       </button>
-    {/each}
+    </div>
   </div>
 
-  <!-- Loading skeleton (P1 #4) -->
-  {#if loading}
-    <div class="space-y-4">
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {#each [1, 2, 3, 4] as _}
-          <Skeleton class="h-20 rounded-lg" />
-        {/each}
-      </div>
-      <Skeleton class="h-64 w-full rounded-lg" />
-    </div>
-
-  <!-- Error state (P1 #5) -->
-  {:else if error}
-    <Alert variant="destructive">
-      <p class="font-medium">Something went wrong</p>
-      <p class="text-sm mt-1">{error}</p>
-      <Button variant="outline" size="sm" class="mt-3" on:click={fetchAll}>Retry</Button>
-    </Alert>
-
-  {:else if activeTab === "overview"}
-    <!-- Stats (P4 #18) -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <Card>
-        <CardContent class="pt-4 pb-4">
-          <div class="text-xs text-muted-foreground mb-1">Active Rules</div>
-          <div class="text-2xl font-semibold">{activeRules.length}</div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="pt-4 pb-4">
-          <div class="text-xs text-muted-foreground mb-1">Total Executions</div>
-          <div class="text-2xl font-semibold">{totalExecutions}</div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="pt-4 pb-4">
-          <div class="text-xs text-muted-foreground mb-1">Apps Healthy</div>
-          <div class="text-2xl font-semibold"><Badge variant="success">{healthyCount}</Badge></div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="pt-4 pb-4">
-          <div class="text-xs text-muted-foreground mb-1">Apps Unhealthy</div>
-          <div class="text-2xl font-semibold">
-            {#if unhealthyCount > 0}
-              <Badge variant="destructive">{unhealthyCount}</Badge>
-            {:else}
-              <Badge variant="success">{unhealthyCount}</Badge>
-            {/if}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-
-    <!-- Execution Stats (30-day) -->
-    {#if execStats && execStats.totals.executions > 0}
-      <Card class="mb-6">
-        <CardHeader class="flex-row items-center justify-between">
-          <CardTitle class="text-sm">30-Day Execution Summary</CardTitle>
-          <div class="text-xs text-muted-foreground">
-            Avg duration: {execStats.totals.avgDurationMs}ms
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div class="grid grid-cols-3 gap-4 mb-4">
-            <div class="text-center">
-              <div class="text-lg font-semibold text-green-500">{execStats.totals.success}</div>
-              <div class="text-xs text-muted-foreground">Succeeded</div>
-            </div>
-            <div class="text-center">
-              <div class="text-lg font-semibold text-red-500">{execStats.totals.failed}</div>
-              <div class="text-xs text-muted-foreground">Failed</div>
-            </div>
-            <div class="text-center">
-              <div class="text-lg font-semibold text-yellow-500">{execStats.totals.partial}</div>
-              <div class="text-xs text-muted-foreground">Partial</div>
-            </div>
-          </div>
-          {#if execStats.topRules.length > 0}
-            <div class="border-t pt-3">
-              <div class="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Most Active Rules</div>
-              <div class="space-y-1.5">
-                {#each execStats.topRules as tr}
-                  <div class="flex items-center justify-between text-sm">
-                    <span class="truncate">{tr.ruleName}</span>
-                    <div class="flex items-center gap-2 shrink-0">
-                      <span class="text-xs text-muted-foreground">{tr.executions} runs</span>
-                      <Badge variant={tr.successRate >= 0.9 ? "success" : tr.successRate >= 0.5 ? "warning" : "destructive"}>
-                        {Math.round(tr.successRate * 100)}%
-                      </Badge>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </CardContent>
-      </Card>
-    {/if}
-
-    <!-- Suggestions (P3 #17, P5 #22, #24) -->
-    {#if suggestionsError}
-      <div class="mb-6">
-        <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recommended Automations</h2>
-        <Card class="border-dashed border-destructive/30">
-          <CardContent class="py-6 text-center">
-            <p class="text-sm text-destructive">Failed to load suggestions.</p>
-            <button class="text-xs text-muted-foreground hover:text-primary mt-1 underline" on:click={fetchSuggestions}>Retry</button>
-          </CardContent>
-        </Card>
-      </div>
-    {:else if suggestions.length > 0}
-      <div class="mb-6">
-        <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recommended Automations</h2>
-        <div class="space-y-2">
-          {#each suggestions.slice(0, 5) as suggestion}
-            <Card>
-              <CardContent class="py-3 px-4">
-                <div class="flex items-center gap-4">
-                  <Badge variant={priorityVariant(suggestion.priority)} class="shrink-0 capitalize">{suggestion.priority}</Badge>
-                  <div class="flex-1 min-w-0">
-                    <div class="text-sm font-medium truncate">{suggestion.ruleInput.name}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5 truncate">{suggestion.reason}</div>
-                    {#if suggestion.ruleInput.description || suggestion.ruleInput.triggerType}
-                      <div class="flex items-center gap-2 mt-1">
-                        {#if suggestion.ruleInput.triggerType}
-                          <Badge variant="outline" class="text-[10px]">{triggerLabel(suggestion.ruleInput.triggerType)}</Badge>
-                        {/if}
-                        {#if suggestion.ruleInput.actions?.length}
-                          <span class="text-[10px] text-muted-foreground">{suggestion.ruleInput.actions.length} action{suggestion.ruleInput.actions.length !== 1 ? "s" : ""}</span>
-                        {/if}
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="flex gap-2 shrink-0">
-                    <Button
-                      variant="success"
-                      size="sm"
-                      on:click={() => applySuggestion(suggestion)}
-                      disabled={applyingId === suggestion.templateId}
-                    >
-                      {applyingId === suggestion.templateId ? "Enabling..." : "Enable"}
-                    </Button>
-                    <Button variant="ghost" size="sm" on:click={() => dismissSuggestion(suggestion)}>Dismiss</Button>
-                  </div>
-                </div>
-                {#if suggestion.complianceImpact}
-                  <div class="mt-2.5 pt-2.5 border-t border-border/50">
-                    <div class="flex items-center gap-1.5 mb-1">
-                      <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      <span class="text-[11px] font-medium text-primary">Compliance Impact</span>
-                    </div>
-                    <div class="flex flex-wrap gap-1 mb-1.5">
-                      {#each suggestion.complianceImpact.frameworks as fw}
-                        <Badge variant="outline" class="text-[10px]">{fw}</Badge>
-                      {/each}
-                      {#each suggestion.complianceImpact.controls.slice(0, 3) as ctrl}
-                        <Badge variant="secondary" class="text-[10px]">{ctrl.id}</Badge>
-                      {/each}
-                      {#if suggestion.complianceImpact.controls.length > 3}
-                        <span class="text-[10px] text-muted-foreground">+{suggestion.complianceImpact.controls.length - 3} more</span>
-                      {/if}
-                    </div>
-                    <p class="text-[11px] text-muted-foreground leading-relaxed">{suggestion.complianceImpact.reasoning}</p>
-                  </div>
-                {/if}
-              </CardContent>
-            </Card>
-          {/each}
+  <!-- Inline create form -->
+  {#if showCreateForm}
+    <div class="mb-6 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">New Automation Rule</h2>
+      {#if createError}<div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-300">{createError}</div>{/if}
+      {@const cls = "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name <span class="text-red-500">*</span></label>
+          <input type="text" bind:value={createName} placeholder="Rule name" class={cls} />
         </div>
-      </div>
-    {/if}
-
-    <!-- Recent Activity (P3 #16, P5 #23, #25) -->
-    {#if executions.length > 0}
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent Activity</h2>
-          <Button variant="link" size="sm" on:click={() => (activeTab = "history")}>View all activity</Button>
-        </div>
-        <Card>
-          <CardContent class="p-0">
-            {#each executions.slice(0, 8) as exec}
-              {@const rule = rules.find((r) => r.id === exec.ruleId)}
-              <button
-                type="button"
-                class="flex items-center gap-3 px-4 py-3 w-full text-left hover:bg-muted/50 transition-colors border-b last:border-b-0"
-                on:click={() => viewExecution(exec)}
-              >
-                <span class="w-2 h-2 rounded-full shrink-0" title={exec.status}>
-                  <Badge variant={statusVariant(exec.status)} class="w-2 h-2 p-0 rounded-full block">&nbsp;</Badge>
-                </span>
-                <div class="flex-1 min-w-0">
-                  <span class="text-sm">{rule?.name ?? exec.ruleId}</span>
-                  <span class="text-xs text-muted-foreground ml-2">{exec.actionsRun} action{exec.actionsRun !== 1 ? "s" : ""}</span>
-                </div>
-                <span class="text-xs text-muted-foreground shrink-0" title={new Date(exec.startedAt).toLocaleString()}>{timeAgo(exec.startedAt)}</span>
-              </button>
-            {/each}
-          </CardContent>
-        </Card>
-      </div>
-    {:else}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-sm text-muted-foreground">No automation activity yet. Enable a suggested rule to get started.</p>
-        </CardContent>
-      </Card>
-    {/if}
-
-  {:else if activeTab === "jml"}
-    <!-- JML (Joiner/Mover/Leaver) — zero-config lifecycle automation -->
-    <div class="space-y-6">
-      <!-- JML Policy -->
-      {#if jmlPolicy}
-        <Card>
-          <CardHeader>
-            <CardTitle>Lifecycle Automation Policy</CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <p class="text-sm text-muted-foreground">
-              JML automatically provisions and revokes app access when users join, move between teams, or leave. No rules needed — it uses your group-to-app mappings.
-            </p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {#each [
-                { key: "enabled", label: "JML Enabled", desc: "Master switch for automatic lifecycle automation" },
-                { key: "autoJoiner", label: "Auto-Joiner", desc: "Provision apps when new user detected" },
-                { key: "autoLeaver", label: "Auto-Leaver", desc: "Revoke access when user deactivated" },
-                { key: "autoMover", label: "Auto-Mover", desc: "Re-provision when department/group changes" },
-                { key: "notifyManager", label: "Notify Manager", desc: "Send Slack notification to manager" },
-                { key: "notifyUser", label: "Notify User", desc: "Send notification to the user" },
-              ] as toggle}
-                <div class="flex items-center justify-between p-3 rounded-lg border">
-                  <div>
-                    <div class="text-sm font-medium">{toggle.label}</div>
-                    <div class="text-xs text-muted-foreground">{toggle.desc}</div>
-                  </div>
-                  <button
-                    type="button"
-                    on:click={() => { if (jmlPolicy) { jmlPolicy[toggle.key] = !jmlPolicy[toggle.key]; jmlPolicy = jmlPolicy; } }}
-                    class="w-10 h-6 rounded-full relative transition-colors shrink-0"
-                    style="background: {jmlPolicy[toggle.key] ? 'hsl(var(--primary))' : 'hsl(var(--muted))'};"
-                    role="switch"
-                    aria-checked={jmlPolicy[toggle.key]}
-                  >
-                    <span
-                      class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
-                      style="left: {jmlPolicy[toggle.key] ? '22px' : '4px'};"
-                    ></span>
-                  </button>
-                </div>
-              {/each}
-            </div>
-            <!-- Leaver Grace Period -->
-            <div class="flex items-center justify-between p-3 rounded-lg border">
-              <div>
-                <div class="text-sm font-medium">Leaver Grace Period</div>
-                <div class="text-xs text-muted-foreground">Delay before leaver workflow executes after user deactivation</div>
-              </div>
-              <select
-                bind:value={jmlPolicy.leaverGraceMs}
-                class="flex h-9 rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value={0}>Immediate</option>
-                <option value={3600000}>1 hour</option>
-                <option value={86400000}>24 hours</option>
-                <option value={604800000}>7 days</option>
-              </select>
-            </div>
-
-            <div class="flex justify-end pt-2">
-              <Button size="sm" on:click={saveJmlPolicy} disabled={jmlSaving}>
-                {jmlSaving ? "Saving..." : "Save Policy"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      {:else}
-        <Card class="border-dashed">
-          <CardContent class="py-12 text-center">
-            <p class="text-sm text-muted-foreground">JML policy loading...</p>
-          </CardContent>
-        </Card>
-      {/if}
-
-      <!-- Recent JML Workflow Runs -->
-      <div>
-        <h2 class="text-sm font-semibold mb-3 uppercase tracking-wide text-muted-foreground">Recent Lifecycle Workflows</h2>
-        {#if jmlRuns.length === 0}
-          <Card class="border-dashed">
-            <CardContent class="py-8 text-center">
-              <p class="text-sm text-muted-foreground">No JML workflows yet. They'll appear here when user lifecycle events are detected.</p>
-            </CardContent>
-          </Card>
-        {:else}
-          <Card>
-            <CardContent class="p-0">
-              <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                  <thead>
-                    <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                      <th class="px-4 py-3 font-medium">Type</th>
-                      <th class="px-4 py-3 font-medium">User</th>
-                      <th class="px-4 py-3 font-medium">Status</th>
-                      <th class="px-4 py-3 font-medium">Steps</th>
-                      <th class="px-4 py-3 font-medium text-right">When</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each jmlRuns as run}
-                      <tr class="border-t hover:bg-muted/50 transition-colors cursor-pointer" on:click={() => { window.location.href = `/console/workflows?run=${run.id}`; }} tabindex="0" on:keydown={(e) => { if (e.key === 'Enter') window.location.href = `/console/workflows?run=${run.id}`; }}>
-                        <td class="px-4 py-3">
-                          <Badge variant={run.type === "leaver" ? "destructive" : run.type === "mover" ? "warning" : "success"} class="capitalize">{run.type}</Badge>
-                        </td>
-                        <td class="px-4 py-3">{run.email ?? run.userId ?? "-"}</td>
-                        <td class="px-4 py-3"><Badge variant={statusVariant(run.status)} class="capitalize">{run.status}</Badge></td>
-                        <td class="px-4 py-3 text-muted-foreground">{run.stepsDone ?? 0}/{run.stepsTotal ?? 0}</td>
-                        <td class="px-4 py-3 text-right">
-                          <span class="text-muted-foreground" title={run.startedAt ? new Date(run.startedAt).toLocaleString() : ''}>{run.startedAt ? timeAgo(run.startedAt) : '-'}</span>
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        {/if}
-      </div>
-    </div>
-
-  {:else if activeTab === "live"}
-    <!-- Live Activity Feed -->
-    <div>
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-          <span class="text-sm text-muted-foreground">Live — polling every 3s</span>
-        </div>
-        <Button variant="outline" size="sm" on:click={fetchActivities}>Refresh</Button>
-      </div>
-
-      {#if activities.length === 0}
-        <Card class="border-dashed">
-          <CardContent class="py-12 text-center">
-            <p class="text-sm text-muted-foreground">No activity yet. Events will appear here in real-time as automations execute.</p>
-          </CardContent>
-        </Card>
-      {:else}
-        <div class="space-y-1">
-          {#each activities as activity}
-            <Card>
-              <CardContent class="flex items-start gap-3 py-3 px-4">
-                <span class="mt-1 w-2 h-2 rounded-full shrink-0" class:bg-green-500={activity.severity === "success"} class:bg-blue-500={activity.severity === "info"} class:bg-yellow-500={activity.severity === "warning"} class:bg-red-500={activity.severity === "error"}></span>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm">{activity.title}</div>
-                  {#if activity.detail}
-                    <div class="text-xs text-muted-foreground mt-0.5">{activity.detail}</div>
-                  {/if}
-                  <div class="flex items-center gap-2 mt-1">
-                    <Badge variant="outline" class="text-[10px]">{activity.eventType}</Badge>
-                    {#if activity.entityType}
-                      <span class="text-[10px] text-muted-foreground">{activity.entityType}</span>
-                    {/if}
-                  </div>
-                </div>
-                <span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap" title={new Date(activity.createdAt).toLocaleString()}>{timeAgo(activity.createdAt)}</span>
-              </CardContent>
-            </Card>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
-  {:else if activeTab === "rules"}
-    <!-- Rules header with NL builder -->
-    <div class="flex items-center justify-between mb-4">
-      {#if rules.length > 0}
-        <Input placeholder="Search rules by name or description..." bind:value={searchRules} class="max-w-sm" />
-      {:else}
-        <div></div>
-      {/if}
-      <Button variant="outline" size="sm" on:click={() => { showNlDialog = true; nlResult = null; nlError = null; }}>
-        Create from Text
-      </Button>
-    </div>
-
-    {#if rules.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-lg font-semibold mb-1">No automation rules</p>
-          <p class="text-sm text-muted-foreground">
-            {suggestions.length > 0 ? "Check the Overview tab for recommended automations." : "Connect apps and set up directory mappings to get automation suggestions."}
-          </p>
-        </CardContent>
-      </Card>
-    {:else if filteredRules.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-sm text-muted-foreground">No rules match "{searchRules}"</p>
-        </CardContent>
-      </Card>
-    {:else}
-      <div class="space-y-6">
-        {#each groupedRulesByTrigger as group}
-          <div>
-            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{group.label} ({group.rules.length})</h3>
-            <Card>
-              <CardContent class="p-0">
-                <div class="overflow-x-auto">
-                  <table class="w-full text-sm">
-                    <thead>
-                      <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                        <th class="px-3 py-2 font-medium w-12"></th>
-                        <th class="px-3 py-2 font-medium">Name</th>
-                        <th class="px-3 py-2 font-medium hidden md:table-cell">Last Run</th>
-                        <th class="px-3 py-2 font-medium hidden sm:table-cell">Runs</th>
-                        <th class="px-3 py-2 font-medium hidden sm:table-cell">Errors</th>
-                        <th class="px-3 py-2 font-medium hidden lg:table-cell">Status</th>
-                        <th class="px-3 py-2 font-medium text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each group.rules as rule}
-                        <tr class="border-t hover:bg-muted/50 transition-colors">
-                          <td class="px-3 py-2">
-                            <button
-                              type="button"
-                              on:click={() => toggleRule(rule)}
-                              class="w-8 h-5 rounded-full relative transition-colors shrink-0"
-                              style="background: {rule.enabled ? 'hsl(var(--primary))' : 'hsl(var(--muted))'};"
-                              aria-label="Toggle {rule.name}"
-                              aria-checked={rule.enabled}
-                              role="switch"
-                            >
-                              <span
-                                class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-                                style="left: {rule.enabled ? '14px' : '2px'};"
-                              ></span>
-                            </button>
-                          </td>
-                          <td class="px-3 py-2">
-                            <div class="text-sm font-medium" class:text-muted-foreground={!rule.enabled}>{rule.name}</div>
-                            {#if rule.description}
-                              <div class="text-[11px] text-muted-foreground truncate max-w-xs">{rule.description}</div>
-                            {/if}
-                          </td>
-                          <td class="px-3 py-2 text-xs text-muted-foreground hidden md:table-cell">
-                            {rule.lastRunAt ? timeAgo(rule.lastRunAt) : "—"}
-                          </td>
-                          <td class="px-3 py-2 text-xs text-muted-foreground hidden sm:table-cell">{rule.runCount}</td>
-                          <td class="px-3 py-2 text-xs hidden sm:table-cell">
-                            {#if rule.errorCount > 0}
-                              <span class="text-red-500">{rule.errorCount}</span>
-                            {:else}
-                              <span class="text-muted-foreground">0</span>
-                            {/if}
-                          </td>
-                          <td class="px-3 py-2 hidden lg:table-cell">
-                            {#if rule.lastStatus}
-                              <Badge variant={statusVariant(rule.lastStatus)} class="capitalize text-[10px]">{rule.lastStatus}</Badge>
-                            {:else}
-                              <span class="text-xs text-muted-foreground">—</span>
-                            {/if}
-                          </td>
-                          <td class="px-3 py-2 text-right">
-                            <div class="flex items-center justify-end gap-1">
-                              <button type="button" class="inline-flex items-center justify-center h-7 px-2 rounded text-[11px] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" on:click={() => simulateDryRun(rule.id)} title="Dry Run">
-                                <svg class="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                                Test
-                              </button>
-                              <button type="button" class="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" on:click={() => duplicateRule(rule)} title="Duplicate">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                              </button>
-                              <button type="button" class="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" on:click={() => requestDeleteRule(rule)} title="Delete">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        {/each}
-      </div>
-    {/if}
-
-  {:else if activeTab === "health"}
-    <!-- Environment Health (P4 #19) -->
-    {#if healthChecks.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-sm text-muted-foreground">No health data yet. Click "Run Health Check" to check your connected apps.</p>
-        </CardContent>
-      </Card>
-    {:else}
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {#each healthChecks as check}
-          <Card>
-            <CardContent class="flex items-center gap-4 py-3 px-4">
-              <div class="w-10 h-10 rounded-lg flex items-center justify-center {check.healthy ? 'bg-green-500/15' : 'bg-red-500/15'}">
-                {#if check.healthy}
-                  <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                {:else}
-                  <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                {/if}
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-medium">{appName(check.appId)}</div>
-                <div class="flex items-center gap-2 mt-0.5">
-                  <Badge variant={check.healthy ? "success" : "destructive"}>{check.healthy ? "Healthy" : "Unhealthy"}</Badge>
-                  {#if check.responseMs}
-                    <span class="text-xs text-muted-foreground">{check.responseMs}ms</span>
-                  {/if}
-                  <span class="text-xs text-muted-foreground" title={new Date(check.checkedAt).toLocaleString()}>{timeAgo(check.checkedAt)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        {/each}
-      </div>
-    {/if}
-
-  {:else if activeTab === "history"}
-    <!-- History search + filter (P3 #13) -->
-    <div class="flex flex-wrap items-center gap-3 mb-4">
-      <Input placeholder="Search by rule name..." bind:value={searchHistory} class="max-w-xs" />
-      <select
-        bind:value={historyStatusFilter}
-        class="h-10 rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        on:change={() => (historyPage = 1)}
-      >
-        <option value="">All statuses</option>
-        <option value="success">Success</option>
-        <option value="partial">Partial</option>
-        <option value="failed">Failed</option>
-      </select>
-    </div>
-
-    {#if filteredExecutions.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-sm text-muted-foreground">
-            {executions.length === 0 ? "No automation activity yet." : "No results match your filters."}
-          </p>
-        </CardContent>
-      </Card>
-    {:else}
-      <!-- Table (P4 #20, P0 #2) -->
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Rule</th>
-                  <th class="px-4 py-3 font-medium">Affected User</th>
-                  <th class="px-4 py-3 font-medium">Status</th>
-                  <th class="px-4 py-3 font-medium">Actions</th>
-                  <th class="px-4 py-3 font-medium">Duration</th>
-                  <th class="px-4 py-3 font-medium text-right">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each pagedExecutions as exec}
-                  {@const rule = rules.find((r) => r.id === exec.ruleId)}
-                  <tr
-                    class="border-t hover:bg-muted/50 transition-colors cursor-pointer"
-                    on:click={() => viewExecution(exec)}
-                    tabindex="0"
-                    on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); viewExecution(exec); } }}
-                  >
-                    <td class="px-4 py-3">{rule?.name ?? "Unknown rule"}</td>
-                    <td class="px-4 py-3 text-muted-foreground text-xs truncate max-w-[200px]" title={extractAffectedUser(exec)}>{extractAffectedUser(exec)}</td>
-                    <td class="px-4 py-3">
-                      <Badge variant={statusVariant(exec.status)} class="capitalize">{exec.status}</Badge>
-                    </td>
-                    <td class="px-4 py-3 text-muted-foreground">
-                      {exec.actionsRun}{exec.actionsFailed > 0 ? ` (${exec.actionsFailed} failed)` : ""}
-                    </td>
-                    <td class="px-4 py-3 text-muted-foreground">
-                      {exec.durationMs ? `${exec.durationMs}ms` : "-"}
-                    </td>
-                    <td class="px-4 py-3 text-right">
-                      <span class="text-muted-foreground" title={new Date(exec.startedAt).toLocaleString()}>{timeAgo(exec.startedAt)}</span>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <!-- Pagination (P3 #14) -->
-      {#if totalHistoryPages > 1}
-        <div class="flex items-center justify-between mt-4">
-          <span class="text-sm text-muted-foreground">
-            {filteredExecutions.length} result{filteredExecutions.length !== 1 ? "s" : ""} — page {historyPage} of {totalHistoryPages}
-          </span>
-          <div class="flex gap-2">
-            <Button variant="outline" size="sm" disabled={historyPage <= 1} on:click={() => (historyPage -= 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={historyPage >= totalHistoryPages} on:click={() => (historyPage += 1)}>Next</Button>
-          </div>
-        </div>
-      {/if}
-    {/if}
-
-  {:else if activeTab === "simulations"}
-    <div class="flex items-center justify-between mb-4">
-      <p class="text-sm text-muted-foreground">Dry-run simulation history — every simulation is recorded for audit.</p>
-      <div class="flex gap-2">
-        {#if rules.length > 0}
-          <select
-            bind:value={simSelectedRuleId}
-            class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm"
-          >
-            <option value="">Select a rule...</option>
-            {#each rules as rule}
-              <option value={rule.id}>{rule.name}</option>
-            {/each}
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trigger Type</label>
+          <select bind:value={createTriggerType} class={cls}>
+            {#each TRIGGER_TYPES as t}<option value={t}>{t}</option>{/each}
           </select>
-          <Input type="email" bind:value={simTargetEmail} placeholder="Target user email (optional)" class="h-9 w-56 text-sm" />
-          <Button size="sm" disabled={!simSelectedRuleId || simLoading} on:click={() => simSelectedRuleId && simulateDryRun(simSelectedRuleId)}>
-            {simLoading ? "Running..." : "Simulate"}
-          </Button>
-        {/if}
-        <Button variant="outline" size="sm" on:click={fetchSimHistory}>Refresh</Button>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+          <textarea bind:value={createDescription} placeholder="Optional description" rows="2" class="{cls} resize-none"></textarea>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Actions (JSON)</label>
+          <textarea bind:value={createActions} placeholder='[{"type":"notify","config":{"channel":"slack"}}]' rows="3" class="{cls} font-mono resize-none"></textarea>
+        </div>
+      </div>
+      <div class="mt-4 flex gap-3">
+        <button on:click={submitCreate} disabled={createSubmitting} class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md transition-colors">
+          {createSubmitting ? "Creating..." : "Create Rule"}
+        </button>
+        <button on:click={() => { showCreateForm = false; createError = null; }} class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          Cancel
+        </button>
       </div>
     </div>
+  {/if}
 
-    {#if simHistoryLoading}
-      <div class="space-y-3">
-        {#each [1, 2, 3] as _}
-          <Skeleton class="h-12 rounded-lg" />
-        {/each}
+  <!-- Tab nav -->
+  {@const tabCls = (t: string) => "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300")}
+  <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+    <nav class="-mb-px flex gap-6">
+      <button on:click={() => switchTab("rules")} class={tabCls("rules")}>Rules</button>
+      <button on:click={() => switchTab("runs")} class={tabCls("runs")}>Runs</button>
+    </nav>
+  </div>
+
+  <!-- Rules tab -->
+  {#if activeTab === "rules"}
+    {#if rulesLoading}
+      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>{/each}</div>
+    {:else if rulesError}
+      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p class="text-red-800 dark:text-red-300">{rulesError}</p>
+        <button on:click={loadRules} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
       </div>
-    {:else if simHistory.length === 0}
-      <Card class="border-dashed">
-        <CardContent class="py-12 text-center">
-          <p class="text-sm text-muted-foreground">No simulations have been run yet. Use the "Dry Run" button on any rule to test it.</p>
-        </CardContent>
-      </Card>
+    {:else if filteredRules.length === 0}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-10 text-center">
+        <p class="text-gray-500 dark:text-gray-400">
+          {search ? "No rules match your search." : "No automation rules yet. Create one above."}
+        </p>
+      </div>
     {:else}
-      <Card>
-        <CardContent class="p-0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                  <th class="px-4 py-3 font-medium">Rule</th>
-                  <th class="px-4 py-3 font-medium">Result</th>
-                  <th class="px-4 py-3 font-medium">Actions</th>
-                  <th class="px-4 py-3 font-medium">Run By</th>
-                  <th class="px-4 py-3 font-medium text-right">When</th>
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-900">
+            {@const th = "px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"}
+            <tr>
+              <th class="{th} text-left">Name</th>
+              <th class="{th} text-left hidden sm:table-cell">Trigger</th>
+              <th class="{th} text-center">Enabled</th>
+              <th class="{th} text-right hidden md:table-cell">Runs</th>
+              <th class="{th} text-left hidden lg:table-cell">Last Run</th>
+              <th class="{th} text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            {#each filteredRules as rule (rule.id)}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                <td class="px-4 py-3">
+                  <div class="font-medium text-gray-900 dark:text-white text-sm">{rule.name}</div>
+                  {#if rule.description}
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-xs">{rule.description}</div>
+                  {/if}
+                </td>
+                <td class="px-4 py-3 hidden sm:table-cell">
+                  <span class="text-xs font-mono text-gray-600 dark:text-gray-400">{rule.trigger_type}</span>
+                </td>
+                <td class="px-4 py-3 text-center">
+                  <button on:click={() => toggleRule(rule)} aria-label="{rule.enabled ? 'Disable' : 'Enable'} {rule.name}" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 {rule.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}">
+                    <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform {rule.enabled ? 'translate-x-4' : 'translate-x-1'}"></span>
+                  </button>
+                </td>
+                <td class="px-4 py-3 text-right hidden md:table-cell">
+                  <span class="text-sm text-gray-900 dark:text-white">{rule.run_count}</span>
+                  {#if rule.error_count > 0}<span class="ml-1 text-xs text-red-500">{rule.error_count} err</span>{/if}
+                </td>
+                <td class="px-4 py-3 hidden lg:table-cell">
+                  {#if rule.last_run_at}
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{relativeTime(rule.last_run_at)}</div>
+                    {#if rule.last_status}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium {statusBadgeClass(rule.last_status)}">{rule.last_status}</span>{/if}
+                  {:else}<span class="text-xs text-gray-400">Never</span>{/if}
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <div class="flex items-center justify-end gap-2">
+                    <button on:click={() => { expandedRuleId = expandedRuleId === rule.id ? null : rule.id; }} class="px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">View</button>
+                    <button on:click={() => deleteRule(rule)} class="px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              {#if expandedRuleId === rule.id}
+                <tr class="bg-gray-50 dark:bg-gray-900/50">
+                  <td colspan="6" class="px-6 py-3 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                    <div><span class="font-medium">ID:</span> <span class="font-mono">{rule.id}</span></div>
+                    <div><span class="font-medium">Trigger:</span> <span class="font-mono">{rule.trigger_type}</span></div>
+                    <div><span class="font-medium">Runs:</span> {rule.run_count} total, {rule.error_count} errors · Created {relativeTime(rule.created_at)}</div>
+                    {#if rule.description}<div><span class="font-medium">Description:</span> {rule.description}</div>{/if}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {#each simHistory as sim}
-                  <tr class="border-t hover:bg-muted/50">
-                    <td class="px-4 py-3 font-medium">{sim.ruleName}</td>
-                    <td class="px-4 py-3">
-                      <Badge variant={sim.matched ? "default" : "secondary"}>
-                        {sim.matched ? "Would fire" : "Would not fire"}
-                      </Badge>
-                    </td>
-                    <td class="px-4 py-3 text-muted-foreground">{sim.actions.length} action{sim.actions.length !== 1 ? "s" : ""}</td>
-                    <td class="px-4 py-3 text-muted-foreground">{sim.ranBy}</td>
-                    <td class="px-4 py-3 text-right">
-                      <span class="text-muted-foreground" title={new Date(sim.createdAt).toLocaleString()}>{timeAgo(sim.createdAt)}</span>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-      {#if simHistoryTotal > simHistory.length}
-        <p class="text-xs text-muted-foreground mt-2">Showing {simHistory.length} of {simHistoryTotal} simulations</p>
-      {/if}
+              {/if}
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   {/if}
 
-  <!-- Delete Confirmation Dialog (P0 #1, #3) -->
-  <Dialog open={showDeleteDialog} onClose={() => { showDeleteDialog = false; pendingDeleteRule = null; }}>
-    <div class="space-y-4">
-      <h3 class="text-lg font-semibold">Delete Rule</h3>
-      {#if pendingDeleteRule}
-        <p class="text-sm text-muted-foreground">
-          Are you sure you want to delete <strong class="text-foreground">{pendingDeleteRule.name}</strong>? This action cannot be undone.
-        </p>
-      {/if}
-      <DialogFooter>
-        <Button variant="outline" on:click={() => { showDeleteDialog = false; pendingDeleteRule = null; }}>Cancel</Button>
-        <Button variant="destructive" on:click={confirmDeleteRule}>Delete</Button>
-      </DialogFooter>
-    </div>
-  </Dialog>
-
-  <!-- Execution Detail Dialog (P0 #3, P1 #6, P4 #21, P5 #23, #26) -->
-  <Dialog open={loadingDetail || selectedExecution !== null} onClose={closeExecutionDetail} title="Execution Detail">
-    {#if loadingDetail}
-      <div class="space-y-3">
-        <Skeleton class="h-5 w-48" />
-        <Skeleton class="h-4 w-32" />
-        <div class="grid grid-cols-2 gap-3">
-          <Skeleton class="h-12" />
-          <Skeleton class="h-12" />
-          <Skeleton class="h-12" />
-          <Skeleton class="h-12" />
-        </div>
-        <Skeleton class="h-24" />
+  <!-- Runs tab -->
+  {#if activeTab === "runs"}
+    {#if runsLoading}
+      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>{/each}</div>
+    {:else if runsError}
+      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+        <p class="text-red-800 dark:text-red-300">{runsError}</p>
+        <button on:click={loadRuns} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
       </div>
-    {:else if selectedExecution}
-      <!-- Rule + Trigger -->
-      <div class="mb-4">
-        <div class="text-sm font-medium">{selectedExecution.ruleName}</div>
-        {#if selectedExecution.triggerType}
-          <Badge variant="outline" class="mt-1">{triggerLabel(selectedExecution.triggerType)}</Badge>
-        {/if}
+    {:else if runs.length === 0}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-10 text-center">
+        <p class="text-gray-500 dark:text-gray-400">No workflow runs found.</p>
       </div>
-
-      <!-- Trigger Context — who was affected and why -->
-      {#if selectedExecution.triggerEvent && Object.keys(selectedExecution.triggerEvent).length > 0}
-        {@const te = selectedExecution.triggerEvent}
-        <div class="mb-4 rounded-md border bg-muted/30 p-3 space-y-1.5">
-          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Trigger Context</div>
-          {#if te.email || te.userEmail}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">User:</span>
-              <span class="font-medium">{te.displayName || te.userName || te.email || te.userEmail}</span>
-              {#if te.email || te.userEmail}
-                <span class="text-xs text-muted-foreground">({te.email || te.userEmail})</span>
-              {/if}
-            </div>
-          {/if}
-          {#if te.department}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">Department:</span>
-              <span>{te.department}</span>
-            </div>
-          {/if}
-          {#if te.groupName || te.group}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">Group:</span>
-              <span>{te.groupName || te.group}</span>
-            </div>
-          {/if}
-          {#if te.appId || te.appName}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">App:</span>
-              <span>{te.appName || te.appId}</span>
-            </div>
-          {/if}
-          {#if te.reason || te.source}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">{te.reason ? "Reason:" : "Source:"}</span>
-              <span>{te.reason || te.source}</span>
-            </div>
-          {/if}
-          {#if te.initiatedBy || te.actor || te.actorEmail}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">Initiated by:</span>
-              <span>{te.initiatedBy || te.actor || te.actorEmail}</span>
-            </div>
-          {/if}
-          {#if te.eventType}
-            <div class="flex items-center gap-2 text-sm">
-              <span class="text-muted-foreground">Event:</span>
-              <span>{triggerLabel(te.eventType)}</span>
-            </div>
-          {/if}
-        </div>
-      {/if}
-
-      <!-- Status + Timing -->
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <div>
-          <div class="text-xs text-muted-foreground mb-0.5">Status</div>
-          <Badge variant={statusVariant(selectedExecution.status)} class="capitalize">{selectedExecution.status}</Badge>
-        </div>
-        <div>
-          <div class="text-xs text-muted-foreground mb-0.5">Duration</div>
-          <span class="text-sm">{selectedExecution.durationMs ? `${selectedExecution.durationMs}ms` : "-"}</span>
-        </div>
-        <div>
-          <div class="text-xs text-muted-foreground mb-0.5">Started</div>
-          <span class="text-xs">{new Date(selectedExecution.startedAt).toLocaleString()}</span>
-        </div>
-        <div>
-          <div class="text-xs text-muted-foreground mb-0.5">Completed</div>
-          <span class="text-xs">{selectedExecution.completedAt ? new Date(selectedExecution.completedAt).toLocaleString() : "-"}</span>
-        </div>
-      </div>
-
-      <!-- Action Results -->
-      <div>
-        <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Action Results</div>
-        {#if selectedExecution.results && selectedExecution.results.length > 0}
-          <div class="space-y-2">
-            {#each selectedExecution.results as result}
-              <Card>
-                <CardContent class="py-2 px-3">
-                  <div class="flex items-center gap-2 mb-1">
-                    <Badge variant={statusVariant(result.status)} class="capitalize">{result.status}</Badge>
-                    <span class="text-xs font-medium">{actionTypeLabel(result.actionType)}</span>
-                  </div>
-                  {#if result.message}
-                    <div class="text-xs text-muted-foreground mt-1">{result.message}</div>
-                  {/if}
-                  {#if result.details && Object.keys(result.details).length > 0}
-                    <div class="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                      {#each Object.entries(result.details).filter(([k]) => k !== 'triggerPayload') as [key, val]}
-                        <span class="text-[11px]">
-                          <span class="text-muted-foreground">{key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}:</span>
-                          <span class="font-medium">{typeof val === 'object' ? JSON.stringify(val) : String(val)}</span>
-                        </span>
-                      {/each}
-                    </div>
-                  {/if}
-                </CardContent>
-              </Card>
+    {:else}
+      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead class="bg-gray-50 dark:bg-gray-900">
+            {@const th = "px-4 py-3 text-xs font-medium text-left text-gray-500 dark:text-gray-400 uppercase tracking-wider"}
+            <tr>
+              <th class={th}>Type</th>
+              <th class={th}>Status</th>
+              <th class="{th} hidden sm:table-cell">Started</th>
+              <th class="{th} hidden md:table-cell">Completed</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            {#each runs as run (run.id)}
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                <td class="px-4 py-3">
+                  <div class="text-sm font-mono text-gray-700 dark:text-gray-300 truncate max-w-xs">{run.definitionId}</div>
+                  <div class="text-xs text-gray-400 font-mono">{run.id.slice(0, 8)}...</div>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {statusBadgeClass(run.status)}">
+                    {run.status}
+                  </span>
+                </td>
+                <td class="px-4 py-3 hidden sm:table-cell text-sm text-gray-500 dark:text-gray-400">
+                  {relativeTime(run.started_at)}
+                </td>
+                <td class="px-4 py-3 hidden md:table-cell text-sm text-gray-500 dark:text-gray-400">
+                  {run.completed_at ? relativeTime(run.completed_at) : "running..."}
+                </td>
+              </tr>
             {/each}
-          </div>
-        {:else}
-          <p class="text-xs text-muted-foreground">No action results recorded.</p>
-        {/if}
+          </tbody>
+        </table>
       </div>
     {/if}
-  </Dialog>
-
-  <!-- Dry Run Simulation Dialog -->
-  <Dialog open={showSimDialog} onClose={() => { showSimDialog = false; simResult = null; }} title="Dry Run Simulation">
-    {#if simLoading}
-      <div class="space-y-3">
-        <Skeleton class="h-5 w-48" />
-        <Skeleton class="h-4 w-32" />
-        <Skeleton class="h-24" />
-      </div>
-    {:else if simResult}
-      <div class="space-y-4 max-h-[70vh] overflow-y-auto">
-        <!-- Overall Result -->
-        <div class="flex items-center gap-3">
-          <div class="h-10 w-10 rounded-full flex items-center justify-center {simResult.triggered ? 'bg-green-500/15' : 'bg-yellow-500/15'}">
-            {#if simResult.triggered}
-              <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            {:else}
-              <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-            {/if}
-          </div>
-          <div>
-            <div class="text-sm font-semibold">{simResult.ruleName}</div>
-            <div class="text-xs {simResult.triggered ? 'text-green-500' : 'text-yellow-500'}">
-              {simResult.triggered ? "Rule would fire" : "Rule would NOT fire"}
-            </div>
-            {#if simResult.enabled === false}
-              <div class="text-[10px] text-muted-foreground mt-0.5">Note: This rule is currently disabled</div>
-            {/if}
-          </div>
-        </div>
-
-        <!-- Target Email -->
-        <div>
-          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Target User</div>
-          <div class="flex items-center gap-2">
-            <Input type="email" bind:value={simTargetEmail} placeholder="user@company.com" class="h-8 text-xs flex-1" />
-            <Button size="sm" variant="outline" on:click={() => rerunSimulation()} disabled={simLoading} class="text-xs h-8">
-              Re-run
-            </Button>
-          </div>
-        </div>
-
-        <!-- Trigger Match -->
-        <div>
-          <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Trigger</div>
-          <div class="flex items-center gap-2 text-sm">
-            {#if simResult.triggerMatch}
-              <span class="text-green-500">&#10003;</span> Trigger type matched
-            {:else}
-              <span class="text-red-500">&#10007;</span> Trigger type did not match
-            {/if}
-          </div>
-        </div>
-
-        <!-- Conditions -->
-        {#if simResult.conditionResults.length > 0}
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Conditions</div>
-            <div class="space-y-1.5">
-              {#each simResult.conditionResults as cond}
-                <div class="flex items-start gap-2 text-sm rounded-md border px-3 py-2 {cond.passed ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}">
-                  <span class="mt-0.5 shrink-0 {cond.passed ? 'text-green-500' : 'text-red-500'}">{cond.passed ? '&#10003;' : '&#10007;'}</span>
-                  <div class="min-w-0">
-                    <div class="font-medium text-xs">{cond.field} <span class="text-muted-foreground">{cond.operator}</span> {JSON.stringify(cond.expected)}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5">Actual: <code class="bg-muted px-1 rounded">{JSON.stringify(cond.actual) ?? 'undefined'}</code></div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {:else}
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Conditions</div>
-            <p class="text-xs text-muted-foreground">No conditions configured — rule fires on trigger match alone.</p>
-          </div>
-        {/if}
-
-        <!-- Actions Preview -->
-        {#if simResult.actionsPreview.length > 0}
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Actions {simResult.triggered ? '(would execute)' : '(would not execute)'}</div>
-            <div class="space-y-1.5">
-              {#each simResult.actionsPreview as action, i}
-                <div class="flex items-center gap-3 rounded-md border px-3 py-2">
-                  <span class="text-xs font-mono text-muted-foreground w-5 text-center shrink-0">{i + 1}</span>
-                  <div class="min-w-0 flex-1">
-                    <div class="text-sm font-medium">{action.description}</div>
-                    <Badge variant="outline" class="text-[10px] mt-1">{action.type.replace(/_/g, ' ')}</Badge>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        <!-- Compliance Impact -->
-        {#if simResult.complianceImpact.length > 0}
-          <div>
-            <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Compliance Evidence Generated</div>
-            <div class="space-y-2">
-              {#each simResult.complianceImpact as fw}
-                <div>
-                  <Badge variant="outline" class="text-[10px] mb-1">{fw.framework}</Badge>
-                  <div class="flex flex-wrap gap-1 ml-1">
-                    {#each fw.controls as ctrl}
-                      <span class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] bg-background" title={ctrl.name}>
-                        {ctrl.id}
-                      </span>
-                    {/each}
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        <!-- Custom Event Payload -->
-        <div>
-          <button
-            type="button"
-            class="text-xs text-muted-foreground hover:text-primary transition-colors"
-            on:click={() => simShowCustom = !simShowCustom}
-          >
-            {simShowCustom ? 'Hide' : 'Show'} custom test event
-          </button>
-          {#if simShowCustom}
-            <div class="mt-2 space-y-2">
-              <textarea
-                bind:value={simCustomPayload}
-                placeholder={'{"type": "user_created", "payload": {"email": "test@example.com", "displayName": "Test User"}}'}
-                class="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-xs font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-              ></textarea>
-              <Button size="sm" variant="outline" on:click={rerunSimulation} disabled={simLoading}>
-                {simLoading ? 'Simulating...' : 'Re-run with custom event'}
-              </Button>
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" on:click={() => { showSimDialog = false; simResult = null; }}>Close</Button>
-      </DialogFooter>
-    {/if}
-  </Dialog>
-
-  <!-- NL Automation Builder Dialog -->
-  <Dialog open={showNlDialog} onClose={() => { showNlDialog = false; nlResult = null; nlError = null; }} title="Create Automation from Text">
-    <div class="space-y-4">
-      <p class="text-sm text-muted-foreground">Describe what you want to automate in plain English. AtlasIT will generate the rule for you.</p>
-      <div>
-        <textarea
-          bind:value={nlPrompt}
-          placeholder="e.g. When a user is deactivated in the directory, revoke their access to all connected apps and notify the security team on Slack"
-          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-          disabled={nlLoading}
-        ></textarea>
-      </div>
-
-      {#if nlError}
-        <Alert variant="destructive">
-          <p class="text-sm">{nlError}</p>
-        </Alert>
-      {/if}
-
-      {#if nlResult}
-        <Card>
-          <CardHeader>
-            <CardTitle class="text-sm">Generated Rule</CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-2">
-            <div>
-              <div class="text-xs text-muted-foreground">Name</div>
-              <div class="text-sm font-medium">{nlResult.rule?.name || "Unnamed rule"}</div>
-            </div>
-            {#if nlResult.rule?.description}
-              <div>
-                <div class="text-xs text-muted-foreground">Description</div>
-                <div class="text-sm">{nlResult.rule.description}</div>
-              </div>
-            {/if}
-            <div class="flex items-center gap-2">
-              <Badge variant="outline">{triggerLabel(nlResult.rule?.triggerType || "")}</Badge>
-              <span class="text-xs text-muted-foreground">{nlResult.rule?.actions?.length || 0} action(s)</span>
-            </div>
-            {#if nlResult.complianceControls && nlResult.complianceControls.length > 0}
-              <div>
-                <div class="text-xs text-muted-foreground mb-1">Compliance Controls Covered</div>
-                <div class="flex flex-wrap gap-1">
-                  {#each nlResult.complianceControls as control}
-                    <Badge variant="secondary" class="text-[10px]">{control}</Badge>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-          </CardContent>
-        </Card>
-      {/if}
-
-      <DialogFooter>
-        <Button variant="outline" on:click={() => { showNlDialog = false; nlResult = null; nlError = null; }}>Cancel</Button>
-        {#if nlResult}
-          <Button on:click={applyNlResult}>Create Rule</Button>
-        {:else}
-          <Button on:click={buildFromNL} disabled={nlLoading || nlPrompt.trim().length < 5}>
-            {nlLoading ? "Generating..." : "Generate Rule"}
-          </Button>
-        {/if}
-      </DialogFooter>
-    </div>
-  </Dialog>
+  {/if}
 </div>
