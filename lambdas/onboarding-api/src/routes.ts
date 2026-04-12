@@ -14,6 +14,7 @@ import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
 import crypto from "crypto";
 import pg from "pg";
+import bcrypt from "bcryptjs";
 
 const { Pool } = pg;
 
@@ -63,27 +64,85 @@ function parseBody(event: APIGatewayProxyEventV2): unknown {
 
 const BASE_QUESTIONS: Array<{ id: string; text: string; type: string; required: boolean }> = [
   { id: "company_name", text: "What is your company name?", type: "text", required: true },
-  { id: "employee_count", text: "How many employees does your company have?", type: "number", required: true },
-  { id: "primary_use_case", text: "What is your primary use case for AtlasIT?", type: "select", required: true },
-  { id: "current_tools", text: "What IT tools are you currently using?", type: "multiselect", required: false },
-  { id: "compliance_frameworks", text: "Which compliance frameworks are you targeting?", type: "multiselect", required: false },
+  {
+    id: "employee_count",
+    text: "How many employees does your company have?",
+    type: "number",
+    required: true,
+  },
+  {
+    id: "primary_use_case",
+    text: "What is your primary use case for AtlasIT?",
+    type: "select",
+    required: true,
+  },
+  {
+    id: "current_tools",
+    text: "What IT tools are you currently using?",
+    type: "multiselect",
+    required: false,
+  },
+  {
+    id: "compliance_frameworks",
+    text: "Which compliance frameworks are you targeting?",
+    type: "multiselect",
+    required: false,
+  },
 ];
 
-const INDUSTRY_QUESTIONS: Record<string, Array<{ id: string; text: string; type: string; required: boolean }>> = {
+const INDUSTRY_QUESTIONS: Record<
+  string,
+  Array<{ id: string; text: string; type: string; required: boolean }>
+> = {
   healthcare: [
-    { id: "hipaa_required", text: "Is HIPAA compliance required?", type: "boolean", required: true },
-    { id: "phi_data", text: "Do you store Protected Health Information (PHI)?", type: "boolean", required: true },
+    {
+      id: "hipaa_required",
+      text: "Is HIPAA compliance required?",
+      type: "boolean",
+      required: true,
+    },
+    {
+      id: "phi_data",
+      text: "Do you store Protected Health Information (PHI)?",
+      type: "boolean",
+      required: true,
+    },
   ],
   finance: [
-    { id: "soc2_required", text: "Is SOC 2 certification required?", type: "boolean", required: true },
-    { id: "pci_dss", text: "Do you process credit card payments (PCI-DSS)?", type: "boolean", required: false },
+    {
+      id: "soc2_required",
+      text: "Is SOC 2 certification required?",
+      type: "boolean",
+      required: true,
+    },
+    {
+      id: "pci_dss",
+      text: "Do you process credit card payments (PCI-DSS)?",
+      type: "boolean",
+      required: false,
+    },
   ],
   technology: [
-    { id: "cloud_provider", text: "Which cloud providers do you use?", type: "multiselect", required: false },
-    { id: "sso_provider", text: "What is your primary SSO provider?", type: "select", required: false },
+    {
+      id: "cloud_provider",
+      text: "Which cloud providers do you use?",
+      type: "multiselect",
+      required: false,
+    },
+    {
+      id: "sso_provider",
+      text: "What is your primary SSO provider?",
+      type: "select",
+      required: false,
+    },
   ],
   education: [
-    { id: "ferpa_required", text: "Is FERPA compliance required?", type: "boolean", required: false },
+    {
+      id: "ferpa_required",
+      text: "Is FERPA compliance required?",
+      type: "boolean",
+      required: false,
+    },
     { id: "student_data", text: "Do you store student PII data?", type: "boolean", required: true },
   ],
 };
@@ -97,10 +156,20 @@ function generateQuestions(
   questions.push(...industryQs);
 
   if (requirements.includes("soc2")) {
-    questions.push({ id: "soc2_type", text: "SOC 2 Type I or Type II?", type: "select", required: false });
+    questions.push({
+      id: "soc2_type",
+      text: "SOC 2 Type I or Type II?",
+      type: "select",
+      required: false,
+    });
   }
   if (requirements.includes("iso27001")) {
-    questions.push({ id: "isms_exists", text: "Do you have an existing ISMS?", type: "boolean", required: false });
+    questions.push({
+      id: "isms_exists",
+      text: "Do you have an existing ISMS?",
+      type: "boolean",
+      required: false,
+    });
   }
 
   return questions;
@@ -195,14 +264,135 @@ function suggestIntegrations(industry: string, answers: Record<string, unknown>)
   return [...new Set(integrations)];
 }
 
-function deriveComplianceTargets(requirements: string[], answers: Record<string, unknown>): string[] {
+function deriveComplianceTargets(
+  requirements: string[],
+  answers: Record<string, unknown>,
+): string[] {
   const targets: string[] = [];
   if (requirements.includes("soc2") || answers.soc2_required === true) targets.push("SOC2");
   if (requirements.includes("hipaa") || answers.hipaa_required === true) targets.push("HIPAA");
-  if (requirements.includes("iso27001") || answers.isms_exists !== undefined) targets.push("ISO-27001");
+  if (requirements.includes("iso27001") || answers.isms_exists !== undefined)
+    targets.push("ISO-27001");
   if (requirements.includes("nist")) targets.push("NIST-CSF");
   if (answers.pci_dss === true) targets.push("PCI-DSS");
   return targets;
+}
+
+// ── Self-serve signup helpers ──────────────────────────────────────────────
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function generateUniqueSlug(base: string, pool: pg.Pool): Promise<string> {
+  const slug = slugify(base);
+  const existing = await pool.query<{ id: string }>(
+    `SELECT id FROM tenants WHERE id = $1 OR id LIKE $2 ORDER BY id`,
+    [slug, `${slug}-%`],
+  );
+  if (existing.rows.length === 0) return slug;
+  // Find next available suffix
+  const usedIds = new Set(existing.rows.map((r) => r.id));
+  if (!usedIds.has(slug)) return slug;
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${slug}-${i}`;
+    if (!usedIds.has(candidate)) return candidate;
+  }
+  // Fallback: append UUID segment
+  return `${slug}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+async function handleSignup(
+  event: APIGatewayProxyEventV2,
+  pool: pg.Pool,
+): Promise<APIGatewayProxyResultV2> {
+  const b = parseBody(event) as {
+    email?: unknown;
+    password?: unknown;
+    companyName?: unknown;
+    fullName?: unknown;
+  };
+
+  // Validate inputs
+  const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
+  const password = typeof b.password === "string" ? b.password : "";
+  const companyName = typeof b.companyName === "string" ? b.companyName.trim() : "";
+  const fullName = typeof b.fullName === "string" ? b.fullName.trim() : "";
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRegex.test(email)) {
+    return fail(400, "Valid email is required", "VALIDATION_FAILED");
+  }
+  if (!password || password.length < 8) {
+    return fail(400, "Password must be at least 8 characters", "VALIDATION_FAILED");
+  }
+  if (!companyName || companyName.length < 2) {
+    return fail(400, "Company name must be at least 2 characters", "VALIDATION_FAILED");
+  }
+  if (!fullName || fullName.length < 2) {
+    return fail(400, "Full name must be at least 2 characters", "VALIDATION_FAILED");
+  }
+
+  // Check for existing user with this email (case-insensitive)
+  const existingUser = await pool.query(`SELECT id FROM users WHERE email = $1 LIMIT 1`, [email]);
+  if (existingUser.rows.length > 0) {
+    return fail(409, "An account with this email already exists", "EMAIL_EXISTS");
+  }
+
+  // Generate unique tenant ID from company name
+  const tenantId = await generateUniqueSlug(companyName, pool);
+
+  // Hash password
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  // Generate user UUID
+  const userId = crypto.randomUUID();
+
+  // Insert tenant
+  await pool.query(
+    `INSERT INTO tenants (id, name, slug, tier, status, created_at, updated_at)
+     VALUES ($1, $2, $3, 'free', 'active', NOW(), NOW())`,
+    [tenantId, companyName, tenantId],
+  );
+
+  // Insert user
+  await pool.query(
+    `INSERT INTO users (id, tenant_id, email, display_name, role, status, password_hash, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'admin', 'active', $5, NOW(), NOW())`,
+    [userId, tenantId, email, fullName, passwordHash],
+  );
+
+  // Insert initial evidence record for CDT scoring
+  const evidenceId = crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO compliance_evidence
+       (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
+     VALUES ($1, $2, 'SOC2', 'CC1.3', 'event', 'platform', $3, $4, $5, NOW())
+     ON CONFLICT DO NOTHING`,
+    [
+      evidenceId,
+      tenantId,
+      evidenceId,
+      email,
+      JSON.stringify({
+        impact: "positive",
+        eventType: "tenant.created",
+        reasoning: `Tenant ${companyName} onboarded; admin user ${email} created with proper role assignment`,
+      }),
+    ],
+  );
+
+  return ok(
+    {
+      status: "success",
+      data: { tenantId, userId },
+    },
+    201,
+  );
 }
 
 // ── Main routing ──────────────────────────────────────────────────────────
@@ -239,10 +429,18 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
   const pool = getPool();
 
+  // ── Public: POST /api/onboarding/signup — self-serve tenant signup ─────────
+  if ((path === "/api/onboarding/signup" || path === "/signup") && method === "POST") {
+    return handleSignup(event, pool);
+  }
+
   // ── Public: GET /api/onboarding/questions — get onboarding questions ───────
   if (path === "/api/onboarding/questions" && method === "GET") {
     const industry = qs.industry ?? "technology";
-    const requirements = (qs.requirements ?? "").split(",").map((r) => r.trim()).filter(Boolean);
+    const requirements = (qs.requirements ?? "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
     const questions = generateQuestions(industry, requirements);
     return ok({ industry, count: questions.length, questions, requestId });
   }
@@ -300,7 +498,13 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (b.companyName) answers.company_name = b.companyName;
     if (b.contactEmail) answers.contact_email = b.contactEmail;
 
-    const { sessionId, config } = await processSubmission(tenantId, answers, industry, requirements, pool);
+    const { sessionId, config } = await processSubmission(
+      tenantId,
+      answers,
+      industry,
+      requirements,
+      pool,
+    );
 
     await svc.auditRepo.log({
       tenantId,
