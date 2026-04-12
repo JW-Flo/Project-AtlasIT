@@ -91,6 +91,17 @@
     if (!wizardApp) return;
     wizardLoading = true;
 
+    // AWS-adapter path: for providers we've ported to dedicated Lambda adapters
+    // (github, okta), route to /console/apps which has the real working UI.
+    const NEW_ADAPTERS: Record<string, string> = {
+      github: "/console/apps?connect=github",
+      okta: "/console/apps?connect=okta",
+    };
+    if (NEW_ADAPTERS[wizardApp.id]) {
+      window.location.href = NEW_ADAPTERS[wizardApp.id];
+      return;
+    }
+
     try {
       // For platform_oauth: redirect straight to provider (no creds needed)
       if (wizardApp.auth === "platform_oauth") {

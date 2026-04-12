@@ -208,7 +208,7 @@
     }
   }
 
-  // Handle the OAuth callback return — the Lambda redirects to /console/apps?github=connected
+  // Handle OAuth callback return + inbound ?connect= from marketplace
   onMount(() => {
     const params = new URLSearchParams(window.location.search);
     const gh = params.get("github");
@@ -219,12 +219,21 @@
         type: "info",
         msg: `GitHub connected as ${login ?? "user"}. Synced ${evidence ?? "?"} new evidence records.`,
       };
-      // Clean the URL so a refresh doesn't re-show the banner
       window.history.replaceState({}, "", "/console/apps");
     } else if (gh === "error") {
       const reason = params.get("reason") ?? "unknown";
       banner = { type: "error", msg: `GitHub connect failed: ${reason}` };
       window.history.replaceState({}, "", "/console/apps");
+    }
+
+    // Auto-trigger the connect flow when arriving from /console/marketplace
+    const connect = params.get("connect");
+    if (connect === "github") {
+      window.history.replaceState({}, "", "/console/apps");
+      setTimeout(() => connectGitHub(), 100);
+    } else if (connect === "okta") {
+      window.history.replaceState({}, "", "/console/apps");
+      showOktaModal = true;
     }
   });
 
