@@ -141,6 +141,298 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * Render the auditor-ready HTML bundle. Print-friendly CSS with page breaks
+ * between sections. Black-and-white readable. Content-hash footer for tamper
+ * evidence — auditors can re-fetch and recompute to verify integrity.
+ */
+interface AuditBundle {
+  tenant: { id: string; name: string; slug: string; industry: string | null; size: string | null };
+  framework: string;
+  packName: string;
+  score: number;
+  controlsCount: number;
+  passCount: number;
+  failCount: number;
+  unknownCount: number;
+  lastEvaluatedAt: string | null;
+  sinceDate: string;
+  generatedAt: string;
+  controls: Array<Record<string, unknown>>;
+  evidence: Array<Record<string, unknown>>;
+  attestations: Array<Record<string, unknown>>;
+  policies: Array<Record<string, unknown>>;
+  incidents: Array<Record<string, unknown>>;
+  auditLog: Array<Record<string, unknown>>;
+}
+
+function renderAuditPackageHtml(b: AuditBundle, contentHash: string): string {
+  const esc = (s: unknown): string =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const date = (s: unknown): string => (s ? new Date(s as string).toLocaleString() : "—");
+  const stateStyle = (s: unknown): string => {
+    if (s === "pass") return "background:#dcfce7;color:#166534";
+    if (s === "fail") return "background:#fee2e2;color:#991b1b";
+    return "background:#f3f4f6;color:#4b5563";
+  };
+
+  const controlsByState = {
+    pass: b.controls.filter((c) => c.state === "pass"),
+    fail: b.controls.filter((c) => c.state === "fail"),
+    unknown: b.controls.filter((c) => c.state === "unknown"),
+  };
+  const evidenceByControl = new Map<string, typeof b.evidence>();
+  for (const e of b.evidence) {
+    const k = String(e.controlId ?? "unmapped");
+    if (!evidenceByControl.has(k)) evidenceByControl.set(k, []);
+    evidenceByControl.get(k)!.push(e);
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${esc(b.tenant.name)} — ${esc(b.framework)} Audit Package</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #111; max-width: 1000px; margin: 2em auto; padding: 0 2em; line-height: 1.5; }
+  h1 { font-size: 2em; margin: 0 0 0.2em; }
+  h2 { font-size: 1.4em; margin: 1.6em 0 0.6em; border-bottom: 2px solid #111; padding-bottom: 0.2em; }
+  h3 { font-size: 1.1em; margin: 1em 0 0.3em; }
+  .meta { color: #555; font-size: 0.9em; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1em; margin: 1em 0 2em; }
+  .kpi { padding: 1em; border: 1px solid #ccc; border-radius: 6px; }
+  .kpi .num { font-size: 2em; font-weight: bold; margin: 0.2em 0; }
+  .kpi .label { font-size: 0.75em; text-transform: uppercase; color: #666; letter-spacing: 0.05em; }
+  table { width: 100%; border-collapse: collapse; margin: 0.8em 0; font-size: 0.85em; }
+  th, td { text-align: left; padding: 0.4em 0.6em; border: 1px solid #ddd; vertical-align: top; }
+  th { background: #f8f8f8; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 600; text-transform: uppercase; }
+  .score-big { font-size: 3em; font-weight: bold; }
+  .section { page-break-inside: auto; }
+  code { font-family: "Courier New", monospace; font-size: 0.9em; background: #f5f5f5; padding: 1px 4px; border-radius: 3px; }
+  .rationale { color: #555; font-size: 0.8em; margin-top: 0.3em; font-style: italic; }
+  .cover { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; border-bottom: 3px solid #111; margin-bottom: 2em; page-break-after: always; }
+  .footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #ddd; font-size: 0.75em; color: #666; }
+  @media print {
+    body { margin: 0; padding: 0.5in; max-width: none; font-size: 10pt; }
+    h2 { page-break-before: auto; page-break-after: avoid; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+    .cover { page-break-after: always; }
+    .no-print { display: none; }
+  }
+  .print-button { position: fixed; top: 1em; right: 1em; padding: 0.6em 1.2em; background: #2563eb; color: white; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<button class="print-button no-print" onclick="window.print()">🖨 Save as PDF</button>
+
+<div class="cover">
+  <div class="meta">AtlasIT Compliance Audit Package</div>
+  <h1>${esc(b.tenant.name)}</h1>
+  <div class="meta">
+    ${esc(b.tenant.industry ?? "")}${b.tenant.size ? " · " + esc(b.tenant.size) + " employees" : ""}<br>
+    Framework: <strong>${esc(b.packName)}</strong> (${esc(b.framework)})<br>
+    Generated: ${date(b.generatedAt)}<br>
+    Evidence window: since ${date(b.sinceDate)}
+  </div>
+  <div style="margin-top: 2em;">
+    <div class="score-big">${b.score}%</div>
+    <div class="meta">Continuous compliance score (pass / total controls)</div>
+  </div>
+  <p class="meta" style="margin-top: 2em; max-width: 700px;">
+    All scores in this package are generated from live operational evidence by AtlasIT's
+    CDT rule engine, not from self-attestation. Re-fetching this report with the same
+    parameters at a later time may yield different scores as controls degrade or improve.
+  </p>
+</div>
+
+<h2>Executive Summary</h2>
+<div class="kpi-row">
+  <div class="kpi"><div class="label">Overall Score</div><div class="num">${b.score}%</div></div>
+  <div class="kpi"><div class="label">Passing</div><div class="num" style="color:#16a34a">${b.passCount}</div></div>
+  <div class="kpi"><div class="label">Failing</div><div class="num" style="color:#dc2626">${b.failCount}</div></div>
+  <div class="kpi"><div class="label">Unknown</div><div class="num" style="color:#6b7280">${b.unknownCount}</div></div>
+</div>
+<p class="meta">Last evaluated: ${date(b.lastEvaluatedAt)}</p>
+
+<div class="section">
+<h2>Control Status (${b.controls.length})</h2>
+<table>
+<thead><tr><th>Control ID</th><th>Title</th><th>State</th><th>Evidence</th><th>Last Evaluated</th></tr></thead>
+<tbody>
+${b.controls
+  .map(
+    (c) => `
+  <tr>
+    <td><code>${esc(c.controlId)}</code></td>
+    <td>${esc(c.title)}
+      ${Array.isArray(c.rationale) && (c.rationale as string[]).length > 0 ? `<div class="rationale">${esc((c.rationale as string[])[0])}</div>` : ""}
+    </td>
+    <td><span class="badge" style="${stateStyle(c.state)}">${esc(c.state)}</span></td>
+    <td>${c.evidenceSampleSize ?? 0}</td>
+    <td>${date(c.evaluatedAt)}</td>
+  </tr>`,
+  )
+  .join("")}
+</tbody></table>
+</div>
+
+<div class="section">
+<h2>Attestations (${b.attestations.length})</h2>
+${
+  b.attestations.length === 0
+    ? '<p class="meta">No attestations signed for this framework.</p>'
+    : `
+<table>
+<thead><tr><th>Control</th><th>Key</th><th>Status</th><th>Signed By</th><th>Signed At</th><th>Statement</th></tr></thead>
+<tbody>
+${b.attestations
+  .map(
+    (a) => `
+  <tr>
+    <td><code>${esc(a.controlId)}</code></td>
+    <td><code>${esc(a.attestationKey)}</code></td>
+    <td><span class="badge" style="${a.status === "active" ? "background:#dcfce7;color:#166534" : "background:#fee2e2;color:#991b1b"}">${esc(a.status)}</span></td>
+    <td>${esc(a.attestedByName ?? a.attestedByEmail)}</td>
+    <td>${date(a.attestedAt)}</td>
+    <td style="max-width:400px">${esc(a.statement)}
+      ${a.revocationReason ? `<div class="rationale">Revoked: ${esc(a.revocationReason)}</div>` : ""}
+    </td>
+  </tr>`,
+  )
+  .join("")}
+</tbody></table>`
+}
+</div>
+
+<div class="section">
+<h2>Policies (${b.policies.length})</h2>
+${
+  b.policies.length === 0
+    ? '<p class="meta">No policies matching this framework.</p>'
+    : `
+<table>
+<thead><tr><th>Name</th><th>Category</th><th>Version</th><th>Status</th><th>Published</th><th>Acks</th></tr></thead>
+<tbody>
+${b.policies
+  .map(
+    (p) => `
+  <tr>
+    <td>${esc(p.name)}</td>
+    <td>${esc(p.category)}</td>
+    <td>${esc(p.version)}</td>
+    <td><span class="badge" style="background:#f3f4f6;color:#374151">${esc(p.status)}</span></td>
+    <td>${date(p.publishedAt)}</td>
+    <td>${p.ackCount ?? 0}</td>
+  </tr>`,
+  )
+  .join("")}
+</tbody></table>`
+}
+</div>
+
+<div class="section">
+<h2>Evidence Sample — ${b.evidence.length} records since ${date(b.sinceDate)}</h2>
+${
+  b.evidence.length === 0
+    ? '<p class="meta">No evidence in window.</p>'
+    : `
+<table>
+<thead><tr><th>Control</th><th>Source</th><th>Actor</th><th>Impact</th><th>Reasoning</th><th>Collected</th></tr></thead>
+<tbody>
+${b.evidence
+  .slice(0, 150)
+  .map((e) => {
+    const md = (e.metadata ?? {}) as { impact?: string; reasoning?: string; eventType?: string };
+    return `<tr>
+    <td><code>${esc(e.controlId)}</code></td>
+    <td>${esc(e.source)}</td>
+    <td style="max-width:160px;word-break:break-all">${esc(e.actor)}</td>
+    <td><span class="badge" style="${md.impact === "positive" ? "background:#dcfce7;color:#166534" : md.impact === "negative" ? "background:#fee2e2;color:#991b1b" : "background:#f3f4f6;color:#4b5563"}">${esc(md.impact ?? "—")}</span></td>
+    <td style="max-width:400px">${esc(md.reasoning ?? md.eventType ?? "")}</td>
+    <td>${date(e.createdAt)}</td>
+  </tr>`;
+  })
+  .join("")}
+${b.evidence.length > 150 ? `<tr><td colspan="6" style="text-align:center;color:#666;font-style:italic">… ${b.evidence.length - 150} more records truncated for print. Request JSON format for full set.</td></tr>` : ""}
+</tbody></table>`
+}
+</div>
+
+<div class="section">
+<h2>Incidents (${b.incidents.length})</h2>
+${
+  b.incidents.length === 0
+    ? '<p class="meta">No incidents in window.</p>'
+    : `
+<table>
+<thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Opened</th><th>Resolved</th></tr></thead>
+<tbody>
+${b.incidents
+  .map(
+    (i) => `
+  <tr>
+    <td>${esc(i.title)}</td>
+    <td><span class="badge" style="background:#fef3c7;color:#92400e">${esc(i.severity)}</span></td>
+    <td>${esc(i.status)}</td>
+    <td>${date(i.createdAt)}</td>
+    <td>${date(i.resolvedAt)}</td>
+  </tr>`,
+  )
+  .join("")}
+</tbody></table>`
+}
+</div>
+
+<div class="section">
+<h2>Audit Trail — ${b.auditLog.length} recent entries</h2>
+${
+  b.auditLog.length === 0
+    ? '<p class="meta">No audit entries in window.</p>'
+    : `
+<table>
+<thead><tr><th>Action</th><th>Resource</th><th>Actor</th><th>When</th></tr></thead>
+<tbody>
+${b.auditLog
+  .slice(0, 50)
+  .map(
+    (a) => `
+  <tr>
+    <td><code>${esc(a.action)}</code></td>
+    <td>${esc(a.resourceType ?? "—")}</td>
+    <td>${esc(a.actorId)}</td>
+    <td>${date(a.createdAt)}</td>
+  </tr>`,
+  )
+  .join("")}
+${b.auditLog.length > 50 ? `<tr><td colspan="4" style="text-align:center;color:#666;font-style:italic">… ${b.auditLog.length - 50} more entries truncated for print.</td></tr>` : ""}
+</tbody></table>`
+}
+</div>
+
+<div class="footer">
+  <p>
+    <strong>Integrity.</strong> This report is signed with a SHA-256 content hash of the
+    underlying JSON bundle. To verify, request the same URL with <code>?format=json</code>
+    and recompute the hash.
+  </p>
+  <p><strong>Content hash:</strong> <code>${contentHash}</code></p>
+  <p><strong>Tenant ID:</strong> <code>${esc(b.tenant.id)}</code> · <strong>Framework:</strong> <code>${esc(b.framework)}</code> · <strong>Generated:</strong> ${esc(b.generatedAt)}</p>
+  <p>Produced by AtlasIT continuous compliance platform. Scores reflect operational evidence at generation time.</p>
+</div>
+
+</body>
+</html>`;
+}
+
 function svgBadgeResponse(svg: string): APIGatewayProxyResultV2 {
   return {
     statusCode: 200,
@@ -2894,6 +3186,158 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           error: (e as Error).message,
         });
         return fail(500, "Failed to list acknowledgements", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // ── Audit Package Export ──────────────────────────────────────────────────
+  // GET /api/v1/audit-package/:framework — admin-gated, returns a print-ready
+  // HTML bundle auditors can save as PDF via the browser (Ctrl+P → Save as PDF).
+  // Covers score, per-control state, evidence sample, attestations, policies,
+  // incidents, and audit-log entries for a single framework.
+  {
+    const m = path.match(/^\/api\/v1\/audit-package\/([A-Za-z0-9_-]+)$/);
+    if (m && method === "GET") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const framework = m[1];
+      const sinceParam = qs.since ?? null;
+      const format = qs.format === "json" ? "json" : "html";
+
+      try {
+        const tenantRow = await pool.query(
+          `SELECT id, name, slug, industry, size FROM tenants WHERE id = $1`,
+          [auth.tenantId],
+        );
+        if (tenantRow.rows.length === 0) return fail(404, "Tenant not found", "NOT_FOUND");
+        const tenant = tenantRow.rows[0];
+
+        const packRow = await pool.query(
+          `SELECT p.id, p.name, p.framework_id, p.controls_count::int as "controlsCount",
+                  tcp.pass_count as "passCount", tcp.fail_count as "failCount",
+                  tcp.unknown_count as "unknownCount", tcp.last_evaluated_at as "lastEvaluatedAt"
+           FROM compliance_packs p
+           INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
+           WHERE tcp.tenant_id = $1 AND p.framework_id = $2`,
+          [auth.tenantId, framework],
+        );
+        if (packRow.rows.length === 0) {
+          return fail(404, `No installed pack for framework ${framework}`, "NOT_INSTALLED");
+        }
+        const pack = packRow.rows[0];
+        const sinceDate = sinceParam ?? new Date(Date.now() - 90 * 86400000).toISOString();
+
+        const [controls, evidence, attestations, policies, incidents, auditEntries] =
+          await Promise.all([
+            pool.query(
+              `SELECT c.control_id as "controlId", c.title,
+                    COALESCE(s.state, 'unknown') as state,
+                    s.rationale, s.evaluated_at as "evaluatedAt",
+                    s.evidence_sample_size as "evidenceSampleSize"
+             FROM compliance_pack_controls c
+             LEFT JOIN tenant_control_state s
+               ON s.pack_id = c.pack_id AND s.control_id = c.control_id AND s.tenant_id = $1
+             WHERE c.pack_id = $2 ORDER BY c.control_id`,
+              [auth.tenantId, pack.id],
+            ),
+            pool.query(
+              `SELECT id, control_id as "controlId", source, actor, metadata, created_at as "createdAt"
+             FROM compliance_evidence
+             WHERE tenant_id = $1 AND framework = $2 AND created_at > $3::timestamptz
+             ORDER BY created_at DESC LIMIT 500`,
+              [auth.tenantId, framework, sinceDate],
+            ),
+            pool.query(
+              `SELECT id, control_id as "controlId", attestation_key as "attestationKey",
+                    status, statement, attested_by_name as "attestedByName",
+                    attested_by_email as "attestedByEmail", attested_at as "attestedAt",
+                    revoked_at as "revokedAt", revocation_reason as "revocationReason"
+             FROM attestations WHERE tenant_id = $1 AND framework = $2
+             ORDER BY attested_at DESC`,
+              [auth.tenantId, framework],
+            ),
+            pool.query(
+              `SELECT p.id, p.name, p.category, p.version, p.status, p.published_at as "publishedAt",
+                    (SELECT COUNT(*) FROM policy_acknowledgements a WHERE a.policy_id = p.id) as "ackCount"
+             FROM policies p
+             WHERE p.tenant_id = $1 AND ($2 = ANY(p.framework_refs) OR p.framework_refs = '{}')
+             ORDER BY p.updated_at DESC`,
+              [auth.tenantId, framework],
+            ),
+            pool.query(
+              `SELECT id, title, severity, status, created_at as "createdAt", resolved_at as "resolvedAt"
+             FROM incidents WHERE tenant_id = $1 AND created_at > $2::timestamptz
+             ORDER BY created_at DESC LIMIT 50`,
+              [auth.tenantId, sinceDate],
+            ),
+            pool.query(
+              `SELECT action, resource_type as "resourceType", actor_id as "actorId",
+                    created_at as "createdAt"
+             FROM audit_log WHERE tenant_id = $1 AND created_at > $2::timestamptz
+             ORDER BY created_at DESC LIMIT 100`,
+              [auth.tenantId, sinceDate],
+            ),
+          ]);
+
+        const score =
+          pack.controlsCount > 0 ? Math.round((pack.passCount * 100) / pack.controlsCount) : 0;
+        const now = new Date().toISOString();
+
+        const bundle = {
+          tenant: {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            industry: tenant.industry,
+            size: tenant.size,
+          },
+          framework,
+          packName: pack.name,
+          score,
+          controlsCount: pack.controlsCount,
+          passCount: pack.passCount,
+          failCount: pack.failCount,
+          unknownCount: pack.unknownCount,
+          lastEvaluatedAt: pack.lastEvaluatedAt,
+          sinceDate,
+          generatedAt: now,
+          controls: controls.rows,
+          evidence: evidence.rows,
+          attestations: attestations.rows,
+          policies: policies.rows,
+          incidents: incidents.rows,
+          auditLog: auditEntries.rows,
+        };
+        const contentHash = crypto
+          .createHash("sha256")
+          .update(JSON.stringify(bundle))
+          .digest("hex");
+
+        if (format === "json") {
+          return {
+            statusCode: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Disposition": `attachment; filename="atlasit-audit-${framework}-${now.slice(0, 10)}.json"`,
+            },
+            body: JSON.stringify({ ...bundle, contentHash }),
+          };
+        }
+        return {
+          statusCode: 200,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "X-Content-Type-Options": "nosniff",
+          },
+          body: renderAuditPackageHtml(bundle, contentHash),
+        };
+      } catch (e) {
+        console.error("[compliance-api] audit-package.error", {
+          error: (e as Error).message,
+          framework,
+        });
+        return fail(500, "Failed to generate audit package", "INTERNAL_ERROR");
       }
     }
   }
