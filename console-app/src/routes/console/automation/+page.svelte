@@ -189,6 +189,7 @@
   const th = "px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider";
   const thLeft = th + " text-left";
   function tabCls(t: string) { return "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"); }
+  const actionsPlaceholder = '[{"type":"notify","config":{"channel":"slack"}}]';
 </script>
 
 <div class="p-8 max-w-7xl mx-auto">
@@ -246,7 +247,7 @@
         </div>
         <div class="md:col-span-2">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Actions (JSON)</label>
-          <textarea bind:value={createActions} placeholder='[{"type":"notify","config":{"channel":"slack"}}]' rows="3" class="{cls} font-mono resize-none"></textarea>
+          <textarea bind:value={createActions} placeholder={actionsPlaceholder} rows="3" class="{cls} font-mono resize-none"></textarea>
         </div>
       </div>
       <div class="mt-4 flex gap-3">
