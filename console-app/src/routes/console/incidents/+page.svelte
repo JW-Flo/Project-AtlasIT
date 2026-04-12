@@ -1,661 +1,328 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Card from "$lib/components/ui/card.svelte";
-  import CardContent from "$lib/components/ui/card-content.svelte";
-  import Badge from "$lib/components/ui/badge.svelte";
-  import Button from "$lib/components/ui/button.svelte";
-  import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import Alert from "$lib/components/ui/alert.svelte";
-  import { AlertTriangle, ChevronDown, ChevronUp, Plus, Clock, User, MessageSquare, Send, Zap, ExternalLink } from "lucide-svelte";
-  import { push as pushToast } from "$lib/components/feedback/toastStore";
-
-  interface TimelineEntry {
-    id: string;
-    entryType: string;
-    actorEmail: string | null;
-    content: string | null;
-    metadata: Record<string, unknown> | null;
-    createdAt: string;
-  }
 
   interface Incident {
     id: string;
+    tenantId: string;
     title: string;
-    description?: string;
     severity: "critical" | "high" | "medium" | "low" | string;
     status: string;
-    ownerEmail?: string | null;
-    source?: string;
-    sourceId?: string;
-    slaBreachAt?: string | null;
-    investigatingAt?: string | null;
-    resolvedAt?: string | null;
+    source: string | null;
     createdAt: string;
+    resolvedAt: string | null;
   }
 
-  let loading = true;
-  let error: string | null = null;
+  const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+
   let incidents: Incident[] = [];
-  let expandedRows = new Set<string>();
-  let timelineCache: Record<string, TimelineEntry[]> = {};
-  let loadingTimeline = new Set<string>();
+  let nextCursor: string | null = null;
+  let loading = true;
+  let loadingMore = false;
+  let error: string | null = null;
 
-  // Create incident form
-  let showCreateForm = false;
-  let newTitle = "";
-  let newSeverity = "medium";
-  let newDescription = "";
-  let creating = false;
+  let severityFilter = "all";
+  let statusFilter = "all";
+  let expandedId: string | null = null;
 
-  // Auto-classify toggle
-  let autoClassify = true;
-  let classifying = false;
-  let classificationHint: { severity: string; confidence: number; rules: string[] } | null = null;
+  let showForm = false;
+  let formTitle = "";
+  let formSeverity: "critical" | "high" | "medium" | "low" = "medium";
+  let formSource = "";
+  let formError: string | null = null;
+  let submitting = false;
 
-  // Comment form per incident
-  let commentInputs: Record<string, string> = {};
-  let submittingComment = new Set<string>();
-  let changingSeverity = new Set<string>();
-  let escalating = new Set<string>();
+  $: total = incidents.length;
+  $: openCount = incidents.filter((i) => i.status === "open").length;
+  $: resolvedCount = incidents.filter((i) => i.status === "resolved").length;
 
-  // Tenant team members for assignment
-  let teamMembers: string[] = [];
-
-  function severityVariant(severity: string): "destructive" | "warning" | "secondary" {
-    if (severity === "critical" || severity === "high") return "destructive";
-    if (severity === "medium") return "warning";
-    return "secondary";
-  }
-
-  function statusVariant(status: string): "success" | "warning" | "secondary" | "destructive" {
-    switch (status?.toLowerCase()) {
-      case "resolved": case "closed": return "success";
-      case "investigating": case "in_progress": return "warning";
-      case "open": case "new": return "destructive";
-      default: return "secondary";
-    }
-  }
-
-  function isSlaBreached(incident: Incident): boolean {
-    if (!incident.slaBreachAt || incident.status === "resolved") return false;
-    return new Date(incident.slaBreachAt) <= new Date();
-  }
-
-  function slaTimeRemaining(incident: Incident): string | null {
-    if (!incident.slaBreachAt || incident.status === "resolved") return null;
-    const diff = new Date(incident.slaBreachAt).getTime() - Date.now();
-    if (diff <= 0) return "Breached";
-    const hours = Math.floor(diff / 3600000);
-    const mins = Math.floor((diff % 3600000) / 60000);
-    if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
-  }
-
-  function toggleExpanded(id: string) {
-    const strId = String(id);
-    if (expandedRows.has(strId)) {
-      expandedRows.delete(strId);
-    } else {
-      expandedRows.add(strId);
-      loadTimeline(strId);
-    }
-    expandedRows = new Set(expandedRows);
+  function buildUrl(cursor?: string | null): string {
+    const p = new URLSearchParams({ limit: "20" });
+    if (severityFilter !== "all") p.set("severity", severityFilter);
+    if (statusFilter !== "all") p.set("status", statusFilter);
+    if (cursor) p.set("cursor", cursor);
+    return `/api/compliance/api/v1/incidents?${p.toString()}`;
   }
 
   async function loadIncidents() {
     loading = true;
     error = null;
+    incidents = [];
+    nextCursor = null;
     try {
-      const res = await fetch("/api/incidents");
-      if (!res.ok) throw new Error(`Failed to load incidents (${res.status})`);
-      const data = await res.json();
-      incidents = Array.isArray(data?.items) ? data.items : [];
-    } catch (e: any) {
-      error = e?.message || "Failed to load incidents";
-      incidents = [];
+      const res = await fetch(buildUrl());
+      if (!res.ok) throw new Error(`Failed to load incidents (HTTP ${res.status})`);
+      const json = await res.json();
+      incidents = json.data?.items ?? [];
+      nextCursor = json.data?.nextCursor ?? null;
+    } catch (e) {
+      error = (e as Error).message;
     } finally {
       loading = false;
     }
   }
 
-  async function loadTimeline(incidentId: string) {
-    if (timelineCache[incidentId] || loadingTimeline.has(incidentId)) return;
-    loadingTimeline.add(incidentId);
-    loadingTimeline = new Set(loadingTimeline);
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    loadingMore = true;
     try {
-      const res = await fetch(`/api/incidents/${incidentId}/timeline`);
-      if (res.ok) {
-        const data = await res.json();
-        timelineCache[incidentId] = data.items ?? [];
-        timelineCache = { ...timelineCache };
-      }
-    } catch { /* silent */ }
-    loadingTimeline.delete(incidentId);
-    loadingTimeline = new Set(loadingTimeline);
+      const res = await fetch(buildUrl(nextCursor));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      incidents = [...incidents, ...(json.data?.items ?? [])];
+      nextCursor = json.data?.nextCursor ?? null;
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      loadingMore = false;
+    }
   }
 
-  async function loadTeamMembers() {
-    try {
-      const res = await fetch("/api/directory?type=users&limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        teamMembers = (data.items ?? data.users ?? [])
-          .map((u: any) => u.email)
-          .filter(Boolean);
-      }
-    } catch { /* silent */ }
-  }
-
-  async function runAutoClassify() {
-    if (!newTitle.trim()) return;
-    classifying = true;
-    classificationHint = null;
-    try {
-      const res = await fetch("/api/incidents/classify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTitle.trim(), description: newDescription.trim() }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const c = data.classification;
-        classificationHint = { severity: c.severity, confidence: c.confidence, rules: c.matchedRules };
-        newSeverity = c.severity;
-      }
-    } catch { /* silent */ }
-    classifying = false;
+  function applyFilters() {
+    expandedId = null;
+    loadIncidents();
   }
 
   async function createIncident() {
-    if (!newTitle.trim()) return;
-    creating = true;
+    if (!formTitle.trim()) return;
+    submitting = true;
+    formError = null;
     try {
-      const res = await fetch("/api/incidents", {
+      const body: Record<string, string> = { title: formTitle.trim(), severity: formSeverity };
+      if (formSource.trim()) body.source = formSource.trim();
+      const res = await fetch("/api/compliance/api/v1/incidents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newTitle.trim(),
-          severity: autoClassify ? undefined : newSeverity,
-          description: newDescription.trim() || null,
-          autoClassify,
-        }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error("Failed to create incident");
-      const result = await res.json();
-      const msg = result.autoClassified
-        ? `Incident created (auto-classified as ${result.severity})`
-        : "Incident created";
-      pushToast({ message: msg, variant: "success" });
-      newTitle = "";
-      newDescription = "";
-      newSeverity = "medium";
-      classificationHint = null;
-      showCreateForm = false;
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error((json as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      formTitle = "";
+      formSeverity = "medium";
+      formSource = "";
+      showForm = false;
       await loadIncidents();
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Failed to create incident", variant: "error" });
+    } catch (e) {
+      formError = (e as Error).message;
     } finally {
-      creating = false;
+      submitting = false;
     }
   }
 
-  async function escalateIncident(incidentId: string) {
-    escalating.add(incidentId);
-    escalating = new Set(escalating);
-    try {
-      const res = await fetch(`/api/incidents/${incidentId}/escalate`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Escalation failed");
-      pushToast({ message: `Escalated to ${data.provider}`, variant: "success" });
-      delete timelineCache[incidentId];
-      timelineCache = { ...timelineCache };
-      loadTimeline(incidentId);
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Escalation failed", variant: "error" });
-    }
-    escalating.delete(incidentId);
-    escalating = new Set(escalating);
-  }
-
-  async function updateStatus(incidentId: string, newStatus: string, comment?: string) {
-    try {
-      const res = await fetch(`/api/incidents/${incidentId}/status`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus, comment }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to update status`);
-      }
-      pushToast({ message: `Incident ${newStatus}`, variant: "success" });
-      // Refresh incident in list
-      const idx = incidents.findIndex((i) => i.id === incidentId);
-      if (idx >= 0) {
-        incidents[idx] = { ...incidents[idx], status: newStatus };
-        incidents = [...incidents];
-      }
-      // Refresh timeline
-      delete timelineCache[incidentId];
-      timelineCache = { ...timelineCache };
-      loadTimeline(incidentId);
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Failed to update status", variant: "error" });
+  function severityClass(s: string): string {
+    switch (s) {
+      case "critical": return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      case "high":     return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
+      case "medium":   return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+      case "low":      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      default:         return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
     }
   }
 
-  async function assignIncident(incidentId: string, ownerEmail: string) {
-    try {
-      const res = await fetch(`/api/incidents/${incidentId}/assign`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ownerEmail }),
-      });
-      if (!res.ok) throw new Error("Failed to assign incident");
-      pushToast({ message: `Assigned to ${ownerEmail}`, variant: "success" });
-      const idx = incidents.findIndex((i) => i.id === incidentId);
-      if (idx >= 0) {
-        incidents[idx] = { ...incidents[idx], ownerEmail };
-        incidents = [...incidents];
-      }
-      delete timelineCache[incidentId];
-      timelineCache = { ...timelineCache };
-      loadTimeline(incidentId);
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Failed to assign", variant: "error" });
+  function statusClass(s: string): string {
+    switch (s?.toLowerCase()) {
+      case "open":          return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+      case "investigating": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+      case "resolved":      return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+      default:              return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
     }
   }
 
-  async function changeSeverity(incidentId: string, newSeverity: string) {
-    changingSeverity.add(incidentId);
-    changingSeverity = new Set(changingSeverity);
-    try {
-      const res = await fetch(`/api/incidents/${incidentId}/severity`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ severity: newSeverity }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to change severity");
-      }
-      const result = await res.json();
-      pushToast({ message: `Severity changed to ${newSeverity}`, variant: "success" });
-      const idx = incidents.findIndex((i) => i.id === incidentId);
-      if (idx >= 0) {
-        incidents[idx] = { ...incidents[idx], severity: newSeverity, slaBreachAt: result.slaBreachAt };
-        incidents = [...incidents];
-      }
-      delete timelineCache[incidentId];
-      timelineCache = { ...timelineCache };
-      loadTimeline(incidentId);
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Failed to change severity", variant: "error" });
-    }
-    changingSeverity.delete(incidentId);
-    changingSeverity = new Set(changingSeverity);
+  function relativeTime(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86400000);
+    if (days > 0) return `${days}d ago`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours > 0) return `${hours}h ago`;
+    return `${Math.floor(ms / 60000)}m ago`;
   }
 
-  async function addComment(incidentId: string) {
-    const content = commentInputs[incidentId]?.trim();
-    if (!content) return;
-    submittingComment.add(incidentId);
-    submittingComment = new Set(submittingComment);
-    try {
-      const res = await fetch(`/api/incidents/${incidentId}/timeline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      });
-      if (!res.ok) throw new Error("Failed to add comment");
-      commentInputs[incidentId] = "";
-      commentInputs = { ...commentInputs };
-      delete timelineCache[incidentId];
-      timelineCache = { ...timelineCache };
-      loadTimeline(incidentId);
-    } catch (e: any) {
-      pushToast({ message: e?.message || "Failed to add comment", variant: "error" });
-    }
-    submittingComment.delete(incidentId);
-    submittingComment = new Set(submittingComment);
-  }
-
-  function timelineIcon(type: string): string {
-    switch (type) {
-      case "comment": return "💬";
-      case "status_change": return "🔄";
-      case "assignment": return "👤";
-      case "sla_warning": return "⏰";
-      case "auto_action": return "⚡";
-      default: return "📝";
-    }
-  }
-
-  onMount(() => {
-    loadIncidents();
-    loadTeamMembers();
-  });
+  onMount(loadIncidents);
 </script>
 
-<div class="space-y-6">
-  <div class="flex items-center justify-between">
+<div class="p-8 max-w-7xl mx-auto">
+  <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-2xl font-semibold tracking-tight">Incidents</h1>
-      <p class="text-sm text-muted-foreground">Track, investigate, and resolve security and operations incidents.</p>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Incidents</h1>
+      {#if !loading && !error}
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          Total: {total} &middot; Open: {openCount} &middot; Resolved: {resolvedCount}
+        </p>
+      {/if}
     </div>
-    <Button on:click={() => { showCreateForm = !showCreateForm; }} size="sm">
-      <Plus class="h-4 w-4 mr-1.5" />
+    <button
+      on:click={() => { showForm = !showForm; formError = null; }}
+      class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+    >
       New Incident
-    </Button>
+    </button>
   </div>
 
-  {#if showCreateForm}
-    <Card>
-      <CardContent class="pt-6 space-y-4">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <div class="space-y-2">
-            <label for="inc-title" class="text-sm font-medium">Title</label>
-            <input
-              id="inc-title"
-              bind:value={newTitle}
-              placeholder="Brief incident summary..."
-              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-          <div class="space-y-2">
-            <label for="inc-severity" class="text-sm font-medium">Severity</label>
-            <div class="flex items-center gap-2">
-              <select
-                id="inc-severity"
-                bind:value={newSeverity}
-                disabled={autoClassify}
-                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-              >
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </div>
-            <label class="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-              <input type="checkbox" bind:checked={autoClassify} class="rounded" />
-              Auto-classify severity
-            </label>
-            {#if autoClassify && newTitle.trim()}
-              <button
-                type="button"
-                class="text-xs text-primary underline-offset-2 hover:underline flex items-center gap-1"
-                disabled={classifying}
-                on:click={runAutoClassify}
-              >
-                <Zap class="h-3 w-3" />
-                {classifying ? "Classifying..." : "Preview classification"}
-              </button>
-            {/if}
-            {#if classificationHint}
-              <div class="text-xs bg-muted/50 rounded p-2 space-y-1">
-                <div>Suggested: <span class="font-medium capitalize">{classificationHint.severity}</span>
-                  <span class="text-muted-foreground">({Math.round(classificationHint.confidence * 100)}% confidence)</span>
-                </div>
-                {#if classificationHint.rules.length > 0}
-                  <div class="text-muted-foreground">Rules: {classificationHint.rules.join(", ")}</div>
-                {/if}
-              </div>
-            {/if}
-          </div>
+  <div class="mb-5 flex flex-wrap items-center gap-3">
+    <div class="flex gap-1">
+      {#each ["all", ...SEVERITIES] as sev}
+        <button
+          on:click={() => { severityFilter = sev; applyFilters(); }}
+          class="px-3 py-1 text-xs font-medium rounded-full border transition-colors
+            {severityFilter === sev
+              ? 'bg-blue-600 text-white border-blue-600'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
+        >
+          {sev === "all" ? "All" : sev.charAt(0).toUpperCase() + sev.slice(1)}
+        </button>
+      {/each}
+    </div>
+    <select
+      bind:value={statusFilter}
+      on:change={applyFilters}
+      class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+    >
+      <option value="all">All statuses</option>
+      <option value="open">Open</option>
+      <option value="investigating">Investigating</option>
+      <option value="resolved">Resolved</option>
+    </select>
+  </div>
+
+  {#if showForm}
+    <div class="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-4">New Incident</h2>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="inc-title">
+            Title <span class="text-red-500">*</span>
+          </label>
+          <input
+            id="inc-title"
+            type="text"
+            bind:value={formTitle}
+            placeholder="Brief description of the incident"
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-        <div class="space-y-2">
-          <label for="inc-desc" class="text-sm font-medium">Description</label>
-          <textarea
-            id="inc-desc"
-            bind:value={newDescription}
-            rows="3"
-            placeholder="Describe the incident..."
-            class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-          ></textarea>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="inc-severity">Severity</label>
+          <select
+            id="inc-severity"
+            bind:value={formSeverity}
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {#each SEVERITIES as s}
+              <option value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            {/each}
+          </select>
         </div>
-        <div class="flex justify-end gap-2">
-          <Button variant="outline" size="sm" on:click={() => { showCreateForm = false; }}>Cancel</Button>
-          <Button size="sm" on:click={createIncident} disabled={creating || !newTitle.trim()}>
-            {creating ? "Creating..." : "Create Incident"}
-          </Button>
+        <div class="sm:col-span-2">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="inc-source">
+            Source <span class="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            id="inc-source"
+            type="text"
+            bind:value={formSource}
+            placeholder="manual"
+            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-      </CardContent>
-    </Card>
+      </div>
+      {#if formError}
+        <p class="mt-3 text-sm text-red-600 dark:text-red-400">{formError}</p>
+      {/if}
+      <div class="mt-4 flex gap-2 justify-end">
+        <button
+          on:click={() => { showForm = false; formError = null; }}
+          class="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          on:click={createIncident}
+          disabled={submitting || !formTitle.trim()}
+          class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md font-medium transition-colors"
+        >
+          {submitting ? "Creating..." : "Create Incident"}
+        </button>
+      </div>
+    </div>
   {/if}
 
   {#if loading}
     <div class="space-y-3">
-      {#each [1, 2, 3] as _}
-        <Skeleton class="h-14 rounded-lg" />
+      {#each [1, 2, 3, 4] as _}
+        <div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if error}
-    <Alert variant="destructive">
-      <AlertTriangle class="h-4 w-4" />
-      <p class="pl-7">{error}</p>
-    </Alert>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+      <p class="text-red-800 dark:text-red-300">{error}</p>
+      <button on:click={loadIncidents} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+    </div>
   {:else if incidents.length === 0}
-    <Card class="border-dashed">
-      <CardContent class="py-10 text-center text-sm text-muted-foreground">
-        No incidents found. Click "New Incident" to create one.
-      </CardContent>
-    </Card>
+    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center">
+      <p class="text-gray-500 dark:text-gray-400 text-sm">No incidents</p>
+      <p class="mt-1 text-gray-400 dark:text-gray-500 text-xs">Click "New Incident" to create one.</p>
+    </div>
   {:else}
-    <Card>
-      <CardContent class="p-0">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-muted-foreground text-xs uppercase tracking-wider border-b">
-                <th class="px-4 py-3 font-medium w-6"></th>
-                <th class="px-4 py-3 font-medium">Severity</th>
-                <th class="px-4 py-3 font-medium">Title</th>
-                <th class="px-4 py-3 font-medium">Status</th>
-                <th class="px-4 py-3 font-medium">Owner</th>
-                <th class="px-4 py-3 font-medium">SLA</th>
-                <th class="px-4 py-3 font-medium">Created</th>
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <th class="px-5 py-3 font-medium">Title</th>
+              <th class="px-5 py-3 font-medium">Severity</th>
+              <th class="px-5 py-3 font-medium">Status</th>
+              <th class="px-5 py-3 font-medium">Source</th>
+              <th class="px-5 py-3 font-medium">Created</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            {#each incidents as inc (inc.id)}
+              <tr
+                class="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
+                on:click={() => { expandedId = expandedId === inc.id ? null : inc.id; }}
+              >
+                <td class="px-5 py-3 font-medium text-gray-900 dark:text-white">{inc.title}</td>
+                <td class="px-5 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize {severityClass(inc.severity)}">
+                    {inc.severity}
+                  </span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize {statusClass(inc.status)}">
+                    {inc.status}
+                  </span>
+                </td>
+                <td class="px-5 py-3 text-gray-500 dark:text-gray-400">{inc.source ?? "—"}</td>
+                <td class="px-5 py-3 text-gray-500 dark:text-gray-400">{relativeTime(inc.createdAt)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {#each incidents as incident (incident.id)}
-                <tr
-                  class="border-t hover:bg-muted/50 cursor-pointer transition-colors"
-                  on:click={() => toggleExpanded(String(incident.id))}
-                >
-                  <td class="px-4 py-3 text-muted-foreground">
-                    {#if expandedRows.has(String(incident.id))}
-                      <ChevronUp class="h-4 w-4" />
-                    {:else}
-                      <ChevronDown class="h-4 w-4" />
-                    {/if}
+              {#if expandedId === inc.id}
+                <tr class="bg-gray-50 dark:bg-gray-700/30">
+                  <td colspan="5" class="px-5 py-4">
+                    <dl class="flex flex-wrap gap-x-8 gap-y-2 text-xs text-gray-600 dark:text-gray-300">
+                      <div><dt class="font-semibold text-gray-400 uppercase">ID</dt><dd class="font-mono mt-0.5">{inc.id}</dd></div>
+                      <div><dt class="font-semibold text-gray-400 uppercase">Created</dt><dd class="mt-0.5">{new Date(inc.createdAt).toLocaleString()}</dd></div>
+                      <div><dt class="font-semibold text-gray-400 uppercase">Resolved</dt><dd class="mt-0.5">{inc.resolvedAt ? new Date(inc.resolvedAt).toLocaleString() : "—"}</dd></div>
+                      <div><dt class="font-semibold text-gray-400 uppercase">Source</dt><dd class="mt-0.5">{inc.source ?? "—"}</dd></div>
+                    </dl>
                   </td>
-                  <td class="px-4 py-3">
-                    <Badge variant={severityVariant(incident.severity)} class="capitalize">{incident.severity}</Badge>
-                  </td>
-                  <td class="px-4 py-3 font-medium">{incident.title}</td>
-                  <td class="px-4 py-3">
-                    <Badge variant={statusVariant(incident.status)} class="capitalize">{incident.status}</Badge>
-                  </td>
-                  <td class="px-4 py-3 text-muted-foreground text-xs">
-                    {incident.ownerEmail || "—"}
-                  </td>
-                  <td class="px-4 py-3">
-                    {#if incident.status !== "resolved"}
-                      {#if isSlaBreached(incident)}
-                        <Badge variant="destructive" class="text-xs">Breached</Badge>
-                      {:else if slaTimeRemaining(incident)}
-                        <span class="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock class="h-3 w-3" />
-                          {slaTimeRemaining(incident)}
-                        </span>
-                      {:else}
-                        <span class="text-xs text-muted-foreground">—</span>
-                      {/if}
-                    {:else}
-                      <span class="text-xs text-muted-foreground">—</span>
-                    {/if}
-                  </td>
-                  <td class="px-4 py-3 text-muted-foreground text-xs">{new Date(incident.createdAt).toLocaleString()}</td>
                 </tr>
-                {#if expandedRows.has(String(incident.id))}
-                  <tr class="border-t bg-muted/30" on:click|stopPropagation>
-                    <td colspan="7" class="px-6 py-4">
-                      <div class="space-y-4">
-                        <!-- Incident details + actions -->
-                        <div class="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <span class="text-xs font-medium text-muted-foreground uppercase">Description</span>
-                            <p class="mt-1 text-sm">{incident.description || "No description provided."}</p>
-                          </div>
-                          <div class="space-y-3">
-                            <!-- Status actions -->
-                            <div>
-                              <span class="text-xs font-medium text-muted-foreground uppercase">Actions</span>
-                              <div class="flex gap-2 mt-1">
-                                {#if incident.status === "open"}
-                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "investigating"); }}>
-                                    Investigate
-                                  </Button>
-                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "resolved"); }}>
-                                    Resolve
-                                  </Button>
-                                {:else if incident.status === "investigating"}
-                                  <Button size="sm" variant="outline" on:click={(e) => { e.stopPropagation(); updateStatus(incident.id, "resolved"); }}>
-                                    Resolve
-                                  </Button>
-                                {:else}
-                                  <span class="text-xs text-muted-foreground italic">Resolved</span>
-                                {/if}
-                                {#if incident.status !== "resolved"}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    disabled={escalating.has(incident.id)}
-                                    on:click={(e) => { e.stopPropagation(); escalateIncident(incident.id); }}
-                                  >
-                                    <ExternalLink class="h-3 w-3 mr-1" />
-                                    {escalating.has(incident.id) ? "Escalating..." : "Escalate"}
-                                  </Button>
-                                {/if}
-                              </div>
-                            </div>
-
-                            <!-- Severity change -->
-                            {#if incident.status !== "resolved"}
-                              <div>
-                                <span class="text-xs font-medium text-muted-foreground uppercase">Severity</span>
-                                <div class="mt-1">
-                                  <select
-                                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full max-w-xs"
-                                    value={incident.severity}
-                                    disabled={changingSeverity.has(incident.id)}
-                                    on:change|stopPropagation={(e) => {
-                                      const val = e.currentTarget.value;
-                                      if (val && val !== incident.severity) changeSeverity(incident.id, val);
-                                    }}
-                                  >
-                                    <option value="critical">Critical</option>
-                                    <option value="high">High</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="low">Low</option>
-                                  </select>
-                                </div>
-                              </div>
-                            {/if}
-
-                            <!-- Assignment -->
-                            <div>
-                              <span class="text-xs font-medium text-muted-foreground uppercase">Assign to</span>
-                              <div class="mt-1">
-                                {#if teamMembers.length > 0}
-                                  <select
-                                    class="h-8 rounded-md border border-input bg-background px-2 text-xs w-full max-w-xs"
-                                    value={incident.ownerEmail || ""}
-                                    on:change|stopPropagation={(e) => {
-                                      const val = e.currentTarget.value;
-                                      if (val) assignIncident(incident.id, val);
-                                    }}
-                                  >
-                                    <option value="">Unassigned</option>
-                                    {#each teamMembers as email}
-                                      <option value={email}>{email}</option>
-                                    {/each}
-                                  </select>
-                                {:else}
-                                  <span class="text-xs text-muted-foreground">{incident.ownerEmail || "Unassigned"}</span>
-                                {/if}
-                              </div>
-                            </div>
-
-                            <!-- Metadata -->
-                            <div class="flex gap-4 text-xs text-muted-foreground">
-                              {#if incident.source}
-                                <span>Source: {incident.source}</span>
-                              {/if}
-                              {#if incident.resolvedAt}
-                                <span>Resolved: {new Date(incident.resolvedAt).toLocaleString()}</span>
-                              {/if}
-                              <span class="font-mono">{incident.id.slice(0, 12)}...</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <!-- Timeline -->
-                        <div>
-                          <span class="text-xs font-medium text-muted-foreground uppercase">Timeline</span>
-                          <div class="mt-2 space-y-2 max-h-64 overflow-y-auto">
-                            {#if loadingTimeline.has(incident.id)}
-                              <Skeleton class="h-8 rounded" />
-                            {:else if timelineCache[incident.id]?.length}
-                              {#each timelineCache[incident.id] as entry}
-                                <div class="flex gap-2 text-xs border-l-2 border-border pl-3 py-1">
-                                  <span>{timelineIcon(entry.entryType)}</span>
-                                  <div class="flex-1">
-                                    <span class="font-medium">{entry.actorEmail || "System"}</span>
-                                    <span class="text-muted-foreground ml-1">{entry.content}</span>
-                                    <span class="text-muted-foreground ml-2">{new Date(entry.createdAt).toLocaleString()}</span>
-                                  </div>
-                                </div>
-                              {/each}
-                            {:else}
-                              <p class="text-xs text-muted-foreground italic">No timeline entries yet.</p>
-                            {/if}
-                          </div>
-
-                          <!-- Add comment -->
-                          {#if incident.status !== "resolved"}
-                            <div class="flex gap-2 mt-2" on:click|stopPropagation>
-                              <input
-                                type="text"
-                                placeholder="Add a comment..."
-                                bind:value={commentInputs[incident.id]}
-                                on:keydown={(e) => { if (e.key === "Enter") addComment(incident.id); }}
-                                class="flex-1 h-8 rounded-md border border-input bg-background px-2 text-xs"
-                              />
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                on:click={(e) => { e.stopPropagation(); addComment(incident.id); }}
-                                disabled={submittingComment.has(incident.id) || !commentInputs[incident.id]?.trim()}
-                              >
-                                <Send class="h-3 w-3" />
-                              </Button>
-                            </div>
-                          {/if}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                {/if}
-              {/each}
-            </tbody>
-          </table>
+              {/if}
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      {#if nextCursor}
+        <div class="border-t border-gray-200 dark:border-gray-700 px-5 py-3">
+          <button
+            on:click={loadMore}
+            disabled={loadingMore}
+            class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+          >
+            {loadingMore ? "Loading..." : "Show more"}
+          </button>
         </div>
-      </CardContent>
-    </Card>
+      {/if}
+    </div>
   {/if}
 </div>
