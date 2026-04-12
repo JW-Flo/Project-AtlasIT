@@ -17,6 +17,7 @@
       connectedApps: number;
       evidenceLast30Days: number;
       lastSnapshotAt: string | null;
+      signedAttestations?: number;
     };
     commitment: string;
   }
@@ -171,7 +172,7 @@
       {/if}
 
       <h2 class="mt-10 mb-3 text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Operational Stats</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
           <div class="text-xs text-gray-500 dark:text-gray-400">Connected integrations</div>
           <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.stats.connectedApps}</div>
@@ -181,6 +182,11 @@
           <div class="text-xs text-gray-500 dark:text-gray-400">Evidence last 30 days</div>
           <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.stats.evidenceLast30Days.toLocaleString()}</div>
           <p class="mt-1 text-xs text-gray-400">Operational records scored</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+          <div class="text-xs text-gray-500 dark:text-gray-400">Signed attestations</div>
+          <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{data.stats.signedAttestations ?? 0}</div>
+          <p class="mt-1 text-xs text-gray-400">Formal executive sign-offs</p>
         </div>
         <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
           <div class="text-xs text-gray-500 dark:text-gray-400">Update cadence</div>

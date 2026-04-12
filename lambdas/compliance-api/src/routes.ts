@@ -335,9 +335,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         const publicFlag = Boolean(cfg.trust_center_public);
         if (!publicFlag) return fail(404, "Trust center not published", "NOT_PUBLISHED");
 
-        const [packs, integrations, recentEvidence, latestSnapshot] = await Promise.all([
-          pool.query(
-            `SELECT p.id, p.name as "label", p.framework_id as "framework",
+        const [packs, integrations, recentEvidence, latestSnapshot, activeAttestations] =
+          await Promise.all([
+            pool.query(
+              `SELECT p.id, p.name as "label", p.framework_id as "framework",
                     p.controls_count::int as "controlCount",
                     tcp.pass_count as "passCount", tcp.fail_count as "failCount",
                     tcp.unknown_count as "unknownCount", tcp.last_evaluated_at as "lastEvaluatedAt"
@@ -345,23 +346,27 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
              INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
              WHERE tcp.tenant_id = $1
              ORDER BY p.name`,
-            [tenant.id],
-          ),
-          pool.query(
-            `SELECT COUNT(*) as cnt FROM integrations WHERE tenant_id = $1 AND status = 'active'`,
-            [tenant.id],
-          ),
-          pool.query(
-            `SELECT COUNT(*) as cnt FROM compliance_evidence
+              [tenant.id],
+            ),
+            pool.query(
+              `SELECT COUNT(*) as cnt FROM integrations WHERE tenant_id = $1 AND status = 'active'`,
+              [tenant.id],
+            ),
+            pool.query(
+              `SELECT COUNT(*) as cnt FROM compliance_evidence
              WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
-            [tenant.id],
-          ),
-          pool.query(
-            `SELECT snapshot_at FROM compliance_score_snapshots
+              [tenant.id],
+            ),
+            pool.query(
+              `SELECT snapshot_at FROM compliance_score_snapshots
              WHERE tenant_id = $1 ORDER BY snapshot_at DESC LIMIT 1`,
-            [tenant.id],
-          ),
-        ]);
+              [tenant.id],
+            ),
+            pool.query(
+              `SELECT COUNT(*) as cnt FROM attestations WHERE tenant_id = $1 AND status = 'active'`,
+              [tenant.id],
+            ),
+          ]);
 
         const installed = packs.rows;
         let totalControls = 0;
@@ -406,6 +411,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
               connectedApps: parseInt(integrations.rows[0]?.cnt ?? "0", 10),
               evidenceLast30Days: parseInt(recentEvidence.rows[0]?.cnt ?? "0", 10),
               lastSnapshotAt: latestSnapshot.rows[0]?.snapshot_at ?? null,
+              signedAttestations: parseInt(activeAttestations.rows[0]?.cnt ?? "0", 10),
             },
             commitment:
               "Scores are generated continuously from live operational evidence, not self-attestation.",
@@ -2888,6 +2894,232 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           error: (e as Error).message,
         });
         return fail(500, "Failed to list acknowledgements", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // ── Attestations ──────────────────────────────────────────────────────────
+
+  // GET /api/v1/attestations — list tenant's attestations
+  if (path === "/api/v1/attestations" && method === "GET") {
+    const frameworkFilter = qs.framework ?? null;
+    const statusFilter = qs.status ?? null;
+    try {
+      const conditions = [`tenant_id = $1`];
+      const bindings: unknown[] = [auth.tenantId];
+      if (frameworkFilter) {
+        conditions.push(`framework = $${bindings.length + 1}`);
+        bindings.push(frameworkFilter);
+      }
+      if (statusFilter) {
+        conditions.push(`status = $${bindings.length + 1}`);
+        bindings.push(statusFilter);
+      }
+      const rows = await pool.query(
+        `SELECT id, framework, control_id as "controlId", attestation_key as "attestationKey",
+                status, statement, attested_by_id as "attestedById",
+                attested_by_email as "attestedByEmail", attested_by_name as "attestedByName",
+                attested_at as "attestedAt", valid_until as "validUntil",
+                evidence_ref_ids as "evidenceRefIds",
+                revoked_at as "revokedAt", revoked_by as "revokedBy",
+                revocation_reason as "revocationReason", created_at as "createdAt"
+         FROM attestations
+         WHERE ${conditions.join(" AND ")}
+         ORDER BY attested_at DESC
+         LIMIT 200`,
+        bindings,
+      );
+      const frameworkCounts = await pool.query(
+        `SELECT framework, status, COUNT(*) as cnt
+         FROM attestations WHERE tenant_id = $1
+         GROUP BY framework, status ORDER BY framework`,
+        [auth.tenantId],
+      );
+      return ok({
+        status: "success",
+        data: {
+          items: rows.rows,
+          total: rows.rows.length,
+          facets: { byFramework: frameworkCounts.rows },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[compliance-api] attestations.list.error", { error: (e as Error).message });
+      return fail(500, "Failed to list attestations", "INTERNAL_ERROR");
+    }
+  }
+
+  // POST /api/v1/attestations — create a new attestation (admin/owner only)
+  if (path === "/api/v1/attestations" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required to create attestations", "FORBIDDEN");
+    }
+    const body = parseBody(event) as {
+      framework?: string;
+      controlId?: string;
+      attestationKey?: string;
+      statement?: string;
+      validUntil?: string;
+      evidenceRefIds?: string[];
+    };
+    if (!body.framework || !body.controlId || !body.attestationKey || !body.statement) {
+      return fail(
+        400,
+        "framework, controlId, attestationKey, statement required",
+        "VALIDATION_FAILED",
+      );
+    }
+    try {
+      const id = crypto.randomUUID();
+      const userRow = await pool.query(
+        `SELECT email, display_name FROM users WHERE id = $1 AND tenant_id = $2`,
+        [auth.userId, auth.tenantId],
+      );
+      const email = userRow.rows[0]?.email ?? null;
+      const name = userRow.rows[0]?.display_name ?? email ?? auth.userId;
+
+      await pool.query(
+        `INSERT INTO attestations
+           (id, tenant_id, framework, control_id, attestation_key, status, statement,
+            attested_by_id, attested_by_email, attested_by_name, attested_at, valid_until,
+            evidence_ref_ids, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, NOW(), $10, $11, NOW(), NOW())`,
+        [
+          id,
+          auth.tenantId,
+          body.framework,
+          body.controlId,
+          body.attestationKey,
+          body.statement,
+          auth.userId,
+          email,
+          name,
+          body.validUntil ?? null,
+          body.evidenceRefIds ?? [],
+        ],
+      );
+
+      // Emit positive compliance evidence — attestation is strong proof the control is working.
+      const evId = crypto.randomUUID();
+      await pool.query(
+        `INSERT INTO compliance_evidence
+           (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
+         VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
+        [
+          evId,
+          auth.tenantId,
+          body.framework,
+          body.controlId,
+          id,
+          email ?? auth.userId,
+          JSON.stringify({
+            impact: "positive",
+            eventType: "attestation.signed",
+            reasoning: `${name} attested: ${body.statement.slice(0, 200)}`,
+            confidence: 1,
+            auditAction: "attestation.signed",
+            attestationKey: body.attestationKey,
+          }),
+        ],
+      );
+      return ok(
+        { status: "success", data: { id, evidenceId: evId }, timestamp: new Date().toISOString() },
+        201,
+      );
+    } catch (e) {
+      const err = (e as Error).message;
+      console.error("[compliance-api] attestations.create.error", { error: err });
+      // Uniqueness violation → clearer 409
+      if (err.includes("idx_attestations_key_unique")) {
+        return fail(
+          409,
+          "An active attestation with that key already exists — revoke the existing one first",
+          "CONFLICT",
+        );
+      }
+      return fail(500, "Failed to create attestation", "INTERNAL_ERROR");
+    }
+  }
+
+  // GET /api/v1/attestations/:id — detail
+  {
+    const m = path.match(/^\/api\/v1\/attestations\/([0-9a-f-]{36})$/);
+    if (m && method === "GET") {
+      const id = m[1];
+      const rows = await pool.query(
+        `SELECT id, framework, control_id as "controlId", attestation_key as "attestationKey",
+                status, statement, attested_by_id as "attestedById",
+                attested_by_email as "attestedByEmail", attested_by_name as "attestedByName",
+                attested_at as "attestedAt", valid_until as "validUntil",
+                evidence_ref_ids as "evidenceRefIds",
+                revoked_at as "revokedAt", revoked_by as "revokedBy",
+                revocation_reason as "revocationReason"
+         FROM attestations WHERE id = $1 AND tenant_id = $2`,
+        [id, auth.tenantId],
+      );
+      if (rows.rows.length === 0) return fail(404, "Attestation not found", "NOT_FOUND");
+      return ok({ status: "success", data: rows.rows[0], timestamp: new Date().toISOString() });
+    }
+  }
+
+  // POST /api/v1/attestations/:id/revoke — revoke (admin/owner only)
+  {
+    const m = path.match(/^\/api\/v1\/attestations\/([0-9a-f-]{36})\/revoke$/);
+    if (m && method === "POST") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const id = m[1];
+      const body = parseBody(event) as { reason?: string };
+      try {
+        const attRow = await pool.query(
+          `SELECT framework, control_id, statement FROM attestations WHERE id = $1 AND tenant_id = $2 AND status = 'active'`,
+          [id, auth.tenantId],
+        );
+        if (attRow.rows.length === 0) return fail(404, "Active attestation not found", "NOT_FOUND");
+        const a = attRow.rows[0];
+
+        await pool.query(
+          `UPDATE attestations
+           SET status = 'revoked', revoked_at = NOW(), revoked_by = $2,
+               revocation_reason = $3, updated_at = NOW()
+           WHERE id = $1 AND tenant_id = $4`,
+          [id, auth.userId, body.reason ?? null, auth.tenantId],
+        );
+
+        // Emit negative compliance evidence — revoked attestation weakens the control.
+        const evId = crypto.randomUUID();
+        await pool.query(
+          `INSERT INTO compliance_evidence
+             (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
+           VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
+          [
+            evId,
+            auth.tenantId,
+            a.framework,
+            a.control_id,
+            id,
+            auth.userId,
+            JSON.stringify({
+              impact: "negative",
+              eventType: "attestation.revoked",
+              reasoning: `Attestation revoked${body.reason ? ": " + body.reason : ""}`,
+              confidence: 1,
+              auditAction: "attestation.revoked",
+            }),
+          ],
+        );
+        return ok({
+          status: "success",
+          data: { id, revoked: true },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] attestations.revoke.error", {
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to revoke attestation", "INTERNAL_ERROR");
       }
     }
   }
