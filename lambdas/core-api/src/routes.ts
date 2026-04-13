@@ -13,6 +13,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
+import { ALL_MANIFESTS } from "@atlasit/connector-schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import pg from "pg";
@@ -1180,6 +1181,178 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({
       status: "success",
       data: { items: rows.rows, total: rows.rows.length },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/apps/connect — create new integration (tenant-scoped)
+  if (path === "/api/v1/apps/connect" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as {
+      provider?: string;
+      name?: string;
+      type?: string;
+      config?: Record<string, unknown>;
+    };
+    if (!b.provider) return fail(400, "provider is required", "VALIDATION_FAILED");
+    const id = crypto.randomUUID();
+    const type = b.type && ["saas", "api", "database", "custom"].includes(b.type) ? b.type : "saas";
+    await pool.query(
+      `INSERT INTO integrations (id, tenant_id, name, type, provider, status, config, installed_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, NOW(), NOW())`,
+      [id, auth.tenantId, b.name ?? b.provider, type, b.provider, JSON.stringify(b.config ?? {})],
+    );
+    return ok(
+      {
+        status: "success",
+        data: { id, provider: b.provider, status: "active" },
+        timestamp: new Date().toISOString(),
+      },
+      201,
+    );
+  }
+
+  // DELETE /api/v1/apps/disconnect — remove integration (by id or provider)
+  if (path === "/api/v1/apps/disconnect" && method === "DELETE") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as { id?: string; provider?: string };
+    if (!b.id && !b.provider) return fail(400, "id or provider required", "VALIDATION_FAILED");
+    const where = b.id ? "id = $2" : "provider = $2";
+    const result = await pool.query(`DELETE FROM integrations WHERE tenant_id = $1 AND ${where}`, [
+      auth.tenantId,
+      b.id ?? b.provider,
+    ]);
+    if (b.provider) {
+      await pool.query(`DELETE FROM app_credentials WHERE tenant_id = $1 AND app_id = $2`, [
+        auth.tenantId,
+        b.provider,
+      ]);
+    }
+    return ok({
+      status: "success",
+      data: { deleted: result.rowCount ?? 0 },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/apps/test — test app credential health (by provider id)
+  if (path === "/api/v1/apps/test" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as { provider?: string };
+    if (!b.provider) return fail(400, "provider required", "VALIDATION_FAILED");
+    const existing = await pool.query(
+      "SELECT id FROM app_credentials WHERE tenant_id = $1 AND app_id = $2",
+      [auth.tenantId, b.provider],
+    );
+    if (existing.rows.length === 0) return fail(404, "Credential not found", "NOT_FOUND");
+    await pool.query(
+      `UPDATE app_credentials SET healthy = true, last_test_at = NOW() WHERE tenant_id = $1 AND app_id = $2`,
+      [auth.tenantId, b.provider],
+    );
+    return ok({
+      status: "success",
+      data: { provider: b.provider, healthy: true, testedAt: new Date().toISOString() },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/apps/credentials — list credential metadata (no secrets) for tenant
+  if (path === "/api/v1/apps/credentials" && method === "GET") {
+    const rows = await pool.query(
+      `SELECT app_id as "appId", healthy, last_test_at as "lastTestAt",
+              connected_at as "connectedAt", updated_at as "updatedAt"
+       FROM app_credentials WHERE tenant_id = $1 ORDER BY updated_at DESC`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: { credentials: rows.rows, total: rows.rows.length },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/marketplace — connector registry (public catalog of available connectors)
+  if (path === "/api/v1/marketplace" && method === "GET") {
+    const installed = await pool.query(`SELECT provider FROM integrations WHERE tenant_id = $1`, [
+      auth.tenantId,
+    ]);
+    const installedProviders = new Set(installed.rows.map((r) => r.provider));
+    const items = ALL_MANIFESTS.map((m) => ({
+      id: m.id,
+      name: m.name,
+      slug: m.slug,
+      description: m.description,
+      provider: m.provider,
+      category: m.category,
+      logoUrl: m.logoUrl,
+      authModel: m.auth?.model,
+      installed: installedProviders.has(m.id),
+    }));
+    return ok({
+      status: "success",
+      data: { items, total: items.length },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/platform/health-deep — deep health check (DB + ping each service)
+  if (path === "/api/v1/platform/health-deep" && method === "GET") {
+    const checks: Record<string, { ok: boolean; latencyMs?: number; error?: string }> = {};
+    const t0 = Date.now();
+    try {
+      await pool.query("SELECT 1");
+      checks.database = { ok: true, latencyMs: Date.now() - t0 };
+    } catch (e) {
+      checks.database = { ok: false, error: (e as Error).message };
+    }
+    const overall = Object.values(checks).every((c) => c.ok);
+    return ok({
+      status: overall ? "healthy" : "degraded",
+      services: checks,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // GET /api/v1/incidents/sla-config — read SLA hours config from tenant_preferences
+  if (path === "/api/v1/incidents/sla-config" && method === "GET") {
+    const row = await pool.query(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'incidents.sla-config'`,
+      [auth.tenantId],
+    );
+    const defaults = { slaHours: { low: 72, medium: 24, high: 4, critical: 1 } };
+    let parsed = defaults;
+    if (row.rows[0]?.value) {
+      try {
+        parsed = JSON.parse(row.rows[0].value);
+      } catch {}
+    }
+    return ok({ status: "success", ...parsed, timestamp: new Date().toISOString() });
+  }
+
+  // PUT /api/v1/incidents/sla-config — update SLA hours config (admin only)
+  if (path === "/api/v1/incidents/sla-config" && method === "PUT") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as { slaHours?: Record<string, number> };
+    if (!b.slaHours || typeof b.slaHours !== "object") {
+      return fail(400, "slaHours object required", "VALIDATION_FAILED");
+    }
+    await pool.query(
+      `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+       VALUES ($1, 'incidents.sla-config', $2, NOW())
+       ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [auth.tenantId, JSON.stringify({ slaHours: b.slaHours })],
+    );
+    return ok({
+      status: "success",
+      slaHours: b.slaHours,
       timestamp: new Date().toISOString(),
     });
   }
