@@ -39,6 +39,37 @@ function ok(body: unknown, status = 200): APIGatewayProxyResultV2 {
   return { statusCode: status, headers: JSON_HEADERS, body: JSON.stringify(body) };
 }
 
+// Insert into events + enqueue SQS (orchestrator picks it up for automation).
+async function publishEvent(
+  tenantId: string,
+  type: string,
+  source: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const id = crypto.randomUUID();
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+      [id, tenantId, type, source, JSON.stringify(payload)],
+    );
+    await svc.queueRepo.send({
+      tenantId,
+      workflowRunId: id,
+      stepIndex: 0,
+      action: "process_event",
+      payload: { eventId: id, type, source, data: payload },
+    });
+  } catch (err) {
+    console.warn("[onboarding-api] publishEvent failed", {
+      type,
+      source,
+      error: (err as Error).message,
+    });
+  }
+}
+
 function fail(status: number, message: string, code = "ERROR"): APIGatewayProxyResultV2 {
   return {
     statusCode: status,
@@ -343,8 +374,11 @@ async function handleSignup(
     return fail(409, "An account with this email already exists", "EMAIL_EXISTS");
   }
 
-  // Generate unique tenant ID from company name
-  const tenantId = await generateUniqueSlug(companyName, pool);
+  // Tenant ID is a UUID going forward (legacy tenants kept slug-style IDs for
+  // migration safety — see AWS-MIGRATION-STATUS.md session 3 + migration 0060).
+  // Slug is derived from company name for human-readable trust center URLs.
+  const tenantId = crypto.randomUUID();
+  const slug = await generateUniqueSlug(companyName, pool);
 
   // Hash password
   const passwordHash = await bcrypt.hash(password, 10);
@@ -356,7 +390,7 @@ async function handleSignup(
   await pool.query(
     `INSERT INTO tenants (id, name, slug, tier, status, created_at, updated_at)
      VALUES ($1, $2, $3, 'free', 'active', NOW(), NOW())`,
-    [tenantId, companyName, tenantId],
+    [tenantId, companyName, slug],
   );
 
   // Insert user
@@ -385,6 +419,19 @@ async function handleSignup(
       }),
     ],
   );
+
+  await publishEvent(tenantId, "tenant.created", "onboarding-api", {
+    tenantId,
+    slug,
+    adminUserId: userId,
+    adminEmail: email,
+    companyName,
+  });
+  await publishEvent(tenantId, "user.created", "onboarding-api", {
+    userId,
+    email,
+    role: "admin",
+  });
 
   return ok(
     {

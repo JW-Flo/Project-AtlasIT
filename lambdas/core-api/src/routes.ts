@@ -73,6 +73,40 @@ function body(event: APIGatewayProxyEventV2): unknown {
   }
 }
 
+// ── Event publishing ──────────────────────────────────────────────────────
+// Insert into events + enqueue SQS message so the orchestrator picks it up
+// and fans out to automation rules. Best-effort: failures don't block the
+// calling route — event publishing is observability, not critical-path.
+async function publishEvent(
+  tenantId: string,
+  type: string,
+  source: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const id = crypto.randomUUID();
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+      [id, tenantId, type, source, JSON.stringify(payload)],
+    );
+    await svc.queueRepo.send({
+      tenantId,
+      workflowRunId: id,
+      stepIndex: 0,
+      action: "process_event",
+      payload: { eventId: id, type, source, data: payload },
+    });
+  } catch (err) {
+    console.warn("[core-api] publishEvent failed", {
+      type,
+      source,
+      error: (err as Error).message,
+    });
+  }
+}
+
 // ── TOTP helpers (RFC 6238) ───────────────────────────────────────────────
 // 160-bit secret, 30s step, 6-digit code, SHA-1 HMAC.
 function base32Encode(buf: Buffer): string {
@@ -497,6 +531,13 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       const consoleBase = process.env.CONSOLE_BASE_URL ?? "https://www.atlasit.pro";
       const inviteUrl = `${consoleBase}/accept-invite?token=${encodeURIComponent(rawToken)}`;
 
+      await publishEvent(auth.tenantId, "user.invited", "core-api", {
+        userId,
+        email,
+        role,
+        invitedBy: auth.userId,
+      });
+
       return ok(
         {
           status: "success",
@@ -599,6 +640,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         [invite.user_id],
       );
       const u = userRow.rows[0];
+
+      await publishEvent(invite.tenant_id, "user.activated", "core-api", {
+        userId: invite.user_id,
+        email: u.email,
+        role: u.role,
+      });
 
       return ok({
         status: "success",
@@ -875,6 +922,21 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         b.idempotencyKey ?? null,
       ],
     );
+    // Fan-out to SQS so orchestrator consumer processes the event.
+    try {
+      await svc.queueRepo.send({
+        tenantId: b.tenantId,
+        workflowRunId: id,
+        stepIndex: 0,
+        action: "process_event",
+        payload: { eventId: id, type: b.type, source: b.source, data: b.payload ?? {} },
+      });
+    } catch (qErr) {
+      console.warn("[core-api] events.sqs_fanout_failed", {
+        id,
+        error: (qErr as Error).message,
+      });
+    }
     return ok(
       {
         status: "success",
@@ -1480,6 +1542,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
        VALUES ($1, $2, $3, $4, $5, 'active', $6, NOW(), NOW())`,
       [id, auth.tenantId, b.name ?? b.provider, type, b.provider, JSON.stringify(b.config ?? {})],
     );
+    await publishEvent(auth.tenantId, "integration.connected", "core-api", {
+      integrationId: id,
+      provider: b.provider,
+      type,
+      actor: auth.userId,
+    });
     return ok(
       {
         status: "success",
@@ -1508,6 +1576,13 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         b.provider,
       ]);
     }
+    if ((result.rowCount ?? 0) > 0) {
+      await publishEvent(auth.tenantId, "integration.disconnected", "core-api", {
+        integrationId: b.id ?? null,
+        provider: b.provider ?? null,
+        actor: auth.userId,
+      });
+    }
     return ok({
       status: "success",
       data: { deleted: result.rowCount ?? 0 },
@@ -1531,6 +1606,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       `UPDATE app_credentials SET healthy = true, last_test_at = NOW() WHERE tenant_id = $1 AND app_id = $2`,
       [auth.tenantId, b.provider],
     );
+    await publishEvent(auth.tenantId, "integration.tested", "core-api", {
+      provider: b.provider,
+      healthy: true,
+      actor: auth.userId,
+    });
     return ok({
       status: "success",
       data: { provider: b.provider, healthy: true, testedAt: new Date().toISOString() },
@@ -1686,6 +1766,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       auth.userId,
     ]);
     await pool.query(`UPDATE users SET mfa_enabled = TRUE WHERE id = $1`, [auth.userId]);
+    await publishEvent(auth.tenantId, "mfa.enabled", "core-api", {
+      userId: auth.userId,
+      email: auth.email,
+    });
     return ok({ enabled: true });
   }
 
@@ -1702,6 +1786,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
     await pool.query(`DELETE FROM mfa_enrollments WHERE user_id = $1`, [auth.userId]);
     await pool.query(`UPDATE users SET mfa_enabled = FALSE WHERE id = $1`, [auth.userId]);
+    await publishEvent(auth.tenantId, "mfa.disabled", "core-api", {
+      userId: auth.userId,
+      email: auth.email,
+    });
     return ok({ enabled: false });
   }
 
