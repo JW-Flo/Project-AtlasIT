@@ -35,15 +35,17 @@ async function fetchWithRetry(
   throw lastErr!;
 }
 
-// Map EventBridge rule names (or detail-type) to job names
+// Map EventBridge rule names (or detail-type) to job names.
+//
+// Historical rules (daily_etl, compliance_snapshot_refresh, discovery_sync)
+// pointed at /internal endpoints that do not exist post-AWS-migration. They
+// failed every run. Removed from the default list; add them back only with
+// real endpoint targets.
 const RULE_TO_JOB: Record<string, string[]> = {
-  "atlasit-daily-etl": ["daily_etl"],
   "atlasit-quarter-hour": ["quarter_hour_monitor"],
-  "atlasit-compliance-refresh": ["compliance_snapshot_refresh"],
   "atlasit-compliance-packs-daily-dev": ["compliance_packs_evaluate"],
-  "atlasit-discovery-sync": ["discovery_sync"],
-  // Default: run all cron jobs (covers the legacy 15-min rule)
-  default: ["daily_etl", "quarter_hour_monitor", "compliance_snapshot_refresh", "discovery_sync"],
+  // Default (generic 15-min tick): just a health ping
+  default: ["quarter_hour_monitor"],
 };
 
 /** Extract the EventBridge rule name from the event resource ARN. */
@@ -154,8 +156,14 @@ export async function runScheduledJobs(event: ScheduledEvent): Promise<void> {
     }),
   );
 
-  const succeeded = results.filter((r) => r.status === "fulfilled").length;
-  const failed = results.filter((r) => r.status === "rejected").length;
+  // executeJob() returns { ok, error } rather than throwing, so every
+  // promise is "fulfilled" regardless of job outcome. Count by result.ok.
+  let succeeded = 0;
+  let failed = 0;
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.ok) succeeded++;
+    else failed++;
+  }
 
   log("info", "cron.done", { runId, total: jobNames.length, succeeded, failed });
 
