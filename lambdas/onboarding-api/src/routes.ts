@@ -417,7 +417,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // ── Health (no auth) ──────────────────────────────────────────────────────
-  if (path === "/health" && method === "GET") {
+  if ((path === "/health" || path === "/api/onboarding/health") && method === "GET") {
     return ok({
       status: "healthy",
       service: "onboarding",
@@ -456,8 +456,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
-  // ── POST /onboarding/start — start onboarding session ─────────────────────
-  if (path === "/onboarding/start" && method === "POST") {
+  // ── POST /api/onboarding/start — start onboarding session ─────────────────
+  if (path === "/api/onboarding/start" && method === "POST") {
     const b = parseBody(event) as {
       tenantId?: string;
       industry?: string;
@@ -477,7 +477,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // ── POST /onboarding/submit or /api/onboarding — submit onboarding answers ─
-  if ((path === "/onboarding/submit" || path === "/api/onboarding") && method === "POST") {
+  if ((path === "/api/onboarding/submit" || path === "/api/onboarding") && method === "POST") {
     const b = parseBody(event) as {
       tenantId?: string;
       answers?: Record<string, unknown>;
