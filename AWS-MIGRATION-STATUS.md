@@ -26,11 +26,23 @@ Lambda backends:
 - Replaced dead `wrangler d1 migrations apply` step with `atlasit-migration-runner` Lambda invocation + git diff to apply only new migrations
 - Lambda version prune: keep last 5 published versions per function after each deploy
 
-**Terraform hygiene (PR #449):**
+**Terraform hygiene (PR #449, applied 2026-04-13):**
 
 - Log groups for 9 adapters (`for_each`) with 30d retention + import blocks
 - S3 lifecycle rules: 30d noncurrent-version expiration on `policies` + `artifacts`; 7d MPU cleanup on `console`
 - `iam-users.tf` (new): attach ReadOnlyAccess + service-specific FullAccess to `atlasit-dev-cli` (was blocking audits + cleanup)
+- `terraform apply` ran successfully. Plan now clean (2 benign computed-value drifts on NAT instance + Aurora SG).
+
+**P0 bug fixes from platform QA pass (PRs #455-#457):**
+
+Platform QA uncovered silent production failures — Lambda code swallowed errors so CloudWatch `Errors` metric read 0 while core features were broken.
+
+- **compliance-api + orchestrator handlers crashed every scheduled run.** EventBridge Scheduler delivers `{source, action}` events (no `rawPath`), but handlers blindly called `event.rawPath.startsWith(...)`. Impact: compliance scoring produced ~2 snapshots/day instead of ~240+. Fix: detect scheduler events first, synthesize an internal API GW event shape for compliance-scoring → `/internal/compliance-packs/evaluate-all`. **Verified:** 5 snapshots in first 30 min after fix vs 13 total over previous 7 days.
+- **scheduler aggregator lied about success.** `executeJob()` returned `{ok:false}` rather than throwing, so `Promise.allSettled` saw every job as fulfilled. Logs showed `succeeded=4 failed=0` while 3 jobs actually 404'd. Fixed counter to key off `result.ok`.
+- **scheduler default list had 3 dead endpoints.** `daily_etl`, `compliance_snapshot_refresh`, `discovery_sync` targeted `/internal/*` routes that don't exist post-migration. Removed.
+- **onboarding-api 100% broken.** Handler stripped `/api/onboarding` prefix but routes still matched on full path. Only `/health` worked by accident. Self-serve signup → wizard, session retrieval silently failed. Fix: remove stripping; normalize 2 routes.
+
+**CI cleanup (PR #456):** Removed all 14 legacy CF deploy jobs (deploy-root-worker, deploy-core-api, deploy-orchestrator, deploy-compliance, deploy-console, deploy-onboarding, deploy-slack-agent, deploy-dispatch, deploy-scheduler, deploy-marketplace, deploy-adapter-\* × 7, deploy-docs, deploy-apex-redirect, deploy-email, deploy-slack-approval). Workflow 760 → 244 lines. Remaining jobs: `changes`, `migrate-shared-db` (PG), `deploy-aws-lambdas`, `deploy-aws-console`. **Cloudflare is no longer a deploy target.**
 
 ---
 
