@@ -1,5 +1,33 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { cn } from "$lib/utils";
+  import {
+    PageHeader,
+    StatCard,
+    Card,
+    Badge,
+    EmptyState,
+    Button,
+  } from "$lib/components/ui";
+  import {
+    Activity,
+    AlertTriangle,
+    AppWindow,
+    ArrowUpRight,
+    ArrowRight,
+    ChevronRight,
+    Database,
+    FileCheck,
+    Gauge,
+    KeyRound,
+    Plug,
+    ShieldCheck,
+    TrendingUp,
+    TrendingDown,
+    Users,
+    Workflow,
+    Zap,
+  } from "lucide-svelte";
 
   interface DashboardData {
     tenant: { id: string; name: string; slug: string; tier: string; status: string } | null;
@@ -57,10 +85,8 @@
   let loading = true;
   let error: string | null = null;
 
-  // Sparkline + trend delta computed from the /history/aggregate series.
-  // If fewer than 2 data points we just show a flat line (no delta).
-  $: sparklineWidth = 160;
-  $: sparklineHeight = 40;
+  const sparklineWidth = 220;
+  const sparklineHeight = 56;
   $: sparklinePath = (() => {
     if (trend.length < 2) return "";
     const scores = trend.map((t) => t.avgScore);
@@ -83,8 +109,7 @@
     if (trend.length < 2) return null;
     const first = trend[0].avgScore;
     const last = trend[trend.length - 1].avgScore;
-    const diff = last - first;
-    return { diff, first, last, days: trend.length };
+    return { diff: last - first, first, last, days: trend.length };
   })();
 
   $: installedPacks = packs.filter((p) => p.installedAt);
@@ -98,6 +123,14 @@
     .filter(Boolean)
     .sort()
     .reverse()[0] as string | undefined;
+  $: activeIntegrations = integrations.filter((i) => i.status === "active").length;
+
+  const quickActions = [
+    { href: "/console/compliance/controls", label: "Controls", hint: "All state across packs", icon: ShieldCheck },
+    { href: "/console/policies", label: "Policies", hint: "Create + acknowledge", icon: FileCheck },
+    { href: "/console/directory", label: "Directory", hint: "Users + groups", icon: Users },
+    { href: "/console/incidents", label: "Incidents", hint: "Investigate + resolve", icon: Activity },
+  ];
 
   async function loadAll() {
     loading = true;
@@ -135,238 +168,383 @@
     return mins > 0 ? `${mins}m ago` : "just now";
   }
 
-  function scoreColor(score: number): string {
-    if (score >= 80) return "text-green-600 dark:text-green-400";
-    if (score >= 50) return "text-amber-600 dark:text-amber-400";
-    return "text-red-600 dark:text-red-400";
+  function scoreColorClass(score: number): string {
+    if (score >= 80) return "text-success";
+    if (score >= 50) return "text-warning";
+    return "text-destructive";
   }
-
-  function scoreBarColor(score: number): string {
-    if (score >= 80) return "bg-green-500";
-    if (score >= 50) return "bg-amber-500";
-    return "bg-red-500";
+  function scoreBgClass(score: number): string {
+    if (score >= 80) return "bg-success";
+    if (score >= 50) return "bg-warning";
+    return "bg-destructive";
   }
-
-  function impactClass(impact: string | undefined): string {
-    switch (impact) {
-      case "positive": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "negative": return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
-      default:         return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
-    }
+  function frameworkBadge(key: string) {
+    const map: Record<string, "info" | "default" | "success" | "warning" | "destructive"> = {
+      SOC2: "info",
+      ISO27001: "default",
+      NIST_CSF: "success",
+      HIPAA: "warning",
+      GDPR: "destructive",
+    };
+    return map[key] ?? "muted";
+  }
+  function impactBadge(impact?: string): "success" | "destructive" | "muted" {
+    if (impact === "positive") return "success";
+    if (impact === "negative") return "destructive";
+    return "muted";
   }
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
-  <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-    {#if dashboard?.tenant}
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        {dashboard.tenant.name} · {dashboard.tenant.tier} tier · {dashboard.user.email}
-      </p>
-    {/if}
-  </div>
+<svelte:head>
+  <title>Dashboard · AtlasIT</title>
+</svelte:head>
+
+<div class="animate-fade-in">
+  <PageHeader
+    title="Dashboard"
+    description={dashboard?.tenant ? `${dashboard.tenant.name} · ${dashboard.tenant.tier} tier` : "Loading workspace…"}
+  >
+    <svelte:fragment slot="actions">
+      {#if installedPacks.length > 0}
+        <Button variant="outline" size="sm" href="/console/compliance">
+          <Gauge class="h-3.5 w-3.5" strokeWidth={2.25} />
+          View compliance
+        </Button>
+      {/if}
+      <Button variant="primary" size="sm" href="/console/apps">
+        <Plug class="h-3.5 w-3.5" strokeWidth={2.25} />
+        Connect app
+      </Button>
+    </svelte:fragment>
+  </PageHeader>
 
   {#if loading}
-    <div class="h-32 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse mb-6"></div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {#each [1, 2, 3] as _}
-        <div class="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
-      {/each}
+    <div class="space-y-4">
+      <div class="h-44 skeleton rounded-2xl"></div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {#each Array(4) as _}
+          <div class="h-28 skeleton rounded-xl"></div>
+        {/each}
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="h-64 skeleton rounded-xl"></div>
+        <div class="lg:col-span-2 h-64 skeleton rounded-xl"></div>
+      </div>
     </div>
-    <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300">{error}</p>
-      <button on:click={loadAll} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
-    </div>
+    <Card padding="lg" class="bg-destructive-muted border-destructive/20">
+      <div class="flex items-start gap-3">
+        <AlertTriangle class="h-5 w-5 text-destructive shrink-0 mt-0.5" strokeWidth={2} />
+        <div class="flex-1">
+          <p class="text-sm text-destructive font-medium">{error}</p>
+          <Button variant="destructive" size="sm" class="mt-3" on:click={loadAll}>Retry</Button>
+        </div>
+      </div>
+    </Card>
   {:else}
-    <!-- Hero: overall compliance score + trend sparkline -->
+    <!-- Hero compliance score card -->
     {#if installedPacks.length > 0}
-      <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
-        <div class="flex items-start justify-between flex-wrap gap-4">
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Overall Compliance Score</div>
-            <div class="mt-2 flex items-baseline gap-3 flex-wrap">
-              <div class="text-5xl font-bold {scoreColor(overallScore)}">{overallScore}%</div>
-              <div class="text-sm text-gray-500 dark:text-gray-400">
-                {totalPass} passing · {totalFail} failing · {totalUnknown} unknown of {totalControls} controls
+      <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-72 h-72 rounded-full bg-primary/5 blur-2xl pointer-events-none"></div>
+
+        <div class="relative grid lg:grid-cols-[1fr,auto,auto] gap-6 items-end">
+          <div>
+            <div class="flex items-center gap-2 mb-3">
+              <ShieldCheck class="h-3.5 w-3.5 text-primary" strokeWidth={2.5} />
+              <span class="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Overall Compliance Score</span>
+            </div>
+            <div class="flex items-baseline gap-3 flex-wrap">
+              <div class={cn("text-6xl font-semibold tabular-nums tracking-tight", scoreColorClass(overallScore))}>
+                {overallScore}<span class="text-2xl text-muted-foreground/40">%</span>
               </div>
             </div>
-            <div class="mt-1 text-xs text-gray-400">Last evaluated {relativeTime(lastEvaluated)}</div>
+            <div class="mt-3 flex items-center gap-2.5 flex-wrap text-xs">
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-success"></span>
+                <span class="text-foreground tabular-nums font-medium">{totalPass}</span>
+                <span class="text-muted-foreground">passing</span>
+              </span>
+              <span class="text-muted-foreground/40">·</span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-destructive"></span>
+                <span class="text-foreground tabular-nums font-medium">{totalFail}</span>
+                <span class="text-muted-foreground">failing</span>
+              </span>
+              <span class="text-muted-foreground/40">·</span>
+              <span class="inline-flex items-center gap-1.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-muted-foreground"></span>
+                <span class="text-foreground tabular-nums font-medium">{totalUnknown}</span>
+                <span class="text-muted-foreground">unknown</span>
+              </span>
+              <span class="text-muted-foreground/40">·</span>
+              <span class="text-muted-foreground tabular-nums">of {totalControls}</span>
+            </div>
+            <p class="mt-2 text-2xs text-muted-foreground">
+              Last evaluated {relativeTime(lastEvaluated)}
+            </p>
           </div>
-          {#if sparklinePath}
-            <div class="flex flex-col items-end gap-1">
-              <div class="text-xs text-gray-500 dark:text-gray-400">Last {trendDelta?.days ?? 0} days</div>
-              <svg width={sparklineWidth} height={sparklineHeight} viewBox="0 0 {sparklineWidth} {sparklineHeight}" class="overflow-visible">
+
+          {#if sparklinePath && trendDelta}
+            <div class="flex flex-col items-end gap-1.5">
+              <div class="flex items-center gap-1.5 text-2xs text-muted-foreground">
+                <span>Last {trendDelta.days} days</span>
+                {#if Math.abs(trendDelta.diff) >= 0.1}
+                  <span
+                    class={cn(
+                      "inline-flex items-center gap-0.5 font-semibold tabular-nums",
+                      trendDelta.diff > 0 ? "text-success" : "text-destructive",
+                    )}
+                  >
+                    {#if trendDelta.diff > 0}
+                      <TrendingUp class="h-3 w-3" strokeWidth={2.5} />
+                    {:else}
+                      <TrendingDown class="h-3 w-3" strokeWidth={2.5} />
+                    {/if}
+                    {Math.abs(trendDelta.diff).toFixed(1)} pts
+                  </span>
+                {/if}
+              </div>
+              <svg
+                width={sparklineWidth}
+                height={sparklineHeight}
+                viewBox="0 0 {sparklineWidth} {sparklineHeight}"
+                class={cn("overflow-visible", scoreColorClass(overallScore))}
+                aria-hidden="true"
+              >
                 <defs>
-                  <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stop-color="currentColor" stop-opacity="0.2" />
+                  <linearGradient id="trendFillDash" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="currentColor" stop-opacity="0.22" />
                     <stop offset="100%" stop-color="currentColor" stop-opacity="0" />
                   </linearGradient>
                 </defs>
-                <path d={sparklineAreaPath} fill="url(#trendFill)" class="{scoreColor(overallScore)}" />
-                <path d={sparklinePath} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="{scoreColor(overallScore)}" />
+                <path d={sparklineAreaPath} fill="url(#trendFillDash)" />
+                <path
+                  d={sparklinePath}
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.25"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
               </svg>
-              {#if trendDelta && Math.abs(trendDelta.diff) >= 0.1}
-                <div class="text-xs font-medium {trendDelta.diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
-                  {trendDelta.diff > 0 ? '↑' : '↓'} {Math.abs(trendDelta.diff).toFixed(1)} pts
-                </div>
-              {/if}
             </div>
           {/if}
-          <a href="/console/compliance/packs" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">
-            Manage packs →
-          </a>
         </div>
-        <div class="mt-5 h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div class="h-full {scoreBarColor(overallScore)} transition-all duration-500" style="width: {overallScore}%"></div>
+
+        <div class="mt-6 h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            class={cn("h-full transition-all duration-700 ease-out-quart rounded-full", scoreBgClass(overallScore))}
+            style="width: {overallScore}%"
+          ></div>
         </div>
-      </div>
+      </Card>
     {:else}
-      <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-6">
-        <p class="text-base font-medium text-blue-900 dark:text-blue-200">No compliance packs installed yet</p>
-        <p class="mt-1 text-sm text-blue-700 dark:text-blue-300">Install a framework pack (SOC 2, ISO 27001, NIST, HIPAA, GDPR) to start scoring evidence against controls.</p>
-        <a href="/console/compliance/packs" class="mt-3 inline-block px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">
-          Browse packs →
-        </a>
-      </div>
+      <Card padding="lg" class="mb-6 bg-primary-muted border-primary/20">
+        <div class="flex items-start gap-4">
+          <div class="w-10 h-10 rounded-lg bg-primary/15 text-primary flex items-center justify-center shrink-0">
+            <ShieldCheck class="h-5 w-5" strokeWidth={2} />
+          </div>
+          <div class="flex-1">
+            <h3 class="text-base font-semibold text-foreground">No compliance packs installed yet</h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+              Install a framework pack (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR) to start scoring evidence against controls.
+            </p>
+            <Button variant="primary" size="sm" href="/console/compliance/packs" class="mt-3">
+              Browse packs
+              <ArrowRight class="h-3 w-3" strokeWidth={2.25} />
+            </Button>
+          </div>
+        </div>
+      </Card>
     {/if}
 
-    <!-- Per-pack score cards -->
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <StatCard
+        label="Evidence collected"
+        value={dashboard?.stats?.evidenceCount?.toLocaleString() ?? "0"}
+        hint="Operational records"
+        icon={Database}
+      />
+      <StatCard
+        label="Active automations"
+        value="{dashboard?.stats?.automationRulesEnabled ?? 0} / {dashboard?.stats?.automationRulesTotal ?? 0}"
+        hint="Rules enabled / total"
+        icon={Zap}
+      />
+      <StatCard
+        label="Open incidents"
+        value={dashboard?.stats?.openIncidents ?? 0}
+        hint="Awaiting resolution"
+        icon={AlertTriangle}
+        intent={(dashboard?.stats?.openIncidents ?? 0) > 0 ? "warning" : "default"}
+      />
+      <StatCard
+        label="Connected apps"
+        value="{activeIntegrations} / {integrations.length}"
+        hint="Active live-data sources"
+        icon={Plug}
+      />
+    </div>
+
+    <!-- Per-pack scores -->
     {#if installedPacks.length > 0}
-      <div class="mb-6">
-        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Frameworks</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <section class="mb-6">
+        <div class="flex items-baseline justify-between mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Frameworks</h2>
+          <a
+            href="/console/compliance/packs"
+            class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+          >
+            Manage packs <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
+          </a>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {#each installedPacks as p (p.id)}
             {@const score = p.controlCount > 0 && p.passCount !== null ? Math.round((p.passCount * 100) / p.controlCount) : 0}
-            <a href="/console/compliance/packs" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-blue-400 transition-colors">
-              <div class="text-xs text-gray-500 dark:text-gray-400">{p.framework}</div>
-              <div class="mt-1 flex items-baseline gap-2">
-                <div class="text-2xl font-bold {scoreColor(score)}">{score}%</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{p.passCount ?? 0}/{p.controlCount}</div>
+            <a
+              href="/console/compliance/packs"
+              class="group surface p-4 hover:shadow-sm hover:border-border-strong transition-all duration-fast block"
+            >
+              <div class="flex items-start justify-between mb-3">
+                <Badge variant={frameworkBadge(p.framework)} size="sm">
+                  {p.framework.replace("_", " ")}
+                </Badge>
+                <ArrowUpRight class="h-3 w-3 text-muted-foreground/40 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all duration-fast" strokeWidth={2.25} />
               </div>
-              <div class="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div class="h-full {scoreBarColor(score)}" style="width: {score}%"></div>
+              <div class="text-2xs font-medium text-foreground/80 truncate mb-2">{p.label}</div>
+              <div class="flex items-baseline gap-1.5">
+                <div class={cn("text-2xl font-semibold tabular-nums tracking-tight", scoreColorClass(score))}>
+                  {score}<span class="text-sm text-muted-foreground/50">%</span>
+                </div>
+                <span class="text-2xs text-muted-foreground tabular-nums">{p.passCount ?? 0}/{p.controlCount}</span>
+              </div>
+              <div class="mt-2.5 h-1 bg-muted rounded-full overflow-hidden">
+                <div class={cn("h-full transition-all duration-500 ease-out-quart", scoreBgClass(score))} style="width: {score}%"></div>
               </div>
             </a>
           {/each}
         </div>
-      </div>
+      </section>
     {/if}
 
+    <!-- Two-column: integrations + evidence stream -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-      <!-- Connected integrations -->
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 class="font-semibold text-gray-900 dark:text-white">Connected Apps</h2>
-          <a href="/console/apps" class="text-xs text-blue-600 hover:underline">All →</a>
+      <!-- Connected apps -->
+      <Card padding="none" class="overflow-hidden">
+        <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-foreground">Connected Apps</h2>
+          <a
+            href="/console/apps"
+            class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+          >
+            All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
+          </a>
         </div>
         {#if integrations.length === 0}
-          <div class="px-5 py-8 text-center">
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">No apps connected</p>
-            <a href="/console/apps" class="inline-block px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium">Connect first app</a>
-          </div>
+          <EmptyState
+            title="No apps connected"
+            description="Connect your first integration to start collecting evidence."
+            icon={AppWindow}
+          >
+            <svelte:fragment slot="action">
+              <Button variant="primary" size="sm" href="/console/apps">
+                <Plug class="h-3 w-3" strokeWidth={2.25} />
+                Connect app
+              </Button>
+            </svelte:fragment>
+          </EmptyState>
         {:else}
-          <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+          <ul class="divide-y divide-border">
             {#each integrations.slice(0, 5) as i (i.id)}
-              <li class="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <div class="font-medium text-gray-900 dark:text-white capitalize text-sm">{i.provider}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">Synced {relativeTime(i.updated_at)}</div>
+              <li class="px-4 py-2.5 flex items-center justify-between row-hover">
+                <div class="min-w-0">
+                  <div class="font-medium text-foreground capitalize text-sm truncate">{i.provider}</div>
+                  <div class="text-2xs text-muted-foreground">Synced {relativeTime(i.updated_at)}</div>
                 </div>
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
-                  {i.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                    : i.status === 'error' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}">
+                <Badge
+                  variant={i.status === "active" ? "success" : i.status === "error" ? "destructive" : "muted"}
+                  size="sm"
+                  dot
+                >
                   {i.status}
-                </span>
+                </Badge>
               </li>
             {/each}
           </ul>
         {/if}
-      </div>
+      </Card>
 
-      <!-- Recent evidence stream (2-col wide) -->
-      <div class="lg:col-span-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 class="font-semibold text-gray-900 dark:text-white">Recent Evidence</h2>
-          <a href="/console/compliance/evidence" class="text-xs text-blue-600 hover:underline">All →</a>
+      <!-- Evidence stream -->
+      <Card padding="none" class="lg:col-span-2 overflow-hidden">
+        <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-foreground">Recent Evidence</h2>
+            <p class="text-2xs text-muted-foreground">Latest operational records scored against controls</p>
+          </div>
+          <a
+            href="/console/compliance/evidence"
+            class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+          >
+            All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
+          </a>
         </div>
         {#if evidence.length === 0}
-          <div class="px-5 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            No evidence yet — connect an app to start collecting.
-          </div>
+          <EmptyState
+            title="No evidence yet"
+            description="Connect an app and the compliance engine will start scoring its events."
+            icon={FileCheck}
+          />
         {:else}
-          <ul class="divide-y divide-gray-200 dark:divide-gray-700">
+          <ul class="divide-y divide-border">
             {#each evidence as e (e.id)}
-              <li class="px-5 py-3">
+              <li class="px-4 py-2.5 row-hover">
                 <div class="flex items-start gap-3">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize shrink-0 mt-0.5 {impactClass(e.metadata?.impact)}">
+                  <Badge variant={impactBadge(e.metadata?.impact)} size="sm" class="shrink-0 mt-0.5">
                     {e.metadata?.impact ?? "—"}
-                  </span>
+                  </Badge>
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 text-sm">
-                      <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{e.framework ?? ""}</span>
-                      <span class="font-mono text-xs font-medium text-gray-900 dark:text-white">{e.controlId ?? "—"}</span>
-                      <span class="text-xs text-gray-400">·</span>
-                      <span class="text-xs text-gray-500 dark:text-gray-400">{e.source}</span>
+                    <div class="flex items-center gap-1.5 text-sm flex-wrap">
+                      {#if e.framework}
+                        <span class="font-mono text-2xs text-muted-foreground">{e.framework}</span>
+                      {/if}
+                      <span class="font-mono text-xs font-medium text-foreground tabular-nums">{e.controlId ?? "—"}</span>
+                      <span class="text-muted-foreground/30 text-xs">·</span>
+                      <span class="text-2xs text-muted-foreground capitalize">{e.source}</span>
                     </div>
                     {#if e.metadata?.reasoning}
-                      <p class="mt-0.5 text-xs text-gray-600 dark:text-gray-300 truncate">{e.metadata.reasoning}</p>
+                      <p class="mt-0.5 text-xs text-muted-foreground truncate">{e.metadata.reasoning}</p>
                     {/if}
                   </div>
-                  <div class="text-xs text-gray-400 shrink-0">{relativeTime(e.createdAt)}</div>
+                  <div class="text-2xs text-muted-foreground shrink-0 tabular-nums">{relativeTime(e.createdAt)}</div>
                 </div>
               </li>
             {/each}
           </ul>
         {/if}
-      </div>
+      </Card>
     </div>
 
-    <!-- Secondary stats row -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs text-gray-500 dark:text-gray-400">Evidence</div>
-        <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{dashboard?.stats?.evidenceCount?.toLocaleString() ?? "0"}</div>
+    <!-- Quick actions -->
+    <section>
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Jump to</h2>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {#each quickActions as a}
+          <a
+            href={a.href}
+            class="group surface p-4 hover:shadow-sm hover:border-primary/40 transition-all duration-fast"
+          >
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div class="w-8 h-8 rounded-lg bg-primary-muted text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                <svelte:component this={a.icon} class="h-4 w-4" strokeWidth={2} />
+              </div>
+              <ArrowUpRight class="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" strokeWidth={2.25} />
+            </div>
+            <div class="font-medium text-foreground text-sm">{a.label}</div>
+            <div class="text-2xs text-muted-foreground mt-0.5">{a.hint}</div>
+          </a>
+        {/each}
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs text-gray-500 dark:text-gray-400">Automation rules</div>
-        <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-          {dashboard?.stats?.automationRulesEnabled ?? 0}<span class="text-sm text-gray-400"> / {dashboard?.stats?.automationRulesTotal ?? 0}</span>
-        </div>
-      </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs text-gray-500 dark:text-gray-400">Open incidents</div>
-        <div class="mt-1 text-2xl font-bold {(dashboard?.stats?.openIncidents ?? 0) > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-white'}">
-          {dashboard?.stats?.openIncidents ?? 0}
-        </div>
-      </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs text-gray-500 dark:text-gray-400">Connected apps</div>
-        <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-          {integrations.filter((i) => i.status === "active").length}<span class="text-sm text-gray-400"> / {integrations.length}</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <a href="/console/compliance/controls" class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 transition-colors">
-        <div class="font-medium text-gray-900 dark:text-white text-sm">Controls</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">All state across packs</div>
-      </a>
-      <a href="/console/policies" class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 transition-colors">
-        <div class="font-medium text-gray-900 dark:text-white text-sm">Policies</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Create + acknowledge</div>
-      </a>
-      <a href="/console/directory" class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 transition-colors">
-        <div class="font-medium text-gray-900 dark:text-white text-sm">Directory</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Users & groups</div>
-      </a>
-      <a href="/console/incidents" class="p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-500 transition-colors">
-        <div class="font-medium text-gray-900 dark:text-white text-sm">Incidents</div>
-        <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Investigate & resolve</div>
-      </a>
-    </div>
+    </section>
   {/if}
 </div>
