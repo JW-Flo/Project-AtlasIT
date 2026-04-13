@@ -608,6 +608,146 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
+  // ── Public trust center PDF export (Phase 9.1) — no auth required ─────────
+  // GET /api/v1/trust/:slug/export.pdf?framework=SOC2 — auditor-ready bundle.
+  // Same opt-in gate as /trust/:slug. Content includes framework summary +
+  // optional per-control detail. SHA-256 content hash rendered in footer for
+  // tamper detection.
+  {
+    const pm = path.match(/^\/api\/v1\/trust\/([a-z0-9-]+)\/export\.pdf$/);
+    if (pm && method === "GET") {
+      const slug = pm[1];
+      const frameworkParam = qs.framework ?? null;
+      const includeControls = qs.details === "true" || qs.details === "1";
+      const pool = getPool();
+      try {
+        const tRow = await pool.query(
+          `SELECT id, name, slug, config FROM tenants WHERE slug = $1 OR id = $1 LIMIT 1`,
+          [slug],
+        );
+        if (tRow.rows.length === 0) return fail(404, "Trust center not found", "NOT_FOUND");
+        const tenant = tRow.rows[0];
+        const cfg = (tenant.config ?? {}) as Record<string, unknown>;
+        if (!cfg.trust_center_public)
+          return fail(404, "Trust center not published", "NOT_PUBLISHED");
+
+        const tenantId = tenant.id as string;
+        const frameworkFilter = frameworkParam ? " AND p.framework_id = $2" : "";
+        const frameworkParams = frameworkParam ? [tenantId, frameworkParam] : [tenantId];
+
+        const packsRow = await pool.query(
+          `SELECT p.id as "packId", p.name as "label", p.framework_id as "framework",
+                  p.controls_count::int as "controlCount",
+                  COALESCE(tcp.pass_count, 0) as "passCount",
+                  COALESCE(tcp.fail_count, 0) as "failCount",
+                  COALESCE(tcp.unknown_count, 0) as "unknownCount",
+                  tcp.last_evaluated_at as "lastEvaluatedAt"
+           FROM compliance_packs p
+           INNER JOIN tenant_compliance_packs tcp ON tcp.pack_id = p.id
+           WHERE tcp.tenant_id = $1${frameworkFilter}
+           ORDER BY p.framework_id`,
+          frameworkParams,
+        );
+
+        if (packsRow.rows.length === 0) {
+          return fail(404, "No compliance data for this framework", "NOT_FOUND");
+        }
+
+        const frameworks = packsRow.rows.map((r) => ({
+          label: r.label as string,
+          framework: r.framework as string,
+          controlCount: Number(r.controlCount ?? 0),
+          passCount: Number(r.passCount ?? 0),
+          failCount: Number(r.failCount ?? 0),
+          unknownCount: Number(r.unknownCount ?? 0),
+          score:
+            Number(r.controlCount ?? 0) > 0
+              ? Math.round((Number(r.passCount ?? 0) * 100) / Number(r.controlCount ?? 0))
+              : 0,
+          lastEvaluatedAt: (r.lastEvaluatedAt as Date | null)?.toISOString() ?? null,
+        }));
+
+        const totals = frameworks.reduce(
+          (acc, f) => ({
+            controls: acc.controls + f.controlCount,
+            pass: acc.pass + f.passCount,
+            fail: acc.fail + f.failCount,
+            unknown: acc.unknown + f.unknownCount,
+          }),
+          { controls: 0, pass: 0, fail: 0, unknown: 0 },
+        );
+        const overallScore =
+          totals.controls > 0 ? Math.round((totals.pass * 100) / totals.controls) : 0;
+
+        let controls: Array<{
+          framework: string;
+          controlId: string;
+          title: string;
+          state: "pass" | "fail" | "unknown";
+          evidenceCount: number;
+          evaluatedAt: string | null;
+        }> = [];
+        if (includeControls) {
+          const packIds = packsRow.rows.map((r) => r.packId as string);
+          const ctrlRows = await pool.query(
+            `SELECT p.framework_id as "framework", tcs.control_id as "controlId",
+                    pc.title, tcs.state, tcs.evidence_sample_size as "evidenceCount",
+                    tcs.evaluated_at as "evaluatedAt"
+             FROM tenant_control_state tcs
+             INNER JOIN compliance_packs p ON tcs.pack_id = p.id
+             LEFT JOIN compliance_pack_controls pc
+               ON pc.pack_id = tcs.pack_id AND pc.control_ref = tcs.control_id
+             WHERE tcs.tenant_id = $1 AND tcs.pack_id = ANY($2::text[])
+             ORDER BY p.framework_id, tcs.control_id
+             LIMIT 2000`,
+            [tenantId, packIds],
+          );
+          controls = ctrlRows.rows.map((r) => ({
+            framework: r.framework as string,
+            controlId: r.controlId as string,
+            title: (r.title as string) ?? r.controlId,
+            state: r.state as "pass" | "fail" | "unknown",
+            evidenceCount: Number(r.evidenceCount ?? 0),
+            evaluatedAt: (r.evaluatedAt as Date | null)?.toISOString() ?? null,
+          }));
+        }
+
+        const { renderTrustPdf } = await import("./pdf.js");
+        const pdfBytes = await renderTrustPdf({
+          tenantName: tenant.name as string,
+          tenantSlug: tenant.slug as string,
+          generatedAt: new Date().toISOString(),
+          overallScore,
+          totals,
+          frameworks,
+          controls: includeControls ? controls : undefined,
+        });
+
+        const fname = frameworkParam
+          ? `${tenant.slug}-${String(frameworkParam).toLowerCase()}-${new Date().toISOString().slice(0, 10)}.pdf`
+          : `${tenant.slug}-compliance-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+        return {
+          statusCode: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="${fname}"`,
+            "Cache-Control": "private, max-age=0, no-cache",
+          },
+          body: pdfBytes.toString("base64"),
+          isBase64Encoded: true,
+        };
+      } catch (e) {
+        console.error("[compliance-api] trust.pdf.error", {
+          error: (e as Error).message,
+          stack: (e as Error).stack,
+          slug,
+        });
+        return fail(500, "Failed to generate PDF", "INTERNAL_ERROR");
+      }
+    }
+  }
+
   // ── Public trust center (Phase 9) — no auth required ───────────────────────
   // GET /api/v1/trust/:slug — returns a safe, aggregated view of a tenant's
   // compliance posture. Tenant must opt in via tenants.config.trust_center_public = true.

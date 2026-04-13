@@ -183,6 +183,35 @@
               Compact: <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px]">?size=compact</code>.
             </p>
           </div>
+
+          <!-- Auditor PDF export -->
+          <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Auditor PDF export</div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Generate a branded, signed compliance report suitable for auditor hand-off.
+              Every page carries a SHA-256 content hash to detect tampering.
+            </p>
+            {@const pdfBase = `${apiBase}/api/compliance/api/v1/trust/${tenantSlug}/export.pdf`}
+            <div class="flex flex-wrap gap-2">
+              <a href="{pdfBase}" target="_blank" rel="noopener"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                All frameworks
+              </a>
+              <a href="{pdfBase}?details=true" target="_blank" rel="noopener"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors">
+                All + control detail
+              </a>
+              {#each ['SOC2', 'ISO27001', 'NIST_CSF', 'HIPAA', 'GDPR'] as fw}
+                <a href="{pdfBase}?framework={fw}&details=true" target="_blank" rel="noopener"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors">
+                  {fw.replace('_', ' ')}
+                </a>
+              {/each}
+            </div>
+            <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+              Direct link: <code class="bg-gray-100 dark:bg-gray-900 px-1 rounded text-[10px] break-all">{pdfBase}</code>
+            </p>
+          </div>
         </div>
       </div>
     {/if}

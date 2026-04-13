@@ -65,7 +65,7 @@ for (const name of toBuild) {
       format: "cjs",
       outdir: outDir,
       sourcemap: true,
-      external: ["@aws-sdk/*", "crypto", "pg", "pg-native", "bcryptjs"],
+      external: ["@aws-sdk/*", "crypto", "pg", "pg-native", "bcryptjs", "pdf-lib"],
       alias: {
         "@atlasit/shared": SHARED_SRC,
         "@atlasit/connector-schema": CONNECTOR_SCHEMA_SRC,
