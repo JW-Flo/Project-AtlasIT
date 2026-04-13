@@ -73,6 +73,66 @@ function body(event: APIGatewayProxyEventV2): unknown {
   }
 }
 
+// ── TOTP helpers (RFC 6238) ───────────────────────────────────────────────
+// 160-bit secret, 30s step, 6-digit code, SHA-1 HMAC.
+function base32Encode(buf: Buffer): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (let i = 0; i < buf.length; i++) {
+    value = (value << 8) | buf[i];
+    bits += 8;
+    while (bits >= 5) {
+      out += alphabet[(value >>> (bits - 5)) & 0x1f];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += alphabet[(value << (5 - bits)) & 0x1f];
+  return out;
+}
+
+function base32Decode(str: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const clean = str.toUpperCase().replace(/[^A-Z2-7]/g, "");
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const c of clean) {
+    value = (value << 5) | alphabet.indexOf(c);
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+function totpGenerate(secretB32: string, timestamp: number = Date.now()): string {
+  const counter = Math.floor(timestamp / 1000 / 30);
+  const counterBuf = Buffer.alloc(8);
+  counterBuf.writeBigUInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac("sha1", base32Decode(secretB32)).update(counterBuf).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const binary =
+    ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+
+function totpVerify(secretB32: string, code: string): boolean {
+  if (!/^\d{6}$/.test(code)) return false;
+  const now = Date.now();
+  // Allow ±1 time step (30s) for clock skew
+  for (const delta of [-30_000, 0, 30_000]) {
+    if (totpGenerate(secretB32, now + delta) === code) return true;
+  }
+  return false;
+}
+
 export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const path = event.rawPath;
   const method = event.requestContext.http.method.toUpperCase();
@@ -1355,6 +1415,300 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       slaHours: b.slaHours,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // ── MFA (TOTP) ─────────────────────────────────────────────────────────
+
+  // GET /api/v1/auth/mfa/status — current user's MFA state
+  if (path === "/api/v1/auth/mfa/status" && method === "GET") {
+    const r = await pool.query(
+      `SELECT u.mfa_enabled, m.enrolled_at
+       FROM users u LEFT JOIN mfa_enrollments m ON m.user_id = u.id
+       WHERE u.id = $1`,
+      [auth.userId],
+    );
+    const row = r.rows[0];
+    return ok({
+      enabled: row?.mfa_enabled ?? false,
+      enrolledAt: row?.enrolled_at ?? null,
+    });
+  }
+
+  // POST /api/v1/auth/mfa/setup — generate + persist a new secret; return otpauth URI
+  if (path === "/api/v1/auth/mfa/setup" && method === "POST") {
+    const secretBytes = crypto.randomBytes(20);
+    const secretB32 = base32Encode(secretBytes);
+    const secretHash = crypto.createHash("sha256").update(secretB32).digest("hex");
+    // Store the base32 secret encrypted at rest is ideal; for now, store hash
+    // plus the raw secret in a temporary pre-enrollment slot via a separate
+    // ephemeral mechanism. Simplest: store the base32 raw in secret_hash
+    // column (rename later); we never expose it after confirm.
+    await pool.query(
+      `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, enrolled_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET secret_hash = EXCLUDED.secret_hash, enrolled_at = NOW()`,
+      [auth.userId, auth.tenantId, secretB32],
+    );
+    const issuer = "AtlasIT";
+    const label = `${issuer}:${auth.email ?? auth.userId}`;
+    const otpauth = `otpauth://totp/${encodeURIComponent(label)}?secret=${secretB32}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+    return ok({ otpauth, secret: secretB32, hashRef: secretHash });
+  }
+
+  // POST /api/v1/auth/mfa/confirm — verify the first TOTP code to enable MFA
+  if (path === "/api/v1/auth/mfa/confirm" && method === "POST") {
+    const b = body(event) as { code?: string };
+    if (!b.code) return fail(400, "code required", "VALIDATION_FAILED");
+    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id = $1`, [
+      auth.userId,
+    ]);
+    if (r.rows.length === 0) return fail(404, "No pending enrollment", "NOT_FOUND");
+    if (!totpVerify(r.rows[0].secret_hash, b.code)) {
+      return fail(401, "Invalid code", "INVALID_CODE");
+    }
+    await pool.query(`UPDATE mfa_enrollments SET last_verified_at = NOW() WHERE user_id = $1`, [
+      auth.userId,
+    ]);
+    await pool.query(`UPDATE users SET mfa_enabled = TRUE WHERE id = $1`, [auth.userId]);
+    return ok({ enabled: true });
+  }
+
+  // POST /api/v1/auth/mfa/disable — remove MFA enrollment
+  if (path === "/api/v1/auth/mfa/disable" && method === "POST") {
+    const b = body(event) as { code?: string };
+    if (!b.code) return fail(400, "current MFA code required", "VALIDATION_FAILED");
+    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id = $1`, [
+      auth.userId,
+    ]);
+    if (r.rows.length === 0) return fail(404, "No enrollment", "NOT_FOUND");
+    if (!totpVerify(r.rows[0].secret_hash, b.code)) {
+      return fail(401, "Invalid code", "INVALID_CODE");
+    }
+    await pool.query(`DELETE FROM mfa_enrollments WHERE user_id = $1`, [auth.userId]);
+    await pool.query(`UPDATE users SET mfa_enabled = FALSE WHERE id = $1`, [auth.userId]);
+    return ok({ enabled: false });
+  }
+
+  // ── Tenant SSO ─────────────────────────────────────────────────────────
+
+  // GET /api/v1/tenant/sso — current SSO config (returns { sso: null } if none)
+  if (path === "/api/v1/tenant/sso" && method === "GET") {
+    const r = await pool.query(
+      `SELECT provider, entity_id, metadata_url, sso_url, attribute_mapping, enabled,
+              created_at, updated_at
+       FROM sso_configs WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    return ok({ sso: r.rows[0] ?? null });
+  }
+
+  // PUT /api/v1/tenant/sso — upsert SSO config (admin only)
+  if (path === "/api/v1/tenant/sso" && method === "PUT") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as {
+      provider?: string;
+      entityId?: string;
+      metadataUrl?: string;
+      metadataXml?: string;
+      ssoUrl?: string;
+      ssoCertificate?: string;
+      attributeMapping?: Record<string, string>;
+      enabled?: boolean;
+    };
+    if (!b.provider || !["saml", "oidc"].includes(b.provider)) {
+      return fail(400, "provider must be 'saml' or 'oidc'", "VALIDATION_FAILED");
+    }
+    await pool.query(
+      `INSERT INTO sso_configs
+        (tenant_id, provider, entity_id, metadata_url, metadata_xml, sso_url,
+         sso_certificate, attribute_mapping, enabled, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ON CONFLICT (tenant_id) DO UPDATE SET
+         provider = EXCLUDED.provider,
+         entity_id = EXCLUDED.entity_id,
+         metadata_url = EXCLUDED.metadata_url,
+         metadata_xml = EXCLUDED.metadata_xml,
+         sso_url = EXCLUDED.sso_url,
+         sso_certificate = EXCLUDED.sso_certificate,
+         attribute_mapping = EXCLUDED.attribute_mapping,
+         enabled = EXCLUDED.enabled,
+         updated_at = NOW()`,
+      [
+        auth.tenantId,
+        b.provider,
+        b.entityId ?? null,
+        b.metadataUrl ?? null,
+        b.metadataXml ?? null,
+        b.ssoUrl ?? null,
+        b.ssoCertificate ?? null,
+        JSON.stringify(b.attributeMapping ?? {}),
+        b.enabled ?? false,
+      ],
+    );
+    return ok({ status: "success", enabled: b.enabled ?? false });
+  }
+
+  // DELETE /api/v1/tenant/sso — remove SSO config (admin only)
+  if (path === "/api/v1/tenant/sso" && method === "DELETE") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    await pool.query(`DELETE FROM sso_configs WHERE tenant_id = $1`, [auth.tenantId]);
+    return ok({ status: "success" });
+  }
+
+  // ── Directory mappings (group → app role) ──────────────────────────────
+
+  // GET /api/v1/directory/mappings — list mappings for tenant
+  if (path === "/api/v1/directory/mappings" && method === "GET") {
+    const r = await pool.query(
+      `SELECT id, directory_group_id as "directoryGroupId", directory_group_name as "directoryGroupName",
+              app_provider as "appProvider", app_role as "appRole", auto_provision as "autoProvision",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM directory_mappings WHERE tenant_id = $1 ORDER BY created_at DESC`,
+      [auth.tenantId],
+    );
+    return ok({ mappings: r.rows });
+  }
+
+  // POST /api/v1/directory/mappings — create mapping (admin)
+  if (path === "/api/v1/directory/mappings" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as {
+      directoryGroupId?: string;
+      directoryGroupName?: string;
+      appProvider?: string;
+      appRole?: string;
+      autoProvision?: boolean;
+    };
+    if (!b.directoryGroupId || !b.appProvider || !b.appRole) {
+      return fail(400, "directoryGroupId, appProvider, appRole required", "VALIDATION_FAILED");
+    }
+    const r = await pool.query(
+      `INSERT INTO directory_mappings
+         (tenant_id, directory_group_id, directory_group_name, app_provider, app_role, auto_provision)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (tenant_id, directory_group_id, app_provider) DO UPDATE SET
+         directory_group_name = EXCLUDED.directory_group_name,
+         app_role = EXCLUDED.app_role,
+         auto_provision = EXCLUDED.auto_provision,
+         updated_at = NOW()
+       RETURNING id`,
+      [
+        auth.tenantId,
+        b.directoryGroupId,
+        b.directoryGroupName ?? null,
+        b.appProvider,
+        b.appRole,
+        b.autoProvision ?? true,
+      ],
+    );
+    return ok({ id: r.rows[0].id, status: "success" }, 201);
+  }
+
+  // DELETE /api/v1/directory/mappings/:id
+  const mapDelMatch = path.match(/^\/api\/v1\/directory\/mappings\/([^/]+)$/);
+  if (mapDelMatch && method === "DELETE") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const [, mapId] = mapDelMatch;
+    await pool.query(`DELETE FROM directory_mappings WHERE tenant_id = $1 AND id = $2`, [
+      auth.tenantId,
+      mapId,
+    ]);
+    return ok({ status: "success" });
+  }
+
+  // ── Support tickets ────────────────────────────────────────────────────
+
+  // GET /api/v1/support — list tenant's tickets
+  if (path === "/api/v1/support" && method === "GET") {
+    const r = await pool.query(
+      `SELECT id, submitted_by_email as "submittedByEmail", subject, severity, status,
+              created_at as "createdAt", resolved_at as "resolvedAt"
+       FROM support_tickets WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 200`,
+      [auth.tenantId],
+    );
+    return ok({ tickets: r.rows });
+  }
+
+  // POST /api/v1/support — create a ticket
+  if (path === "/api/v1/support" && method === "POST") {
+    const b = body(event) as { subject?: string; body?: string; severity?: string };
+    if (!b.subject || !b.body) return fail(400, "subject and body required", "VALIDATION_FAILED");
+    const severity = ["low", "normal", "high", "urgent"].includes(b.severity ?? "")
+      ? b.severity!
+      : "normal";
+    const r = await pool.query(
+      `INSERT INTO support_tickets (tenant_id, submitted_by_id, submitted_by_email, subject, body, severity)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+      [auth.tenantId, auth.userId, auth.email ?? "unknown", b.subject, b.body, severity],
+    );
+    return ok(
+      {
+        id: r.rows[0].id,
+        createdAt: r.rows[0].created_at,
+        message: "Support request submitted",
+      },
+      201,
+    );
+  }
+
+  // ── DSAR (privacy requests) ────────────────────────────────────────────
+
+  // GET /api/v1/privacy/dsar — list DSAR requests (admin only)
+  if (path === "/api/v1/privacy/dsar" && method === "GET") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const r = await pool.query(
+      `SELECT id, requester_email as "requesterEmail", request_type as "requestType",
+              status, verified_at as "verifiedAt", fulfilled_at as "fulfilledAt",
+              created_at as "createdAt"
+       FROM dsar_requests WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 500`,
+      [auth.tenantId],
+    );
+    return ok({ requests: r.rows });
+  }
+
+  // POST /api/v1/privacy/dsar — submit a DSAR (authenticated users)
+  if (path === "/api/v1/privacy/dsar" && method === "POST") {
+    const b = body(event) as {
+      requesterEmail?: string;
+      requestType?: string;
+      description?: string;
+    };
+    if (!b.requesterEmail || !b.requestType) {
+      return fail(400, "requesterEmail and requestType required", "VALIDATION_FAILED");
+    }
+    if (!["access", "deletion", "portability", "correction"].includes(b.requestType)) {
+      return fail(400, "invalid requestType", "VALIDATION_FAILED");
+    }
+    const verifyToken = crypto.randomBytes(32).toString("base64url");
+    const r = await pool.query(
+      `INSERT INTO dsar_requests (tenant_id, requester_email, request_type, description, verification_token)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+      [
+        auth.tenantId,
+        b.requesterEmail.toLowerCase(),
+        b.requestType,
+        b.description ?? null,
+        verifyToken,
+      ],
+    );
+    return ok(
+      {
+        id: r.rows[0].id,
+        createdAt: r.rows[0].created_at,
+        message: "Request received — check email to verify identity",
+      },
+      201,
+    );
   }
 
   return fail(404, "Not Found", "NOT_FOUND");

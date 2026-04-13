@@ -3568,6 +3568,53 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
+  // GET /api/v1/compliance-intelligence/anomalies — detect score drops from snapshots.
+  // An anomaly is any pack where the latest score dropped >=10 points vs the
+  // previous snapshot, or where fail_count jumped >=5.
+  if (path === "/api/v1/compliance-intelligence/anomalies" && method === "GET") {
+    const sinceDays = Math.min(parseInt(qs.days ?? "30", 10) || 30, 180);
+    const since = new Date(Date.now() - sinceDays * 86400 * 1000).toISOString();
+
+    const rows = await pool.query(
+      `WITH ranked AS (
+         SELECT
+           pack_id,
+           score_pct,
+           fail_count,
+           pass_count,
+           unknown_count,
+           snapshot_at,
+           LAG(score_pct) OVER (PARTITION BY pack_id ORDER BY snapshot_at) AS prev_score,
+           LAG(fail_count) OVER (PARTITION BY pack_id ORDER BY snapshot_at) AS prev_fail
+         FROM compliance_score_snapshots
+         WHERE tenant_id = $1 AND snapshot_at >= $2
+       )
+       SELECT pack_id as "packId",
+              score_pct as "scorePct",
+              prev_score as "prevScore",
+              fail_count as "failCount",
+              prev_fail as "prevFail",
+              snapshot_at as "snapshotAt",
+              CASE
+                WHEN prev_score IS NOT NULL AND (prev_score - score_pct) >= 10 THEN 'score_drop'
+                WHEN prev_fail IS NOT NULL AND (fail_count - prev_fail) >= 5 THEN 'fail_spike'
+                ELSE NULL
+              END as severity
+       FROM ranked
+       WHERE (prev_score IS NOT NULL AND (prev_score - score_pct) >= 10)
+          OR (prev_fail IS NOT NULL AND (fail_count - prev_fail) >= 5)
+       ORDER BY snapshot_at DESC LIMIT 100`,
+      [tenantId, since],
+    );
+
+    return ok({
+      status: "success",
+      anomalies: rows.rows,
+      windowDays: sinceDays,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
 
