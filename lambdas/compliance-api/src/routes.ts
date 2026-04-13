@@ -47,6 +47,37 @@ function getPool(): pg.Pool {
 // Trigger pool init at module load (Lambda reuses across warm invocations)
 getPool();
 
+// Best-effort event publisher — writes events row + enqueues SQS for orchestrator.
+async function publishEvent(
+  tenantId: string,
+  type: string,
+  source: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const id = crypto.randomUUID();
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO events (id, tenant_id, type, source, payload, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+      [id, tenantId, type, source, JSON.stringify(payload)],
+    );
+    await svc.queueRepo.send({
+      tenantId,
+      workflowRunId: id,
+      stepIndex: 0,
+      action: "process_event",
+      payload: { eventId: id, type, source, data: payload },
+    });
+  } catch (err) {
+    console.warn("[compliance-api] publishEvent failed", {
+      type,
+      source,
+      error: (err as Error).message,
+    });
+  }
+}
+
 const JSON_HEADERS = {
   "Content-Type": "application/json",
   "X-Content-Type-Options": "nosniff",
@@ -951,6 +982,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
               [tId, pId, controlId, state, rationale, at, evs.length],
             );
           }
+          // Capture previous counts so we can detect meaningful score changes.
+          const prevRow = await pool.query(
+            `SELECT pass_count as "passCount", fail_count as "failCount", unknown_count as "unknownCount"
+             FROM tenant_compliance_packs WHERE tenant_id = $1 AND pack_id = $2`,
+            [tId, pId],
+          );
+          const prev = prevRow.rows[0] ?? { passCount: 0, failCount: 0, unknownCount: 0 };
+
           await pool.query(
             `UPDATE tenant_compliance_packs SET last_evaluated_at = $3, pass_count = $4, fail_count = $5, unknown_count = $6
              WHERE tenant_id = $1 AND pack_id = $2`,
@@ -964,6 +1003,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
             [tId, pId, pass, fail_, unknown, totalCtrls, snapPct, at, "cron"],
           );
+
+          // Only publish compliance.score_evaluated if the score actually moved
+          // (keeps SQS volume low; idempotent downstream).
+          const changed =
+            Number(prev.passCount ?? 0) !== pass ||
+            Number(prev.failCount ?? 0) !== fail_ ||
+            Number(prev.unknownCount ?? 0) !== unknown;
+          if (changed) {
+            const prevPct =
+              totalCtrls > 0
+                ? Math.round(((Number(prev.passCount ?? 0) * 100) / totalCtrls) * 100) / 100
+                : 0;
+            await publishEvent(tId, "compliance.score_evaluated", "compliance-api", {
+              packId: pId,
+              pass,
+              fail: fail_,
+              unknown,
+              totalControls: totalCtrls,
+              scorePct: snapPct,
+              previousScorePct: prevPct,
+              deltaPct: Math.round((snapPct - prevPct) * 100) / 100,
+            });
+          }
+
           results.push({
             tenantId: tId,
             packId: pId,
@@ -971,6 +1034,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
             fail: fail_,
             unknown,
             controlCount: ctrls.rows.length,
+            scoreChanged: changed,
           });
         } catch (e) {
           results.push({ tenantId: tId, packId: pId, error: (e as Error).message });
