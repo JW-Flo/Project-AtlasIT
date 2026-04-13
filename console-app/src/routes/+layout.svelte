@@ -11,15 +11,11 @@
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch.bind(window);
 
-    // Stub responses for paths with no Lambda implementation yet (checked before pathMap).
-    // As Tier 3 lands, entries move out of here into pathMap.
+    // Stub responses for edge-case paths only. All feature endpoints are now
+    // wired to real Lambda backends.
     const stubMap: Record<string, unknown> = {
-      // Tier 3 (pending Stripe integration — requires STRIPE_API_KEY)
-      "/api/billing/seats": { seats: 5, activeUsers: 0, hasSubscription: false },
-      "/api/billing/checkout": { url: null },
-      "/api/billing/portal": { url: null },
-      // Marketplace sub-path — base /api/marketplace is wired; installs is
-      // derivable from the `installed` field on each item, keep stubbed.
+      // Marketplace /installs sub-route — base /api/marketplace returns an
+      // `installed` flag per item; dedicated /installs endpoint is obsolete.
       "/api/marketplace/installs": { installs: [] },
       // Public health (API Gateway /health already returns 200)
       "/api/health": { status: "healthy" },
@@ -92,8 +88,11 @@
       "/api/analytics/events": "/orchestrator/api/v1/events",
       // Auth session
       "/api/auth/session": "/api/v1/auth/validate",
-      // Billing
+      // Billing (Tier 3 — wired to Stripe when STRIPE_API_KEY is set)
       "/api/billing": "/api/v1/billing",
+      "/api/billing/seats": "/api/v1/billing/seats",
+      "/api/billing/checkout": "/api/v1/billing/checkout",
+      "/api/billing/portal": "/api/v1/billing/portal",
     };
 
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

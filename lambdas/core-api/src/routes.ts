@@ -1211,24 +1211,240 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
-  // GET /api/v1/billing — return tenant plan info
+  // GET /api/v1/billing — tenant subscription state + invoices (from tenant_billing)
   if (path === "/api/v1/billing" && method === "GET") {
-    const tenant = await pool.query(`SELECT tier, status FROM tenants WHERE id = $1`, [
-      auth.tenantId,
+    const [billingRow, invoiceRows, usageRows] = await Promise.all([
+      pool.query(
+        `SELECT plan, billing_cycle as "billingCycle", status, seat_count as "seatCount",
+                stripe_customer_id as "stripeCustomerId", stripe_subscription_id as "stripeSubscriptionId",
+                trial_ends_at as "trialEndsAt", current_period_start as "currentPeriodStart",
+                current_period_end as "currentPeriodEnd", canceled_at as "canceledAt"
+         FROM tenant_billing WHERE tenant_id = $1`,
+        [auth.tenantId],
+      ),
+      pool.query(
+        `SELECT id, stripe_invoice_id as "stripeInvoiceId", amount_cents as "amountCents",
+                currency, status, period_start as "periodStart", period_end as "periodEnd",
+                paid_at as "paidAt", pdf_url as "pdfUrl", created_at as "createdAt"
+         FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 24`,
+        [auth.tenantId],
+      ),
+      pool.query(
+        `SELECT metric, SUM(quantity)::int as quantity FROM usage_records
+         WHERE tenant_id = $1 AND period_start >= $2 GROUP BY metric`,
+        [auth.tenantId, new Date(Date.now() - 30 * 86400 * 1000).toISOString()],
+      ),
     ]);
-    const row = tenant.rows[0];
+
+    const b = billingRow.rows[0] ?? {
+      plan: "free",
+      billingCycle: "monthly",
+      status: "active",
+      seatCount: 5,
+    };
+    const usage = usageRows.rows.reduce(
+      (acc, r) => ({ ...acc, [r.metric]: r.quantity }),
+      {} as Record<string, number>,
+    );
+
     return ok({
       status: "success",
-      billing: {
-        plan: row?.tier ?? "free",
-        status: row?.status ?? "active",
-        billingCycle: "monthly",
-        currentPeriodEnd: null,
-      },
-      usage: {},
-      invoices: [],
+      billing: b,
+      usage,
+      invoices: invoiceRows.rows,
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // GET /api/v1/billing/seats — seat capacity vs active users
+  if (path === "/api/v1/billing/seats" && method === "GET") {
+    const [billingRow, activeCount] = await Promise.all([
+      pool.query(
+        `SELECT seat_count as "seatCount", stripe_subscription_id as "stripeSubscriptionId"
+         FROM tenant_billing WHERE tenant_id = $1`,
+        [auth.tenantId],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int as cnt FROM users WHERE tenant_id = $1 AND status = 'active'`,
+        [auth.tenantId],
+      ),
+    ]);
+    const b = billingRow.rows[0] ?? { seatCount: 5, stripeSubscriptionId: null };
+    return ok({
+      seats: b.seatCount,
+      activeUsers: activeCount.rows[0]?.cnt ?? 0,
+      hasSubscription: Boolean(b.stripeSubscriptionId),
+    });
+  }
+
+  // POST /api/v1/billing/seats — update seat count (admin). Forwards to Stripe
+  // subscription if one exists; dev environments without STRIPE_API_KEY still
+  // update the local seat_count column so the UI reflects the change.
+  if (path === "/api/v1/billing/seats" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const b = body(event) as { seats?: number };
+    if (!b.seats || b.seats < 1 || b.seats > 10_000) {
+      return fail(400, "seats must be between 1 and 10000", "VALIDATION_FAILED");
+    }
+    const existing = await pool.query(
+      `SELECT stripe_subscription_id FROM tenant_billing WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    const subId = existing.rows[0]?.stripe_subscription_id;
+
+    if (subId && process.env.STRIPE_API_KEY) {
+      const stripeRes = await fetch(
+        `https://api.stripe.com/v1/subscriptions/${encodeURIComponent(subId)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.STRIPE_API_KEY}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `items[0][quantity]=${b.seats}&proration_behavior=create_prorations`,
+        },
+      );
+      if (!stripeRes.ok) {
+        const err = await stripeRes.text();
+        return fail(502, `Stripe subscription update failed: ${err.slice(0, 200)}`, "STRIPE_ERROR");
+      }
+    }
+
+    await pool.query(
+      `UPDATE tenant_billing SET seat_count = $1, updated_at = NOW() WHERE tenant_id = $2`,
+      [b.seats, auth.tenantId],
+    );
+
+    return ok({ seats: b.seats });
+  }
+
+  // POST /api/v1/billing/checkout — Stripe Checkout for plan upgrade
+  if (path === "/api/v1/billing/checkout" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    if (!process.env.STRIPE_API_KEY) {
+      return fail(
+        501,
+        "Billing is not configured — set STRIPE_API_KEY to enable checkout",
+        "BILLING_NOT_CONFIGURED",
+      );
+    }
+    const b = body(event) as { plan?: string; cycle?: string; quantity?: number };
+    const priceIdMap: Record<string, string | undefined> = {
+      "starter.monthly": process.env.STRIPE_PRICE_STARTER_MONTHLY,
+      "starter.annual": process.env.STRIPE_PRICE_STARTER_ANNUAL,
+      "professional.monthly": process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY,
+      "professional.annual": process.env.STRIPE_PRICE_PROFESSIONAL_ANNUAL,
+      "enterprise.monthly": process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY,
+      "enterprise.annual": process.env.STRIPE_PRICE_ENTERPRISE_ANNUAL,
+    };
+    const key = `${b.plan ?? ""}.${b.cycle ?? "monthly"}`;
+    const priceId = priceIdMap[key];
+    if (!priceId) {
+      return fail(400, `Unknown plan/cycle: ${key}`, "VALIDATION_FAILED");
+    }
+
+    const consoleBase = process.env.CONSOLE_BASE_URL ?? "https://www.atlasit.pro";
+    const quantity = Math.max(1, Math.min(b.quantity ?? 5, 10_000));
+
+    const billing = await pool.query(
+      `SELECT stripe_customer_id, billing_email FROM tenant_billing WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    let customerId = billing.rows[0]?.stripe_customer_id as string | null;
+    if (!customerId) {
+      const tenant = await pool.query(`SELECT name FROM tenants WHERE id = $1`, [auth.tenantId]);
+      const params = new URLSearchParams({
+        email: billing.rows[0]?.billing_email ?? auth.email,
+        name: tenant.rows[0]?.name ?? auth.tenantId,
+        "metadata[tenant_id]": auth.tenantId,
+      });
+      const cRes = await fetch("https://api.stripe.com/v1/customers", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.STRIPE_API_KEY}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+      if (!cRes.ok) {
+        return fail(502, "Stripe customer creation failed", "STRIPE_ERROR");
+      }
+      const cData = (await cRes.json()) as { id: string };
+      customerId = cData.id;
+      await pool.query(
+        `UPDATE tenant_billing SET stripe_customer_id = $1, updated_at = NOW() WHERE tenant_id = $2`,
+        [customerId, auth.tenantId],
+      );
+    }
+
+    const params = new URLSearchParams({
+      customer: customerId,
+      mode: "subscription",
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": String(quantity),
+      success_url: `${consoleBase}/console/settings/billing?checkout=success`,
+      cancel_url: `${consoleBase}/console/settings/billing?checkout=canceled`,
+      "metadata[tenant_id]": auth.tenantId,
+    });
+    const sRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.STRIPE_API_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+    if (!sRes.ok) {
+      const err = await sRes.text();
+      return fail(502, `Stripe checkout failed: ${err.slice(0, 200)}`, "STRIPE_ERROR");
+    }
+    const sData = (await sRes.json()) as { id: string; url: string };
+    return ok({ url: sData.url, sessionId: sData.id });
+  }
+
+  // POST /api/v1/billing/portal — Stripe Customer Portal session
+  if (path === "/api/v1/billing/portal" && method === "POST") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    if (!process.env.STRIPE_API_KEY) {
+      return fail(
+        501,
+        "Billing is not configured — set STRIPE_API_KEY to enable portal",
+        "BILLING_NOT_CONFIGURED",
+      );
+    }
+    const billing = await pool.query(
+      `SELECT stripe_customer_id FROM tenant_billing WHERE tenant_id = $1`,
+      [auth.tenantId],
+    );
+    const customerId = billing.rows[0]?.stripe_customer_id;
+    if (!customerId) {
+      return fail(404, "No Stripe customer — run checkout first", "NO_CUSTOMER");
+    }
+    const consoleBase = process.env.CONSOLE_BASE_URL ?? "https://www.atlasit.pro";
+    const params = new URLSearchParams({
+      customer: customerId,
+      return_url: `${consoleBase}/console/settings/billing`,
+    });
+    const res = await fetch("https://api.stripe.com/v1/billing_portal/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.STRIPE_API_KEY}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return fail(502, `Stripe portal failed: ${err.slice(0, 200)}`, "STRIPE_ERROR");
+    }
+    const data = (await res.json()) as { url: string };
+    return ok({ url: data.url });
   }
 
   // GET /api/v1/apps/integrations — list connected integrations for tenant
