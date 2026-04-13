@@ -53,6 +53,59 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors_notify" {
   }
 }
 
+# ── Silent-500 detection ──────────────────────────────────────────────────
+# Catches the class of bug we hit in session 3: Lambda catches an exception,
+# logs ERROR, and returns a 500-body response. CloudWatch's AWS/Lambda Errors
+# metric stays at 0 because the Lambda didn't actually throw — but the platform
+# is broken. Log-metric filter on ERROR/Unhandled/TypeError/violates strings
+# fires an alarm even when the runtime metric is clean.
+
+locals {
+  silent500_lambdas = {
+    core-api        = "/aws/lambda/atlasit-core-api-${var.env}"
+    compliance-api  = "/aws/lambda/atlasit-compliance-api-${var.env}"
+    orchestrator    = "/aws/lambda/atlasit-orchestrator-${var.env}"
+    onboarding-api  = "/aws/lambda/atlasit-onboarding-api-${var.env}"
+    scheduler       = "/aws/lambda/atlasit-scheduler-${var.env}"
+    slack-handler   = "/aws/lambda/atlasit-slack-handler-${var.env}"
+    dlq-processor   = "/aws/lambda/atlasit-dlq-processor-${var.env}"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "silent500" {
+  for_each = local.silent500_lambdas
+
+  name           = "atlasit-silent500-${each.key}-${var.env}"
+  log_group_name = each.value
+  # OR pattern (`?`) doesn't support dimensions, so we encode the lambda name
+  # in the metric_name itself instead. Catches the `ERROR Unhandled` token
+  # the Lambda runtime emits when a handler swallows an exception via try/catch.
+  pattern = "?ERROR ?Unhandled ?TypeError ?\"violates check\" ?\"does not exist\""
+
+  metric_transformation {
+    name          = "SilentErrors-${each.key}"
+    namespace     = "Atlas/Lambda"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "silent500" {
+  for_each = local.silent500_lambdas
+
+  alarm_name          = "atlasit-silent500-${each.key}-${var.env}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "SilentErrors-${each.key}"
+  namespace           = "Atlas/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "Lambda ${each.key}: 5+ caught/swallowed errors in 5 min — check CW Logs Insights for ERROR/TypeError/violates patterns"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  treat_missing_data  = "notBreaching"
+}
+
 resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
   alarm_name          = "atlasit-rds-cpu-${var.env}"
   comparison_operator = "GreaterThanThreshold"
