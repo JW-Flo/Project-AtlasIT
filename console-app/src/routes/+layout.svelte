@@ -12,16 +12,9 @@
     const originalFetch = window.fetch.bind(window);
 
     // Stub responses for paths with no Lambda implementation yet (checked before pathMap).
-    // As Tier 2/3 features land, entries move out of here into pathMap.
+    // As Tier 3 lands, entries move out of here into pathMap.
     const stubMap: Record<string, unknown> = {
-      // Tier 2 (pending new tables: mfa, sso, directory_mappings, support_tickets, dsar, anomalies)
-      "/api/auth/mfa": { enabled: false, enrolledAt: null },
-      "/api/tenant/sso": { sso: null },
-      "/api/directory/mappings": { mappings: [] },
-      "/api/support": { message: "Support request submitted" },
-      "/api/privacy": { message: "Request received" },
-      "/api/compliance-intelligence/anomalies": { anomalies: [] },
-      // Tier 3 (pending Stripe integration)
+      // Tier 3 (pending Stripe integration — requires STRIPE_API_KEY)
       "/api/billing/seats": { seats: 5, activeUsers: 0, hasSubscription: false },
       "/api/billing/checkout": { url: null },
       "/api/billing/portal": { url: null },
@@ -73,6 +66,20 @@
       "/api/apps/disconnect": "/api/v1/apps/disconnect",
       "/api/apps/test": "/api/v1/apps/test",
       "/api/apps/credentials": "/api/v1/apps/credentials",
+      // Auth / MFA (Tier 2)
+      "/api/auth/mfa/status": "/api/v1/auth/mfa/status",
+      "/api/auth/mfa/setup": "/api/v1/auth/mfa/setup",
+      "/api/auth/mfa/confirm": "/api/v1/auth/mfa/confirm",
+      "/api/auth/mfa/disable": "/api/v1/auth/mfa/disable",
+      // SSO config (Tier 2)
+      "/api/tenant/sso": "/api/v1/tenant/sso",
+      // Directory mappings (Tier 2)
+      "/api/directory/mappings": "/api/v1/directory/mappings",
+      // Support + DSAR (Tier 2)
+      "/api/support": "/api/v1/support",
+      "/api/privacy/dsar": "/api/v1/privacy/dsar",
+      // Compliance anomalies (Tier 2)
+      "/api/compliance-intelligence/anomalies": "/api/compliance/api/v1/compliance-intelligence/anomalies",
       // Marketplace catalog
       "/api/marketplace": "/api/v1/marketplace",
       // Platform / operations
