@@ -3819,6 +3819,125 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // ── Questionnaire AI (Phase 9 — kill the security questionnaire) ──────
+  // POST /api/v1/trust/questionnaire/parse — split raw text into structured questions
+  if (path === "/api/v1/trust/questionnaire/parse" && method === "POST") {
+    const b = parseBody(event) as { text?: string; name?: string; sourceFormat?: string };
+    if (!b.text || typeof b.text !== "string") {
+      return fail(400, "text is required", "VALIDATION_FAILED");
+    }
+    const { parseQuestionnaireText, mapQuestionsToControls } = await import("./questionnaire.js");
+    const questions = parseQuestionnaireText(b.text);
+    const mappings = mapQuestionsToControls(questions);
+    // Persist questionnaire shell (so subsequent generate calls can ref it)
+    let questionnaireId: string | null = null;
+    if (b.name) {
+      const ins = await pool.query(
+        `INSERT INTO questionnaires (tenant_id, name, source_format, question_count, created_by_id)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [tenantId, b.name, b.sourceFormat ?? "custom", questions.length, auth.userId],
+      );
+      questionnaireId = ins.rows[0].id as string;
+    }
+    return ok({
+      status: "success",
+      questionnaireId,
+      questionCount: questions.length,
+      mappings,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/trust/questionnaire/generate — produce AI responses for given mappings
+  if (path === "/api/v1/trust/questionnaire/generate" && method === "POST") {
+    const b = parseBody(event) as {
+      questionnaireId?: string;
+      mappings?: Array<{
+        questionIndex: number;
+        questionText: string;
+        section: string | null;
+        mappedControls: string[];
+        confidence: number;
+      }>;
+    };
+    if (!b.mappings || !Array.isArray(b.mappings)) {
+      return fail(400, "mappings array required", "VALIDATION_FAILED");
+    }
+    const { buildEvidenceSummaries, buildLearningContext, generateResponses } =
+      await import("./questionnaire.js");
+    const [evidenceSummaries, priorAnswers] = await Promise.all([
+      buildEvidenceSummaries(pool, tenantId),
+      buildLearningContext(pool, tenantId),
+    ]);
+    const responses = await generateResponses(
+      b.mappings,
+      evidenceSummaries,
+      process.env.GROQ_API_KEY,
+      priorAnswers,
+    );
+    // Persist drafts so feedback can update them later
+    for (const r of responses) {
+      await pool.query(
+        `INSERT INTO questionnaire_responses
+           (tenant_id, questionnaire_id, question_index, question_text,
+            mapped_controls, confidence, response_text, evidence_refs)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          tenantId,
+          b.questionnaireId ?? null,
+          r.questionIndex,
+          r.questionText,
+          r.mappedControls.join(","),
+          r.mappedControls.length > 0 ? Math.min(1, r.mappedControls.length * 0.3) : 0,
+          r.response,
+          r.evidenceRefs.join(","),
+        ],
+      );
+    }
+    return ok({
+      status: "success",
+      responses,
+      groqEnabled: Boolean(process.env.GROQ_API_KEY),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/trust/questionnaire/feedback — record acceptance / edit / rejection
+  if (path === "/api/v1/trust/questionnaire/feedback" && method === "POST") {
+    const b = parseBody(event) as {
+      responseId?: string;
+      feedback?: "accepted" | "edited" | "rejected";
+      editedText?: string;
+    };
+    if (!b.responseId || !b.feedback) {
+      return fail(400, "responseId and feedback required", "VALIDATION_FAILED");
+    }
+    if (!["accepted", "edited", "rejected"].includes(b.feedback)) {
+      return fail(400, "feedback must be accepted | edited | rejected", "VALIDATION_FAILED");
+    }
+    const result = await pool.query(
+      `UPDATE questionnaire_responses
+       SET feedback = $1, edited_text = $2, feedback_at = NOW()
+       WHERE id = $3 AND tenant_id = $4`,
+      [b.feedback, b.editedText ?? null, b.responseId, tenantId],
+    );
+    if (result.rowCount === 0) {
+      return fail(404, "Response not found for tenant", "NOT_FOUND");
+    }
+    return ok({ status: "success", responseId: b.responseId, feedback: b.feedback });
+  }
+
+  // GET /api/v1/trust/questionnaire/list — list this tenant's questionnaires
+  if (path === "/api/v1/trust/questionnaire/list" && method === "GET") {
+    const result = await pool.query(
+      `SELECT id, name, source_format as "sourceFormat", question_count as "questionCount",
+              created_at as "createdAt", updated_at as "updatedAt"
+       FROM questionnaires WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 100`,
+      [tenantId],
+    );
+    return ok({ status: "success", questionnaires: result.rows });
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
 
