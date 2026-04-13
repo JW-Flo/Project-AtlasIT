@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { PageHeader, Card, Badge, Button, EmptyState, StatCard } from "$lib/components/ui";
+  import { AlertCircle, AppWindow, CheckCircle2, Plug, Plus } from "lucide-svelte";
 
   interface Integration {
     id: string;
@@ -84,137 +86,112 @@
   ];
 </script>
 
+<svelte:head>
+  <title>Connected Apps · AtlasIT</title>
+</svelte:head>
+
 <div class="animate-fade-in">
-  <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
-    <div>
-      <h1 class="text-3xl font-bold text-foreground">Connected Apps</h1>
-      <p class="mt-1 text-sm text-muted-foreground">
-        Manage your tenant's connected integrations
-      </p>
-    </div>
-    <a
-      href="/console/marketplace"
-      class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md transition-colors"
-    >
-      Connect App
-    </a>
-  </div>
+  <PageHeader title="Connected Apps" description="Manage integrations that feed your compliance evidence pipeline">
+    <svelte:fragment slot="actions">
+      <Button variant="primary" size="sm" href="/console/marketplace">
+        <Plus class="h-3.5 w-3.5" strokeWidth={2.25} />
+        Connect app
+      </Button>
+    </svelte:fragment>
+  </PageHeader>
 
   {#if loading}
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
       {#each Array(3) as _}
-        <div class="h-20 bg-muted rounded-lg animate-pulse"></div>
+        <div class="h-24 skeleton rounded-xl"></div>
       {/each}
     </div>
-    <div class="h-64 bg-muted rounded-lg animate-pulse"></div>
+    <div class="h-64 skeleton rounded-xl"></div>
   {:else if error}
-    <div
-      class="bg-destructive-muted border border-destructive/20 rounded-lg p-4"
-    >
-      <p class="text-destructive">{error}</p>
-      <button
-        on:click={loadIntegrations}
-        class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
-      >
-        Retry
-      </button>
-    </div>
+    <Card padding="md" class="bg-destructive-muted border-destructive/20">
+      <div class="flex items-start gap-3">
+        <AlertCircle class="h-5 w-5 text-destructive shrink-0 mt-0.5" strokeWidth={2} />
+        <div class="flex-1">
+          <p class="text-sm text-destructive font-medium">{error}</p>
+          <Button variant="destructive" size="sm" class="mt-3" on:click={loadIntegrations}>Retry</Button>
+        </div>
+      </div>
+    </Card>
   {:else}
     <!-- Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div
-        class="bg-card border border-border rounded-lg p-5"
-      >
-        <div class="text-sm text-muted-foreground">Total</div>
-        <div class="mt-1 text-3xl font-bold text-foreground">{totalCount}</div>
-      </div>
-      <div
-        class="bg-card border border-border rounded-lg p-5"
-      >
-        <div class="text-sm text-muted-foreground">Active</div>
-        <div class="mt-1 text-3xl font-bold text-success">{activeCount}</div>
-      </div>
-      <div
-        class="bg-card border border-border rounded-lg p-5"
-      >
-        <div class="text-sm text-muted-foreground">Inactive</div>
-        <div class="mt-1 text-3xl font-bold text-foreground">{inactiveCount}</div>
-      </div>
+    <div class="grid grid-cols-3 gap-3 mb-6">
+      <StatCard label="Total" value={totalCount} icon={AppWindow} />
+      <StatCard label="Active" value={activeCount} icon={CheckCircle2} intent="success" />
+      <StatCard label="Inactive" value={inactiveCount} icon={Plug} />
     </div>
 
     <!-- Filter pills -->
-    <div class="flex gap-2 mb-4 flex-wrap">
+    <div class="flex gap-1.5 mb-4 flex-wrap">
       {#each filterOptions as opt}
         <button
           type="button"
           on:click={() => (filter = opt.value)}
-          class="px-3 py-1.5 rounded-full text-sm font-medium transition-colors {filter === opt.value
-            ? 'bg-blue-600 text-white'
-            : 'bg-muted text-foreground/80 hover:bg-gray-200 dark:hover:bg-gray-700'}"
+          class={"px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-fast " +
+            (filter === opt.value
+              ? "bg-primary text-primary-foreground shadow-xs"
+              : "bg-muted text-foreground/70 hover:bg-accent hover:text-foreground border border-transparent hover:border-border")}
         >
           {opt.label}
         </button>
       {/each}
     </div>
 
-    <!-- Table -->
-    <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <Card padding="none" class="overflow-hidden">
       {#if filtered.length === 0}
-        <div class="p-12 text-center text-muted-foreground">
-          {#if integrations.length === 0}
-            <p class="text-base font-medium mb-2">No apps connected</p>
-            <p class="text-sm mb-4">Click Connect App to get started.</p>
-            <a
-              href="/console/marketplace"
-              class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md transition-colors"
-            >
-              Connect App
-            </a>
-          {:else}
-            No integrations match the selected filter.
-          {/if}
-        </div>
+        {#if integrations.length === 0}
+          <EmptyState
+            title="No apps connected"
+            description="Connect your first integration to start collecting compliance evidence automatically."
+            icon={AppWindow}
+          >
+            <svelte:fragment slot="action">
+              <Button variant="primary" size="sm" href="/console/marketplace">
+                <Plus class="h-3 w-3" strokeWidth={2.25} />
+                Connect first app
+              </Button>
+            </svelte:fragment>
+          </EmptyState>
+        {:else}
+          <div class="p-10 text-center text-sm text-muted-foreground">No integrations match the selected filter.</div>
+        {/if}
       {:else}
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+        <div class="overflow-x-auto mobile-table-wrapper">
+          <table class="min-w-full text-sm">
             <thead>
-              <tr
-                class="border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider text-left"
-              >
-                <th class="px-6 py-3">Provider</th>
-                <th class="px-6 py-3">Type</th>
-                <th class="px-6 py-3">Status</th>
-                <th class="px-6 py-3">Connected</th>
-                <th class="px-6 py-3">Last Sync</th>
-                <th class="px-6 py-3 text-right">Actions</th>
+              <tr class="bg-muted/40 border-b border-border">
+                <th class="px-5 py-2.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Provider</th>
+                <th class="px-5 py-2.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Type</th>
+                <th class="px-5 py-2.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                <th class="px-5 py-2.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Connected</th>
+                <th class="px-5 py-2.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Last sync</th>
+                <th class="px-5 py-2.5 text-right text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody class="divide-y divide-border">
               {#each filtered as integration (integration.id)}
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  <td class="px-6 py-4 font-medium text-foreground capitalize">
-                    {integration.provider}
-                  </td>
-                  <td class="px-6 py-4 text-foreground/80 capitalize">
-                    {integration.type}
-                  </td>
-                  <td class="px-6 py-4">
-                    <span
-                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize {statusBadgeClass(integration.status)}"
+                <tr class="row-hover">
+                  <td class="px-5 py-2.5 font-medium text-foreground capitalize">{integration.provider}</td>
+                  <td class="px-5 py-2.5 text-xs text-muted-foreground capitalize">{integration.type}</td>
+                  <td class="px-5 py-2.5">
+                    <Badge
+                      variant={integration.status === "active" ? "success" : integration.status === "error" ? "destructive" : "muted"}
+                      size="sm"
+                      dot
                     >
                       {integration.status}
-                    </span>
+                    </Badge>
                   </td>
-                  <td class="px-6 py-4 text-muted-foreground">
-                    {relativeTime(integration.created_at)}
-                  </td>
-                  <td class="px-6 py-4 text-muted-foreground">
-                    {relativeTime(integration.updated_at)}
-                  </td>
-                  <td class="px-6 py-4 text-right">
+                  <td class="px-5 py-2.5 text-2xs text-muted-foreground tabular-nums">{relativeTime(integration.created_at)}</td>
+                  <td class="px-5 py-2.5 text-2xs text-muted-foreground tabular-nums">{relativeTime(integration.updated_at)}</td>
+                  <td class="px-5 py-2.5 text-right">
                     <a
                       href="/console/marketplace?provider={integration.provider}"
-                      class="text-primary hover:text-primary-hover text-sm font-medium"
+                      class="text-2xs font-medium text-primary hover:underline"
                     >
                       Manage
                     </a>
@@ -225,6 +202,6 @@
           </table>
         </div>
       {/if}
-    </div>
+    </Card>
   {/if}
 </div>

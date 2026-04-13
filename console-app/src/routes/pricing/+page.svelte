@@ -175,55 +175,68 @@
   <meta name="description" content="Transparent pricing for IT automation and compliance. Start free, upgrade as you grow." />
 </svelte:head>
 
-<div class="min-h-screen bg-background">
+<div class="min-h-dvh bg-background relative overflow-hidden">
+  <!-- Decorative gradient -->
+  <div class="absolute inset-x-0 top-0 -z-10 overflow-hidden pointer-events-none">
+    <div class="absolute -top-32 left-1/2 -translate-x-1/2 w-[1100px] h-[600px] rounded-full bg-primary/8 blur-3xl"></div>
+  </div>
+
   {#if !isLoggedIn}
-    <!-- Header: only show for unauthenticated visitors -->
-    <header class="border-b">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <a href="/" class="text-2xl font-bold text-primary">AtlasIT</a>
-        <div class="flex items-center gap-4">
-          <a href="/console/login" class="text-sm text-muted-foreground hover:text-foreground transition-colors">Sign in</a>
-          <Button on:click={() => goto("/console/onboarding")}>Get started</Button>
+    <header class="container-page py-5 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 group">
+        <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-sm">
+          <svg viewBox="0 0 24 24" fill="none" class="h-4.5 w-4.5 text-primary-foreground" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
         </div>
+        <span class="font-semibold text-lg tracking-tight">AtlasIT</span>
+      </a>
+      <div class="flex items-center gap-4">
+        <a href="/login" class="text-sm text-muted-foreground hover:text-foreground transition-colors">Sign in</a>
+        <Button variant="primary" size="sm" on:click={() => goto("/signup")}>
+          Get started
+          <ArrowRight class="h-3.5 w-3.5" strokeWidth={2.25} />
+        </Button>
       </div>
     </header>
   {:else}
-    <!-- Back nav for logged-in users -->
-    <header class="border-b">
-      <div class="max-w-7xl mx-auto px-4 py-4">
-        <button
-          class="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          on:click={() => goto("/console/settings/billing")}
-        >
-          <ArrowLeft class="w-4 h-4" />
-          Back to Settings
-        </button>
-      </div>
+    <header class="container-page py-5">
+      <button
+        class="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        on:click={() => goto("/console/settings/billing")}
+      >
+        <ArrowLeft class="w-3.5 h-3.5" strokeWidth={2.25} />
+        Back to Settings
+      </button>
     </header>
   {/if}
 
-  <main class="max-w-7xl mx-auto px-4 py-16">
+  <main class="container-page py-8 lg:py-12">
     <!-- Hero -->
-    <div class="text-center mb-12">
-      <h1 class="text-4xl font-bold tracking-tight mb-4">
+    <div class="text-center mb-10 lg:mb-14 max-w-3xl mx-auto animate-slide-up">
+      <Badge variant="default" size="md" class="mb-4">
+        <Zap class="h-3 w-3" strokeWidth={2.5} />
+        First app connected → compliance score in &lt;10 minutes
+      </Badge>
+      <h1 class="text-4xl lg:text-5xl font-semibold tracking-tight mb-4 text-foreground">
         Simple, transparent pricing
       </h1>
-      <p class="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
-        No sales calls required. Start free, see your compliance score in under 10 minutes, and upgrade when you're ready.
+      <p class="text-md text-muted-foreground max-w-2xl mx-auto mb-8 leading-relaxed">
+        No sales calls required. Start free, ship compliance evidence to your auditors as a byproduct of running IT, and upgrade when you're ready.
       </p>
 
       <!-- Billing toggle -->
-      <div class="inline-flex items-center gap-3 bg-muted rounded-full p-1">
+      <div class="inline-flex items-center gap-1 bg-muted rounded-full p-1 border border-border">
         <button
-          class="px-4 py-2 rounded-full text-sm font-medium transition-colors {!annual ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}"
+          class={"px-4 py-1.5 rounded-full text-sm font-medium transition-all " + (!annual ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
           on:click={() => annual = false}
         >Monthly</button>
         <button
-          class="px-4 py-2 rounded-full text-sm font-medium transition-colors {annual ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}"
+          class={"px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 " + (annual ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
           on:click={() => annual = true}
         >
           Annual
-          <Badge variant="success" class="ml-1.5 text-xs">Save up to 25%</Badge>
+          <Badge variant="success" size="sm">Save 25%</Badge>
         </button>
       </div>
     </div>
