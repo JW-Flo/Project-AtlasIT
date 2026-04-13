@@ -339,14 +339,17 @@ Directory Event / Schedule / Webhook
 > trust center content to auto-respond to security questionnaires — the #1 bottleneck in enterprise deals.
 > TrustCloud and SafeBase lead here, but neither connects to real IT operations data.
 
-- [ ] Public route `/trust/{tenantSlug}` — live compliance scores, framework coverage, evidence recency, connected integrations count
-- [ ] Evidence provenance trail — for each control, show which IT operation generated the evidence, when, and whether it's still fresh (not just "pass/fail")
-- [ ] Tenant visibility controls — granular per-framework, per-control privacy settings (public / NDA-gated / private)
-- [ ] Self-service NDA workflow — visitors request access to detailed evidence, tenant approves, generates time-limited access token
-- [ ] PDF/XLSX auditor package export — per-framework evidence bundle with content hashes for tamper detection
-- [ ] Security questionnaire AI — ingest SIG/CAIQ/custom questionnaire templates, auto-map questions to existing evidence, generate draft responses from trust center content (Workers AI)
-- [ ] Embeddable trust badge — `<script>` tag tenants can put on their marketing site showing live compliance status
-- [ ] Files: `console-app/src/routes/trust/`, `console-app/src/routes/api/trust/`, new `questionnaire-ai` module
+**Status (2026-04-13): 5/8 items shipped. Remaining 3 are bounded and have no external blockers.**
+
+- [x] Public route `/trust/{tenantSlug}` — live compliance scores, framework coverage, evidence recency, connected integrations count (live at https://www.atlasit.pro/trust/atlasit)
+- [x] Evidence provenance trail — framework scores + evidence recency per framework (deeper per-control drill-down is Phase 9.1 refinement)
+- [x] Tenant visibility controls — `tenants.config.trust_center_public` toggle, admin UI at `/console/settings/trust`
+- [x] Embeddable trust badge — `/trust/[slug]/embed` iframe + `/api/v1/trust/:slug/badge.svg` shields.io-style SVG (framework-scoped via `?framework=SOC2`)
+- [x] **Security questionnaire AI skeleton** — `console-app/src/lib/server/questionnaire-ai.ts` exists (keyword → control mapping + Groq response generation). NOT yet wired to Lambda; still D1-style. Port to compliance-api Lambda with pg-backed evidence queries + Groq API key in SSM.
+- [ ] **PDF/XLSX auditor package export** — per-framework evidence bundle with content hashes for tamper detection. _Priority: NEXT._ Uses existing compliance data; no new collection required.
+- [ ] **Self-service NDA workflow** — visitors request access to detailed evidence, tenant approves, generates time-limited access token. Needs new `trust_access_requests` table + email notifications.
+- [ ] **Questionnaire AI Lambda port** — port `questionnaire-ai.ts` from SvelteKit server routes (dead in SPA mode) to `lambdas/compliance-api/`, add `questionnaire_responses` table, wire Groq API key via SSM.
+- [ ] Files: `console-app/src/routes/trust/`, `lambdas/compliance-api/src/routes.ts` (trust center routes), migration 0060+ for NDA + questionnaire_responses tables
 
 ## Phase 10 — Non-Human Identity Governance (Hottest IGA Category)
 
@@ -491,14 +494,14 @@ Competitors must stitch together:
 
 ## Cross-Cutting Concerns
 
-| Concern             | Strategy                                                                  |
-| ------------------- | ------------------------------------------------------------------------- |
-| Schema Evolution    | Versioned PostgreSQL migrations in `infra/aws/migrations/` (was D1)       |
-| Secrets             | AWS Secrets Manager (was 1Password + wrangler secret put)                 |
-| Config              | SSM Parameter Store + Lambda env vars (was wrangler.toml [env.*])         |
-| Performance         | DynamoDB + CloudFront caching; SQS for heavy ops (was KV + Queues)        |
-| Testing             | Vitest + Miniflare; 719 tests (118 files)                                 |
+| Concern             | Strategy                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| Schema Evolution    | Versioned PostgreSQL migrations in `infra/aws/migrations/` (was D1)          |
+| Secrets             | AWS Secrets Manager (was 1Password + wrangler secret put)                    |
+| Config              | SSM Parameter Store + Lambda env vars (was wrangler.toml [env.*])            |
+| Performance         | DynamoDB + CloudFront caching; SQS for heavy ops (was KV + Queues)           |
+| Testing             | Vitest + Miniflare; 719 tests (118 files)                                    |
 | Observability       | CloudWatch + OpenTelemetry (was CF Analytics Engine); 8 log groups, 4 alarms |
-| IaC                 | Terraform (18 files) + OPA policies + daily drift detection               |
-| Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization      |
-| Platform Migration  | Progressive DNS cutover (Route 53 weighted), Cloudflare hot standby       |
+| IaC                 | Terraform (18 files) + OPA policies + daily drift detection                  |
+| Usability Contracts | DTO mapping layer (snake_case → camelCase) + BFF error normalization         |
+| Platform Migration  | Progressive DNS cutover (Route 53 weighted), Cloudflare hot standby          |

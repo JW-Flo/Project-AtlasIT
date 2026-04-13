@@ -1,12 +1,40 @@
 # AWS Migration -- Completion Roadmap
 
-**Last updated:** 2026-04-12 (session 2)
+**Last updated:** 2026-04-13 (session 3 — orphan cleanup + stub wiring)
 **Purpose:** Single source of truth for completing the Cloudflare to AWS migration.
-**Status:** Migration gate **PASSED**. Platform Phase 9 work has started.
+**Status:** Migration gate **PASSED**. Platform Phase 9 work in progress (4/7 items done).
 
 ---
 
-## Post-Migration State (2026-04-12)
+## Session 3 (2026-04-13) — Orphan cleanup + stub-to-real wiring
+
+**AWS orphan cleanup (PRs #447-#449):** Deleted 9 orphan Lambdas + 10 IAM roles + 14 customer policies + 17 log groups + 1 Lambda layer + orphan VPC (cascade) + 2 API Gateways (HTTP + WebSocket) + 2 CloudFront distros + RDS snapshot + 3 DDB tables + 2 S3 buckets. Confirmed cost drop from ~$26/mo → ~$14/mo (RDS dominates; Bedrock usage is external OpenClaw workload).
+
+**Stub endpoints wired to real tables (PRs #450-#452):** Went from 20 stubMap
+entries → 2 (only `/api/health` sentinel + `/api/marketplace/installs`
+derivable from base endpoint). All feature endpoints now reach real
+Lambda backends:
+
+- **Tier 1 (10 endpoints, PR #450):** apps/connect/disconnect/test/credentials, marketplace, platform/health-deep, incidents/sla-config, operations/metrics, platform/journey-metrics, analytics/report
+- **Tier 2 (9 endpoints, PR #451) + migration 0057:** MFA (inline RFC 6238 TOTP, no deps), SSO configs, directory mappings, support tickets, DSAR requests, compliance anomalies (score-drop + fail-spike detection)
+- **Tier 3 (4 endpoints, PR #452) + migrations 0058+0059:** Stripe checkout + portal + seat sync, tenant_billing.seat_count + backfill, PG ports of invoices + usage_records (0039 was SQLite-only)
+
+**CI hardening (PRs #447, #448, #453):**
+
+- bcryptjs external + install step in deploy (core-api + onboarding-api were failing to bundle)
+- Health check step converted `[ STATUS != 200 ] && echo` → `if/fi` so exit 0 on success
+- Replaced dead `wrangler d1 migrations apply` step with `atlasit-migration-runner` Lambda invocation + git diff to apply only new migrations
+- Lambda version prune: keep last 5 published versions per function after each deploy
+
+**Terraform hygiene (PR #449):**
+
+- Log groups for 9 adapters (`for_each`) with 30d retention + import blocks
+- S3 lifecycle rules: 30d noncurrent-version expiration on `policies` + `artifacts`; 7d MPU cleanup on `console`
+- `iam-users.tf` (new): attach ReadOnlyAccess + service-specific FullAccess to `atlasit-dev-cli` (was blocking audits + cleanup)
+
+---
+
+## Post-Migration State (2026-04-13)
 
 All migration phases M1–M7 that gate platform development are now complete
 or in their stability window. The rule at the top of this file ("No platform
@@ -78,7 +106,7 @@ non-infrastructure feature work.
 - GitHub OAuth adapter (#433)
 - Score history snapshots (#435)
 
-### Phase 9 status (Trust Center — STARTED 2026-04-12)
+### Phase 9 status (Trust Center — 4/7 items done)
 
 - [x] `GET /api/v1/trust/:slug` — public endpoint on compliance-api, tenant
       must opt in via `tenants.config.trust_center_public = true`
@@ -86,10 +114,27 @@ non-infrastructure feature work.
       operational stats, privacy-preserving (no evidence/user details)
 - [x] `/console/settings/trust` admin toggle with public-URL display + copy
 - [x] Enabled for atlasit tenant — live at https://www.atlasit.pro/trust/atlasit
-- [ ] PDF/XLSX auditor package export
-- [ ] Questionnaire AI (SIG/CAIQ mapping)
-- [ ] Embeddable trust badge `<script>` tag
+- [x] Embeddable trust badge (iframe `/trust/[slug]/embed` + `/api/v1/trust/:slug/badge.svg` shields-style SVG)
+- [ ] PDF/XLSX auditor package export — NEXT
+- [ ] Questionnaire AI (SIG/CAIQ mapping) — D1-style skeleton exists at `console-app/src/lib/server/questionnaire-ai.ts`, needs Lambda port + Groq API key in SSM
 - [ ] NDA workflow for detailed evidence requests
+
+### Session 3 stub-wiring endpoint inventory
+
+| Feature                | Endpoints                                                    | Migration  | Status |
+| ---------------------- | ------------------------------------------------------------ | ---------- | ------ |
+| App integrations       | /apps/{connect,disconnect,test,credentials}                  | (existing) | ✓      |
+| Marketplace            | /marketplace (36 connector registry)                         | (existing) | ✓      |
+| Platform observability | /platform/{health-deep,journey-metrics}, /operations/metrics | (existing) | ✓      |
+| Analytics              | /analytics/report (CSV/JSON export)                          | (existing) | ✓      |
+| Incidents              | /incidents/sla-config                                        | (existing) | ✓      |
+| MFA (TOTP)             | /auth/mfa/{status,setup,confirm,disable}                     | 0057       | ✓      |
+| SSO                    | /tenant/sso (GET/PUT/DELETE)                                 | 0057       | ✓      |
+| Directory              | /directory/mappings (GET/POST/DELETE)                        | 0057       | ✓      |
+| Support                | /support (GET/POST)                                          | 0057       | ✓      |
+| DSAR                   | /privacy/dsar (GET/POST)                                     | 0057       | ✓      |
+| Compliance anomalies   | /compliance-intelligence/anomalies                           | —          | ✓      |
+| Billing                | /billing/{seats,checkout,portal}                             | 0058, 0059 | ✓      |
 
 ---
 
