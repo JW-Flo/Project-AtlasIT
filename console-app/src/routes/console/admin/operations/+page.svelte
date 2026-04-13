@@ -151,9 +151,9 @@
 
   function runStatusColor(status: string): string {
     switch (status) {
-      case "completed": return "text-green-600 dark:text-green-400";
-      case "running": return "text-blue-600 dark:text-blue-400";
-      case "failed": return "text-red-600 dark:text-red-400";
+      case "completed": return "text-success";
+      case "running": return "text-primary";
+      case "failed": return "text-destructive";
       case "compensating": return "text-orange-600 dark:text-orange-400";
       default: return "text-muted-foreground";
     }
@@ -320,7 +320,7 @@
           <CardContent class="pt-5">
             <div class="flex items-center justify-between">
               <p class="text-sm text-muted-foreground">Success Rate</p>
-              <CheckCircle class="h-4 w-4 {jml.successRate >= 80 ? 'text-green-500' : jml.successRate >= 50 ? 'text-yellow-500' : 'text-red-500'}" />
+              <CheckCircle class="h-4 w-4 {jml.successRate >= 80 ? 'text-green-500' : jml.successRate >= 50 ? 'text-yellow-500' : 'text-destructive'}" />
             </div>
             <p class="text-2xl font-bold mt-1">{jml.successRate}%</p>
             <Progress value={jml.successRate} max={100} class="mt-2" />
@@ -332,16 +332,16 @@
               <p class="text-sm text-muted-foreground">Completed</p>
               <CheckCircle class="h-4 w-4 text-green-500" />
             </div>
-            <p class="text-2xl font-bold mt-1 text-green-600 dark:text-green-400">{jml.completed}</p>
+            <p class="text-2xl font-bold mt-1 text-success">{jml.completed}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent class="pt-5">
             <div class="flex items-center justify-between">
               <p class="text-sm text-muted-foreground">Failed</p>
-              <XCircle class="h-4 w-4 text-red-500" />
+              <XCircle class="h-4 w-4 text-destructive" />
             </div>
-            <p class="text-2xl font-bold mt-1 text-red-600 dark:text-red-400">{jml.failed}</p>
+            <p class="text-2xl font-bold mt-1 text-destructive">{jml.failed}</p>
             {#if jml.avgDurationMs}
               <p class="text-xs text-muted-foreground mt-1">Avg: {jml.avgDurationMs}ms</p>
             {/if}
@@ -361,8 +361,8 @@
                   <span class="text-xs text-muted-foreground">{stats.total} runs</span>
                 </div>
                 <div class="flex gap-3 text-xs">
-                  <span class="text-green-600 dark:text-green-400">{stats.completed} passed</span>
-                  <span class="text-red-600 dark:text-red-400">{stats.failed} failed</span>
+                  <span class="text-success">{stats.completed} passed</span>
+                  <span class="text-destructive">{stats.failed} failed</span>
                 </div>
                 <Progress value={stats.total > 0 ? (stats.completed / stats.total) * 100 : 0} max={100} class="mt-2" />
               </CardContent>
@@ -392,9 +392,9 @@
                   {#each adapterProvisions as ap}
                     <tr class="border-t hover:bg-muted/50">
                       <td class="px-4 py-3 font-medium capitalize">{ap.adapter.replace(/-/g, ' ')}</td>
-                      <td class="px-4 py-3 text-center text-green-600 dark:text-green-400">{ap.provisions}</td>
-                      <td class="px-4 py-3 text-center text-blue-600 dark:text-blue-400">{ap.deprovisions}</td>
-                      <td class="px-4 py-3 text-center text-red-600 dark:text-red-400">{ap.failures}</td>
+                      <td class="px-4 py-3 text-center text-success">{ap.provisions}</td>
+                      <td class="px-4 py-3 text-center text-primary">{ap.deprovisions}</td>
+                      <td class="px-4 py-3 text-center text-destructive">{ap.failures}</td>
                       <td class="px-4 py-3 text-center">
                         <Badge variant={ap.failureRate > 50 ? 'destructive' : ap.failureRate > 20 ? 'warning' : 'success'}>
                           {ap.failureRate}%
@@ -471,7 +471,7 @@
                   <p>Never collected</p>
                 {/if}
                 {#if eh.staleHours !== null && eh.staleHours > 0}
-                  <p class={eh.isStale ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}>
+                  <p class={eh.isStale ? 'text-warning font-medium' : ''}>
                     {eh.staleHours}h since last update
                   </p>
                 {/if}
@@ -701,8 +701,8 @@
                           </div>
                           {#if run.error}
                             <div class="col-span-2">
-                              <span class="font-medium text-red-500">Error:</span>
-                              <span class="ml-1 text-red-500">{run.error}</span>
+                              <span class="font-medium text-destructive">Error:</span>
+                              <span class="ml-1 text-destructive">{run.error}</span>
                             </div>
                           {/if}
                         </div>

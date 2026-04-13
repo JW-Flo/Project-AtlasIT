@@ -36,9 +36,9 @@
 
   const methodColors: Record<string, string> = {
     GET: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-    POST: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    PUT: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-    DELETE: "bg-red-500/10 text-red-500 border-red-500/20",
+    POST: "bg-blue-500/10 text-blue-500 border-primary/20",
+    PUT: "bg-warning/10 text-warning border-amber-500/20",
+    DELETE: "bg-destructive/10 text-destructive border-red-500/20",
   };
 </script>
 

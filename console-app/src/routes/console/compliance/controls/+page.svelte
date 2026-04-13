@@ -86,15 +86,15 @@
 
   function stateClass(s: string): string {
     switch (s) {
-      case "pass":    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "fail":    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      case "pass":    return "bg-success-muted text-success";
+      case "fail":    return "bg-destructive-muted text-destructive";
       default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
     }
   }
 
   function frameworkClass(fw: string): string {
     switch (fw) {
-      case "SOC2":      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+      case "SOC2":      return "bg-primary-muted text-primary dark:bg-blue-900/30 dark:text-blue-300";
       case "ISO27001":  return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
       case "NIST_CSF":  return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
       case "HIPAA":     return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
@@ -156,16 +156,16 @@
   onMount(load);
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <!-- Header -->
   <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Compliance Controls</h1>
+    <h1 class="text-3xl font-bold text-foreground">Compliance Controls</h1>
     {#if !loading && !error && installedPacks.length > 0}
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-1 text-sm text-muted-foreground">
         {totalControls} controls across {installedPacks.length} installed pack{installedPacks.length !== 1 ? "s" : ""} —
-        <span class="text-green-600 dark:text-green-400 font-medium">{totalPass} passing</span>,
-        <span class="text-red-600 dark:text-red-400 font-medium">{totalFail} failing</span>,
-        <span class="text-gray-500 dark:text-gray-400 font-medium">{totalUnknown} unknown</span>
+        <span class="text-success font-medium">{totalPass} passing</span>,
+        <span class="text-destructive font-medium">{totalFail} failing</span>,
+        <span class="text-muted-foreground font-medium">{totalUnknown} unknown</span>
       </p>
     {/if}
   </div>
@@ -174,33 +174,33 @@
     <!-- Loading skeleton -->
     <div class="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
       {#each [1, 2, 3, 4] as _}
-        <div class="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-20 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
     <div class="space-y-2">
       {#each [1, 2, 3, 4, 5] as _}
-        <div class="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-12 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
 
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300">{error}</p>
-      <button on:click={load} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+      <p class="text-destructive">{error}</p>
+      <button on:click={load} class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md">Retry</button>
     </div>
 
   {:else if installedPacks.length === 0}
     <!-- Empty state -->
-    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-16 text-center">
+    <div class="bg-card border border-dashed border-input rounded-lg p-16 text-center">
       <div class="text-4xl mb-4">
-        <div class="inline-block w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center">
+        <div class="inline-block w-16 h-16 bg-muted rounded-full flex items-center justify-center">
           <div class="w-8 h-8 border-2 border-gray-300 dark:border-gray-500 rounded"></div>
         </div>
       </div>
-      <p class="text-gray-700 dark:text-gray-300 font-medium text-sm">No compliance packs installed</p>
-      <p class="mt-1 text-gray-400 dark:text-gray-500 text-xs">
+      <p class="text-foreground/80 font-medium text-sm">No compliance packs installed</p>
+      <p class="mt-1 text-muted-foreground/70 text-xs">
         Install a pack from
-        <a href="/console/compliance/packs" class="text-blue-600 dark:text-blue-400 hover:underline">/console/compliance/packs</a>
+        <a href="/console/compliance/packs" class="text-primary hover:underline">/console/compliance/packs</a>
         to see controls.
       </p>
     </div>
@@ -208,21 +208,21 @@
   {:else}
     <!-- Stat cards -->
     <div class="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs uppercase text-gray-500 dark:text-gray-400">Total Controls</div>
-        <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{totalControls}</div>
+      <div class="bg-card border border-border rounded-lg p-4">
+        <div class="text-xs uppercase text-muted-foreground">Total Controls</div>
+        <div class="text-2xl font-bold text-foreground mt-1">{totalControls}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs uppercase text-gray-500 dark:text-gray-400">Passing</div>
+      <div class="bg-card border border-border rounded-lg p-4">
+        <div class="text-xs uppercase text-muted-foreground">Passing</div>
         <div class="text-2xl font-bold text-green-700 dark:text-green-400 mt-1">{totalPass}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs uppercase text-gray-500 dark:text-gray-400">Failing</div>
-        <div class="text-2xl font-bold text-red-700 dark:text-red-400 mt-1">{totalFail}</div>
+      <div class="bg-card border border-border rounded-lg p-4">
+        <div class="text-xs uppercase text-muted-foreground">Failing</div>
+        <div class="text-2xl font-bold text-destructive mt-1">{totalFail}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-        <div class="text-xs uppercase text-gray-500 dark:text-gray-400">Unknown</div>
-        <div class="text-2xl font-bold text-gray-500 dark:text-gray-400 mt-1">{totalUnknown}</div>
+      <div class="bg-card border border-border rounded-lg p-4">
+        <div class="text-xs uppercase text-muted-foreground">Unknown</div>
+        <div class="text-2xl font-bold text-muted-foreground mt-1">{totalUnknown}</div>
       </div>
     </div>
 
@@ -236,7 +236,7 @@
             class="px-3 py-1 text-xs font-medium rounded-full border transition-colors
               {filterState === s
                 ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
+                : 'bg-card text-foreground/80 border-input hover:border-primary'}"
           >
             {s === "all" ? "All states" : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
@@ -247,7 +247,7 @@
       <select
         bind:value={filterPack}
         on:change={() => { expandedId = null; }}
-        class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary"
       >
         <option value="all">All packs</option>
         {#each installedPacks as pack}
@@ -259,7 +259,7 @@
       <select
         bind:value={filterFramework}
         on:change={() => { expandedId = null; }}
-        class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary"
       >
         <option value="all">All frameworks</option>
         {#each FRAMEWORKS as fw}
@@ -272,25 +272,25 @@
         type="text"
         bind:value={searchText}
         placeholder="Search control ID or title..."
-        class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 w-52"
+        class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary w-52"
       />
 
       {#if filteredControls.length !== totalControls}
-        <span class="text-xs text-gray-400 dark:text-gray-500">{filteredControls.length} of {totalControls} shown</span>
+        <span class="text-xs text-muted-foreground/70">{filteredControls.length} of {totalControls} shown</span>
       {/if}
     </div>
 
     <!-- Table -->
     {#if filteredControls.length === 0}
-      <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-10 text-center">
-        <p class="text-sm text-gray-500 dark:text-gray-400">No controls match the current filters.</p>
+      <div class="bg-card border border-dashed border-input rounded-lg p-10 text-center">
+        <p class="text-sm text-muted-foreground">No controls match the current filters.</p>
       </div>
     {:else}
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/60">
+              <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground bg-gray-50 dark:bg-gray-800/60">
                 <th class="px-4 py-3 font-medium">
                   <button on:click={() => toggleSort("controlId")} class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
                     Control ID{sortIndicator("controlId")}
@@ -339,8 +339,8 @@
                   role="button"
                   tabindex="0"
                 >
-                  <td class="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">{ctrl.controlId}</td>
-                  <td class="px-4 py-3 text-gray-900 dark:text-white max-w-xs">
+                  <td class="px-4 py-3 font-mono text-xs text-gray-600 dark:text-muted-foreground/70 whitespace-nowrap">{ctrl.controlId}</td>
+                  <td class="px-4 py-3 text-foreground max-w-xs">
                     <span class="line-clamp-2">{ctrl.title}</span>
                   </td>
                   <td class="px-4 py-3">
@@ -348,23 +348,23 @@
                       {ctrl.framework}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">{ctrl.packLabel}</td>
+                  <td class="px-4 py-3 text-xs text-gray-600 dark:text-muted-foreground/70 whitespace-nowrap">{ctrl.packLabel}</td>
                   <td class="px-4 py-3">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize {stateClass(ctrl.state)}">
                       {ctrl.state}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                     {ctrl.evidenceSampleSize} record{ctrl.evidenceSampleSize === 1 ? "" : "s"}
                   </td>
-                  <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                     {relativeTime(ctrl.evaluatedAt)}
                   </td>
-                  <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400 max-w-xs">
+                  <td class="px-4 py-3 text-xs text-gray-600 dark:text-muted-foreground/70 max-w-xs">
                     {#if ctrl.rationale && ctrl.rationale.length > 0}
                       <span class="line-clamp-1">{ctrl.rationale[0]}{ctrl.rationale.length > 1 ? "…" : ""}</span>
                     {:else}
-                      <span class="text-gray-400 dark:text-gray-500">—</span>
+                      <span class="text-muted-foreground/70">—</span>
                     {/if}
                   </td>
                 </tr>
@@ -373,28 +373,28 @@
                   <tr class="bg-gray-50 dark:bg-gray-700/30">
                     <td colspan="8" class="px-5 py-4">
                       <div class="space-y-3">
-                        <div class="flex flex-wrap gap-x-8 gap-y-1 text-xs text-gray-600 dark:text-gray-300">
+                        <div class="flex flex-wrap gap-x-8 gap-y-1 text-xs text-foreground/80">
                           <div>
-                            <span class="font-semibold text-gray-400 uppercase text-xs">Control ID</span>
+                            <span class="font-semibold text-muted-foreground/70 uppercase text-xs">Control ID</span>
                             <p class="font-mono mt-0.5">{ctrl.controlId}</p>
                           </div>
                           <div>
-                            <span class="font-semibold text-gray-400 uppercase text-xs">Rule</span>
+                            <span class="font-semibold text-muted-foreground/70 uppercase text-xs">Rule</span>
                             <p class="font-mono mt-0.5">{ctrl.ruleFn}</p>
                           </div>
                           <div>
-                            <span class="font-semibold text-gray-400 uppercase text-xs">Evaluated</span>
+                            <span class="font-semibold text-muted-foreground/70 uppercase text-xs">Evaluated</span>
                             <p class="mt-0.5">{ctrl.evaluatedAt ? new Date(ctrl.evaluatedAt).toLocaleString() : "—"}</p>
                           </div>
                         </div>
                         {#if ctrl.rationale && ctrl.rationale.length > 0}
                           <div>
-                            <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Rationale</p>
+                            <p class="text-xs font-semibold text-muted-foreground/70 uppercase mb-1">Rationale</p>
                             <ul class="space-y-1">
                               {#each ctrl.rationale as item}
-                                <li class="text-xs text-gray-700 dark:text-gray-300 flex items-start gap-2">
+                                <li class="text-xs text-foreground/80 flex items-start gap-2">
                                   <span class="mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0
-                                    {ctrl.state === 'pass' ? 'bg-green-500' : ctrl.state === 'fail' ? 'bg-red-500' : 'bg-gray-400'}"></span>
+                                    {ctrl.state === 'pass' ? 'bg-success' : ctrl.state === 'fail' ? 'bg-destructive' : 'bg-gray-400'}"></span>
                                   {item}
                                 </li>
                               {/each}

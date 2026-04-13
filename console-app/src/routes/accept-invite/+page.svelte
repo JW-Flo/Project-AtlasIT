@@ -122,61 +122,61 @@
   }
 </script>
 
-<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4">
-  <div class="w-full max-w-md p-8 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+<div class="min-h-screen flex items-center justify-center bg-background py-12 px-4">
+  <div class="w-full max-w-md p-8 bg-card rounded-lg shadow-md">
 
     {#if phase === "loading"}
       <div class="flex flex-col items-center gap-4 py-8">
         <div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-gray-500 dark:text-gray-400 text-sm">Validating invite…</p>
+        <p class="text-muted-foreground text-sm">Validating invite…</p>
       </div>
 
     {:else if phase === "invalid"}
       <div class="text-center py-8">
         <div class="w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
-          <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg class="w-6 h-6 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
-        <h1 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Invalid Invitation</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">This invitation link is invalid or has been revoked. Contact your admin for a new invite.</p>
-        <a href="/login" class="mt-6 inline-block text-blue-600 hover:text-blue-700 dark:text-blue-400 text-sm font-medium">Go to Login</a>
+        <h1 class="text-xl font-semibold text-foreground mb-2">Invalid Invitation</h1>
+        <p class="text-sm text-muted-foreground">This invitation link is invalid or has been revoked. Contact your admin for a new invite.</p>
+        <a href="/login" class="mt-6 inline-block text-primary hover:text-primary-hover dark:text-primary text-sm font-medium">Go to Login</a>
       </div>
 
     {:else if phase === "expired"}
       <div class="text-center py-8">
         <div class="w-12 h-12 mx-auto mb-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center">
-          <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg class="w-6 h-6 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h1 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Invitation Expired</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">This invitation link has expired (invites are valid for 7 days). Ask your admin to send a new one.</p>
-        <a href="/login" class="mt-6 inline-block text-blue-600 hover:text-blue-700 dark:text-blue-400 text-sm font-medium">Go to Login</a>
+        <h1 class="text-xl font-semibold text-foreground mb-2">Invitation Expired</h1>
+        <p class="text-sm text-muted-foreground">This invitation link has expired (invites are valid for 7 days). Ask your admin to send a new one.</p>
+        <a href="/login" class="mt-6 inline-block text-primary hover:text-primary-hover dark:text-primary text-sm font-medium">Go to Login</a>
       </div>
 
     {:else if phase === "accepted"}
       <div class="text-center py-8">
         <div class="w-12 h-12 mx-auto mb-4 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-          <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <svg class="w-6 h-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h1 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Already Accepted</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">This invitation has already been used. Log in with your credentials.</p>
-        <a href="/login" class="mt-6 inline-block text-blue-600 hover:text-blue-700 dark:text-blue-400 text-sm font-medium">Go to Login</a>
+        <h1 class="text-xl font-semibold text-foreground mb-2">Already Accepted</h1>
+        <p class="text-sm text-muted-foreground">This invitation has already been used. Log in with your credentials.</p>
+        <a href="/login" class="mt-6 inline-block text-primary hover:text-primary-hover dark:text-primary text-sm font-medium">Go to Login</a>
       </div>
 
     {:else if phase === "form" || phase === "submitting"}
       <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">You're invited!</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          Join <span class="font-medium text-gray-700 dark:text-gray-300">{inviteTenant}</span> as a <span class="font-medium text-gray-700 dark:text-gray-300">{inviteRole}</span>.
+        <h1 class="text-2xl font-bold text-foreground mb-1">You're invited!</h1>
+        <p class="text-sm text-muted-foreground">
+          Join <span class="font-medium text-foreground/80">{inviteTenant}</span> as a <span class="font-medium text-foreground/80">{inviteRole}</span>.
         </p>
       </div>
 
       {#if errorMsg}
-        <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-red-700 dark:text-red-400 text-sm">
+        <div class="mb-4 p-3 bg-destructive-muted border border-destructive/20 rounded text-destructive text-sm">
           {errorMsg}
         </div>
       {/if}
@@ -184,20 +184,20 @@
       <form on:submit|preventDefault={handleAccept} class="space-y-4">
         <!-- Email (readonly, pre-filled) -->
         <div>
-          <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+          <label for="email" class="block text-sm font-medium text-foreground/80 mb-1">Email</label>
           <input
             id="email"
             type="email"
             value={inviteEmail}
             readonly
-            class="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+            class="w-full px-3 py-2 border border-input rounded-md bg-gray-50 dark:bg-gray-700 text-muted-foreground cursor-not-allowed"
           />
         </div>
 
         <!-- Display name -->
         <div>
-          <label for="displayName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Full Name <span class="text-gray-400 text-xs font-normal">(optional)</span>
+          <label for="displayName" class="block text-sm font-medium text-foreground/80 mb-1">
+            Full Name <span class="text-muted-foreground/70 text-xs font-normal">(optional)</span>
           </label>
           <input
             id="displayName"
@@ -205,14 +205,14 @@
             bind:value={displayName}
             placeholder="Jane Smith"
             autocomplete="name"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-3 py-2 border border-input rounded-md bg-white dark:bg-gray-700 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
 
         <!-- Password -->
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Set Password <span class="text-red-500">*</span>
+          <label for="password" class="block text-sm font-medium text-foreground/80 mb-1">
+            Set Password <span class="text-destructive">*</span>
           </label>
           <div class="relative">
             <input
@@ -221,12 +221,12 @@
               bind:value={password}
               placeholder="At least 8 characters"
               autocomplete="new-password"
-              class="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              class="w-full px-3 py-2 pr-10 border border-input rounded-md bg-white dark:bg-gray-700 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
             />
             <button
               type="button"
               on:click={() => (showPassword = !showPassword)}
-              class="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              class="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground/70 hover:text-gray-600 dark:hover:text-gray-200"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {#if showPassword}
@@ -245,8 +245,8 @@
 
         <!-- Confirm password -->
         <div>
-          <label for="confirmPassword" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Confirm Password <span class="text-red-500">*</span>
+          <label for="confirmPassword" class="block text-sm font-medium text-foreground/80 mb-1">
+            Confirm Password <span class="text-destructive">*</span>
           </label>
           <input
             id="confirmPassword"
@@ -254,28 +254,28 @@
             bind:value={confirmPassword}
             placeholder="Re-enter your password"
             autocomplete="new-password"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            class="w-full px-3 py-2 border border-input rounded-md bg-white dark:bg-gray-700 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
           />
         </div>
 
         <button
           type="submit"
           disabled={phase === "submitting"}
-          class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-md transition-colors"
+          class="w-full py-2 px-4 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white font-medium rounded-md transition-colors"
         >
           {phase === "submitting" ? "Setting up your account…" : "Accept Invitation"}
         </button>
       </form>
 
-      <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-6 text-center text-sm text-muted-foreground">
         Already have an account?
-        <a href="/login" class="text-blue-600 hover:text-blue-700 dark:text-blue-400 font-medium">Sign in</a>
+        <a href="/login" class="text-primary hover:text-primary-hover dark:text-primary font-medium">Sign in</a>
       </p>
 
     {:else if phase === "done"}
       <div class="flex flex-col items-center gap-4 py-8">
         <div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-gray-500 dark:text-gray-400 text-sm">Signing you in…</p>
+        <p class="text-muted-foreground text-sm">Signing you in…</p>
       </div>
     {/if}
 

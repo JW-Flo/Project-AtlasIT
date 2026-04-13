@@ -64,15 +64,15 @@
   function statusBadgeClass(status: string): string {
     switch (status) {
       case "active":
-        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+        return "bg-success-muted text-success";
       case "inactive":
       case "disabled":
-        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-muted-foreground/70";
       case "error":
       case "failed":
         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
       default:
-        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+        return "bg-warning-muted text-warning";
     }
   }
 
@@ -84,17 +84,17 @@
   ];
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Connected Apps</h1>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <h1 class="text-3xl font-bold text-foreground">Connected Apps</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
         Manage your tenant's connected integrations
       </p>
     </div>
     <a
       href="/console/marketplace"
-      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+      class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md transition-colors"
     >
       Connect App
     </a>
@@ -103,18 +103,18 @@
   {#if loading}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       {#each Array(3) as _}
-        <div class="h-20 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-20 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
-    <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+    <div class="h-64 bg-muted rounded-lg animate-pulse"></div>
   {:else if error}
     <div
-      class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+      class="bg-destructive-muted border border-destructive/20 rounded-lg p-4"
     >
-      <p class="text-red-800 dark:text-red-300">{error}</p>
+      <p class="text-destructive">{error}</p>
       <button
         on:click={loadIntegrations}
-        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
       >
         Retry
       </button>
@@ -123,22 +123,22 @@
     <!-- Stats -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       <div
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+        class="bg-card border border-border rounded-lg p-5"
       >
-        <div class="text-sm text-gray-500 dark:text-gray-400">Total</div>
-        <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{totalCount}</div>
+        <div class="text-sm text-muted-foreground">Total</div>
+        <div class="mt-1 text-3xl font-bold text-foreground">{totalCount}</div>
       </div>
       <div
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+        class="bg-card border border-border rounded-lg p-5"
       >
-        <div class="text-sm text-gray-500 dark:text-gray-400">Active</div>
-        <div class="mt-1 text-3xl font-bold text-green-600">{activeCount}</div>
+        <div class="text-sm text-muted-foreground">Active</div>
+        <div class="mt-1 text-3xl font-bold text-success">{activeCount}</div>
       </div>
       <div
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5"
+        class="bg-card border border-border rounded-lg p-5"
       >
-        <div class="text-sm text-gray-500 dark:text-gray-400">Inactive</div>
-        <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{inactiveCount}</div>
+        <div class="text-sm text-muted-foreground">Inactive</div>
+        <div class="mt-1 text-3xl font-bold text-foreground">{inactiveCount}</div>
       </div>
     </div>
 
@@ -150,7 +150,7 @@
           on:click={() => (filter = opt.value)}
           class="px-3 py-1.5 rounded-full text-sm font-medium transition-colors {filter === opt.value
             ? 'bg-blue-600 text-white'
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}"
+            : 'bg-muted text-foreground/80 hover:bg-gray-200 dark:hover:bg-gray-700'}"
         >
           {opt.label}
         </button>
@@ -158,15 +158,15 @@
     </div>
 
     <!-- Table -->
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
       {#if filtered.length === 0}
-        <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+        <div class="p-12 text-center text-muted-foreground">
           {#if integrations.length === 0}
             <p class="text-base font-medium mb-2">No apps connected</p>
             <p class="text-sm mb-4">Click Connect App to get started.</p>
             <a
               href="/console/marketplace"
-              class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+              class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md transition-colors"
             >
               Connect App
             </a>
@@ -179,7 +179,7 @@
           <table class="w-full text-sm">
             <thead>
               <tr
-                class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
+                class="border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider text-left"
               >
                 <th class="px-6 py-3">Provider</th>
                 <th class="px-6 py-3">Type</th>
@@ -192,10 +192,10 @@
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
               {#each filtered as integration (integration.id)}
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  <td class="px-6 py-4 font-medium text-gray-900 dark:text-white capitalize">
+                  <td class="px-6 py-4 font-medium text-foreground capitalize">
                     {integration.provider}
                   </td>
-                  <td class="px-6 py-4 text-gray-600 dark:text-gray-300 capitalize">
+                  <td class="px-6 py-4 text-foreground/80 capitalize">
                     {integration.type}
                   </td>
                   <td class="px-6 py-4">
@@ -205,16 +205,16 @@
                       {integration.status}
                     </span>
                   </td>
-                  <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                  <td class="px-6 py-4 text-muted-foreground">
                     {relativeTime(integration.created_at)}
                   </td>
-                  <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                  <td class="px-6 py-4 text-muted-foreground">
                     {relativeTime(integration.updated_at)}
                   </td>
                   <td class="px-6 py-4 text-right">
                     <a
                       href="/console/marketplace?provider={integration.provider}"
-                      class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+                      class="text-primary hover:text-primary-hover text-sm font-medium"
                     >
                       Manage
                     </a>

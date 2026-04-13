@@ -82,7 +82,7 @@
 
   function frameworkColor(key: string): string {
     const map: Record<string, string> = {
-      SOC2: "bg-blue-100 text-blue-700",
+      SOC2: "bg-primary-muted text-primary",
       ISO27001: "bg-purple-100 text-purple-700",
       "NIST CSF": "bg-teal-100 text-teal-700",
       NIST_CSF: "bg-teal-100 text-teal-700",
@@ -103,10 +103,10 @@
   $: isAdmin = userRole === "admin" || userRole === "owner";
 </script>
 
-<div class="p-8 max-w-5xl mx-auto">
+<div class="animate-fade-in max-w-5xl mx-auto">
   <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Audit Package Export</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    <h1 class="text-3xl font-bold text-foreground">Audit Package Export</h1>
+    <p class="mt-1 text-sm text-muted-foreground">
       Generate an auditor-ready report bundling live compliance score, control state,
       evidence sample, attestations, policies, incidents, and audit trail for a chosen
       framework. HTML opens in a new tab — save as PDF via your browser's print dialog.
@@ -115,7 +115,7 @@
   </div>
 
   {#if !isAdmin}
-    <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-5">
+    <div class="bg-warning-muted border border-warning/20 rounded-lg p-4 mb-5">
       <p class="text-sm text-amber-800 dark:text-amber-300">
         Admin or owner role required to download audit packages. Sign in as an admin or
         ask a tenant admin to generate the report.
@@ -123,17 +123,17 @@
     </div>
   {/if}
 
-  <div class="mb-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" for="since">
+  <div class="mb-5 bg-card border border-border rounded-lg p-4">
+    <label class="block text-sm font-medium text-foreground/80 mb-1" for="since">
       Evidence window start
     </label>
     <input
       id="since"
       type="date"
       bind:value={sinceDate}
-      class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+      class="px-3 py-2 text-sm border border-input rounded-md bg-white dark:bg-gray-900 text-foreground"
     />
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+    <p class="mt-1 text-xs text-muted-foreground">
       Only evidence, incidents, and audit-log entries after this date will be included.
       Defaults to last 90 days. Attestations, policies, and control state are always full.
     </p>
@@ -141,36 +141,36 @@
 
   {#if loading}
     <div class="space-y-2">
-      {#each [1, 2, 3] as _}<div class="h-24 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>{/each}
+      {#each [1, 2, 3] as _}<div class="h-24 bg-muted rounded animate-pulse"></div>{/each}
     </div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300">{error}</p>
-      <button on:click={loadPacks} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+      <p class="text-destructive">{error}</p>
+      <button on:click={loadPacks} class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md">Retry</button>
     </div>
   {:else if packs.length === 0}
-    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center">
-      <p class="text-gray-500 dark:text-gray-400 text-sm">No compliance packs installed.</p>
-      <a href="/console/compliance/packs" class="mt-3 inline-block text-sm text-blue-600 hover:underline">Browse packs →</a>
+    <div class="bg-card border border-dashed border-input rounded-lg p-12 text-center">
+      <p class="text-muted-foreground text-sm">No compliance packs installed.</p>
+      <a href="/console/compliance/packs" class="mt-3 inline-block text-sm text-primary hover:underline">Browse packs →</a>
     </div>
   {:else}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {#each packs as p (p.id)}
         {@const score = p.controlCount > 0 && p.passCount !== null ? Math.round((p.passCount * 100) / p.controlCount) : 0}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
+        <div class="bg-card border border-border rounded-lg p-5">
           <div class="flex items-center gap-2 flex-wrap mb-2">
             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {frameworkColor(p.framework)}">
               {p.framework}
             </span>
-            <span class="text-sm font-medium text-gray-900 dark:text-white">{p.label}</span>
+            <span class="text-sm font-medium text-foreground">{p.label}</span>
           </div>
           <div class="flex items-baseline gap-3 mb-1">
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{score}%</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">
+            <div class="text-2xl font-bold text-foreground">{score}%</div>
+            <div class="text-xs text-muted-foreground">
               {p.passCount ?? 0} pass · {p.failCount ?? 0} fail · {p.unknownCount ?? 0} unknown
             </div>
           </div>
-          <p class="text-xs text-gray-400 mb-4">
+          <p class="text-xs text-muted-foreground/70 mb-4">
             {p.controlCount} controls{p.lastEvaluatedAt ? ` · last evaluated ${new Date(p.lastEvaluatedAt).toLocaleDateString()}` : ""}
           </p>
           <div class="flex gap-2">
@@ -178,7 +178,7 @@
               type="button"
               on:click={() => downloadHtml(p)}
               disabled={!isAdmin || downloading !== null}
-              class="flex-1 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md font-medium"
+              class="flex-1 px-3 py-2 text-sm bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md font-medium"
             >
               {downloading === p.framework ? "Generating…" : "Open HTML (print to PDF)"}
             </button>
@@ -186,7 +186,7 @@
               type="button"
               on:click={() => downloadJson(p)}
               disabled={!isAdmin || downloading !== null}
-              class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 disabled:opacity-50 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
+              class="px-3 py-2 text-sm border border-input disabled:opacity-50 text-foreground/80 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
               title="Download JSON bundle with content-hash"
             >
               {downloading === p.framework + "-json" ? "…" : "JSON"}
@@ -197,8 +197,8 @@
     </div>
   {/if}
 
-  <div class="mt-8 text-xs text-gray-500 dark:text-gray-400 max-w-3xl">
-    <h3 class="font-medium text-gray-700 dark:text-gray-300 mb-1 text-sm">What's in the package?</h3>
+  <div class="mt-8 text-xs text-muted-foreground max-w-3xl">
+    <h3 class="font-medium text-foreground/80 mb-1 text-sm">What's in the package?</h3>
     <ul class="space-y-1 list-disc pl-5">
       <li>Cover page: tenant, framework, score, evidence window, generation timestamp</li>
       <li>Per-control status (pass/fail/unknown) with rationale</li>

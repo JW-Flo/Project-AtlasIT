@@ -99,13 +99,13 @@
   function riskBadgeClass(tier: string): string {
     switch (tier) {
       case "approved":
-        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+        return "bg-success-muted text-success";
       case "under_review":
-        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+        return "bg-warning-muted text-warning";
       case "blocked":
         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
       default:
-        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-muted-foreground/70";
     }
   }
 
@@ -135,12 +135,12 @@
   });
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <!-- Header -->
   <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">App Discovery</h1>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <h1 class="text-3xl font-bold text-foreground">App Discovery</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
         Detect shadow IT via OAuth grant scanning
       </p>
     </div>
@@ -148,20 +148,20 @@
       type="button"
       on:click={triggerScan}
       disabled={scanning}
-      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-md transition-colors"
+      class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 text-white text-sm font-medium rounded-md transition-colors"
     >
       {scanning ? "Scanning..." : "Scan Now"}
     </button>
   </div>
 
   <!-- Tabs -->
-  <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6">
+  <div class="flex gap-1 border-b border-border mb-6">
     <button
       type="button"
       on:click={() => (activeTab = "apps")}
       class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === 'apps'
-        ? 'text-gray-900 dark:text-white border-b-2 border-blue-600'
-        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+        ? 'text-foreground border-b-2 border-blue-600'
+        : 'text-muted-foreground hover:text-gray-900 dark:hover:text-white'}"
     >
       Discovered Apps
     </button>
@@ -169,8 +169,8 @@
       type="button"
       on:click={() => (activeTab = "grants")}
       class="px-4 py-2.5 text-sm font-medium transition-colors -mb-px {activeTab === 'grants'
-        ? 'text-gray-900 dark:text-white border-b-2 border-blue-600'
-        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+        ? 'text-foreground border-b-2 border-blue-600'
+        : 'text-muted-foreground hover:text-gray-900 dark:hover:text-white'}"
     >
       OAuth Grants
     </button>
@@ -179,25 +179,25 @@
   <!-- Apps Tab -->
   {#if activeTab === "apps"}
     {#if loadingApps}
-      <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+      <div class="h-64 bg-muted rounded-lg animate-pulse"></div>
     {:else if appsError}
       <div
-        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+        class="bg-destructive-muted border border-destructive/20 rounded-lg p-4"
       >
-        <p class="text-red-800 dark:text-red-300">{appsError}</p>
+        <p class="text-destructive">{appsError}</p>
         <button
           on:click={loadApps}
-          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+          class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
         >
           Retry
         </button>
       </div>
     {:else}
       <div
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+        class="bg-card border border-border rounded-lg overflow-hidden"
       >
         {#if apps.length === 0}
-          <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+          <div class="p-12 text-center text-muted-foreground">
             <p class="text-base font-medium mb-2">No apps discovered yet</p>
             <p class="text-sm">Run a scan to detect OAuth grants and shadow IT.</p>
           </div>
@@ -206,7 +206,7 @@
             <table class="w-full text-sm">
               <thead>
                 <tr
-                  class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
+                  class="border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider text-left"
                 >
                   <th class="px-6 py-3">App Name</th>
                   <th class="px-6 py-3">Risk Tier</th>
@@ -218,7 +218,7 @@
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 {#each apps as app (app.id)}
                   <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                    <td class="px-6 py-4 font-medium text-foreground">
                       {app.app_name}
                     </td>
                     <td class="px-6 py-4">
@@ -228,10 +228,10 @@
                         {riskLabel(app.risk_tier)}
                       </span>
                     </td>
-                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                    <td class="px-6 py-4 text-muted-foreground">
                       {relativeTime(app.first_seen_at)}
                     </td>
-                    <td class="px-6 py-4 text-gray-600 dark:text-gray-300 capitalize">
+                    <td class="px-6 py-4 text-foreground/80 capitalize">
                       {app.status || "—"}
                     </td>
                     <td class="px-6 py-4 text-right">
@@ -271,25 +271,25 @@
   <!-- Grants Tab -->
   {#if activeTab === "grants"}
     {#if loadingGrants}
-      <div class="h-64 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+      <div class="h-64 bg-muted rounded-lg animate-pulse"></div>
     {:else if grantsError}
       <div
-        class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
+        class="bg-destructive-muted border border-destructive/20 rounded-lg p-4"
       >
-        <p class="text-red-800 dark:text-red-300">{grantsError}</p>
+        <p class="text-destructive">{grantsError}</p>
         <button
           on:click={loadGrants}
-          class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+          class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
         >
           Retry
         </button>
       </div>
     {:else}
       <div
-        class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+        class="bg-card border border-border rounded-lg overflow-hidden"
       >
         {#if grants.length === 0}
-          <div class="p-12 text-center text-gray-500 dark:text-gray-400">
+          <div class="p-12 text-center text-muted-foreground">
             <p class="text-base font-medium mb-2">No OAuth grants found</p>
             <p class="text-sm">Run a scan to discover OAuth grants across your directory.</p>
           </div>
@@ -298,7 +298,7 @@
             <table class="w-full text-sm">
               <thead>
                 <tr
-                  class="border-b border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-left"
+                  class="border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider text-left"
                 >
                   <th class="px-6 py-3">App</th>
                   <th class="px-6 py-3">User Email</th>
@@ -309,13 +309,13 @@
               <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 {#each grants as grant (grant.id)}
                   <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                    <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                    <td class="px-6 py-4 font-medium text-foreground">
                       {grant.app_name}
                     </td>
-                    <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                    <td class="px-6 py-4 text-foreground/80">
                       {grant.user_email}
                     </td>
-                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                    <td class="px-6 py-4 text-muted-foreground">
                       <div class="flex flex-wrap gap-1 max-w-xs">
                         {#each (grant.scopes ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 4) as scope}
                           <span
@@ -326,17 +326,17 @@
                         {/each}
                         {#if (grant.scopes ?? "").split(",").filter(Boolean).length > 4}
                           <span
-                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-muted-foreground/70"
                           >
                             +{(grant.scopes ?? "").split(",").filter(Boolean).length - 4} more
                           </span>
                         {/if}
                         {#if !grant.scopes}
-                          <span class="text-gray-400">—</span>
+                          <span class="text-muted-foreground/70">—</span>
                         {/if}
                       </div>
                     </td>
-                    <td class="px-6 py-4 text-gray-500 dark:text-gray-400">
+                    <td class="px-6 py-4 text-muted-foreground">
                       {relativeTime(grant.granted_at)}
                     </td>
                   </tr>

@@ -203,7 +203,7 @@
     if (grade === "A" || grade === "A+") return "text-green-500";
     if (grade === "B" || grade === "B+") return "text-blue-500";
     if (grade === "C") return "text-yellow-500";
-    return "text-red-500";
+    return "text-destructive";
   }
 
   function severityColor(severity: string): string {
@@ -260,7 +260,7 @@
       <Card>
         <CardContent class="p-4">
           <div class="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            <AlertTriangle class="h-4 w-4 text-red-500" />
+            <AlertTriangle class="h-4 w-4 text-destructive" />
             Gaps
           </div>
           <div class="text-2xl font-bold">{(gapSummary?.missingCount ?? 0) + (gapSummary?.staleCount ?? 0) + (gapSummary?.failingCount ?? 0)}</div>
@@ -469,7 +469,7 @@
             <CardContent class="p-4">
               <div class="text-sm text-muted-foreground mb-1">Overall Score</div>
               <div class="text-3xl font-bold">{analyticsData.overallScore}%</div>
-              <div class="text-xs {analyticsData.trendDelta >= 0 ? 'text-green-500' : 'text-red-500'}">
+              <div class="text-xs {analyticsData.trendDelta >= 0 ? 'text-green-500' : 'text-destructive'}">
                 {analyticsData.trendDelta >= 0 ? '+' : ''}{analyticsData.trendDelta}% vs last period
               </div>
             </CardContent>
@@ -533,7 +533,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                       <Badge variant="outline">{risk.framework}</Badge>
-                      <span class="text-sm font-medium {risk.score < 30 ? 'text-red-500' : risk.score < 60 ? 'text-yellow-500' : 'text-green-500'}">{risk.score}%</span>
+                      <span class="text-sm font-medium {risk.score < 30 ? 'text-destructive' : risk.score < 60 ? 'text-yellow-500' : 'text-green-500'}">{risk.score}%</span>
                     </div>
                   </div>
                 {/each}

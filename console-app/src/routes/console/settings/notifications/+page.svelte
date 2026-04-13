@@ -329,7 +329,7 @@
           </div>
 
           {#if slackWebhookSaved}
-            <p class="text-xs text-green-600 dark:text-green-400">Webhook configured</p>
+            <p class="text-xs text-success">Webhook configured</p>
           {/if}
         </CardContent>
       </Card>

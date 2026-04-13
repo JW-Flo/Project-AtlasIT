@@ -129,8 +129,8 @@
 
   function stateClass(s: string): string {
     switch (s) {
-      case "pass":    return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "fail":    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      case "pass":    return "bg-success-muted text-success";
+      case "fail":    return "bg-destructive-muted text-destructive";
       default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
     }
   }
@@ -149,10 +149,10 @@
   onMount(loadPacks);
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Compliance Packs</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+    <h1 class="text-3xl font-bold text-foreground">Compliance Packs</h1>
+    <p class="mt-1 text-sm text-muted-foreground">
       CDT-backed framework packs. Installing a pack binds its controls to your tenant; evaluation runs the live rule engine against your recent evidence.
     </p>
   </div>
@@ -170,25 +170,25 @@
 
   {#if !loading && installedPacks.length > 0}
     <div class="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="bg-card border border-border rounded-lg p-4">
         <div class="text-xs uppercase text-gray-500">Overall score</div>
-        <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{overallScore}%</div>
+        <div class="text-2xl font-bold text-foreground mt-1">{overallScore}%</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="bg-card border border-border rounded-lg p-4">
         <div class="text-xs uppercase text-gray-500">Installed packs</div>
-        <div class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{installedPacks.length}</div>
+        <div class="text-2xl font-bold text-foreground mt-1">{installedPacks.length}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="bg-card border border-border rounded-lg p-4">
         <div class="text-xs uppercase text-gray-500">Controls passing</div>
         <div class="text-2xl font-bold text-green-700 dark:text-green-400 mt-1">{totalPass}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="bg-card border border-border rounded-lg p-4">
         <div class="text-xs uppercase text-gray-500">Controls failing</div>
-        <div class="text-2xl font-bold text-red-700 dark:text-red-400 mt-1">{totalFail}</div>
+        <div class="text-2xl font-bold text-destructive mt-1">{totalFail}</div>
       </div>
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+      <div class="bg-card border border-border rounded-lg p-4">
         <div class="text-xs uppercase text-gray-500">Unknown</div>
-        <div class="text-2xl font-bold text-gray-500 dark:text-gray-400 mt-1">{totalUnknown}</div>
+        <div class="text-2xl font-bold text-muted-foreground mt-1">{totalUnknown}</div>
       </div>
     </div>
   {/if}
@@ -196,21 +196,21 @@
   {#if loading}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {#each [1, 2, 3, 4, 5] as _}
-        <div class="h-44 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-44 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300">{error}</p>
-      <button on:click={loadPacks} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+      <p class="text-destructive">{error}</p>
+      <button on:click={loadPacks} class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md">Retry</button>
     </div>
   {:else}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {#each packs as p (p.id)}
         {@const score = p.controlCount > 0 && p.passCount !== null ? Math.round((p.passCount * 100) / p.controlCount) : null}
         <div
-          class="bg-white dark:bg-gray-800 border rounded-lg p-5 hover:border-blue-400 cursor-pointer transition-colors
-            {selectedPackId === p.id ? 'border-blue-500 ring-2 ring-blue-200 dark:ring-blue-900' : 'border-gray-200 dark:border-gray-700'}"
+          class="bg-card border rounded-lg p-5 hover:border-primary cursor-pointer transition-colors
+            {selectedPackId === p.id ? 'border-primary ring-2 ring-blue-200 dark:ring-blue-900' : 'border-border'}"
           on:click={() => loadDetail(p.id)}
           on:keydown={(e) => e.key === 'Enter' && loadDetail(p.id)}
           role="button"
@@ -218,54 +218,54 @@
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <h3 class="font-semibold text-gray-900 dark:text-white truncate">{p.label}</h3>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{p.framework} · {p.controlCount} controls · v{p.version}</p>
+              <h3 class="font-semibold text-foreground truncate">{p.label}</h3>
+              <p class="text-xs text-muted-foreground mt-0.5">{p.framework} · {p.controlCount} controls · v{p.version}</p>
             </div>
             {#if p.installedAt}
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-muted text-success">
                 Installed
               </span>
             {/if}
           </div>
 
           {#if p.description}
-            <p class="mt-3 text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{p.description}</p>
+            <p class="mt-3 text-xs text-gray-600 dark:text-muted-foreground/70 line-clamp-2">{p.description}</p>
           {/if}
 
           {#if p.installedAt}
             <div class="mt-4 space-y-2">
-              <div class="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+              <div class="flex items-center justify-between text-xs text-gray-600 dark:text-muted-foreground/70">
                 <span>Score</span>
-                <span class="font-semibold text-gray-900 dark:text-white">{score ?? "—"}%</span>
+                <span class="font-semibold text-foreground">{score ?? "—"}%</span>
               </div>
-              <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div class="h-2 bg-muted rounded-full overflow-hidden">
                 {#if score !== null}
                   <div
-                    class="h-full {score >= 80 ? 'bg-green-500' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}"
+                    class="h-full {score >= 80 ? 'bg-success' : score >= 50 ? 'bg-warning' : 'bg-destructive'}"
                     style="width: {score}%"
                   ></div>
                 {/if}
               </div>
-              <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                <span><span class="text-green-600 dark:text-green-400 font-medium">{p.passCount ?? 0}</span> pass</span>
-                <span><span class="text-red-600 dark:text-red-400 font-medium">{p.failCount ?? 0}</span> fail</span>
+              <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                <span><span class="text-success font-medium">{p.passCount ?? 0}</span> pass</span>
+                <span><span class="text-destructive font-medium">{p.failCount ?? 0}</span> fail</span>
                 <span><span class="font-medium">{p.unknownCount ?? 0}</span> unknown</span>
               </div>
-              <p class="text-xs text-gray-400">Last evaluated {relativeTime(p.lastEvaluatedAt)}</p>
+              <p class="text-xs text-muted-foreground/70">Last evaluated {relativeTime(p.lastEvaluatedAt)}</p>
             </div>
 
             <div class="mt-4 flex gap-2">
               <button
                 on:click|stopPropagation={() => evaluate(p.id)}
                 disabled={busyPackId === p.id}
-                class="flex-1 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
+                class="flex-1 px-3 py-1.5 text-xs bg-primary hover:bg-primary-hover disabled:opacity-50 text-white rounded-md"
               >
                 {busyPackId === p.id ? "Running..." : "Evaluate"}
               </button>
               <button
                 on:click|stopPropagation={() => uninstall(p.id)}
                 disabled={busyPackId === p.id}
-                class="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
+                class="px-3 py-1.5 text-xs border border-input text-foreground/80 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md"
               >
                 Remove
               </button>
@@ -275,7 +275,7 @@
               <button
                 on:click|stopPropagation={() => install(p.id)}
                 disabled={busyPackId === p.id}
-                class="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md"
+                class="w-full px-3 py-1.5 text-xs bg-primary hover:bg-primary-hover disabled:opacity-50 text-white rounded-md"
               >
                 {busyPackId === p.id ? "Installing..." : "Install pack"}
               </button>
@@ -287,9 +287,9 @@
   {/if}
 
   {#if selectedPackId}
-    <div class="mt-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-      <div class="border-b border-gray-200 dark:border-gray-700 px-5 py-3 flex items-center justify-between">
-        <h2 class="font-semibold text-gray-900 dark:text-white">
+    <div class="mt-8 bg-card border border-border rounded-lg overflow-hidden">
+      <div class="border-b border-border px-5 py-3 flex items-center justify-between">
+        <h2 class="font-semibold text-foreground">
           {detail?.pack?.label ?? "Pack controls"}
         </h2>
         <button on:click={() => { selectedPackId = null; detail = null; }} class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
@@ -304,7 +304,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th class="px-5 py-3 font-medium">Control</th>
                 <th class="px-5 py-3 font-medium">Title</th>
                 <th class="px-5 py-3 font-medium">State</th>
@@ -315,21 +315,21 @@
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
               {#each detail.controls as c (c.controlId)}
                 <tr>
-                  <td class="px-5 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{c.controlId}</td>
-                  <td class="px-5 py-3 text-gray-900 dark:text-white">{c.title}</td>
+                  <td class="px-5 py-3 font-mono text-xs text-gray-600 dark:text-muted-foreground/70">{c.controlId}</td>
+                  <td class="px-5 py-3 text-foreground">{c.title}</td>
                   <td class="px-5 py-3">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize {stateClass(c.state)}">
                       {c.state}
                     </span>
                   </td>
-                  <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs">
+                  <td class="px-5 py-3 text-muted-foreground text-xs">
                     {c.evidenceSampleSize} record{c.evidenceSampleSize === 1 ? "" : "s"}
                   </td>
-                  <td class="px-5 py-3 text-xs text-gray-600 dark:text-gray-400 max-w-md">
+                  <td class="px-5 py-3 text-xs text-gray-600 dark:text-muted-foreground/70 max-w-md">
                     {#if c.rationale && c.rationale.length > 0}
                       {c.rationale.slice(0, 2).join("; ")}{c.rationale.length > 2 ? "…" : ""}
                     {:else}
-                      <span class="text-gray-400">—</span>
+                      <span class="text-muted-foreground/70">—</span>
                     {/if}
                   </td>
                 </tr>
