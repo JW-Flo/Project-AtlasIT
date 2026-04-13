@@ -20,3 +20,6 @@ export { default as DialogTitle } from "./dialog-title.svelte";
 export { default as DialogFooter } from "./dialog-footer.svelte";
 export { default as Alert } from "./alert.svelte";
 export { default as Avatar } from "./avatar.svelte";
+export { default as PageHeader } from "./page-header.svelte";
+export { default as EmptyState } from "./empty-state.svelte";
+export { default as StatCard } from "./stat-card.svelte";

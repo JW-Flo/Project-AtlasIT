@@ -136,6 +136,7 @@
       {@const apiBase = typeof window !== 'undefined' ? window.location.origin : 'https://www.atlasit.pro'}
       {@const badgeUrl = `${apiBase}/api/compliance/api/v1/trust/${tenantSlug}/badge.svg`}
       {@const iframeUrl = `${apiBase}/trust/${tenantSlug}/embed`}
+      {@const pdfBase = `${apiBase}/api/compliance/api/v1/trust/${tenantSlug}/export.pdf`}
       <div class="mt-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5">
         <h3 class="font-medium text-gray-900 dark:text-white text-sm mb-1">Embed on your site</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
@@ -191,7 +192,6 @@
               Generate a branded, signed compliance report suitable for auditor hand-off.
               Every page carries a SHA-256 content hash to detect tampering.
             </p>
-            {@const pdfBase = `${apiBase}/api/compliance/api/v1/trust/${tenantSlug}/export.pdf`}
             <div class="flex flex-wrap gap-2">
               <a href="{pdfBase}" target="_blank" rel="noopener"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">

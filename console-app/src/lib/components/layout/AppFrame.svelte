@@ -340,34 +340,47 @@
   </a>
 
   <!-- Sidebar -->
-  <aside class="hidden md:flex flex-col border-r bg-card shrink-0 sidebar-transition {sidebarCollapsed ? 'w-[64px]' : 'w-[240px]'}">
+  <aside class="hidden md:flex flex-col border-r border-border bg-card shrink-0 sidebar-transition {sidebarCollapsed ? 'w-[64px]' : 'w-[256px]'}">
     <!-- Logo -->
-    <a href="/console" class="flex items-center gap-2 h-16 border-b hover:bg-accent/50 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-6'}" title={sidebarCollapsed ? (orgName || 'AtlasIT') : ''}>
+    <a
+      href="/console"
+      class="flex items-center gap-2.5 h-16 border-b border-border hover:bg-accent/40 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-5'}"
+      title={sidebarCollapsed ? (orgName || 'AtlasIT') : ''}
+    >
       {#if logoUrl}
-        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover shrink-0" />
+        <img src={logoUrl} alt="{orgName || 'Organization'} logo" class="h-8 w-8 rounded-lg object-cover shrink-0 ring-1 ring-border" />
       {:else}
-        <div class="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0" style={accentColor ? `background-color: ${accentColor}` : ''}>
-          <span class="text-primary-foreground font-bold text-sm">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
+        <div
+          class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shrink-0 shadow-sm"
+          style={accentColor ? `background: ${accentColor}` : ''}
+        >
+          <span class="text-primary-foreground font-semibold text-[13px]">{orgName ? orgName[0].toUpperCase() : 'A'}</span>
         </div>
       {/if}
       {#if !sidebarCollapsed}
-        <span class="font-semibold text-lg tracking-tight">{orgName || 'AtlasIT'}</span>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold text-[15px] tracking-tight text-foreground truncate leading-tight">{orgName || 'AtlasIT'}</div>
+          <div class="text-2xs text-muted-foreground truncate">Compliance Platform</div>
+        </div>
       {/if}
     </a>
 
     {#if isImpersonating && !sidebarCollapsed}
-      <div class="mx-3 mt-3 bg-destructive text-destructive-foreground text-xs rounded-md px-3 py-2 flex items-center justify-between">
-        <span>Viewing as tenant</span>
-        <button on:click={exitImpersonation} class="text-[11px] bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded">Exit</button>
+      <div class="mx-3 mt-3 bg-destructive-muted border border-destructive/30 text-destructive text-xs rounded-lg px-3 py-2 flex items-center justify-between">
+        <span class="font-medium">Viewing as tenant</span>
+        <button
+          on:click={exitImpersonation}
+          class="text-2xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 px-2 py-0.5 rounded transition-colors"
+        >Exit</button>
       </div>
     {/if}
 
     <!-- Navigation -->
-    <nav class="flex-1 overflow-y-auto py-4 {sidebarCollapsed ? 'px-2' : 'px-3'} space-y-6">
+    <nav class="flex-1 overflow-y-auto py-4 {sidebarCollapsed ? 'px-2' : 'px-3'} space-y-5">
       {#each computedSections as section}
         <div>
           {#if !sidebarCollapsed}
-            <div class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div class="px-2 mb-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground/80">
               {section.title}
             </div>
           {/if}
@@ -378,21 +391,28 @@
                 href={item.href}
                 title={sidebarCollapsed ? item.label : ''}
                 class={cn(
-                  "flex items-center rounded-md text-sm font-medium transition-colors",
-                  sidebarCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2 border-l-2",
+                  "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-fast",
+                  sidebarCollapsed ? "justify-center px-2 py-2" : "gap-2.5 px-2.5 py-1.5",
                   active
-                    ? sidebarCollapsed
-                      ? "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)]"
-                      : "nav-active bg-[color-mix(in_srgb,var(--accent-brand,hsl(var(--primary)))_10%,transparent)] border-l-[var(--accent-brand,hsl(var(--primary)))]"
-                    : sidebarCollapsed
-                      ? "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-transparent",
+                    ? "nav-active bg-primary-muted text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
-                style={active && accentColor ? `color: ${accentColor}` : ""}
+                style={active && accentColor ? `color: ${accentColor}; background-color: color-mix(in srgb, ${accentColor} 12%, transparent)` : ""}
               >
-                <svelte:component this={item.icon} class="h-4 w-4 shrink-0" />
+                {#if active && !sidebarCollapsed}
+                  <span
+                    class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-primary"
+                    style={accentColor ? `background-color: ${accentColor}` : ''}
+                    aria-hidden="true"
+                  ></span>
+                {/if}
+                <svelte:component
+                  this={item.icon}
+                  class={cn("h-[17px] w-[17px] shrink-0 transition-colors", active ? "" : "text-muted-foreground/70 group-hover:text-foreground")}
+                  strokeWidth={active ? 2.25 : 1.85}
+                />
                 {#if !sidebarCollapsed}
-                  {item.label}
+                  <span class="truncate">{item.label}</span>
                 {/if}
               </a>
             {/each}
@@ -402,14 +422,14 @@
     </nav>
 
     <!-- Collapse toggle -->
-    <div class="border-t {sidebarCollapsed ? 'px-2' : 'px-3'} py-2">
+    <div class="border-t border-border {sidebarCollapsed ? 'px-2' : 'px-3'} py-2">
       <button
         on:click={toggleSidebar}
-        class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} w-full rounded-md py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+        class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-2.5 px-2.5'} w-full rounded-lg py-1.5 text-2xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
         title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        <ChevronDown class="h-4 w-4 shrink-0 {sidebarCollapsed ? 'rotate-[-90deg]' : 'rotate-90'} transition-transform" />
+        <ChevronDown class="h-3.5 w-3.5 shrink-0 {sidebarCollapsed ? 'rotate-[-90deg]' : 'rotate-90'} transition-transform" />
         {#if !sidebarCollapsed}
           <span>Collapse</span>
         {/if}
@@ -417,14 +437,18 @@
     </div>
 
     <!-- User section at bottom -->
-    <div class="border-t {sidebarCollapsed ? 'p-2' : 'p-3'}">
-      <a href="/console/profile" class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-3 px-3'} rounded-md py-2 hover:bg-accent transition-colors" title={sidebarCollapsed ? userDisplayName : ''}>
+    <div class="border-t border-border {sidebarCollapsed ? 'p-2' : 'p-3'}">
+      <a
+        href="/console/profile"
+        class="flex items-center {sidebarCollapsed ? 'justify-center' : 'gap-2.5 px-2'} rounded-lg py-2 hover:bg-accent transition-colors group"
+        title={sidebarCollapsed ? userDisplayName : ''}
+      >
         <Avatar {initials} size="sm" />
         {#if !sidebarCollapsed}
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium truncate">{userDisplayName || "User"}</div>
+            <div class="text-sm font-medium truncate text-foreground">{userDisplayName || "User"}</div>
             {#if userEmail && userEmail !== userDisplayName}
-              <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
+              <div class="text-2xs text-muted-foreground truncate">{userEmail}</div>
             {/if}
           </div>
         {/if}
@@ -522,11 +546,11 @@
   <!-- Main area -->
   <div class="flex-1 min-w-0 flex flex-col">
     <!-- Topbar -->
-    <header class="sticky top-0 z-30 flex items-center justify-between h-16 px-4 md:px-6 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <header class="sticky top-0 z-30 flex items-center justify-between h-14 px-4 md:px-5 border-b border-border bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <!-- Left: Hamburger + Breadcrumb -->
-      <div class="flex items-center gap-2 text-sm text-muted-foreground">
+      <div class="flex items-center gap-1.5 text-sm text-muted-foreground min-w-0">
         <button
-          class="inline-flex md:hidden items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors -ml-1"
+          class="inline-flex md:hidden items-center justify-center h-9 w-9 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors -ml-1"
           on:click={() => mobileMenuOpen = !mobileMenuOpen}
           aria-label="Toggle navigation menu"
           aria-expanded={mobileMenuOpen}
@@ -537,79 +561,82 @@
             <Menu class="h-5 w-5" />
           {/if}
         </button>
-        <a href="/console" class="hover:text-foreground transition-colors">Console</a>
+        <a href="/console" class="hover:text-foreground transition-colors font-medium">Console</a>
         {#if current !== "/console" && current !== "/console/"}
-          <ChevronDown class="h-3 w-3 -rotate-90" />
-          <span class="text-foreground font-medium">
+          <span class="text-muted-foreground/40 text-xs select-none">/</span>
+          <span class="text-foreground font-medium truncate">
             {titleCase(current.split("/").filter(Boolean).slice(1).join(" / ").replace(/-/g, " "))}
           </span>
         {/if}
       </div>
 
       <!-- Right: Actions -->
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-0.5">
         <!-- Notifications -->
         <a
           href="/notifications"
-          class="relative inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          class="relative inline-flex items-center justify-center h-9 w-9 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
           title="Notifications"
           aria-label="Notifications"
         >
-          <Bell class="h-[18px] w-[18px]" />
+          <Bell class="h-[17px] w-[17px]" strokeWidth={1.85} />
           {#if unreadCount > 0}
-            <span class="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+            <span class="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-semibold flex items-center justify-center ring-2 ring-background">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           {/if}
         </a>
 
-        <!-- Compliance Score Badge -->
+        <!-- Compliance Score Pill -->
         {#if $complianceScore}
+          {@const score = $complianceScore.overallScore}
+          {@const tone = score >= 80 ? 'success' : score >= 60 ? 'warning' : 'destructive'}
           <a
             href="/console/compliance"
-            class="hidden md:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-semibold transition-colors
-              {$complianceScore.overallScore >= 80
-                ? 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-green-500/25'
-                : $complianceScore.overallScore >= 60
-                  ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/25'
-                  : 'bg-red-500/15 text-red-600 dark:text-red-400 hover:bg-red-500/25'}"
+            class="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 mx-1.5 rounded-full text-xs font-medium transition-all duration-fast
+              {tone === 'success' ? 'bg-success-muted text-success hover:bg-success-muted/80' : ''}
+              {tone === 'warning' ? 'bg-warning-muted text-warning hover:bg-warning-muted/80' : ''}
+              {tone === 'destructive' ? 'bg-destructive-muted text-destructive hover:bg-destructive-muted/80' : ''}"
             title="Compliance: {$complianceScore.frameworks.map(f => `${f.framework} ${f.grade} (${f.score}%)`).join(', ')}"
             aria-label="Compliance score: {$complianceScore.grade} {$complianceScore.overallScore}%"
           >
-            <ShieldCheck class="h-3.5 w-3.5" />
-            <span>{$complianceScore.grade}</span>
-            <span class="text-[10px] opacity-75">{$complianceScore.overallScore}%</span>
+            <span class="h-1.5 w-1.5 rounded-full
+              {tone === 'success' ? 'bg-success' : ''}
+              {tone === 'warning' ? 'bg-warning' : ''}
+              {tone === 'destructive' ? 'bg-destructive' : ''}"></span>
+            <span class="font-semibold">{$complianceScore.grade}</span>
+            <span class="text-2xs opacity-70 tabular-nums">{score}%</span>
           </a>
         {/if}
 
         <!-- Copilot toggle -->
         <button
-          class="inline-flex items-center justify-center h-9 w-9 rounded-md transition-colors {copilotOpen ? 'bg-primary/10 text-primary' : 'hover:bg-accent text-muted-foreground hover:text-foreground'}"
+          class="inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors {copilotOpen ? 'bg-primary-muted text-primary' : 'hover:bg-accent text-muted-foreground hover:text-foreground'}"
           on:click={() => copilotOpen = !copilotOpen}
           title="Compliance Copilot (Cmd+K)"
           aria-label="Toggle compliance copilot"
         >
-          <Sparkles class="h-[18px] w-[18px]" />
+          <Sparkles class="h-[17px] w-[17px]" strokeWidth={1.85} />
         </button>
 
         <!-- Theme toggle -->
         <button
-          class="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          class="inline-flex items-center justify-center h-9 w-9 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
           on:click={toggleTheme}
           title="Toggle theme"
           aria-label="Toggle theme"
         >
           {#if t === "dark"}
-            <Sun class="h-[18px] w-[18px]" />
+            <Sun class="h-[17px] w-[17px]" strokeWidth={1.85} />
           {:else}
-            <Moon class="h-[18px] w-[18px]" />
+            <Moon class="h-[17px] w-[17px]" strokeWidth={1.85} />
           {/if}
         </button>
 
         <!-- Profile dropdown -->
-        <div class="profile-dropdown-container relative ml-1">
+        <div class="profile-dropdown-container relative ml-1.5 pl-1.5 border-l border-border">
           <button
-            class="flex items-center gap-2 h-9 px-2 rounded-md hover:bg-accent transition-colors"
+            class="flex items-center gap-1.5 h-9 px-1.5 rounded-lg hover:bg-accent transition-colors"
             on:click|stopPropagation={() => profileOpen = !profileOpen}
             aria-label="User menu"
             aria-expanded={profileOpen}
@@ -619,40 +646,45 @@
           </button>
 
           {#if profileOpen}
-            <div class="absolute top-full right-0 mt-1.5 w-64 rounded-lg border bg-card shadow-lg z-50 overflow-hidden">
-              <div class="flex items-center gap-3 p-4">
+            <div
+              class="absolute top-full right-0 mt-2 w-64 rounded-xl border border-border bg-popover shadow-lg z-50 overflow-hidden animate-scale-in origin-top-right"
+            >
+              <div class="flex items-center gap-3 p-4 border-b border-border">
                 <Avatar {initials} size="lg" />
                 <div class="min-w-0">
-                  <div class="text-sm font-semibold truncate">{userDisplayName}</div>
+                  <div class="text-sm font-semibold truncate text-foreground">{userDisplayName}</div>
                   {#if userEmail && userEmail !== userDisplayName}
                     <div class="text-xs text-muted-foreground truncate">{userEmail}</div>
                   {/if}
                 </div>
               </div>
-              <Separator />
-              <a
-                href="/console/profile"
-                class="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                on:click={() => profileOpen = false}
-              >
-                <User class="h-4 w-4" />
-                My Account
-              </a>
-              <a
-                href="/console/settings"
-                class="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                on:click={() => profileOpen = false}
-              >
-                <Settings class="h-4 w-4" />
-                Settings
-              </a>
-              <button
-                class="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors w-full text-left"
-                on:click={signOut}
-              >
-                <LogOut class="h-4 w-4" />
-                Sign Out
-              </button>
+              <div class="py-1">
+                <a
+                  href="/console/profile"
+                  class="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-foreground hover:bg-accent rounded-md transition-colors"
+                  on:click={() => profileOpen = false}
+                >
+                  <User class="h-4 w-4 text-muted-foreground" strokeWidth={1.85} />
+                  My Account
+                </a>
+                <a
+                  href="/console/settings"
+                  class="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-foreground hover:bg-accent rounded-md transition-colors"
+                  on:click={() => profileOpen = false}
+                >
+                  <Settings class="h-4 w-4 text-muted-foreground" strokeWidth={1.85} />
+                  Settings
+                </a>
+              </div>
+              <div class="py-1 border-t border-border">
+                <button
+                  class="flex items-center gap-2.5 px-3 py-2 mx-1 text-sm text-foreground hover:bg-destructive-muted hover:text-destructive rounded-md transition-colors w-full text-left"
+                  on:click={signOut}
+                >
+                  <LogOut class="h-4 w-4" strokeWidth={1.85} />
+                  Sign Out
+                </button>
+              </div>
             </div>
           {/if}
         </div>
@@ -660,19 +692,22 @@
     </header>
 
     <!-- Main content -->
-    <main class="flex-1 overflow-y-auto" id="main">
-      <div class="max-w-[1280px] mx-auto px-4 py-6 md:px-6 md:py-8">
+    <main class="flex-1 overflow-y-auto bg-background" id="main">
+      <div class="container-page py-6 md:py-8">
         <slot />
       </div>
       <ToastContainer />
       <!-- Footer -->
-      <footer class="border-t py-4 px-6 text-center text-xs text-muted-foreground">
-        &copy; {new Date().getFullYear()} AtlasIT &middot;
-        <a href="/privacy" class="hover:text-foreground transition-colors">Privacy</a> &middot;
-        <a href="/privacy/dsar" class="hover:text-foreground transition-colors">Data Requests</a> &middot;
-        <a href="/terms" class="hover:text-foreground transition-colors">Terms</a> &middot;
-        <a href="/support" class="hover:text-foreground transition-colors">Support</a> &middot;
-        <a href="https://status.atlasit.pro" class="hover:text-foreground transition-colors">Status</a>
+      <footer class="container-page py-6 mt-8 border-t border-border text-center text-2xs text-muted-foreground/80">
+        <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <span>&copy; {new Date().getFullYear()} AtlasIT</span>
+          <span class="text-muted-foreground/40">·</span>
+          <a href="/privacy" class="hover:text-foreground transition-colors">Privacy</a>
+          <a href="/privacy/dsar" class="hover:text-foreground transition-colors">Data Requests</a>
+          <a href="/terms" class="hover:text-foreground transition-colors">Terms</a>
+          <a href="/support" class="hover:text-foreground transition-colors">Support</a>
+          <a href="https://status.atlasit.pro" class="hover:text-foreground transition-colors">Status</a>
+        </div>
       </footer>
     </main>
   </div>
