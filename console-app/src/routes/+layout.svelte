@@ -11,28 +11,25 @@
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch.bind(window);
 
-    // Stub responses for paths with no Lambda implementation (checked before pathMap)
+    // Stub responses for paths with no Lambda implementation yet (checked before pathMap).
+    // As Tier 2/3 features land, entries move out of here into pathMap.
     const stubMap: Record<string, unknown> = {
+      // Tier 2 (pending new tables: mfa, sso, directory_mappings, support_tickets, dsar, anomalies)
       "/api/auth/mfa": { enabled: false, enrolledAt: null },
       "/api/tenant/sso": { sso: null },
+      "/api/directory/mappings": { mappings: [] },
+      "/api/support": { message: "Support request submitted" },
+      "/api/privacy": { message: "Request received" },
+      "/api/compliance-intelligence/anomalies": { anomalies: [] },
+      // Tier 3 (pending Stripe integration)
       "/api/billing/seats": { seats: 5, activeUsers: 0, hasSubscription: false },
       "/api/billing/checkout": { url: null },
       "/api/billing/portal": { url: null },
-      "/api/analytics/report": { report: null },
-      "/api/incidents/sla-config": { slaHours: { low: 72, medium: 24, high: 4, critical: 1 } },
-      "/api/operations/metrics": { metrics: {} },
-      "/api/platform/health-deep": { status: "healthy", services: {} },
-      "/api/platform/journey-metrics": { metrics: {} },
-      "/api/compliance-intelligence/anomalies": { anomalies: [] },
-      "/api/marketplace": { data: { items: [] } },
-      "/api/apps/connect": { success: true },
-      "/api/apps/disconnect": { success: true },
-      "/api/apps/test": { healthy: true },
-      "/api/apps/credentials": { credentials: [] },
-      "/api/directory/mappings": { mappings: [] },
+      // Marketplace sub-path — base /api/marketplace is wired; installs is
+      // derivable from the `installed` field on each item, keep stubbed.
+      "/api/marketplace/installs": { installs: [] },
+      // Public health (API Gateway /health already returns 200)
       "/api/health": { status: "healthy" },
-      "/api/support": { message: "Support request submitted" },
-      "/api/privacy": { message: "Request received" },
     };
 
     // Real Lambda path mappings (legacy UI paths → Lambda API Gateway paths)
@@ -72,6 +69,18 @@
       "/api/user/preferences": "/api/v1/user/profile",
       // Apps / Integrations
       "/api/apps/status": "/api/v1/apps/integrations",
+      "/api/apps/connect": "/api/v1/apps/connect",
+      "/api/apps/disconnect": "/api/v1/apps/disconnect",
+      "/api/apps/test": "/api/v1/apps/test",
+      "/api/apps/credentials": "/api/v1/apps/credentials",
+      // Marketplace catalog
+      "/api/marketplace": "/api/v1/marketplace",
+      // Platform / operations
+      "/api/platform/health-deep": "/api/v1/platform/health-deep",
+      "/api/incidents/sla-config": "/api/v1/incidents/sla-config",
+      "/api/operations/metrics": "/orchestrator/api/v1/operations/metrics",
+      "/api/platform/journey-metrics": "/orchestrator/api/v1/platform/journey-metrics",
+      "/api/analytics/report": "/orchestrator/api/v1/analytics/report",
       // Events
       "/api/analytics/events": "/orchestrator/api/v1/events",
       // Auth session

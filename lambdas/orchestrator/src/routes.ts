@@ -32,7 +32,12 @@ function getPool(): pg.Pool {
       connectionTimeoutMillis: 10_000,
       ssl: { rejectUnauthorized: false },
     });
-    _pool.connect().then(c => { c.release(); }).catch(() => {});
+    _pool
+      .connect()
+      .then((c) => {
+        c.release();
+      })
+      .catch(() => {});
   }
   return _pool;
 }
@@ -89,7 +94,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       headers: {
         "Access-Control-Allow-Origin": event.headers?.origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
+        "Access-Control-Allow-Headers":
+          "authorization, content-type, x-api-key, x-correlation-id, x-internal-api-key, x-request-id, x-tenant-id",
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Max-Age": "7200",
       },
@@ -1684,6 +1690,117 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
       timestamp: ts,
     });
+  }
+
+  // GET /api/v1/operations/metrics — aggregate ops metrics across events, workflows, DLQ
+  if (path === "/api/v1/operations/metrics" && method === "GET") {
+    const sinceHours = Math.min(parseInt(qs.hours ?? "24", 10) || 24, 24 * 30);
+    const since = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
+
+    const [eventsByStatus, dlqCount, workflowsByStatus] = await Promise.all([
+      pool.query(
+        `SELECT status, COUNT(*)::int as count FROM events
+         WHERE tenant_id = $1 AND created_at >= $2 GROUP BY status`,
+        [tenantId, since],
+      ),
+      pool.query(
+        `SELECT COUNT(*)::int as count FROM dead_letter_queue
+         WHERE tenant_id = $1 AND dead_lettered_at >= $2 AND replayed_at IS NULL`,
+        [tenantId, since],
+      ),
+      pool.query(
+        `SELECT status, COUNT(*)::int as count FROM workflow_runs
+         WHERE tenant_id = $1 AND created_at >= $2 GROUP BY status`,
+        [tenantId, since],
+      ),
+    ]);
+
+    const toMap = (rows: { status: string; count: number }[]): Record<string, number> =>
+      rows.reduce((acc, r) => ({ ...acc, [r.status]: r.count }), {});
+
+    return ok({
+      status: "success",
+      metrics: {
+        windowHours: sinceHours,
+        events: toMap(eventsByStatus.rows),
+        workflows: toMap(workflowsByStatus.rows),
+        deadLetterPending: dlqCount.rows[0]?.count ?? 0,
+      },
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/platform/journey-metrics — user journey aggregation (events by source+type)
+  if (path === "/api/v1/platform/journey-metrics" && method === "GET") {
+    const sinceHours = Math.min(parseInt(qs.hours ?? "168", 10) || 168, 24 * 90);
+    const since = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString();
+
+    const rows = await pool.query(
+      `SELECT source, type, status, COUNT(*)::int as count
+       FROM events WHERE tenant_id = $1 AND created_at >= $2
+       GROUP BY source, type, status ORDER BY count DESC LIMIT 100`,
+      [tenantId, since],
+    );
+
+    return ok({
+      status: "success",
+      metrics: {
+        windowHours: sinceHours,
+        byStep: rows.rows,
+        total: rows.rows.reduce((s, r) => s + r.count, 0),
+      },
+      timestamp: ts,
+    });
+  }
+
+  // GET /api/v1/analytics/report — CSV export of recent events (admin only, limited rows)
+  if (path === "/api/v1/analytics/report" && method === "GET") {
+    const sinceDays = Math.min(parseInt(qs.days ?? "30", 10) || 30, 90);
+    const since = new Date(Date.now() - sinceDays * 86400 * 1000).toISOString();
+    const format = qs.format ?? "csv";
+    const limit = Math.min(parseInt(qs.limit ?? "10000", 10) || 10000, 50000);
+
+    const rows = await pool.query(
+      `SELECT id, type, source, status, created_at, processed_at, retry_count
+       FROM events WHERE tenant_id = $1 AND created_at >= $2
+       ORDER BY created_at DESC LIMIT $3`,
+      [tenantId, since, limit],
+    );
+
+    if (format === "json") {
+      return ok({
+        status: "success",
+        report: {
+          windowDays: sinceDays,
+          rowCount: rows.rows.length,
+          rows: rows.rows,
+        },
+        timestamp: ts,
+      });
+    }
+
+    const header = "id,type,source,status,created_at,processed_at,retry_count\n";
+    const csvEscape = (v: unknown): string => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const body = rows.rows
+      .map((r) =>
+        [r.id, r.type, r.source, r.status, r.created_at, r.processed_at, r.retry_count]
+          .map(csvEscape)
+          .join(","),
+      )
+      .join("\n");
+
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "text/csv",
+        "Content-Disposition": `attachment; filename="events-${sinceDays}d.csv"`,
+      },
+      body: header + body,
+    };
   }
 
   return fail(404, "Not Found", "NOT_FOUND");

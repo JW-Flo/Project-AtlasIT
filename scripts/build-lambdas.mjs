@@ -29,6 +29,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = join(__dirname, "..");
 const LAMBDAS_DIR = join(ROOT_DIR, "lambdas");
 const SHARED_SRC = join(ROOT_DIR, "packages", "shared", "src");
+const CONNECTOR_SCHEMA_SRC = join(ROOT_DIR, "packages", "connector-schema", "src");
 
 // console-ssr is built by SvelteKit's own pipeline, not esbuild
 const SKIP = new Set(["console-ssr"]);
@@ -67,6 +68,7 @@ for (const name of toBuild) {
       external: ["@aws-sdk/*", "crypto", "pg", "pg-native", "bcryptjs"],
       alias: {
         "@atlasit/shared": SHARED_SRC,
+        "@atlasit/connector-schema": CONNECTOR_SCHEMA_SRC,
       },
       resolveExtensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
       plugins: [tsResolvePlugin],
