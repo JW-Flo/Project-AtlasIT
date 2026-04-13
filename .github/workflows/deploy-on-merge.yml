@@ -117,25 +117,61 @@ jobs:
   migrate-shared-db:
     needs: [changes]
     if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
-    name: Apply shared DB migrations
+    name: Apply PG migrations (Aurora)
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
-    env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Apply D1 migrations (atlasit-shared)
-        run: npx wrangler d1 migrations apply atlasit-shared --config wrangler-shared-db.toml --remote
-      - name: Apply D1 migrations (atlasit_compliance)
-        run: npx wrangler d1 migrations apply atlasit_compliance --config compliance-worker/wrangler.toml --remote
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
+          aws-region: us-east-1
+      - name: Apply new PG migrations via migration-runner Lambda
+        run: |
+          # Find .sql files in migrations/ changed in this push
+          CHANGED=$(git diff --name-only --diff-filter=AM HEAD^ HEAD -- 'migrations/*.sql' | sort)
+          if [ -z "$CHANGED" ]; then
+            echo "No migration files changed in this push — skipping"
+            exit 0
+          fi
+          echo "New/changed migrations:"
+          echo "$CHANGED"
+          echo ""
+          FAILED=0
+          for SQL_FILE in $CHANGED; do
+            echo "=== Applying $SQL_FILE ==="
+            PAYLOAD=$(node -e "
+              const fs = require('fs');
+              const sql = fs.readFileSync('$SQL_FILE', 'utf8');
+              const stmts = sql.split(';').map(s => s.trim())
+                .filter(s => s && !s.split('\n').every(l => l.trim().startsWith('--')));
+              console.log(JSON.stringify({ statements: stmts }));
+            ")
+            RESULT=$(aws lambda invoke \
+              --function-name atlasit-migration-runner \
+              --cli-binary-format raw-in-base64-out \
+              --payload "$PAYLOAD" \
+              /tmp/mig-result.json 2>&1)
+            echo "$RESULT"
+            if grep -q '"ok":false' /tmp/mig-result.json; then
+              echo "::error file=$SQL_FILE::migration failed — see preview below"
+              cat /tmp/mig-result.json
+              FAILED=$((FAILED + 1))
+            else
+              echo "OK"
+            fi
+          done
+          if [ $FAILED -gt 0 ]; then
+            echo "::error::$FAILED migration(s) failed"
+            exit 1
+          fi
 
   deploy-root-worker:
     needs: [changes]
