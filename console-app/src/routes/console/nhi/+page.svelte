@@ -281,7 +281,7 @@
       <Card>
         <CardContent class="pt-4 pb-3">
           <p class="text-xs text-muted-foreground uppercase font-medium">High Risk</p>
-          <p class="text-2xl font-bold mt-1 text-red-500">{highRisk}</p>
+          <p class="text-2xl font-bold mt-1 text-destructive">{highRisk}</p>
         </CardContent>
       </Card>
     </div>

@@ -90,7 +90,7 @@
           <Card>
             <CardContent class="pt-5">
               <div class="flex items-center gap-2 mb-3">
-                <span class="w-2.5 h-2.5 rounded-full {status.ok ? 'bg-green-500' : 'bg-destructive'}"></span>
+                <span class="w-2.5 h-2.5 rounded-full {status.ok ? 'bg-success' : 'bg-destructive'}"></span>
                 <h3 class="font-medium capitalize">{service}</h3>
               </div>
               <div class="text-sm space-y-1.5">
@@ -208,7 +208,7 @@
       <Card>
         <CardContent class="pt-5">
           <div class="flex items-center gap-3 mb-4">
-            <span class="w-3 h-3 rounded-full {deepHealth.healthy ? 'bg-green-500' : 'bg-destructive'}"></span>
+            <span class="w-3 h-3 rounded-full {deepHealth.healthy ? 'bg-success' : 'bg-destructive'}"></span>
             <span class="font-medium">{deepHealth.healthy ? 'All Systems Functional' : 'Degraded'}</span>
             <Badge variant={deepHealth.sloMet ? 'success' : 'destructive'}>
               {deepHealth.passingChecks}/{deepHealth.totalChecks} checks passing
@@ -218,7 +218,7 @@
             {#each (deepHealth.services ?? []) as svc}
               <div class="p-3 rounded border">
                 <div class="flex items-center gap-2 mb-2">
-                  <span class="w-2 h-2 rounded-full {svc.reachable ? 'bg-green-500' : 'bg-destructive'}"></span>
+                  <span class="w-2 h-2 rounded-full {svc.reachable ? 'bg-success' : 'bg-destructive'}"></span>
                   <span class="font-medium capitalize">{svc.name}</span>
                   {#if svc.version}<span class="text-xs text-muted-foreground">v{svc.version}</span>{/if}
                 </div>
@@ -253,7 +253,7 @@
           <div class="space-y-2">
             {#each (journeyMetrics.steps ?? []) as step, i}
               <div class="flex items-center gap-3">
-                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs {step.completed ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'}">{i + 1}</span>
+                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs {step.completed ? 'bg-success text-white' : 'bg-muted text-muted-foreground'}">{i + 1}</span>
                 <span class="font-medium capitalize {step.completed ? '' : 'text-muted-foreground'}">{step.name.replace(/_/g, " ")}</span>
                 <span class="text-xs text-muted-foreground ml-auto">{step.evidence}</span>
               </div>

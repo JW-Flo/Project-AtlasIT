@@ -825,7 +825,7 @@
 
             <!-- Test & Actions -->
             {#if ssoTestResult}
-              <div class="rounded-md p-3 text-sm {ssoTestResult.success ? 'bg-green-500/10 text-green-700' : 'bg-destructive/10 text-destructive'}">
+              <div class="rounded-md p-3 text-sm {ssoTestResult.success ? 'bg-success/10 text-green-700' : 'bg-destructive/10 text-destructive'}">
                 {ssoTestResult.message}
               </div>
             {/if}

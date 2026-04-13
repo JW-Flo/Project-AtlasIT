@@ -265,7 +265,7 @@
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold">{app.name}</span>
-                    <span class="w-2 h-2 rounded-full {app.healthy === false ? 'bg-warning' : 'bg-green-500'}"></span>
+                    <span class="w-2 h-2 rounded-full {app.healthy === false ? 'bg-warning' : 'bg-success'}"></span>
                   </div>
                   <div class="text-xs text-muted-foreground">
                     {authLabel(app.auth)} &middot; {app.credentialFields.filter((f) => f.required).length} credential fields
@@ -332,7 +332,7 @@
 
     <!-- Test result -->
     {#if testResult}
-      <div class="mt-4 rounded-lg p-3 text-xs {testResult.ok ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'}">
+      <div class="mt-4 rounded-lg p-3 text-xs {testResult.ok ? 'bg-success/10 text-green-500' : 'bg-destructive/10 text-destructive'}">
         {testResult.ok ? "Passed" : "Failed"}: {testResult.message}
       </div>
     {/if}

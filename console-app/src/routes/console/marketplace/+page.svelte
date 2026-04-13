@@ -256,7 +256,7 @@
           <h3 class="text-sm font-semibold mb-1 flex items-center gap-1.5">
             {integration.name}
             {#if integration.connected}
-              <span class="inline-block w-2 h-2 rounded-full {integration.healthy === true ? 'bg-green-500' : integration.healthy === false ? 'bg-red-500' : 'bg-gray-400'}" title="{integration.healthy === true ? 'Healthy' : integration.healthy === false ? 'Unhealthy' : 'Not tested'}"></span>
+              <span class="inline-block w-2 h-2 rounded-full {integration.healthy === true ? 'bg-success' : integration.healthy === false ? 'bg-destructive' : 'bg-gray-400'}" title="{integration.healthy === true ? 'Healthy' : integration.healthy === false ? 'Unhealthy' : 'Not tested'}"></span>
             {/if}
           </h3>
           <div class="text-xs text-muted-foreground mb-1">
@@ -392,7 +392,7 @@
     {:else}
       <!-- Step 3: Confirmation -->
       <div class="space-y-4 text-center">
-        <div class="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-green-500/15">
+        <div class="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-success/15">
           <Check class="w-6 h-6 text-green-500" />
         </div>
         <div>

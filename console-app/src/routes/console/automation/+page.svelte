@@ -167,10 +167,10 @@
   }
 
   function statusBadgeClass(s: string): string {
-    if (s === "completed" || s === "success") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+    if (s === "completed" || s === "success") return "bg-success-muted text-success";
     if (s === "failed" || s === "error") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-    if (s === "running") return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
-    if (s === "pending") return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+    if (s === "running") return "bg-primary-muted text-primary";
+    if (s === "pending") return "bg-warning-muted text-warning";
     return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
   }
 
@@ -185,26 +185,26 @@
 
   onMount(() => { loadRules(); });
 
-  const cls = "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500";
-  const th = "px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider";
+  const cls = "w-full px-3 py-2 text-sm border border-input rounded-md bg-white dark:bg-gray-900 text-foreground focus:outline-none focus:ring-2 focus:ring-primary";
+  const th = "px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider";
   const thLeft = th + " text-left";
-  function tabCls(t: string) { return "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"); }
+  function tabCls(t: string) { return "pb-3 text-sm font-medium border-b-2 transition-colors " + (activeTab === t ? "border-blue-600 text-primary" : "border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300"); }
   const actionsPlaceholder = '[{"type":"notify","config":{"channel":"slack"}}]';
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <!-- Header -->
   <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Automation</h1>
+      <h1 class="text-3xl font-bold text-foreground">Automation</h1>
       <div class="mt-2 flex gap-2 flex-wrap">
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
           {stats?.total_rules ?? rules.length} total
         </span>
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-muted text-success">
           {enabledCount} enabled
         </span>
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-muted-foreground/70">
           {disabledCount} disabled
         </span>
       </div>
@@ -214,11 +214,11 @@
         type="search"
         bind:value={search}
         placeholder="Search rules..."
-        class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+        class="px-3 py-2 text-sm border border-input rounded-md bg-card text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary w-48"
       />
       <button
         on:click={() => { showCreateForm = !showCreateForm; createError = null; }}
-        class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+        class="px-4 py-2 text-sm font-medium bg-primary hover:bg-primary-hover text-white rounded-md transition-colors"
       >
         {showCreateForm ? "Cancel" : "New Rule"}
       </button>
@@ -227,34 +227,34 @@
 
   <!-- Inline create form -->
   {#if showCreateForm}
-    <div class="mb-6 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">New Automation Rule</h2>
-      {#if createError}<div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-800 dark:text-red-300">{createError}</div>{/if}
+    <div class="mb-6 bg-card border border-primary/20 rounded-lg p-6">
+      <h2 class="text-lg font-semibold text-foreground mb-4">New Automation Rule</h2>
+      {#if createError}<div class="mb-4 p-3 bg-destructive-muted border border-destructive/20 rounded text-sm text-destructive">{createError}</div>{/if}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name <span class="text-red-500">*</span></label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Name <span class="text-destructive">*</span></label>
           <input type="text" bind:value={createName} placeholder="Rule name" class={cls} />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trigger Type</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Trigger Type</label>
           <select bind:value={createTriggerType} class={cls}>
             {#each TRIGGER_TYPES as t}<option value={t}>{t}</option>{/each}
           </select>
         </div>
         <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Description</label>
           <textarea bind:value={createDescription} placeholder="Optional description" rows="2" class="{cls} resize-none"></textarea>
         </div>
         <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Actions (JSON)</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Actions (JSON)</label>
           <textarea bind:value={createActions} placeholder={actionsPlaceholder} rows="3" class="{cls} font-mono resize-none"></textarea>
         </div>
       </div>
       <div class="mt-4 flex gap-3">
-        <button on:click={submitCreate} disabled={createSubmitting} class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md transition-colors">
+        <button on:click={submitCreate} disabled={createSubmitting} class="px-4 py-2 text-sm font-medium bg-primary hover:bg-primary-hover disabled:opacity-50 text-white rounded-md transition-colors">
           {createSubmitting ? "Creating..." : "Create Rule"}
         </button>
-        <button on:click={() => { showCreateForm = false; createError = null; }} class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+        <button on:click={() => { showCreateForm = false; createError = null; }} class="px-4 py-2 text-sm font-medium text-foreground/80 border border-input rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
           Cancel
         </button>
       </div>
@@ -262,7 +262,7 @@
   {/if}
 
   <!-- Tab nav -->
-  <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
+  <div class="mb-6 border-b border-border">
     <nav class="-mb-px flex gap-6">
       <button on:click={() => switchTab("rules")} class={tabCls("rules")}>Rules</button>
       <button on:click={() => switchTab("runs")} class={tabCls("runs")}>Runs</button>
@@ -272,22 +272,22 @@
   <!-- Rules tab -->
   {#if activeTab === "rules"}
     {#if rulesLoading}
-      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>{/each}</div>
+      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-muted rounded-lg animate-pulse"></div>{/each}</div>
     {:else if rulesError}
-      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <p class="text-red-800 dark:text-red-300">{rulesError}</p>
-        <button on:click={loadRules} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+      <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+        <p class="text-destructive">{rulesError}</p>
+        <button on:click={loadRules} class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md">Retry</button>
       </div>
     {:else if filteredRules.length === 0}
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-10 text-center">
-        <p class="text-gray-500 dark:text-gray-400">
+      <div class="bg-card border border-border rounded-lg p-10 text-center">
+        <p class="text-muted-foreground">
           {search ? "No rules match your search." : "No automation rules yet. Create one above."}
         </p>
       </div>
     {:else}
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead class="bg-gray-50 dark:bg-gray-900">
+          <thead class="bg-background">
             <tr>
               <th class="{th} text-left">Name</th>
               <th class="{th} text-left hidden sm:table-cell">Trigger</th>
@@ -301,39 +301,39 @@
             {#each filteredRules as rule (rule.id)}
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                 <td class="px-4 py-3">
-                  <div class="font-medium text-gray-900 dark:text-white text-sm">{rule.name}</div>
+                  <div class="font-medium text-foreground text-sm">{rule.name}</div>
                   {#if rule.description}
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-xs">{rule.description}</div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{rule.description}</div>
                   {/if}
                 </td>
                 <td class="px-4 py-3 hidden sm:table-cell">
-                  <span class="text-xs font-mono text-gray-600 dark:text-gray-400">{rule.trigger_type}</span>
+                  <span class="text-xs font-mono text-gray-600 dark:text-muted-foreground/70">{rule.trigger_type}</span>
                 </td>
                 <td class="px-4 py-3 text-center">
-                  <button on:click={() => toggleRule(rule)} aria-label="{rule.enabled ? 'Disable' : 'Enable'} {rule.name}" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 {rule.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}">
+                  <button on:click={() => toggleRule(rule)} aria-label="{rule.enabled ? 'Disable' : 'Enable'} {rule.name}" class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary {rule.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}">
                     <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform {rule.enabled ? 'translate-x-4' : 'translate-x-1'}"></span>
                   </button>
                 </td>
                 <td class="px-4 py-3 text-right hidden md:table-cell">
-                  <span class="text-sm text-gray-900 dark:text-white">{rule.run_count}</span>
-                  {#if rule.error_count > 0}<span class="ml-1 text-xs text-red-500">{rule.error_count} err</span>{/if}
+                  <span class="text-sm text-foreground">{rule.run_count}</span>
+                  {#if rule.error_count > 0}<span class="ml-1 text-xs text-destructive">{rule.error_count} err</span>{/if}
                 </td>
                 <td class="px-4 py-3 hidden lg:table-cell">
                   {#if rule.last_run_at}
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{relativeTime(rule.last_run_at)}</div>
+                    <div class="text-xs text-muted-foreground">{relativeTime(rule.last_run_at)}</div>
                     {#if rule.last_status}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium {statusBadgeClass(rule.last_status)}">{rule.last_status}</span>{/if}
-                  {:else}<span class="text-xs text-gray-400">Never</span>{/if}
+                  {:else}<span class="text-xs text-muted-foreground/70">Never</span>{/if}
                 </td>
                 <td class="px-4 py-3 text-right">
                   <div class="flex items-center justify-end gap-2">
-                    <button on:click={() => { expandedRuleId = expandedRuleId === rule.id ? null : rule.id; }} class="px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">View</button>
-                    <button on:click={() => deleteRule(rule)} class="px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">Delete</button>
+                    <button on:click={() => { expandedRuleId = expandedRuleId === rule.id ? null : rule.id; }} class="px-2.5 py-1 text-xs font-medium text-primary border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">View</button>
+                    <button on:click={() => deleteRule(rule)} class="px-2.5 py-1 text-xs font-medium text-destructive border border-red-300 dark:border-red-700 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">Delete</button>
                   </div>
                 </td>
               </tr>
               {#if expandedRuleId === rule.id}
-                <tr class="bg-gray-50 dark:bg-gray-900/50">
-                  <td colspan="6" class="px-6 py-3 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                <tr class="bg-background/50">
+                  <td colspan="6" class="px-6 py-3 text-xs text-gray-600 dark:text-muted-foreground/70 space-y-0.5">
                     <div><span class="font-medium">ID:</span> <span class="font-mono">{rule.id}</span></div>
                     <div><span class="font-medium">Trigger:</span> <span class="font-mono">{rule.trigger_type}</span></div>
                     <div><span class="font-medium">Runs:</span> {rule.run_count} total, {rule.error_count} errors · Created {relativeTime(rule.created_at)}</div>
@@ -351,20 +351,20 @@
   <!-- Runs tab -->
   {#if activeTab === "runs"}
     {#if runsLoading}
-      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>{/each}</div>
+      <div class="space-y-2">{#each Array(6) as _}<div class="h-14 bg-muted rounded-lg animate-pulse"></div>{/each}</div>
     {:else if runsError}
-      <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-        <p class="text-red-800 dark:text-red-300">{runsError}</p>
-        <button on:click={loadRuns} class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md">Retry</button>
+      <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+        <p class="text-destructive">{runsError}</p>
+        <button on:click={loadRuns} class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md">Retry</button>
       </div>
     {:else if runs.length === 0}
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-10 text-center">
-        <p class="text-gray-500 dark:text-gray-400">No workflow runs found.</p>
+      <div class="bg-card border border-border rounded-lg p-10 text-center">
+        <p class="text-muted-foreground">No workflow runs found.</p>
       </div>
     {:else}
-      <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead class="bg-gray-50 dark:bg-gray-900">
+          <thead class="bg-background">
             <tr>
               <th class={th}>Type</th>
               <th class={th}>Status</th>
@@ -376,18 +376,18 @@
             {#each runs as run (run.id)}
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                 <td class="px-4 py-3">
-                  <div class="text-sm font-mono text-gray-700 dark:text-gray-300 truncate max-w-xs">{run.definitionId}</div>
-                  <div class="text-xs text-gray-400 font-mono">{run.id.slice(0, 8)}...</div>
+                  <div class="text-sm font-mono text-foreground/80 truncate max-w-xs">{run.definitionId}</div>
+                  <div class="text-xs text-muted-foreground/70 font-mono">{run.id.slice(0, 8)}...</div>
                 </td>
                 <td class="px-4 py-3">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {statusBadgeClass(run.status)}">
                     {run.status}
                   </span>
                 </td>
-                <td class="px-4 py-3 hidden sm:table-cell text-sm text-gray-500 dark:text-gray-400">
+                <td class="px-4 py-3 hidden sm:table-cell text-sm text-muted-foreground">
                   {relativeTime(run.started_at)}
                 </td>
-                <td class="px-4 py-3 hidden md:table-cell text-sm text-gray-500 dark:text-gray-400">
+                <td class="px-4 py-3 hidden md:table-cell text-sm text-muted-foreground">
                   {run.completed_at ? relativeTime(run.completed_at) : "running..."}
                 </td>
               </tr>

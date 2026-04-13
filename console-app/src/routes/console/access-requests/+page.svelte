@@ -152,14 +152,14 @@
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Access Requests</h1>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <h1 class="text-2xl font-bold text-foreground">Access Requests</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
         Review and manage resource access requests for your tenant.
       </p>
     </div>
     <button
       on:click={() => { showForm = !showForm; formError = ""; }}
-      class="shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+      class="shrink-0 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md"
     >
       {showForm ? "Cancel" : "New Request"}
     </button>
@@ -169,13 +169,13 @@
   {#if !loading && !error}
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
       {#each [
-        { label: "Total", value: statTotal, color: "text-gray-900 dark:text-white" },
-        { label: "Pending", value: statPending, color: "text-yellow-600 dark:text-yellow-400" },
-        { label: "Approved", value: statApproved, color: "text-green-600 dark:text-green-400" },
-        { label: "Denied", value: statDenied, color: "text-red-600 dark:text-red-400" },
+        { label: "Total", value: statTotal, color: "text-foreground" },
+        { label: "Pending", value: statPending, color: "text-warning" },
+        { label: "Approved", value: statApproved, color: "text-success" },
+        { label: "Denied", value: statDenied, color: "text-destructive" },
       ] as stat}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-          <div class="text-xs text-gray-500 dark:text-gray-400">{stat.label}</div>
+        <div class="bg-card border border-border rounded-lg p-4">
+          <div class="text-xs text-muted-foreground">{stat.label}</div>
           <div class="mt-1 text-2xl font-bold {stat.color}">{stat.value}</div>
         </div>
       {/each}
@@ -184,18 +184,18 @@
 
   <!-- Inline new-request form -->
   {#if showForm}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 space-y-4">
-      <h2 class="text-base font-semibold text-gray-900 dark:text-white">New Access Request</h2>
+    <div class="bg-card border border-border rounded-lg p-5 space-y-4">
+      <h2 class="text-base font-semibold text-foreground">New Access Request</h2>
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
-          <label for="res-type" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Resource type <span class="text-red-500">*</span>
+          <label for="res-type" class="block text-sm font-medium text-foreground/80 mb-1">
+            Resource type <span class="text-destructive">*</span>
           </label>
           <select
             id="res-type"
             bind:value={formResourceType}
             disabled={submitting}
-            class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full h-10 px-3 rounded-md border border-input bg-white dark:bg-gray-900 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="app">Application</option>
             <option value="group">Group</option>
@@ -203,8 +203,8 @@
           </select>
         </div>
         <div>
-          <label for="res-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Resource ID <span class="text-red-500">*</span>
+          <label for="res-id" class="block text-sm font-medium text-foreground/80 mb-1">
+            Resource ID <span class="text-destructive">*</span>
           </label>
           <input
             id="res-id"
@@ -212,11 +212,11 @@
             placeholder="e.g. github-org, admin-role"
             bind:value={formResourceId}
             disabled={submitting}
-            class="w-full h-10 px-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full h-10 px-3 rounded-md border border-input bg-white dark:bg-gray-900 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <div class="sm:col-span-1">
-          <label for="justification" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label for="justification" class="block text-sm font-medium text-foreground/80 mb-1">
             Justification
           </label>
           <textarea
@@ -225,18 +225,18 @@
             placeholder="Why do you need this access?"
             bind:value={formJustification}
             disabled={submitting}
-            class="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            class="w-full px-3 py-2 rounded-md border border-input bg-white dark:bg-gray-900 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary resize-none"
           ></textarea>
         </div>
       </div>
       {#if formError}
-        <p class="text-sm text-red-600 dark:text-red-400">{formError}</p>
+        <p class="text-sm text-destructive">{formError}</p>
       {/if}
       <div class="flex justify-end">
         <button
           on:click={submitRequest}
           disabled={submitting}
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-medium rounded-md"
+          class="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 text-white text-sm font-medium rounded-md"
         >
           {submitting ? "Submitting…" : "Submit Request"}
         </button>
@@ -256,7 +256,7 @@
         on:click={() => { filterStatus = pill.value as typeof filterStatus; load(); }}
         class="px-3 py-1.5 text-sm rounded-full border transition-colors {filterStatus === pill.value
           ? 'bg-blue-600 border-blue-600 text-white'
-          : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-blue-400'}"
+          : 'border-input text-foreground/80 hover:border-primary'}"
       >
         {pill.label}
       </button>
@@ -267,30 +267,30 @@
   {#if loading}
     <div class="space-y-3">
       {#each [1, 2, 3] as _}
-        <div class="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-14 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300 text-sm">{error}</p>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+      <p class="text-destructive text-sm">{error}</p>
       <button
         on:click={load}
-        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
       >
         Retry
       </button>
     </div>
   {:else if requests.length === 0}
-    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg py-12 text-center">
-      <p class="text-gray-500 dark:text-gray-400 text-sm">No access requests found.</p>
+    <div class="bg-card border border-dashed border-input rounded-lg py-12 text-center">
+      <p class="text-muted-foreground text-sm">No access requests found.</p>
     </div>
   {:else}
     <!-- Table -->
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
-            <tr class="text-left text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <thead class="bg-background/50 border-b border-border">
+            <tr class="text-left text-xs text-muted-foreground uppercase tracking-wider">
               <th class="px-4 py-3 font-medium">Requester</th>
               <th class="px-4 py-3 font-medium">Resource</th>
               <th class="px-4 py-3 font-medium">Justification</th>
@@ -302,18 +302,18 @@
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             {#each requests as req}
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                <td class="px-4 py-3 text-gray-900 dark:text-white">{req.requesterEmail}</td>
+                <td class="px-4 py-3 text-foreground">{req.requesterEmail}</td>
                 <td class="px-4 py-3">
-                  <div class="text-gray-900 dark:text-white font-medium">{req.resourceId}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">{capitalize(req.resourceType)}</div>
+                  <div class="text-foreground font-medium">{req.resourceId}</div>
+                  <div class="text-xs text-muted-foreground">{capitalize(req.resourceType)}</div>
                 </td>
-                <td class="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-xs truncate">
+                <td class="px-4 py-3 text-muted-foreground max-w-xs truncate">
                   {req.justification ?? "—"}
                 </td>
                 <td class="px-4 py-3">
                   <span class={statusClass(req.status)}>{capitalize(req.status)}</span>
                 </td>
-                <td class="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">
                   {formatDate(req.createdAt)}
                 </td>
                 <td class="px-4 py-3 text-right">
@@ -327,13 +327,13 @@
                       </button>
                       <button
                         on:click={() => decide(req.id, "deny")}
-                        class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded"
+                        class="px-3 py-1 bg-destructive hover:bg-destructive/90 text-white text-xs font-medium rounded"
                       >
                         Deny
                       </button>
                     </div>
                   {:else}
-                    <span class="text-xs text-gray-400">—</span>
+                    <span class="text-xs text-muted-foreground/70">—</span>
                   {/if}
                 </td>
               </tr>

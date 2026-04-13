@@ -249,9 +249,9 @@
 
   function statusClass(s: string): string {
     switch (s) {
-      case "published": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+      case "published": return "bg-success-muted text-success";
       case "draft":     return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
-      case "archived":  return "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400";
+      case "archived":  return "bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-muted-foreground/70";
       default:          return "bg-gray-100 text-gray-600";
     }
   }
@@ -276,19 +276,19 @@
   });
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <!-- Header -->
   <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Policies</h1>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <h1 class="text-3xl font-bold text-foreground">Policies</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
         Manage compliance policies and track team acknowledgements.
       </p>
     </div>
     {#if isAdmin}
       <button
         on:click={() => { showNewForm = !showNewForm; formError = null; showPanel = false; }}
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+        class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md transition-colors"
       >
         New Policy
       </button>
@@ -310,26 +310,26 @@
 
   <!-- New policy form -->
   {#if showNewForm && isAdmin}
-    <div class="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create Policy</h2>
+    <div class="mb-6 bg-card border border-border rounded-lg p-6">
+      <h2 class="text-lg font-semibold text-foreground mb-4">Create Policy</h2>
       {#if formError}
         <div class="mb-4 rounded p-3 bg-red-50 border border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300 text-sm">{formError}</div>
       {/if}
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Name *</label>
           <input
             bind:value={formName}
             type="text"
             placeholder="e.g. Access Control Policy"
-            class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category *</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Category *</label>
           <select
             bind:value={formCategory}
-            class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           >
             {#each CATEGORIES as cat}
               <option value={cat.value}>{cat.label}</option>
@@ -337,44 +337,44 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Version</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Version</label>
           <input
             bind:value={formVersion}
             type="text"
             placeholder="1.0"
-            class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Framework refs (comma-separated)</label>
+          <label class="block text-sm font-medium text-foreground/80 mb-1">Framework refs (comma-separated)</label>
           <input
             bind:value={formFrameworkRefs}
             type="text"
             placeholder="SOC2-CC6.1, ISO-27001-A.9"
-            class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
       </div>
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content *</label>
+        <label class="block text-sm font-medium text-foreground/80 mb-1">Content *</label>
         <textarea
           bind:value={formContent}
           rows="8"
           placeholder="Write or paste policy content here..."
-          class="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          class="w-full rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
         ></textarea>
       </div>
       <div class="flex items-center gap-3">
         <button
           on:click={createPolicy}
           disabled={formSubmitting}
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
+          class="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-sm font-medium rounded-md transition-colors"
         >
           {formSubmitting ? "Creating..." : "Create Policy"}
         </button>
         <button
           on:click={() => { showNewForm = false; formError = null; }}
-          class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          class="px-4 py-2 text-sm text-gray-600 dark:text-muted-foreground/70 hover:text-gray-900 dark:hover:text-white"
         >
           Cancel
         </button>
@@ -392,7 +392,7 @@
           class="px-3 py-1 rounded-full text-xs font-medium transition-colors
             {statusFilter === val
               ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}"
+              : 'bg-muted text-foreground/80 hover:bg-gray-200 dark:hover:bg-gray-600'}"
         >
           {label}
         </button>
@@ -401,7 +401,7 @@
     <!-- Category filter -->
     <select
       bind:value={categoryFilter}
-      class="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="rounded-md border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
     >
       <option value="all">All categories</option>
       {#each CATEGORIES as cat}
@@ -417,42 +417,42 @@
       {#if loading}
         <div class="space-y-3">
           {#each [1, 2, 3, 4] as _}
-            <div class="h-16 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+            <div class="h-16 bg-muted rounded-lg animate-pulse"></div>
           {/each}
         </div>
       {:else if error}
-        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-          <p class="text-red-800 dark:text-red-300 text-sm">{error}</p>
+        <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+          <p class="text-destructive text-sm">{error}</p>
           <button
             on:click={loadPolicies}
-            class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+            class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
           >Retry</button>
         </div>
       {:else if filtered.length === 0}
-        <div class="text-center py-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <p class="text-gray-500 dark:text-gray-400 text-sm mb-4">
+        <div class="text-center py-16 bg-card border border-border rounded-lg">
+          <p class="text-muted-foreground text-sm mb-4">
             {policies.length === 0 ? "No policies yet." : "No policies match the selected filters."}
           </p>
           {#if isAdmin && policies.length === 0}
             <button
               on:click={() => { showNewForm = true; showPanel = false; }}
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+              class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-medium rounded-md"
             >
               Create your first policy
             </button>
           {/if}
         </div>
       {:else}
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
           <table class="w-full text-sm">
-            <thead class="bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+            <thead class="bg-background/40 border-b border-border">
               <tr>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Name</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 hidden sm:table-cell">Category</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 hidden md:table-cell">Version</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Status</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 hidden md:table-cell">Acks</th>
-                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 hidden lg:table-cell">Updated</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">Name</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hidden sm:table-cell">Category</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hidden md:table-cell">Version</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground">Status</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hidden md:table-cell">Acks</th>
+                <th class="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground hidden lg:table-cell">Updated</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
@@ -465,16 +465,16 @@
                   class="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer transition-colors
                     {selectedPolicy?.id === p.id ? 'bg-blue-50 dark:bg-blue-900/10' : ''}"
                 >
-                  <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{p.name}</td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-400 hidden sm:table-cell">{categoryLabel(p.category)}</td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-400 hidden md:table-cell">v{p.version}</td>
+                  <td class="px-4 py-3 font-medium text-foreground">{p.name}</td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-muted-foreground/70 hidden sm:table-cell">{categoryLabel(p.category)}</td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-muted-foreground/70 hidden md:table-cell">v{p.version}</td>
                   <td class="px-4 py-3">
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {statusClass(p.status)}">
                       {p.status}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-gray-600 dark:text-gray-400 hidden md:table-cell">{p.ackCount}</td>
-                  <td class="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">{relativeTime(p.updatedAt)}</td>
+                  <td class="px-4 py-3 text-gray-600 dark:text-muted-foreground/70 hidden md:table-cell">{p.ackCount}</td>
+                  <td class="px-4 py-3 text-muted-foreground text-xs hidden lg:table-cell">{relativeTime(p.updatedAt)}</td>
                 </tr>
               {/each}
             </tbody>
@@ -486,14 +486,14 @@
     <!-- Side panel -->
     {#if showPanel}
       <div class="w-full max-w-md flex-shrink-0">
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 sticky top-6">
+        <div class="bg-card border border-border rounded-lg p-5 sticky top-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white truncate">
+            <h2 class="text-base font-semibold text-foreground truncate">
               {detailLoading ? "Loading..." : selectedPolicy?.name ?? "Policy"}
             </h2>
             <button
               on:click={() => { showPanel = false; selectedPolicy = null; }}
-              class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none ml-2"
+              class="text-muted-foreground/70 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none ml-2"
               aria-label="Close"
             >&times;</button>
           </div>
@@ -501,7 +501,7 @@
           {#if detailLoading}
             <div class="space-y-3">
               {#each [1, 2, 3] as _}
-                <div class="h-8 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+                <div class="h-8 bg-muted rounded animate-pulse"></div>
               {/each}
             </div>
           {:else if selectedPolicy}
@@ -520,10 +520,10 @@
 
             {#if selectedPolicy.frameworkRefs.length > 0}
               <div class="mb-4">
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Framework refs</p>
+                <p class="text-xs text-muted-foreground mb-1">Framework refs</p>
                 <div class="flex flex-wrap gap-1">
                   {#each selectedPolicy.frameworkRefs as ref}
-                    <span class="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded px-2 py-0.5">{ref}</span>
+                    <span class="text-xs bg-primary-muted text-primary border border-primary/20 rounded px-2 py-0.5">{ref}</span>
                   {/each}
                 </div>
               </div>
@@ -532,11 +532,11 @@
             <!-- Content -->
             <div class="mb-4">
               <div class="flex items-center justify-between mb-1">
-                <p class="text-xs text-gray-500 dark:text-gray-400">Content</p>
+                <p class="text-xs text-muted-foreground">Content</p>
                 {#if isAdmin}
                   <button
                     on:click={() => { editMode = !editMode; editError = null; }}
-                    class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    class="text-xs text-primary hover:underline"
                   >{editMode ? "Cancel edit" : "Edit"}</button>
                 {/if}
               </div>
@@ -545,13 +545,13 @@
                 <textarea
                   bind:value={editContent}
                   rows="10"
-                  class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full rounded border border-input bg-white dark:bg-gray-700 text-foreground px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary"
                 ></textarea>
                 <div class="mt-2">
-                  <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
+                  <label class="block text-xs font-medium text-foreground/80 mb-1">Status</label>
                   <select
                     bind:value={editStatus}
-                    class="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full rounded border border-input bg-white dark:bg-gray-700 text-foreground px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="draft">Draft</option>
                     <option value="published">Published</option>
@@ -559,17 +559,17 @@
                   </select>
                 </div>
                 {#if editError}
-                  <p class="mt-2 text-xs text-red-600 dark:text-red-400">{editError}</p>
+                  <p class="mt-2 text-xs text-destructive">{editError}</p>
                 {/if}
                 <button
                   on:click={saveEdit}
                   disabled={editSaving}
-                  class="mt-3 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded transition-colors"
+                  class="mt-3 px-3 py-1.5 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-xs font-medium rounded transition-colors"
                 >
                   {editSaving ? "Saving..." : "Save changes"}
                 </button>
               {:else}
-                <div class="max-h-64 overflow-y-auto bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded p-3 text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
+                <div class="max-h-64 overflow-y-auto bg-background/40 border border-border rounded p-3 text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
                   {selectedPolicy.content ?? "(no content)"}
                 </div>
               {/if}
@@ -577,14 +577,14 @@
 
             <!-- Acknowledge -->
             {#if selectedPolicy.status === "published"}
-              <div class="mb-4 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <div class="mb-4 pt-3 border-t border-border">
                 {#if ackSuccess}
-                  <div class="rounded p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 text-xs mb-2">
+                  <div class="rounded p-2 bg-success-muted border border-success/20 text-success text-xs mb-2">
                     Acknowledged! Compliance evidence recorded.
                   </div>
                 {/if}
                 {#if ackError}
-                  <p class="text-xs text-red-600 dark:text-red-400 mb-2">{ackError}</p>
+                  <p class="text-xs text-destructive mb-2">{ackError}</p>
                 {/if}
                 <button
                   on:click={acknowledgePolicy}
@@ -595,30 +595,30 @@
                 </button>
               </div>
             {:else}
-              <div class="mb-4 pt-3 border-t border-gray-100 dark:border-gray-700">
-                <p class="text-xs text-gray-500 dark:text-gray-400 italic">
+              <div class="mb-4 pt-3 border-t border-border">
+                <p class="text-xs text-muted-foreground italic">
                   Policy must be published before it can be acknowledged.
                 </p>
               </div>
             {/if}
 
             <!-- Acknowledgements list -->
-            <div class="pt-3 border-t border-gray-100 dark:border-gray-700">
-              <p class="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <div class="pt-3 border-t border-border">
+              <p class="text-xs font-medium text-foreground/80 mb-2">
                 Acknowledgements ({selectedPolicy.ackCount})
               </p>
               {#if acksLoading}
-                <div class="h-8 bg-gray-100 dark:bg-gray-700 rounded animate-pulse"></div>
+                <div class="h-8 bg-muted rounded animate-pulse"></div>
               {:else if acksError}
-                <p class="text-xs text-red-600 dark:text-red-400">{acksError}</p>
+                <p class="text-xs text-destructive">{acksError}</p>
               {:else if acks.length === 0}
-                <p class="text-xs text-gray-500 dark:text-gray-400 italic">No acknowledgements yet.</p>
+                <p class="text-xs text-muted-foreground italic">No acknowledgements yet.</p>
               {:else}
                 <ul class="space-y-1 max-h-40 overflow-y-auto">
                   {#each acks as ack (ack.id)}
-                    <li class="flex items-center justify-between text-xs text-gray-700 dark:text-gray-300">
+                    <li class="flex items-center justify-between text-xs text-foreground/80">
                       <span class="truncate">{ack.userEmail ?? ack.userId}</span>
-                      <span class="text-gray-400 ml-2 flex-shrink-0">{relativeTime(ack.acknowledgedAt)}</span>
+                      <span class="text-muted-foreground/70 ml-2 flex-shrink-0">{relativeTime(ack.acknowledgedAt)}</span>
                     </li>
                   {/each}
                 </ul>
@@ -626,7 +626,7 @@
             </div>
 
             <!-- Timestamps -->
-            <div class="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+            <div class="mt-4 pt-3 border-t border-border text-xs text-muted-foreground/70 space-y-0.5">
               <p>Created {relativeTime(selectedPolicy.createdAt)}{selectedPolicy.createdBy ? ` by ${selectedPolicy.createdBy}` : ""}</p>
               <p>Updated {relativeTime(selectedPolicy.updatedAt)}</p>
               {#if selectedPolicy.publishedAt}

@@ -331,10 +331,10 @@
               <div class="mt-1 flex items-center gap-1 text-xs">
                 {#if trendDelta > 0}
                   <TrendingUp class="h-3 w-3 text-green-500" />
-                  <span class="text-green-600">+{trendDelta}% this week</span>
+                  <span class="text-success">+{trendDelta}% this week</span>
                 {:else if trendDelta < 0}
-                  <TrendingUp class="h-3 w-3 rotate-180 text-red-500" />
-                  <span class="text-red-600">{trendDelta}% this week</span>
+                  <TrendingUp class="h-3 w-3 rotate-180 text-destructive" />
+                  <span class="text-destructive">{trendDelta}% this week</span>
                 {:else}
                   <span class="text-muted-foreground">No change this week</span>
                 {/if}
@@ -629,7 +629,7 @@
                 </div>
                 <div class="h-2 w-full rounded-full bg-muted overflow-hidden">
                   <div
-                    class="h-full rounded-full bg-green-500 transition-all duration-500"
+                    class="h-full rounded-full bg-success transition-all duration-500"
                     style="width: {securityPosture.accessReviewCompletionRate}%"
                   ></div>
                 </div>
@@ -677,7 +677,7 @@
                     <td class="py-3 pr-4 text-right">
                       <span
                         class="font-semibold {risk.score < 25
-                          ? 'text-red-500'
+                          ? 'text-destructive'
                           : risk.score < 50
                             ? 'text-orange-500'
                             : risk.score < 75

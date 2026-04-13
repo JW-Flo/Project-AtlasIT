@@ -31,7 +31,7 @@
   }
 
   const SEVERITY_META: { key: keyof SlaConfig; label: string; color: string; desc: string }[] = [
-    { key: "critical", label: "Critical", color: "text-red-500", desc: "System down, data breach, security emergency" },
+    { key: "critical", label: "Critical", color: "text-destructive", desc: "System down, data breach, security emergency" },
     { key: "high", label: "High", color: "text-orange-500", desc: "Major feature broken, compliance risk" },
     { key: "medium", label: "Medium", color: "text-yellow-500", desc: "Degraded service, minor security issue" },
     { key: "low", label: "Low", color: "text-muted-foreground", desc: "Cosmetic issue, minor inconvenience" },

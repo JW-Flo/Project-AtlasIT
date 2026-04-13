@@ -98,8 +98,8 @@
 
   function impactClass(impact: string | undefined): string {
     switch (impact) {
-      case "positive": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
-      case "negative": return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+      case "positive": return "bg-success-muted text-success";
+      case "negative": return "bg-destructive-muted text-destructive";
       default:         return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
     }
   }
@@ -122,12 +122,12 @@
   onMount(loadEvidence);
 </script>
 
-<div class="p-8 max-w-7xl mx-auto">
+<div class="animate-fade-in">
   <!-- Header -->
   <div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Compliance Evidence</h1>
+    <h1 class="text-3xl font-bold text-foreground">Compliance Evidence</h1>
     {#if !loading && !error}
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-1 text-sm text-muted-foreground">
         Total {total} evidence records &middot; showing {filtered.length} after filters
       </p>
     {/if}
@@ -142,7 +142,7 @@
         class="px-3 py-1 text-xs font-medium rounded-full border transition-colors
           {frameworkFilter === 'all'
             ? 'bg-blue-600 text-white border-blue-600'
-            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
+            : 'bg-card text-foreground/80 border-input hover:border-primary'}"
       >All frameworks</button>
       {#each FRAMEWORKS as fw}
         <button
@@ -150,7 +150,7 @@
           class="px-3 py-1 text-xs font-medium rounded-full border transition-colors
             {frameworkFilter === fw
               ? 'bg-blue-600 text-white border-blue-600'
-              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400'}"
+              : 'bg-card text-foreground/80 border-input hover:border-primary'}"
         >{fw}</button>
       {/each}
     </div>
@@ -159,7 +159,7 @@
     <select
       bind:value={sourceFilter}
       on:change={() => { expandedId = null; }}
-      class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+      class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80"
     >
       <option value="all">All sources</option>
       {#each SOURCES as s}
@@ -171,7 +171,7 @@
     <select
       bind:value={impactFilter}
       on:change={() => { expandedId = null; }}
-      class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+      class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80"
     >
       <option value="all">All impacts</option>
       {#each IMPACTS as imp}
@@ -185,7 +185,7 @@
       bind:value={controlSearch}
       on:input={() => { expandedId = null; }}
       placeholder="Search control ID…"
-      class="px-3 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 w-44 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="px-3 py-1 text-xs border border-input rounded-md bg-card text-foreground/80 w-44 focus:outline-none focus:ring-2 focus:ring-primary"
     />
   </div>
 
@@ -193,42 +193,42 @@
   {#if loading}
     <div class="space-y-2">
       {#each [1, 2, 3, 4, 5, 6] as _}
-        <div class="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-12 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
 
   <!-- Error state -->
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-      <p class="text-red-800 dark:text-red-300">{error}</p>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4">
+      <p class="text-destructive">{error}</p>
       <button
         on:click={loadEvidence}
-        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md transition-colors"
+        class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md transition-colors"
       >Retry</button>
     </div>
 
   <!-- Empty state -->
   {:else if filtered.length === 0}
-    <div class="bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center">
+    <div class="bg-card border border-dashed border-input rounded-lg p-12 text-center">
       {#if allItems.length === 0}
-        <p class="text-gray-500 dark:text-gray-400 text-sm">No evidence records found.</p>
-        <p class="mt-1 text-gray-400 dark:text-gray-500 text-xs">Evidence is collected automatically as compliance events flow through the platform.</p>
+        <p class="text-muted-foreground text-sm">No evidence records found.</p>
+        <p class="mt-1 text-muted-foreground/70 text-xs">Evidence is collected automatically as compliance events flow through the platform.</p>
       {:else}
-        <p class="text-gray-500 dark:text-gray-400 text-sm">No records match the current filters.</p>
+        <p class="text-muted-foreground text-sm">No records match the current filters.</p>
         <button
           on:click={() => { frameworkFilter = "all"; sourceFilter = "all"; impactFilter = "all"; controlSearch = ""; }}
-          class="mt-3 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          class="mt-3 text-xs text-primary hover:underline"
         >Clear filters</button>
       {/if}
     </div>
 
   <!-- Table -->
   {:else}
-    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <tr class="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
               <th class="px-5 py-3 font-medium">Control ID</th>
               <th class="px-5 py-3 font-medium">Framework</th>
               <th class="px-5 py-3 font-medium">Event Type</th>
@@ -245,13 +245,13 @@
                 class="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors"
                 on:click={() => { expandedId = expandedId === item.id ? null : item.id; }}
               >
-                <td class="px-5 py-3 font-mono text-xs text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                <td class="px-5 py-3 font-mono text-xs text-foreground/80 whitespace-nowrap">
                   {item.controlId ?? "—"}
                 </td>
-                <td class="px-5 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
+                <td class="px-5 py-3 text-gray-600 dark:text-muted-foreground/70 whitespace-nowrap text-xs">
                   {item.framework ?? "—"}
                 </td>
-                <td class="px-5 py-3 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap">
+                <td class="px-5 py-3 text-gray-600 dark:text-muted-foreground/70 text-xs whitespace-nowrap">
                   {item.metadata?.eventType ?? item.evidenceType ?? "—"}
                 </td>
                 <td class="px-5 py-3">
@@ -259,16 +259,16 @@
                     {item.metadata?.impact ?? "neutral"}
                   </span>
                 </td>
-                <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                <td class="px-5 py-3 text-muted-foreground text-xs whitespace-nowrap">
                   {item.source ?? "—"}
                 </td>
-                <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs max-w-[120px] truncate" title={item.actor ?? ""}>
+                <td class="px-5 py-3 text-muted-foreground text-xs max-w-[120px] truncate" title={item.actor ?? ""}>
                   {item.actor ?? "—"}
                 </td>
-                <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs max-w-[200px]">
+                <td class="px-5 py-3 text-muted-foreground text-xs max-w-[200px]">
                   {truncate(item.metadata?.reasoning)}
                 </td>
-                <td class="px-5 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
+                <td class="px-5 py-3 text-muted-foreground text-xs whitespace-nowrap">
                   {relativeTime(item.createdAt)}
                 </td>
               </tr>
@@ -277,51 +277,51 @@
                 <tr class="bg-gray-50 dark:bg-gray-700/30">
                   <td colspan="8" class="px-5 py-4">
                     <div class="grid gap-4 sm:grid-cols-2">
-                      <dl class="space-y-2 text-xs text-gray-600 dark:text-gray-300">
+                      <dl class="space-y-2 text-xs text-foreground/80">
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">ID</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">ID</dt>
                           <dd class="font-mono mt-0.5 break-all">{item.id}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Control</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Control</dt>
                           <dd class="mt-0.5">{item.controlId ?? "—"} {item.controlName ? `— ${item.controlName}` : ""}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Framework</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Framework</dt>
                           <dd class="mt-0.5">{item.framework ?? "—"}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Evidence Type</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Evidence Type</dt>
                           <dd class="mt-0.5">{item.evidenceType ?? "—"}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Source / Source ID</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Source / Source ID</dt>
                           <dd class="mt-0.5">{item.source ?? "—"}{item.sourceId ? ` · ${item.sourceId}` : ""}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Actor</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Actor</dt>
                           <dd class="mt-0.5">{item.actor ?? "—"}</dd>
                         </div>
                         <div>
-                          <dt class="font-semibold text-gray-400 uppercase text-[10px]">Created</dt>
+                          <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Created</dt>
                           <dd class="mt-0.5">{new Date(item.createdAt).toLocaleString()}</dd>
                         </div>
                         {#if item.metadata?.confidence !== undefined}
                           <div>
-                            <dt class="font-semibold text-gray-400 uppercase text-[10px]">Confidence</dt>
+                            <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Confidence</dt>
                             <dd class="mt-0.5">{Math.round((item.metadata.confidence as number) * 100)}%</dd>
                           </div>
                         {/if}
                         {#if item.metadata?.auditAction}
                           <div>
-                            <dt class="font-semibold text-gray-400 uppercase text-[10px]">Audit Action</dt>
+                            <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px]">Audit Action</dt>
                             <dd class="mt-0.5">{item.metadata.auditAction}</dd>
                           </div>
                         {/if}
                       </dl>
                       <div>
-                        <dt class="font-semibold text-gray-400 uppercase text-[10px] text-xs">Full Metadata</dt>
-                        <pre class="mt-1 text-[10px] bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded p-3 overflow-auto max-h-48 text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all">{JSON.stringify(item.metadata, null, 2)}</pre>
+                        <dt class="font-semibold text-muted-foreground/70 uppercase text-[10px] text-xs">Full Metadata</dt>
+                        <pre class="mt-1 text-[10px] bg-muted border border-border rounded p-3 overflow-auto max-h-48 text-foreground/80 whitespace-pre-wrap break-all">{JSON.stringify(item.metadata, null, 2)}</pre>
                       </div>
                     </div>
                   </td>
@@ -333,11 +333,11 @@
       </div>
 
       {#if nextCursor}
-        <div class="border-t border-gray-200 dark:border-gray-700 px-5 py-3">
+        <div class="border-t border-border px-5 py-3">
           <button
             on:click={loadMore}
             disabled={loadingMore}
-            class="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+            class="text-sm text-primary hover:underline disabled:opacity-50"
           >
             {loadingMore ? "Loading…" : "Show more"}
           </button>

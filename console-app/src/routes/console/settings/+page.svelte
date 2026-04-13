@@ -83,11 +83,11 @@
   });
 </script>
 
-<div class="p-8 max-w-5xl mx-auto">
+<div class="animate-fade-in max-w-5xl mx-auto">
   <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+    <h1 class="text-3xl font-bold text-foreground">Settings</h1>
     {#if settings?.tenant}
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p class="mt-1 text-sm text-muted-foreground">
         {settings.tenant.name} · <span class="capitalize">{settings.tenant.tier}</span> tier
       </p>
     {/if}
@@ -96,15 +96,15 @@
   {#if loading}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each Array(7) as _}
-        <div class="h-28 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+        <div class="h-28 bg-muted rounded-lg animate-pulse"></div>
       {/each}
     </div>
   {:else if error}
-    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-      <p class="text-red-800 dark:text-red-300 text-sm">{error}</p>
+    <div class="bg-destructive-muted border border-destructive/20 rounded-lg p-4 mb-6">
+      <p class="text-destructive text-sm">{error}</p>
       <button
         on:click={loadSettings}
-        class="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded-md"
+        class="mt-3 px-4 py-2 bg-destructive hover:bg-destructive/90 text-white text-sm rounded-md"
       >
         Retry
       </button>
@@ -116,13 +116,13 @@
       {#each sections as sec}
         <a
           href={sec.href}
-          class="block bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-5 hover:border-blue-500 dark:hover:border-blue-400 transition-colors group"
+          class="block bg-card border border-border rounded-lg p-5 hover:border-primary dark:hover:border-primary transition-colors group"
         >
-          <div class="font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+          <div class="font-semibold text-foreground group-hover:text-primary dark:group-hover:text-primary">
             {sec.title}
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">{sec.description}</div>
-          <div class="mt-3 text-xs font-medium text-blue-600 dark:text-blue-400">Configure →</div>
+          <div class="mt-1 text-sm text-muted-foreground">{sec.description}</div>
+          <div class="mt-3 text-xs font-medium text-primary">Configure →</div>
         </a>
       {/each}
     </div>
