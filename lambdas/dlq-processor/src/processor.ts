@@ -47,10 +47,7 @@ export async function processDlqBatch(event: SQSEvent): Promise<SQSBatchResponse
       const task = JSON.parse(record.body) as FailedStepTask;
       // ApproximateReceiveCount is set by SQS when the event source mapping is configured
       // with ReportBatchItemFailures; treat as 0 if absent (e.g., manual test invocations).
-      const receiveCount = parseInt(
-        record.attributes?.ApproximateReceiveCount ?? "0",
-        10,
-      );
+      const receiveCount = parseInt(record.attributes?.ApproximateReceiveCount ?? "0", 10);
 
       await handleDeadLetterEntry({
         ...task,
@@ -80,26 +77,36 @@ export async function processDlqBatch(event: SQSEvent): Promise<SQSBatchResponse
   return { batchItemFailures };
 }
 
-async function handleDeadLetterEntry(entry: FailedStepTask & { messageId: string; receivedAt: string }): Promise<void> {
+async function handleDeadLetterEntry(
+  entry: FailedStepTask & { messageId: string; receivedAt: string },
+): Promise<void> {
   const pool = getPool();
   const { tenantId, workflowRunId, action, payload, receiveCount, messageId, receivedAt } = entry;
 
-  // 1. Persist to dead_letter_queue table (for UI visibility and manual replay)
+  // 1. Persist to dead_letter_queue table (for UI visibility and manual replay).
+  // Schema columns (migration 0009): event_id, agent_id, delivery_id, tenant_id,
+  // event_type, event_source, event_payload, error_message, total_attempts,
+  // first_attempt_at, last_attempt_at, dead_lettered_at, replayed_at, replay_status.
   try {
     await pool.query(
       `INSERT INTO dead_letter_queue
-         (id, tenant_id, event_type, payload, error_reason, sqs_message_id, receive_count, dead_lettered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (sqs_message_id) DO UPDATE
-         SET receive_count = EXCLUDED.receive_count,
+         (id, event_id, agent_id, delivery_id, tenant_id, event_type, event_source,
+          event_payload, error_message, total_attempts, last_attempt_at, dead_lettered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+       ON CONFLICT (id) DO UPDATE
+         SET total_attempts = EXCLUDED.total_attempts,
+             last_attempt_at = EXCLUDED.last_attempt_at,
              dead_lettered_at = EXCLUDED.dead_lettered_at`,
       [
         workflowRunId,
+        workflowRunId, // event_id falls back to workflowRunId
+        "dlq-processor",
+        messageId,
         tenantId,
         action,
+        "sqs-dlq",
         JSON.stringify(payload),
         `Exceeded max receive count (${receiveCount ?? "unknown"})`,
-        messageId,
         receiveCount ?? 0,
         receivedAt,
       ],

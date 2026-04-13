@@ -541,11 +541,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const row = await pool.query<{
       id: string;
-      payload: string;
+      event_payload: string;
       event_type: string;
       tenant_id: string;
     }>(
-      "SELECT id, payload, event_type, tenant_id FROM dead_letter_queue WHERE id = $1 AND tenant_id = $2",
+      "SELECT id, event_payload, event_type, tenant_id FROM dead_letter_queue WHERE id = $1 AND tenant_id = $2",
       [id, tenantId],
     );
     if (row.rows.length === 0) return fail(404, "Dead letter entry not found", "NOT_FOUND");
@@ -558,11 +558,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         workflowRunId: id,
         stepIndex: 0,
         action: "replay_dlq",
-        payload: JSON.parse(entry.payload ?? "{}") as Record<string, unknown>,
+        payload: JSON.parse(entry.event_payload ?? "{}") as Record<string, unknown>,
       });
 
+      // replay_status CHECK constraint allows: pending | success | failed
       await pool.query(
-        `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+        `UPDATE dead_letter_queue SET replay_status = 'success', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
         [id, tenantId],
       );
 
@@ -581,11 +582,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     const entries = await pool.query<{
       id: string;
-      payload: string;
+      event_payload: string;
       event_type: string;
       tenant_id: string;
     }>(
-      `SELECT id, payload, event_type, tenant_id FROM dead_letter_queue ${where} LIMIT 100`,
+      `SELECT id, event_payload, event_type, tenant_id FROM dead_letter_queue ${where} LIMIT 100`,
       params,
     );
 
@@ -598,10 +599,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           workflowRunId: entry.id,
           stepIndex: 0,
           action: "replay_dlq",
-          payload: JSON.parse(entry.payload ?? "{}") as Record<string, unknown>,
+          payload: JSON.parse(entry.event_payload ?? "{}") as Record<string, unknown>,
         });
         await pool.query(
-          `UPDATE dead_letter_queue SET replay_status = 'replayed', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+          `UPDATE dead_letter_queue SET replay_status = 'success', replayed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
           [entry.id, tenantId],
         );
         replayed++;

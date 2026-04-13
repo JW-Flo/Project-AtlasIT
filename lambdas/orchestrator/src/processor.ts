@@ -87,8 +87,18 @@ async function processStepTask(task: StepTaskMessage): Promise<void> {
         break;
 
       default:
-        console.warn("[orchestrator:sqs] Unknown action, forwarding to DLQ handling", { action, workflowRunId });
-        await moveToDlq(tenantId, workflowRunId, action, payload, `Unknown action: ${action}`, pool);
+        console.warn("[orchestrator:sqs] Unknown action, forwarding to DLQ handling", {
+          action,
+          workflowRunId,
+        });
+        await moveToDlq(
+          tenantId,
+          workflowRunId,
+          action,
+          payload,
+          `Unknown action: ${action}`,
+          pool,
+        );
     }
   } catch (err) {
     const errMsg = (err as Error).message;
@@ -138,17 +148,18 @@ async function processEvent(
   payload: Record<string, unknown>,
   pool: pg.Pool,
 ): Promise<void> {
-  await pool.query(
-    `UPDATE events SET status = 'processing' WHERE id = $1 AND tenant_id = $2`,
-    [eventId, tenantId],
-  );
+  await pool.query(`UPDATE events SET status = 'processing' WHERE id = $1 AND tenant_id = $2`, [
+    eventId,
+    tenantId,
+  ]);
 
   const eventType = payload.type as string | undefined;
   console.info("[orchestrator:sqs] Processing event", { tenantId, eventId, type: eventType });
 
-  // Mark event as processed
+  // Mark event as completed. Schema CHECK constraint (migration 0005) allows
+  // only pending | processing | completed | failed — NOT 'processed'.
   await pool.query(
-    `UPDATE events SET status = 'processed', processed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+    `UPDATE events SET status = 'completed', processed_at = NOW() WHERE id = $1 AND tenant_id = $2`,
     [eventId, tenantId],
   );
 }
@@ -158,7 +169,7 @@ async function triggerDiscoverySync(
   payload: Record<string, unknown>,
   pool: pg.Pool,
 ): Promise<void> {
-  const provider = payload.provider as string ?? "all";
+  const provider = (payload.provider as string) ?? "all";
   console.info("[orchestrator:sqs] Triggering discovery sync", { tenantId, provider });
 
   await pool.query(
@@ -182,11 +193,23 @@ async function moveToDlq(
   pool: pg.Pool,
 ): Promise<void> {
   try {
+    // Column names match migration 0009: event_id, event_type, event_source,
+    // event_payload, error_message (NOT payload / error_reason).
     await pool.query(
-      `INSERT INTO dead_letter_queue (id, tenant_id, event_type, payload, error_reason, dead_lettered_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+      `INSERT INTO dead_letter_queue (id, event_id, agent_id, delivery_id, tenant_id, event_type, event_source, event_payload, error_message, total_attempts, dead_lettered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, NOW())
        ON CONFLICT DO NOTHING`,
-      [workflowRunId, tenantId, action, JSON.stringify(payload), reason],
+      [
+        workflowRunId,
+        workflowRunId, // event_id falls back to workflowRunId when no better id available
+        "orchestrator-sqs",
+        workflowRunId,
+        tenantId,
+        action,
+        "orchestrator-sqs",
+        JSON.stringify(payload),
+        reason,
+      ],
     );
   } catch (dlqErr) {
     console.error("[orchestrator:sqs] Failed to write to DLQ", {
