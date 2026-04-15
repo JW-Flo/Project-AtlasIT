@@ -120,3 +120,71 @@ resource "aws_ssm_parameter" "secret_internal_api_key" {
   value     = "PLACEHOLDER"
   lifecycle { ignore_changes = [value] }
 }
+
+# --- Stripe billing secrets ---
+
+resource "aws_ssm_parameter" "secret_stripe_api_key" {
+  name      = "/atlasit/${var.env}/secrets/stripe-api-key"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "secret_stripe_webhook_secret" {
+  name      = "/atlasit/${var.env}/secrets/stripe-webhook-secret"
+  type      = "SecureString"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+# --- Stripe price IDs (non-secret Strings) ---
+
+resource "aws_ssm_parameter" "stripe_price_starter_monthly" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-starter-monthly"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "stripe_price_starter_annual" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-starter-annual"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "stripe_price_professional_monthly" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-professional-monthly"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "stripe_price_professional_annual" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-professional-annual"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "stripe_price_enterprise_monthly" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-enterprise-monthly"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "stripe_price_enterprise_annual" {
+  name      = "/atlasit/${var.env}/billing/stripe-price-enterprise-annual"
+  type      = "String"
+  overwrite = true
+  value     = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
