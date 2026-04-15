@@ -9,6 +9,87 @@
   let error: string | null = null;
   let banner: { type: "info" | "error"; msg: string } | null = null;
 
+  // Access request management
+  interface AccessRequest {
+    id: string;
+    requester_name: string;
+    requester_email: string;
+    requester_company: string;
+    reason: string | null;
+    status: "pending" | "approved" | "denied";
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    review_note: string | null;
+    expires_at: string | null;
+    created_at: string;
+  }
+  let requests: AccessRequest[] = [];
+  let requestsLoading = false;
+  let requestsFilter: "pending" | "approved" | "denied" | "all" = "pending";
+  let actioningId: string | null = null;
+  let denyNote = "";
+
+  async function loadRequests() {
+    requestsLoading = true;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/trust/access-requests?status=${requestsFilter}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      requests = json.requests ?? [];
+    } catch (e) {
+      banner = { type: "error", msg: `Failed to load access requests: ${(e as Error).message}` };
+    } finally {
+      requestsLoading = false;
+    }
+  }
+
+  async function approveRequest(id: string) {
+    actioningId = id;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/trust/access-requests/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttlDays: 7 }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      banner = { type: "info", msg: "Request approved — secure link generated and queued for delivery." };
+      await loadRequests();
+    } catch (e) {
+      banner = { type: "error", msg: `Approve failed: ${(e as Error).message}` };
+    } finally {
+      actioningId = null;
+    }
+  }
+
+  async function denyRequest(id: string) {
+    actioningId = id;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/trust/access-requests/${id}/deny`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: denyNote }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      banner = { type: "info", msg: "Request denied." };
+      denyNote = "";
+      await loadRequests();
+    } catch (e) {
+      banner = { type: "error", msg: `Deny failed: ${(e as Error).message}` };
+    } finally {
+      actioningId = null;
+    }
+  }
+
+  function formatDate(iso: string): string {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+
   $: publicUrl = tenantSlug
     ? `${typeof window !== 'undefined' ? window.location.origin : 'https://www.atlasit.pro'}/trust/${tenantSlug}`
     : "";
@@ -66,7 +147,12 @@
     }
   }
 
-  onMount(load);
+  onMount(async () => {
+    await load();
+    await loadRequests();
+  });
+
+  $: if (requestsFilter) loadRequests();
 </script>
 
 <div class="p-8 max-w-4xl mx-auto">
@@ -226,6 +312,95 @@
         <li class="flex gap-2"><span class="text-red-600">✗</span>Individual evidence records, user info, policy content, audit log</li>
         <li class="flex gap-2"><span class="text-red-600">✗</span>Integration credentials, tokens, internal IDs</li>
       </ul>
+    </div>
+
+    <!-- Evidence Access Requests -->
+    <div class="mt-8">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Evidence access requests</h2>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Visitors who requested detailed evidence via your public trust page.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <select
+            bind:value={requestsFilter}
+            class="h-8 px-2 pr-7 text-xs border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="denied">Denied</option>
+            <option value="all">All</option>
+          </select>
+          <button
+            on:click={loadRequests}
+            class="h-8 px-3 text-xs border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >Refresh</button>
+        </div>
+      </div>
+
+      {#if requestsLoading}
+        <div class="h-24 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse"></div>
+      {:else if requests.length === 0}
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-6 py-10 text-center">
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            No {requestsFilter === "all" ? "" : requestsFilter + " "}access requests.
+          </p>
+        </div>
+      {:else}
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-200 dark:divide-gray-700">
+          {#each requests as req (req.id)}
+            <div class="px-5 py-4">
+              <div class="flex items-start justify-between gap-4 flex-wrap">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-medium text-sm text-gray-900 dark:text-white">{req.requester_name}</span>
+                    <span class="text-xs text-gray-500 dark:text-gray-400">{req.requester_email}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded-full font-medium
+                      {req.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                        : req.status === 'approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}">
+                      {req.status}
+                    </span>
+                  </div>
+                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {req.requester_company} · Requested {formatDate(req.created_at)}
+                    {#if req.reason}<span class="text-gray-400 dark:text-gray-500"> · "{req.reason}"</span>{/if}
+                  </p>
+                  {#if req.status === "approved" && req.expires_at}
+                    <p class="text-xs text-green-700 dark:text-green-400 mt-1">
+                      Access expires {formatDate(req.expires_at)}
+                    </p>
+                  {/if}
+                  {#if req.review_note}
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">Note: {req.review_note}</p>
+                  {/if}
+                </div>
+
+                {#if req.status === "pending"}
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button
+                      on:click={() => approveRequest(req.id)}
+                      disabled={actioningId === req.id}
+                      class="h-7 px-3 text-xs font-medium rounded-md bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                    >
+                      {actioningId === req.id ? "…" : "Approve"}
+                    </button>
+                    <button
+                      on:click={() => denyRequest(req.id)}
+                      disabled={actioningId === req.id}
+                      class="h-7 px-3 text-xs font-medium rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                    >
+                      {actioningId === req.id ? "…" : "Deny"}
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

@@ -12,6 +12,8 @@
     FileCheck,
     Plug,
     Clock,
+    Lock,
+    Send,
   } from "lucide-svelte";
 
   interface TrustData {
@@ -97,6 +99,37 @@
   $: pdfUrl = data
     ? `/api/compliance/api/v1/trust/${encodeURIComponent(data.tenant.slug)}/export.pdf`
     : "";
+
+  // NDA / access request form state
+  let ndaForm = { name: "", email: "", company: "", reason: "" };
+  let ndaState: "idle" | "submitting" | "submitted" | "error" = "idle";
+  let ndaError: string | null = null;
+
+  async function submitAccessRequest() {
+    if (!data || ndaState === "submitting") return;
+    ndaState = "submitting";
+    ndaError = null;
+    try {
+      const res = await fetch(
+        `/api/compliance/api/v1/trust/${encodeURIComponent(data.tenant.slug)}/access-request`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ndaForm),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        ndaError = json.error ?? `HTTP ${res.status}`;
+        ndaState = "error";
+        return;
+      }
+      ndaState = json.status === "pending" ? "submitted" : "submitted";
+    } catch (e) {
+      ndaError = (e as Error).message;
+      ndaState = "error";
+    }
+  }
 
   $: opStats = data
     ? [
@@ -359,6 +392,110 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- NDA / Detailed Evidence Access -->
+      <section class="mt-12 surface p-6 sm:p-8" id="request-access">
+        <div class="flex items-start gap-4 mb-6">
+          <div class="w-10 h-10 rounded-lg bg-primary-muted text-primary flex items-center justify-center shrink-0">
+            <Lock class="w-5 h-5" strokeWidth={1.75} />
+          </div>
+          <div>
+            <h3 class="text-base font-semibold text-foreground">Request detailed evidence access</h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+              Need the full evidence bundle, policy documents, or pen-test reports?
+              Submit your details and {data.tenant.name} will review your request and send a
+              time-limited secure link.
+            </p>
+          </div>
+        </div>
+
+        {#if ndaState === "submitted"}
+          <div class="rounded-lg bg-success-muted border border-success/20 p-5 flex items-start gap-3">
+            <CheckCircle2 class="h-5 w-5 text-success shrink-0 mt-0.5" strokeWidth={1.75} />
+            <div>
+              <p class="text-sm font-medium text-foreground">Request submitted</p>
+              <p class="text-sm text-muted-foreground mt-0.5">
+                {data.tenant.name}'s team will review your request and send a secure download link
+                to your email address.
+              </p>
+            </div>
+          </div>
+        {:else}
+          <form
+            on:submit|preventDefault={submitAccessRequest}
+            class="grid sm:grid-cols-2 gap-4"
+          >
+            <div class="flex flex-col gap-1.5">
+              <label for="nda-name" class="text-xs font-medium text-muted-foreground">Full name *</label>
+              <input
+                id="nda-name"
+                type="text"
+                bind:value={ndaForm.name}
+                required
+                placeholder="Jane Smith"
+                class="h-9 px-3 rounded-md border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label for="nda-email" class="text-xs font-medium text-muted-foreground">Work email *</label>
+              <input
+                id="nda-email"
+                type="email"
+                bind:value={ndaForm.email}
+                required
+                placeholder="jane@acme.com"
+                class="h-9 px-3 rounded-md border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label for="nda-company" class="text-xs font-medium text-muted-foreground">Company *</label>
+              <input
+                id="nda-company"
+                type="text"
+                bind:value={ndaForm.company}
+                required
+                placeholder="Acme Corp"
+                class="h-9 px-3 rounded-md border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label for="nda-reason" class="text-xs font-medium text-muted-foreground">Reason (optional)</label>
+              <input
+                id="nda-reason"
+                type="text"
+                bind:value={ndaForm.reason}
+                placeholder="e.g. Vendor security review for Q3 procurement"
+                class="h-9 px-3 rounded-md border border-border bg-input text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+
+            {#if ndaState === "error" && ndaError}
+              <div class="sm:col-span-2 rounded-md bg-destructive-muted border border-destructive/20 px-3 py-2 text-sm text-destructive">
+                {ndaError}
+              </div>
+            {/if}
+
+            <div class="sm:col-span-2 flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={ndaState === "submitting"}
+                class="inline-flex items-center gap-2 h-9 px-4 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {#if ndaState === "submitting"}
+                  <span class="h-3.5 w-3.5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></span>
+                  Sending…
+                {:else}
+                  <Send class="h-3.5 w-3.5" strokeWidth={2} />
+                  Request access
+                {/if}
+              </button>
+              <p class="text-2xs text-muted-foreground">
+                Your information is shared only with {data.tenant.name}.
+              </p>
+            </div>
+          </form>
+        {/if}
       </section>
 
       <!-- Powered by -->
