@@ -351,6 +351,37 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // POST /api/v1/admin/migrate — run raw SQL statements (internal only, no Bearer auth)
+  // Requires x-internal-api-key header. Used by scripts/apply-pg-migration.mjs.
+  if (path === "/api/v1/admin/migrate" && method === "POST") {
+    const providedKey =
+      event.headers?.["x-internal-api-key"] ?? event.headers?.["X-Internal-Api-Key"];
+    const expectedKey = process.env.INTERNAL_API_KEY;
+    if (!providedKey || !expectedKey || providedKey !== expectedKey) {
+      return fail(401, "Invalid or missing internal API key", "UNAUTHORIZED");
+    }
+    const b = body(event) as { statements?: string[] };
+    if (!Array.isArray(b.statements) || b.statements.length === 0) {
+      return fail(400, "statements array required", "VALIDATION_FAILED");
+    }
+    const migPool = getPool();
+    const results: Array<{ statement: string; ok: boolean; error?: string }> = [];
+    for (const stmt of b.statements) {
+      try {
+        await migPool.query(stmt);
+        results.push({ statement: stmt.substring(0, 80), ok: true });
+      } catch (e) {
+        results.push({ statement: stmt.substring(0, 80), ok: false, error: (e as Error).message });
+      }
+    }
+    const failed = results.filter((r) => !r.ok);
+    if (failed.length > 0) {
+      console.error("[core-api] admin.migrate.partial_failure", { failed });
+      return fail(500, `${failed.length} statement(s) failed`, "MIGRATION_ERROR");
+    }
+    return ok({ status: "success", data: { applied: results.length, results } });
+  }
+
   // All remaining routes require authentication
   let auth: Awaited<ReturnType<typeof extractAuth>>;
   try {
