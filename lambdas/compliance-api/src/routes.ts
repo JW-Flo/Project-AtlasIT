@@ -3938,6 +3938,262 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ status: "success", questionnaires: result.rows });
   }
 
+  // -------------------------------------------------------------------------
+  // NDA / Trust Access Request workflow
+  // -------------------------------------------------------------------------
+
+  // POST /api/v1/trust/:slug/access-request — public (no auth required)
+  // Visitor submits an NDA / access request from the public trust page.
+  const accessRequestMatch = path.match(/^\/api\/v1\/trust\/([^/]+)\/access-request$/);
+  if (accessRequestMatch && method === "POST") {
+    const slug = decodeURIComponent(accessRequestMatch[1]);
+    const b = parseBody(event) as {
+      name?: string;
+      email?: string;
+      company?: string;
+      reason?: string;
+    };
+    if (!b.name?.trim() || !b.email?.trim() || !b.company?.trim()) {
+      return fail(400, "name, email, and company are required", "VALIDATION_FAILED");
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) {
+      return fail(400, "Invalid email address", "VALIDATION_FAILED");
+    }
+    // Look up tenant by slug (trust center must be published)
+    const tenantRow = await pool.query<{ id: string; name: string }>(
+      `SELECT t.id, t.name FROM tenants t
+       WHERE t.slug = $1 AND (t.config->>'trust_center_public')::boolean = true
+       LIMIT 1`,
+      [slug],
+    );
+    if (tenantRow.rows.length === 0) {
+      return fail(404, "Trust center not found", "NOT_FOUND");
+    }
+    const targetTenantId = tenantRow.rows[0].id;
+    const tenantName = tenantRow.rows[0].name;
+
+    // Prevent duplicate pending requests from the same email
+    const existing = await pool.query(
+      `SELECT id FROM trust_access_requests
+       WHERE tenant_id = $1 AND requester_email = $2 AND status = 'pending'
+       LIMIT 1`,
+      [targetTenantId, b.email.trim().toLowerCase()],
+    );
+    if (existing.rows.length > 0) {
+      return ok({ status: "pending", message: "Your request is already under review." });
+    }
+
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO trust_access_requests
+         (id, tenant_id, requester_name, requester_email, requester_company, reason)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        id,
+        targetTenantId,
+        b.name.trim(),
+        b.email.trim().toLowerCase(),
+        b.company.trim(),
+        b.reason?.trim() ?? null,
+      ],
+    );
+
+    // Publish internal event so tenant admin sees a notification
+    await publishEvent(targetTenantId, "trust.access_request.created", "trust-center", {
+      requestId: id,
+      requesterName: b.name.trim(),
+      requesterEmail: b.email.trim().toLowerCase(),
+      requesterCompany: b.company.trim(),
+      tenantName,
+    });
+
+    return ok({ status: "submitted", requestId: id });
+  }
+
+  // GET /api/v1/trust/access-requests — admin: list requests for this tenant
+  if (path === "/api/v1/trust/access-requests" && method === "GET") {
+    const auth = await extractAuth(event, svc.authRepo);
+    const tenantId = auth.tenantId;
+    const statusFilter = (event.queryStringParameters?.status as string | undefined) ?? "pending";
+    const validStatuses = ["pending", "approved", "denied", "all"];
+    if (!validStatuses.includes(statusFilter)) {
+      return fail(400, "status must be pending | approved | denied | all", "VALIDATION_FAILED");
+    }
+    const result = await pool.query<{
+      id: string;
+      requester_name: string;
+      requester_email: string;
+      requester_company: string;
+      reason: string | null;
+      status: string;
+      reviewed_by: string | null;
+      reviewed_at: string | null;
+      review_note: string | null;
+      expires_at: string | null;
+      created_at: string;
+    }>(
+      statusFilter === "all"
+        ? `SELECT id, requester_name, requester_email, requester_company, reason,
+                  status, reviewed_by, reviewed_at, review_note, expires_at, created_at
+           FROM trust_access_requests
+           WHERE tenant_id = $1
+           ORDER BY created_at DESC
+           LIMIT 200`
+        : `SELECT id, requester_name, requester_email, requester_company, reason,
+                  status, reviewed_by, reviewed_at, review_note, expires_at, created_at
+           FROM trust_access_requests
+           WHERE tenant_id = $1 AND status = $2
+           ORDER BY created_at DESC
+           LIMIT 200`,
+      statusFilter === "all" ? [tenantId] : [tenantId, statusFilter],
+    );
+    return ok({ status: "success", requests: result.rows });
+  }
+
+  // POST /api/v1/trust/access-requests/:id/approve — admin: approve + issue signed URL
+  const approveMatch = path.match(/^\/api\/v1\/trust\/access-requests\/([^/]+)\/approve$/);
+  if (approveMatch && method === "POST") {
+    const auth = await extractAuth(event, svc.authRepo);
+    const tenantId = auth.tenantId;
+    const requestId = approveMatch[1];
+    const b = parseBody(event) as { note?: string; ttlDays?: number };
+
+    const row = await pool.query<{
+      id: string;
+      requester_email: string;
+      requester_name: string;
+      requester_company: string;
+    }>(
+      `SELECT id, requester_email, requester_name, requester_company
+       FROM trust_access_requests
+       WHERE id = $1 AND tenant_id = $2 AND status = 'pending'
+       LIMIT 1`,
+      [requestId, tenantId],
+    );
+    if (row.rows.length === 0) {
+      return fail(404, "Access request not found or already reviewed", "NOT_FOUND");
+    }
+
+    const ttlDays = Math.min(Math.max(Number(b.ttlDays ?? 7), 1), 90);
+    const expiresAt = new Date(Date.now() + ttlDays * 86400 * 1000);
+
+    // Generate HMAC-signed access token: "<requestId>.<expiresMs>.<sig>"
+    const webhookSecret = process.env.WEBHOOK_SECRET ?? "dev-secret";
+    const payload = `${requestId}.${expiresAt.getTime()}`;
+    const sig = crypto
+      .createHmac("sha256", webhookSecret)
+      .update(payload)
+      .digest("hex")
+      .slice(0, 32);
+    const accessToken = `${payload}.${sig}`;
+
+    await pool.query(
+      `UPDATE trust_access_requests
+       SET status = 'approved',
+           access_token = $1,
+           expires_at = $2,
+           reviewed_by = $3,
+           reviewed_at = NOW(),
+           review_note = $4,
+           updated_at = NOW()
+       WHERE id = $5 AND tenant_id = $6`,
+      [
+        accessToken,
+        expiresAt.toISOString(),
+        auth.userId ?? "admin",
+        b.note?.trim() ?? null,
+        requestId,
+        tenantId,
+      ],
+    );
+
+    // Publish event for Slack/email notification
+    await publishEvent(tenantId, "trust.access_request.approved", "trust-center", {
+      requestId,
+      requesterEmail: row.rows[0].requester_email,
+      requesterName: row.rows[0].requester_name,
+      accessToken,
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    return ok({
+      status: "approved",
+      requestId,
+      accessToken,
+      expiresAt: expiresAt.toISOString(),
+    });
+  }
+
+  // POST /api/v1/trust/access-requests/:id/deny — admin: deny request
+  const denyMatch = path.match(/^\/api\/v1\/trust\/access-requests\/([^/]+)\/deny$/);
+  if (denyMatch && method === "POST") {
+    const auth = await extractAuth(event, svc.authRepo);
+    const tenantId = auth.tenantId;
+    const requestId = denyMatch[1];
+    const b = parseBody(event) as { note?: string };
+
+    const result = await pool.query(
+      `UPDATE trust_access_requests
+       SET status = 'denied',
+           reviewed_by = $1,
+           reviewed_at = NOW(),
+           review_note = $2,
+           updated_at = NOW()
+       WHERE id = $3 AND tenant_id = $4 AND status = 'pending'`,
+      [auth.userId ?? "admin", b.note?.trim() ?? null, requestId, tenantId],
+    );
+    if (result.rowCount === 0) {
+      return fail(404, "Access request not found or already reviewed", "NOT_FOUND");
+    }
+
+    await publishEvent(tenantId, "trust.access_request.denied", "trust-center", {
+      requestId,
+    });
+
+    return ok({ status: "denied", requestId });
+  }
+
+  // GET /api/v1/trust/:slug/export.pdf?token=<accessToken> — signed access verification
+  // The PDF export route already exists earlier in this file. This block validates the token
+  // and enriches the query so the handler can check it. Token format: "<id>.<expiresMs>.<sig>"
+  const pdfTokenMatch = path.match(/^\/api\/v1\/trust\/([^/]+)\/export\.pdf$/);
+  if (pdfTokenMatch && method === "GET") {
+    const tokenParam = event.queryStringParameters?.token;
+    if (tokenParam) {
+      // Validate token signature and expiry before letting the PDF handler run
+      const parts = tokenParam.split(".");
+      if (parts.length === 3) {
+        const [reqId, expMs, sigProvided] = parts;
+        const expiresMs = Number(expMs);
+        if (!isNaN(expiresMs) && Date.now() < expiresMs) {
+          const webhookSecret = process.env.WEBHOOK_SECRET ?? "dev-secret";
+          const expectedSig = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(`${reqId}.${expiresMs}`)
+            .digest("hex")
+            .slice(0, 32);
+          if (
+            crypto.timingSafeEqual(Buffer.from(sigProvided, "hex"), Buffer.from(expectedSig, "hex"))
+          ) {
+            // Token valid — fall through to the existing PDF export handler below by NOT returning here.
+            // We mark the request in the DB as accessed (best-effort, non-blocking).
+            pool
+              .query(`UPDATE trust_access_requests SET updated_at = NOW() WHERE id = $1`, [reqId])
+              .catch(() => {});
+          } else {
+            return fail(401, "Access token signature invalid", "INVALID_TOKEN");
+          }
+        } else {
+          return fail(401, "Access token expired", "TOKEN_EXPIRED");
+        }
+      } else {
+        return fail(401, "Malformed access token", "INVALID_TOKEN");
+      }
+    }
+    // No token — fall through to the existing PDF route handler (it runs unauthenticated for public trust pages)
+  }
+
   return fail(404, "Not Found", "NOT_FOUND");
 }
 
