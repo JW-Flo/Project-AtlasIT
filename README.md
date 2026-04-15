@@ -1,39 +1,70 @@
 # AtlasIT
 
-Multi-tenant IT automation and compliance platform, deployed on Cloudflare.
+Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda + Aurora PG + DynamoDB + S3 + SQS), SvelteKit console on Cloudflare Pages.
+
+> **Migration status:** Phase 8.5 complete — 7 Lambda functions ported, Aurora schema live, Terraform infrastructure deployed. Phase 8.5a (route completion) in progress; staging validation and DNS cutover pending.
 
 ## Architecture
 
-### Core Services
+### Backend (AWS Lambda)
 
-| Component              | Path                        | Runtime            | Purpose                                                  |
-| ---------------------- | --------------------------- | ------------------ | -------------------------------------------------------- |
-| Console App            | `console-app/`              | CF Pages (SvelteKit) | Primary UI: compliance, directory, marketplace, workflows |
-| Core API               | `core-api/`                 | CF Worker (Hono)   | Central API: tenants, events, agents, flags, credentials |
-| Compliance Worker      | `compliance-worker/`        | CF Worker          | Evidence-grounded compliance scoring, policy evaluation   |
-| AI Orchestrator        | `ai-orchestrator/`          | CF Worker          | Event routing, workflow execution, queue consumer, cron   |
-| Dispatch Worker        | `dispatch-worker/`          | CF Worker          | Queue-driven workflow step dispatch                      |
-| Onboarding             | `onboarding/`               | CF Worker          | Tenant provisioning                                      |
-| Documentation Worker   | `documentation-worker/`     | CF Worker (Hono)   | docs.atlasit.pro — API/product documentation             |
-| Email Worker           | `email-worker/`             | CF Worker          | Transactional email (support@atlasit.pro)                |
-| Apex Redirect          | `apex-redirect-worker/`     | CF Worker          | Root domain + status.atlasit.pro redirects               |
-| Scheduler Worker       | `scheduler-worker/`         | CF Worker          | Cron-based scheduled task execution                      |
-| Marketplace            | `marketplace/`              | CF Worker          | App catalog, install/uninstall management                |
-| Slack Notification     | `slack-notification-agent/` | CF Worker          | Outbound Slack MCP agent                                 |
-| Slack Approval         | `slack-approval-worker/`    | CF Worker          | Slack interactive approval workflows                     |
+| Lambda           | Path                      | Purpose                                                            |
+| ---------------- | ------------------------- | ------------------------------------------------------------------ |
+| `core-api`       | `lambdas/core-api/`       | Central API: tenants, events, agents, flags, credentials           |
+| `compliance-api` | `lambdas/compliance-api/` | Compliance scoring, policy evaluation, evidence                    |
+| `orchestrator`   | `lambdas/orchestrator/`   | Event routing, workflow execution (Step Functions), queue consumer |
+| `onboarding-api` | `lambdas/onboarding-api/` | Tenant provisioning                                                |
+| `scheduler`      | `lambdas/scheduler/`      | Cron-based scheduled task execution                                |
+| `slack-handler`  | `lambdas/slack-handler/`  | Slack notifications + interactive approval workflows               |
+| `dlq-processor`  | `lambdas/dlq-processor/`  | Dead-letter queue processing                                       |
+
+### Frontend
+
+| Component      | Path                    | Runtime              | Purpose                                                |
+| -------------- | ----------------------- | -------------------- | ------------------------------------------------------ |
+| Console App    | `console-app/`          | CF Pages (SvelteKit) | Compliance, directory, marketplace, workflows, billing |
+| Marketing Site | `apps/atlasit-web/`     | CF Pages             | Public marketing + landing                             |
+| Docs           | `documentation-worker/` | CF Worker            | docs.atlasit.pro                                       |
 
 ### Shared Packages
 
-| Package            | Path                       | Purpose                                            |
-| ------------------ | -------------------------- | -------------------------------------------------- |
-| Shared Library     | `packages/shared/`         | Types, auth, logging, middleware, automation engine |
-| MCP SDK            | `packages/mcp-sdk/`        | MCP agent SDK (client + server, HMAC signing)      |
-| Connector Schema   | `packages/connector-schema/` | ConnectorManifest Zod schemas + templates (35 apps) |
-| Adapter Generator  | `packages/adapter-gen/`    | Manifest JSON → full CF Worker scaffold            |
+| Package           | Path                         | Purpose                                                               |
+| ----------------- | ---------------------------- | --------------------------------------------------------------------- |
+| Shared Library    | `packages/shared/`           | Types, auth, platform AWS SDK (DynamoDB/S3/SQS/PG), automation engine |
+| MCP SDK           | `packages/mcp-sdk/`          | MCP agent SDK (client + server, HMAC signing)                         |
+| Connector Schema  | `packages/connector-schema/` | ConnectorManifest Zod schemas + templates (35 apps)                   |
+| Adapter Generator | `packages/adapter-gen/`      | Manifest JSON → full adapter scaffold                                 |
 
 ### Adapters
 
-9 core-tier hand-written adapters in `adapters/` (GitHub, Okta, Slack, Microsoft 365, AWS, Google Workspace, Zscaler + more), plus 24 scaffolded adapters generated via `adapter-gen`.
+35 adapters in `adapters/` — 9 core-tier hand-written (GitHub, Okta, Slack, Microsoft 365, AWS, Google Workspace, Zscaler, etc.), 24 scaffolded via `adapter-gen`. Still deployed as CF Workers; AWS migration last.
+
+### Infrastructure
+
+Terraform in `terraform/aws/` — 19+ files covering:
+
+- VPC, subnets, security groups
+- API Gateway (HTTP API) → Lambda
+- Aurora PostgreSQL Serverless v2 (primary DB)
+- DynamoDB (sessions, cache, feature flags)
+- S3 (evidence, artifacts)
+- SQS (workflow step dispatch)
+- Step Functions (JML + automation rule state machines)
+- CloudFront + WAF
+- Route 53, ACM, SSM Parameter Store, Secrets Manager
+
+Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB lock `atlasit-terraform-locks`.
+
+## Storage
+
+| Store     | Service     | Binding / Name                                         | Purpose                                                  |
+| --------- | ----------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| Aurora PG | AWS RDS     | `atlasit-db`                                           | Tenants, users, compliance, directory, audit (35 tables) |
+| DynamoDB  | AWS         | `atlasit-sessions` / `atlasit-cache` / `atlasit-flags` | Sessions, cache, feature flags                           |
+| S3        | AWS         | `atlasit-evidence-*`                                   | Policies, evidence, artifacts                            |
+| SQS       | AWS         | `atlasit-step-tasks`                                   | Workflow step dispatch                                   |
+| KV        | CF (legacy) | `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`          | Retained during cutover                                  |
+| D1        | CF (legacy) | `ATLAS_SHARED_DB`                                      | Retained during cutover                                  |
 
 ## Quick Start
 
@@ -41,87 +72,90 @@ Multi-tenant IT automation and compliance platform, deployed on Cloudflare.
 
 - Node.js 20+
 - pnpm (`corepack enable`)
-- Wrangler CLI (`pnpm add -g wrangler`)
-- Cloudflare account with Workers, D1, KV, R2, and Queues access
+- AWS CLI v2 (`aws --version`)
+- Terraform 1.6+ (`terraform --version`)
+- Wrangler CLI — for CF Pages/adapters: `pnpm add -g wrangler`
 
 ### Install & Run
 
 ```bash
 pnpm install                  # Install all workspace deps
-cp .env.example .env          # Copy and fill required values
+
+# Build shared package first (required by lambdas + console)
+cd packages/shared && pnpm run build && cd ../..
 
 pnpm run dev:console          # SvelteKit console app (localhost:5173)
-pnpm run dev:core             # Workers locally
-pnpm run dev:orchestrator     # AI orchestrator locally
-pnpm run dev:compliance       # Compliance worker locally
+```
+
+### Local Lambda dev
+
+```bash
+cd lambdas/core-api
+pnpm install
+pnpm run dev                  # SAM local or esbuild watch
+```
+
+### Infrastructure
+
+```bash
+cd terraform/aws
+terraform init
+terraform workspace select staging   # or default
+terraform plan
+terraform apply
 ```
 
 ## Console App Features
 
-- **Compliance Manager** — Framework tracking (SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR), control status with collapsible rows, weighted scoring with A–F grades, evidence guidance, compliance history
-- **Directory Sync** — IdP-synced user/group directory with auto-suggested group-to-app mappings
-- **Marketplace** — Integration catalog (35 apps across 7 categories) with credential management and connection testing
-- **Workflows** — JML (Joiner/Mover/Leaver) workflow builder and executor
-- **Automation Engine** — Rule-based automation with natural language builder, compliance mapping, and simulation
+- **Compliance Manager** — SOC 2, ISO 27001, NIST CSF, HIPAA, GDPR; control status, weighted A–F scoring, evidence guidance, history
+- **Directory Sync** — IdP-synced user/group directory, auto-suggested group-to-app mappings
+- **Marketplace** — 35 integrations across 7 categories, credential vault, connection testing
+- **Workflows** — JML (Joiner/Mover/Leaver) workflow builder + executor backed by Step Functions
+- **Automation Engine** — Rule-based automation with NL builder, compliance mapping, simulation
 - **Policy Generator** — AI-powered compliance policy document generation
-- **Analytics Dashboard** — Compliance trends, risk metrics, and operational insights
-- **Incidents & Access Requests** — CRUD and lifecycle management
-- **Notifications** — Bell icon with unread count, mark-read
-- **Admin Panel** — Super-admin tenant management, impersonation (15min TTL)
-- **Billing** — Stripe-integrated tier gating (Free/Starter/Professional/Enterprise)
-- **Support** — Contact form, Terms of Service, Privacy Policy with DSAR request tracking
-
-## Storage & Bindings
-
-| Type   | Binding            | Purpose                                               |
-| ------ | ------------------ | ----------------------------------------------------- |
-| D1     | `ATLAS_SHARED_DB`  | Tenants, users, preferences, directory, compliance, audit |
-| KV     | `KV_SESSIONS`      | Session storage                                       |
-| KV     | `KV_CACHE`         | General cache (compliance scores, API responses)      |
-| KV     | `KV_FEATURE_FLAGS` | Feature flags (rollout %, tenant overrides)            |
-| KV     | `MCP_STORE`        | MCP agent state and configuration                     |
-| R2     | `atlasit-evidence` | Policies, evidence, artifacts                         |
-| Queues | `atlasit-step-tasks` | Workflow step dispatch                              |
+- **Analytics Dashboard** — Compliance trends, risk metrics, operational insights
+- **Incidents & Access Reviews** — CRUD lifecycle, campaign manager, auto-revoke
+- **Billing** — Stripe-integrated tier gating (Free / Starter / Professional / Enterprise)
+- **Admin Panel** — Super-admin tenant management, impersonation (15 min TTL)
+- **Support** — Contact form, Terms of Service, Privacy Policy, DSAR tracking
 
 ## Testing & CI/CD
 
 ```bash
-pnpm run test:unit            # Vitest suites
-pnpm run typecheck            # Strict TypeScript check
+pnpm run test:unit            # Vitest (719 tests across 118 files)
+pnpm run typecheck            # Strict TypeScript
 pnpm run lint                 # ESLint
-pnpm run predeploy            # Full pre-deploy checks (typecheck + tests)
+pnpm run predeploy            # typecheck + tests + lint
 pnpm run test:pw              # Playwright smoke tests
 ```
 
 ### Deploy
 
-All deploys run automatically via **`.github/workflows/deploy-on-merge.yml`** on push to `main`. The workflow:
+**Lambda + Infrastructure:** Terraform via GitHub Actions on push to `main`. AWS credentials injected via OIDC (no static keys in CI).
 
-1. Detects changed paths per worker
-2. Applies D1 migrations if needed
-3. Deploys only affected workers
-4. Runs smoke tests against production endpoints
+**Console App / CF Pages:** `.github/workflows/deploy-on-merge.yml` — detects changed paths, applies migrations if needed, deploys affected workers, runs smoke tests.
 
-Manual deploy via `workflow_dispatch` is also available.
+Manual deploy: `workflow_dispatch` on either workflow.
 
-Secrets are managed via `wrangler secret put <KEY>` per worker.
+Secrets: Lambda env vars via SSM Parameter Store (`/atlasit/<env>/<key>`). CF Worker secrets via `wrangler secret put <KEY>`.
 
 ## Live Endpoints
 
-| Service       | URL                          |
-| ------------- | ---------------------------- |
-| Console       | https://www.atlasit.pro      |
-| Docs          | https://docs.atlasit.pro     |
-| Support       | https://www.atlasit.pro/support |
-| Status        | https://status.atlasit.pro   |
+| Service   | URL                                           |
+| --------- | --------------------------------------------- |
+| Console   | https://www.atlasit.pro                       |
+| Docs      | https://docs.atlasit.pro                      |
+| Status    | https://status.atlasit.pro                    |
+| API (AWS) | https://api.atlasit.pro (pending DNS cutover) |
 
-## Environment Variables
+## AWS Account
 
-Copy `.env.example` to `.env` and fill in required values. Worker secrets (API keys, tokens) are set via `wrangler secret put` and should never be committed.
+- Account: `457335975503`, region `us-east-1`
+- AWS CLI: `aws` (Linux/CI) or `"C:/Program Files/Amazon/AWSCLIV2/aws.exe"` (Windows)
 
 ## Contributing
 
-Open issues or PRs for bug fixes and improvements. Run `pnpm run predeploy` before submitting changes.
+Run `pnpm run predeploy` before submitting changes. See `ROADMAP.md` for migration phases and `STATUS.md` for current completion state.
 
 ## License
 

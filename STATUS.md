@@ -1,111 +1,63 @@
 # AtlasIT Platform Status
 
-**Last updated:** April 2026
+**Last updated:** 2026-04-15
 
 ## Current State
 
-- **Test suite:** 719 tests passing (118 files)
+- **Platform:** AWS-native (Lambda + Aurora PG + DynamoDB + S3 + SQS). Migration gate PASSED 2026-04-12. Stability window active until 2026-04-25.
 - **Package manager:** pnpm (workspace monorepo)
-- **Platform:** Cloudflare Workers + D1 + KV + R2 + Queues (migrating to AWS)
-- **AWS Migration:** Phase 1 infrastructure scaffolded (PR #376)
+- **Console app:** SvelteKit on CF Pages — CF decommission deferred until 2026-04-25 stability window closes
+- **Active work:** Phase 9 (Trust Center — 6/8 shipped), observability hardening, Stripe live billing
 
 ## Phase Completion
 
-| Phase                          | Status          | PR         | Key Deliverables                                                                                                                                         |
-| ------------------------------ | --------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0 — Foundation                 | ✅ Complete     | —          | 3 workers deployed, D1 schemas, shared types, Vitest harness                                                                                             |
-| 1 — Workflow Durability + Auth | ✅ Complete     | #139       | Shared workflow types, EvidenceEmitter, queue dispatch, DLQ, D1 RBAC, shared auth middleware                                                             |
-| 2 — MCP Orchestration          | ✅ Complete     | #140       | Compensation dispatch, per-step timeouts, Slack MCP agent, HMAC verification, e2e tests                                                                  |
-| 3 — Marketplace & Integrations | ✅ Pre-existing | —          | Marketplace API, connector schema, adapter gen, Google Workspace/Okta connectors, credential vault, feature flags                                        |
-| 4 — Hardening & Production     | ✅ Complete     | #141       | Okta SCIM 2.0, k6 load tests, IaC drift detection (OPA), OIDC worker, CF-native observability                                                            |
-| 5 — Adapter Scaffolding        | ✅ Complete     | #158, #159 | 35 marketplace adapters: registry, manifests, scaffolded workers, 9 core-tier implementations, CI/CD deploy matrix                                       |
-| 6 — Contract Stability         | ✅ Complete     | #164, #165 | RBAC expansion, DTO normalization, safeProxyFetch error handling, startup assertions, JWT rotation logging, Slack verification                            |
-| 7 — Compliance-as-Automation   | ✅ Complete     | —          | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings, adapter evidence endpoints (6 adapters), manual evidence upload |
-| 7.5 — Compliance Integration   | ⚠️ In Progress | —          | Scoring unified, scheduled evidence collection, CDT twin expanded (60 rules), twin D1 bridge, remediation catalog (37 controls). **Remaining:** policy eval stub |
-| 8 — Access Reviews             | ✅ Complete     | —          | Campaign CRUD, manager review UI, auto-revoke on expiry, evidence generation per cycle, `request_access_review` automation action |
-| **8.5 — AWS Infra**            | ✅ Complete     | #376       | Terraform (19 files): VPC, CloudFront, WAF, API GW, Lambda (7), Aurora PG, SQS, EventBridge, Route 53, ACM, SSM, Secrets Manager |
-| **8.5 — AWS Data**             | ✅ Complete     | #376       | PostgreSQL schema (35 tables), migration scripts (KV→DynamoDB, R2→S3, D1→Aurora) |
-| **8.5 — AWS Platform SDK**     | ✅ Complete     | #376       | DynamoDB repos (session/cache/flags), S3 evidence, SQS queue, PG audit/tenant, Lambda auth |
-| **8.5 — Step Functions**       | ✅ Complete     | #377       | JML workflow + automation rule state machines, SvelteKit adapter-node |
-| **8.5 — Ops Tooling**          | ✅ Complete     | #378       | CF export, DNS cutover (8 phases), AWS smoke tests |
-| **8.5 — Lambda Handlers**      | ✅ Complete     | #379       | 7 Lambda functions ported from CF Workers with CF→AWS binding translations |
-| **8.5 — Security Fixes**       | ✅ Complete     | #381       | x-tenant-id auth bypass, 7 unscoped SQL queries, INTERNAL_API_KEY |
-| **8.5a — Route Completion**    | ⚠️ In Progress | —          | ~60 dropped Worker routes need porting (credentials, flags, automation, JML, etc.) |
-| **8.5b — Staging Validation**  | Pending         | —          | Deploy to staging, data migration, smoke tests, load tests, Step Functions verification |
-| **8.5c — DNS Cutover**         | Pending         | —          | Progressive Route 53 weighted routing, nameserver update, CF decommission |
+| Phase                                       | Status                  | Key Deliverables                                                                                                                                                  |
+| ------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0–6 — Foundation through Contract Stability | ✅ Complete             | CF Workers era: workflow durability, auth, MCP orchestration, 35-app marketplace, production hardening, RBAC                                                      |
+| 7 — Compliance-as-Automation                | ✅ Complete             | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings. Policy eval stub remains (parked).                                           |
+| 7.5 — Scoring Unification                   | ✅ Complete             | Evidence-grounded scores, parseControlRef, adapter pass/fail wired, daily cron re-evaluation                                                                      |
+| 8 — Access Reviews                          | ✅ Complete             | Campaign CRUD, manager review UI, auto-revoke, evidence per cycle                                                                                                 |
+| **8.5 — AWS Migration**                     | ✅ **Complete** (M1–M7) | Full re-host: Lambda (7 core + 9 adapter), Aurora PG (35 tables), DynamoDB, S3, SQS, Step Functions, CloudFront + WAF, Route 53. Data migrated. DNS cutover done. |
+| **9 — Trust Center**                        | ⚠️ 6/8 shipped          | Public route, framework scores, visibility controls, badge SVG, iframe embed, PDF auditor export. **Remaining: Questionnaire AI Lambda port, NDA workflow.**      |
 
-## Deployed Workers
+## Lambda Functions (17 deployed)
 
-| Worker                     | Purpose                                                  |
-| -------------------------- | -------------------------------------------------------- |
-| `core-api`                 | Central API: tenants, events, agents, flags, credentials |
-| `ai-orchestrator`          | Workflow execution, event routing, queue consumer        |
-| `compliance-worker`        | Compliance scoring, policy evaluation, evidence          |
-| `onboarding`               | Tenant provisioning                                      |
-| `dispatch-worker`          | Queue-driven step execution dispatch                     |
-| `scheduler-worker`         | Cron-based scheduled task execution                      |
-| `slack-notification-agent` | Outbound Slack notifications via MCP events              |
-| `slack-approval-worker`    | Slack interactive approval workflows                     |
-| `documentation-worker`     | Docs serving                                             |
-| `marketplace`              | App catalog and install/uninstall management             |
-| `apex-redirect-worker`     | Root domain redirect handling                            |
-| `mcp`                      | MCP server (desktop agent protocol)                      |
-| `mcp-idp`                  | MCP identity provider (OIDC/SAML bridge)                 |
-| `mcp-mobile`               | MCP mobile client endpoint                               |
-| `ops/oidc`                 | GitHub Actions OIDC → 1Password exchange                 |
-| `infra/github-proxy`       | GitHub API proxy for CI                                  |
-| `shared/services/cdt`      | Compliance Definition & Testing rule engine              |
-| `console-app`              | SvelteKit frontend (CF Pages)                            |
-| `apps/atlasit-web`         | Marketing / landing site                                 |
+| Lambda                  | Purpose                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `core-api`              | Tenants, auth, events, flags, credentials, billing, apps, marketplace               |
+| `compliance-api`        | Compliance scoring, policy eval, evidence, incidents, notifications, questionnaires |
+| `orchestrator`          | Event routing, Step Functions, automation rules, JML, discovery, NHI                |
+| `onboarding-api`        | Tenant provisioning                                                                 |
+| `scheduler`             | EventBridge-triggered cron duties                                                   |
+| `slack-handler`         | Slack notifications + interactive approvals                                         |
+| `dlq-processor`         | Dead-letter queue processing                                                        |
+| `adapter-github`        | GitHub adapter                                                                      |
+| `adapter-okta`          | Okta adapter                                                                        |
+| + 7 scaffolded adapters | AWS, Google Workspace, M365, Slack, Jira, Zscaler, BambooHR                         |
 
 ## Infrastructure
 
-### Cloudflare (Current — migrating)
-- **D1:** `ATLAS_SHARED_DB` (tenants, users, compliance, audit, console_user_roles, directory)
-- **KV:** `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`, `MCP_STORE`
-- **R2:** `atlasit-evidence` (policies, evidence, artifacts)
-- **Queues:** `atlasit-step-tasks` (workflow step dispatch)
+- **Aurora PG Serverless v2** — primary DB, 35 tables
+- **DynamoDB** — sessions, cache, feature flags
+- **S3** — evidence, policies, artifacts
+- **SQS** — workflow step dispatch
+- **CloudFront + WAF** — CDN + 3 managed + 2 rate-limit rules
+- **Route 53** — `atlasit.pro` DNS
+- **Terraform** — `infra/aws/` (18 files). Legacy `terraform/aws/` frozen.
+- **Cost:** ~$14/mo (RDS $3.48, Route 53 $4, NAT $3, WAF $1.78, CW $0.50)
 
-### AWS (Target — scaffolded, not yet live)
-- **Compute:** 7 Lambda functions behind API Gateway HTTP API, CloudFront CDN
-- **Database:** Aurora PostgreSQL Serverless v2 (replaces all 5 D1 databases)
-- **KV → DynamoDB:** `atlasit-sessions`, `atlasit-cache`, `atlasit-feature-flags`, `atlasit-idem` (all with TTL)
-- **R2 → S3:** `atlasit-evidence`, `atlasit-policies`, `atlasit-artifacts`, `atlasit-console` (OAC)
-- **Queues → SQS:** `atlasit-step-tasks` + DLQ
-- **Cron → EventBridge:** 5-min scoring, daily evaluation, 15-min dispatch
-- **Edge:** CloudFront + WAF (3 managed rule sets, 2 rate-limit rules) + ACM wildcard cert
-- **DNS:** Route 53 hosted zone (apex + wildcard → CloudFront)
-- **Networking:** VPC with 2 private + 2 public subnets, NAT GW, security groups
-- **Secrets:** Secrets Manager (6 secrets: encryption key, Groq, webhooks, Slack, GitHub)
-- **Observability:** CloudWatch log groups (8), alarms (API 5xx, Lambda errors, Lambda duration, DLQ depth)
-- **CI/CD:** GitHub OIDC → `arn:aws:iam::457335975503:role/atlasit-github-actions-deploy`
-- **IaC:** 18 Terraform files in `infra/aws/`, SSM parameter store for service discovery
-- **Platform SDK:** `packages/shared/src/platform/aws/` — DynamoDB, S3, SQS, PG repos + auth layer
+## Stub Endpoints (2 remaining)
 
-## What's Built
+- `GET /api/health` — sentinel (intentional)
+- `GET /api/marketplace/installs` — derivable from integrations table (low priority)
 
-- Console app (SvelteKit + Tailwind, CF Pages)
-- D1-backed RBAC (CF Access JWT → roles from D1, fallback to viewer)
-- Hierarchical requireRole middleware (viewer < member < admin) on all 27 mutation routes
-- Shared auth middleware (core-api, ai-orchestrator)
-- WorkflowDO (Durable Object): state machine, compensation, per-step timeouts, DLQ escalation
-- Event router with fan-out, agent registry, HMAC signature verification
-- MCP agent SDK (`packages/mcp-sdk`)
-- Evidence locker (R2-backed, SHA-256 content addressing)
-- Policy evaluation engine (stub — hashes input, no Boolean logic yet)
-- Rate limiting + security headers middleware
-- Credential vault (AES-GCM envelope encryption)
-- Feature flag system (KV-backed, rollout %, tenant overrides)
-- Okta adapter with SCIM 2.0 provisioning
-- k6 load tests (smoke/load/stress/soak)
-- IaC drift detection (OPA/Conftest policies, GH Actions)
-- CF Workers-native observability (W3C traceparent tracer, Analytics Engine metrics)
-- Structured logging with SLO definitions and burn-rate alerting
+## Next Up
 
-## Marketplace Adapters (35 apps)
+See ROADMAP.md "Next Up" section for ranked backlog. Top items:
 
-| Status                 | Adapters                                                                                                                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ✅ Production (stable) | Okta, Google Workspace                                                                                                                                                                                |
-| 🟡 Core-tier (alpha)   | Microsoft 365, Slack, Jira, GitHub, Stripe, AWS, Azure, Workday, ADP, CrowdStrike, GCP                                                                                                                |
-| 🟢 Implemented (beta)  | Confluence, QuickBooks, Xero, Zoom, Teams, Discord, BambooHR, Auth0, 1Password, PagerDuty, Datadog, Salesforce, HubSpot, Dropbox, Notion, Zendesk, Asana, Monday, DocuSign, Figma, Canva, **Zscaler** |
+1. Questionnaire AI Lambda port (Phase 9 finish — ~3 days)
+2. NDA workflow (Phase 9 finish — ~2 days)
+3. NHI Inventory Dashboard (Phase 10 — ~2 days)
+4. CW log-metric filter for silent-500 errors (~30 min)
+5. Events consumer end-to-end validation (~2 hr)
+6. Stripe live billing (price IDs + SSM params + Lambda env)
