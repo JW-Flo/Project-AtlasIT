@@ -11,14 +11,14 @@
 
 ## Phase Completion
 
-| Phase                                       | Status                  | Key Deliverables                                                                                                                                                  |
-| ------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0–6 — Foundation through Contract Stability | ✅ Complete             | CF Workers era: workflow durability, auth, MCP orchestration, 35-app marketplace, production hardening, RBAC                                                      |
-| 7 — Compliance-as-Automation                | ✅ Complete             | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings. Policy eval stub remains (parked).                                           |
-| 7.5 — Scoring Unification                   | ✅ Complete             | Evidence-grounded scores, parseControlRef, adapter pass/fail wired, daily cron re-evaluation                                                                      |
-| 8 — Access Reviews                          | ✅ Complete             | Campaign CRUD, manager review UI, auto-revoke, evidence per cycle                                                                                                 |
-| **8.5 — AWS Migration**                     | ✅ **Complete** (M1–M7) | Full re-host: Lambda (7 core + 9 adapter), Aurora PG (35 tables), DynamoDB, S3, SQS, Step Functions, CloudFront + WAF, Route 53. Data migrated. DNS cutover done. |
-| **9 — Trust Center**                        | ⚠️ 6/8 shipped          | Public route, framework scores, visibility controls, badge SVG, iframe embed, PDF auditor export. **Remaining: Questionnaire AI Lambda port, NDA workflow.**      |
+| Phase                                       | Status                  | Key Deliverables                                                                                                                                                                 |
+| ------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0–6 — Foundation through Contract Stability | ✅ Complete             | CF Workers era: workflow durability, auth, MCP orchestration, 35-app marketplace, production hardening, RBAC                                                                     |
+| 7 — Compliance-as-Automation                | ✅ Complete             | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings. Policy eval stub remains (parked).                                                          |
+| 7.5 — Scoring Unification                   | ✅ Complete             | Evidence-grounded scores, parseControlRef, adapter pass/fail wired, daily cron re-evaluation                                                                                     |
+| 8 — Access Reviews                          | ✅ Complete             | Campaign CRUD, manager review UI, auto-revoke, evidence per cycle                                                                                                                |
+| **8.5 — AWS Migration**                     | ✅ **Complete** (M1–M7) | Full re-host: Lambda (7 core + 9 adapter), Aurora PG (35 tables), DynamoDB, S3, SQS, Step Functions, CloudFront + WAF, Route 53. Data migrated. DNS cutover done.                |
+| **9 — Trust Center**                        | ✅ **Complete** (8/8)   | Public route, framework scores, visibility controls, badge SVG, iframe embed, PDF auditor export, Questionnaire AI Lambda port (PR #461), NDA/access-request workflow (PR #470). |
 
 ## Lambda Functions (17 deployed)
 
@@ -55,9 +55,8 @@
 
 See ROADMAP.md "Next Up" section for ranked backlog. Top items:
 
-1. Questionnaire AI Lambda port (Phase 9 finish — ~3 days)
-2. NDA workflow (Phase 9 finish — ~2 days)
-3. NHI Inventory Dashboard (Phase 10 — ~2 days)
-4. CW log-metric filter for silent-500 errors (~30 min)
-5. Events consumer end-to-end validation (~2 hr)
-6. Stripe live billing (price IDs + SSM params + Lambda env)
+1. NHI Inventory Dashboard (Phase 10 — ~2 days)
+2. Events consumer end-to-end validation (~2 hr)
+3. Stripe live billing — run `terraform apply infra/aws/` then `ENV=dev ./scripts/update-lambda-stripe-env.sh`
+4. Console-app questionnaire routes migration (still D1-backed, should proxy to Lambda)
+5. CF decommission after 2026-04-25 stability window closes
