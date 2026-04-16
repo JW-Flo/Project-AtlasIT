@@ -7,6 +7,9 @@
  *
  * Exports all data from D1 (atlasit-shared) and imports into Aurora PG.
  * Handles SQLite→PostgreSQL type conversions and respects FK constraints.
+ *
+ * IMPORTANT: Must run from within AWS VPC (Lambda, EC2, CloudShell) since
+ * Aurora RDS is private. Local execution will fail with ENOTFOUND.
  */
 
 import { exec } from "child_process";
@@ -52,10 +55,17 @@ const ALL_TABLES = [
 const TABLES_TO_MIGRATE = SELECTED_TABLES || ALL_TABLES;
 
 async function getDbUrl() {
+  // Try env var first (for local testing)
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL;
+  }
+
+  // Fall back to reading from deployed Lambda env
   const { stdout } = await execAsync(
-    `"C:/Program Files/Amazon/AWSCLIV2/aws.exe" ssm get-parameter --name /atlasit/${ENV}/secrets/database-url --with-decryption --query 'Parameter.Value' --output text`
+    `"C:/Program Files/Amazon/AWSCLIV2/aws.exe" lambda get-function-configuration --function-name atlasit-core-api-${ENV} --output json`
   );
-  return stdout.trim();
+  const config = JSON.parse(stdout.trim());
+  return config.Environment.Variables.DATABASE_URL;
 }
 
 async function exportFromD1(table) {
@@ -133,6 +143,8 @@ async function main() {
   console.log("");
 
   const dbUrl = await getDbUrl();
+  console.log(`[DEBUG] DATABASE_URL length: ${dbUrl.length}`);
+  console.log(`[DEBUG] DATABASE_URL (masked): ${dbUrl.substring(0, 40)}...${dbUrl.substring(dbUrl.length - 40)}`);
   const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
 
   try {
