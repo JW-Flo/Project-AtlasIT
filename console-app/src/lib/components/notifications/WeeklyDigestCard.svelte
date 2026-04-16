@@ -91,9 +91,9 @@
             {#each digest.scoreChanges as sc}
               <div class="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
                 {#if sc.delta > 0}
-                  <TrendingUp class="h-4 w-4 text-green-500 shrink-0" />
+                  <TrendingUp class="h-4 w-4 text-success shrink-0" />
                 {:else if sc.delta < 0}
-                  <TrendingDown class="h-4 w-4 text-red-500 shrink-0" />
+                  <TrendingDown class="h-4 w-4 text-destructive shrink-0" />
                 {:else}
                   <span class="h-4 w-4 shrink-0" />
                 {/if}
@@ -101,7 +101,7 @@
                   <span class="font-medium truncate block">{sc.framework}</span>
                   <span class="text-xs text-muted-foreground">
                     {sc.currentScore}%
-                    <span class={sc.delta > 0 ? "text-green-600" : sc.delta < 0 ? "text-red-600" : ""}>
+                    <span class={sc.delta > 0 ? "text-success" : sc.delta < 0 ? "text-destructive" : ""}>
                       ({sc.delta >= 0 ? "+" : ""}{sc.delta})
                     </span>
                   </span>
@@ -122,7 +122,7 @@
           <span>{digest.evidenceSummary.totalItems} total</span>
         </div>
         {#if digest.evidenceSummary.expiredItems > 0}
-          <div class="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
+          <div class="flex items-center gap-1.5 text-warning">
             <AlertTriangle class="h-4 w-4" />
             <span>{digest.evidenceSummary.expiredItems} stale</span>
           </div>
@@ -136,11 +136,11 @@
           <div class="space-y-2">
             {#each digest.driftAlerts as alert}
               <div class="flex items-start gap-2 rounded-md border px-3 py-2 text-sm
-                {alert.severity === 'critical' ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950' :
-                 alert.severity === 'warning' ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950' :
+                {alert.severity === 'critical' ? 'bg-destructive-muted border-destructive/30' :
+                 alert.severity === 'warning' ? 'bg-warning-muted border-warning/30' :
                  'border-border'}">
                 <AlertTriangle class="h-4 w-4 shrink-0 mt-0.5
-                  {alert.severity === 'critical' ? 'text-red-500' : 'text-yellow-500'}" />
+                  {alert.severity === 'critical' ? 'text-destructive' : 'text-warning'}" />
                 <div>
                   <span class="font-medium">{alert.title}</span>
                   <p class="text-xs text-muted-foreground mt-0.5">{alert.recommendedAction}</p>
@@ -165,7 +165,7 @@
                     {dl.type.replace("_", " ")}
                   </Badge>
                 </div>
-                <span class="text-xs font-medium {dl.daysRemaining <= 3 ? 'text-red-600' : 'text-muted-foreground'}">
+                <span class="text-xs font-medium {dl.daysRemaining <= 3 ? 'text-destructive' : 'text-muted-foreground'}">
                   {dl.daysRemaining === 0 ? "Today" : `${dl.daysRemaining}d`}
                 </span>
               </div>

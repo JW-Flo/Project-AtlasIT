@@ -131,7 +131,7 @@
     switch (s) {
       case "pass":    return "bg-success-muted text-success";
       case "fail":    return "bg-destructive-muted text-destructive";
-      default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+      default:        return "bg-muted text-muted-foreground";
     }
   }
 

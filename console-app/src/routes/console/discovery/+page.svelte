@@ -103,9 +103,9 @@
       case "under_review":
         return "bg-warning-muted text-warning";
       case "blocked":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+        return "bg-destructive-muted text-destructive";
       default:
-        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-muted-foreground/70";
+        return "bg-muted text-muted-foreground";
     }
   }
 

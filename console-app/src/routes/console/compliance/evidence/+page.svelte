@@ -100,7 +100,7 @@
     switch (impact) {
       case "positive": return "bg-success-muted text-success";
       case "negative": return "bg-destructive-muted text-destructive";
-      default:         return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+      default:         return "bg-muted text-muted-foreground";
     }
   }
 

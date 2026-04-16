@@ -50,9 +50,9 @@
   {#if trendDelta !== 0}
     <div class="mb-2 text-xs">
       {#if trendDelta > 0}
-        <span class="text-green-600">+{trendDelta}% this week</span>
+        <span class="text-success">+{trendDelta}% this week</span>
       {:else}
-        <span class="text-red-600">{trendDelta}% this week</span>
+        <span class="text-destructive">{trendDelta}% this week</span>
       {/if}
     </div>
   {/if}

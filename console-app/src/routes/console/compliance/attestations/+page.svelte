@@ -114,21 +114,21 @@
   function statusClass(s: string): string {
     switch (s) {
       case "active":  return "bg-success-muted text-success";
-      case "expired": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300";
+      case "expired": return "bg-warning-muted text-warning";
       case "revoked": return "bg-destructive-muted text-destructive";
-      default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+      default:        return "bg-muted text-muted-foreground";
     }
   }
 
   function frameworkColor(key: string): string {
     const map: Record<string, string> = {
-      SOC2: "bg-primary-muted text-primary",
-      ISO27001: "bg-purple-100 text-purple-700",
-      NIST_CSF: "bg-teal-100 text-teal-700",
-      HIPAA: "bg-orange-100 text-orange-700",
-      GDPR: "bg-pink-100 text-pink-700",
+      SOC2: "bg-info-muted text-info",
+      ISO27001: "bg-primary-muted text-primary",
+      NIST_CSF: "bg-info-muted text-info",
+      HIPAA: "bg-warning-muted text-warning",
+      GDPR: "bg-primary-muted text-primary",
     };
-    return map[key] ?? "bg-gray-100 text-gray-700";
+    return map[key] ?? "bg-muted text-muted-foreground";
   }
 
   function relativeTime(iso: string | null): string {

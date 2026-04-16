@@ -82,14 +82,14 @@
 
   function frameworkColor(key: string): string {
     const map: Record<string, string> = {
-      SOC2: "bg-primary-muted text-primary",
-      ISO27001: "bg-purple-100 text-purple-700",
-      "NIST CSF": "bg-teal-100 text-teal-700",
-      NIST_CSF: "bg-teal-100 text-teal-700",
-      HIPAA: "bg-orange-100 text-orange-700",
-      GDPR: "bg-pink-100 text-pink-700",
+      SOC2: "bg-info-muted text-info",
+      ISO27001: "bg-primary-muted text-primary",
+      "NIST CSF": "bg-info-muted text-info",
+      NIST_CSF: "bg-info-muted text-info",
+      HIPAA: "bg-warning-muted text-warning",
+      GDPR: "bg-primary-muted text-primary",
     };
-    return map[key] ?? "bg-gray-100 text-gray-700";
+    return map[key] ?? "bg-muted text-muted-foreground";
   }
 
   onMount(() => {

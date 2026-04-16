@@ -298,9 +298,9 @@
                 <td class="px-4 py-3">
                   <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
                     {run.status === 'completed' ? 'bg-success-muted text-success' : ''}
-                    {run.status === 'running' || run.status === 'pending' ? 'bg-primary-muted text-primary' : ''}
-                    {run.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : ''}
-                    {run.status === 'cancelled' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : ''}">
+                    {run.status === 'running' || run.status === 'pending' ? 'bg-info-muted text-info' : ''}
+                    {run.status === 'failed' ? 'bg-destructive-muted text-destructive' : ''}
+                    {run.status === 'cancelled' ? 'bg-muted text-muted-foreground' : ''}">
                     {run.status}
                   </span>
                 </td>
@@ -379,9 +379,9 @@
                 <td class="px-4 py-3">
                   <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
                     {entry.jml_action === 'joiner' ? 'bg-success-muted text-success' : ''}
-                    {entry.jml_action === 'leaver' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : ''}
+                    {entry.jml_action === 'leaver' ? 'bg-destructive-muted text-destructive' : ''}
                     {entry.jml_action === 'mover' ? 'bg-warning-muted text-warning' : ''}
-                    {!['joiner','leaver','mover'].includes(entry.jml_action) ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : ''}">
+                    {!['joiner','leaver','mover'].includes(entry.jml_action) ? 'bg-muted text-muted-foreground' : ''}">
                     {entry.jml_action}
                   </span>
                 </td>

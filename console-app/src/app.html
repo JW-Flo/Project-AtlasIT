@@ -12,12 +12,14 @@
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     <script>
       // Blocking theme init — prevents white flash (FOUC) on page load.
-      // Reads localStorage before first paint and sets data-theme so CSS
-      // custom properties from app.css take effect immediately.
+      // Reads localStorage before first paint and sets data-theme + .dark class
+      // so both CSS custom properties and Tailwind dark: utilities work immediately.
       (function() {
         var t = 'dark';
         try { var s = localStorage.getItem('atlasit.theme'); if (s === 'light' || s === 'dark') t = s; } catch(e) {}
         document.documentElement.setAttribute('data-theme', t);
+        if (t === 'dark') document.documentElement.classList.add('dark');
+        else document.documentElement.classList.remove('dark');
       })();
 
       // Static SPA mode: intercept SvelteKit __data.json fetches (no server data in static bundle)

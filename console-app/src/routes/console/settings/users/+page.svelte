@@ -106,7 +106,7 @@
       return "bg-primary-muted text-primary";
     }
     if (role === "viewer") {
-      return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
+      return "bg-muted text-muted-foreground";
     }
     return "bg-success-muted text-success";
   }
@@ -114,7 +114,7 @@
   function statusBadgeClass(status: string): string {
     return status === "active"
       ? "bg-success-muted text-success"
-      : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-muted-foreground/70";
+      : "bg-muted text-muted-foreground";
   }
 
   function relativeTime(iso: string | null): string {

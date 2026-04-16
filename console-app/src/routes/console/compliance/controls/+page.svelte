@@ -88,18 +88,18 @@
     switch (s) {
       case "pass":    return "bg-success-muted text-success";
       case "fail":    return "bg-destructive-muted text-destructive";
-      default:        return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+      default:        return "bg-muted text-muted-foreground";
     }
   }
 
   function frameworkClass(fw: string): string {
     switch (fw) {
-      case "SOC2":      return "bg-primary-muted text-primary dark:bg-blue-900/30 dark:text-blue-300";
-      case "ISO27001":  return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300";
-      case "NIST_CSF":  return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300";
-      case "HIPAA":     return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
-      case "GDPR":      return "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300";
-      default:          return "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300";
+      case "SOC2":      return "bg-info-muted text-info";
+      case "ISO27001":  return "bg-primary-muted text-primary";
+      case "NIST_CSF":  return "bg-info-muted text-info";
+      case "HIPAA":     return "bg-warning-muted text-warning";
+      case "GDPR":      return "bg-primary-muted text-primary";
+      default:          return "bg-muted text-muted-foreground";
     }
   }
 
