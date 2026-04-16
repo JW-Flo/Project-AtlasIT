@@ -2936,74 +2936,98 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const name = (b.name as string)?.trim();
     if (!name) return fail(400, "name is required", "VALIDATION_FAILED");
 
-    const id = crypto.randomUUID();
-    await pool.query(
-      `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, grace_period_days, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        id,
-        tenantId,
-        name,
-        b.scope ?? "all",
-        b.status ?? "active",
-        b.reviewerPolicy ?? "manager",
-        b.dueDate ?? null,
-        b.gracePeriodDays ?? 7,
-        auth.email,
-      ],
-    );
+    const VALID_STATUSES = ["draft", "active"];
+    const status =
+      typeof b.status === "string" && VALID_STATUSES.includes(b.status) ? b.status : "active";
 
-    // Bulk-insert items if provided
-    const items = b.items as Array<Record<string, unknown>> | undefined;
-    if (Array.isArray(items) && items.length > 0) {
-      for (const item of items) {
-        await pool.query(
-          `INSERT INTO access_review_items (id, campaign_id, tenant_id, user_id, user_email, app_id, app_name, role, reviewer_email)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [
-            crypto.randomUUID(),
-            id,
-            tenantId,
-            item.userId ?? "",
-            item.userEmail ?? "",
-            item.appId ?? "",
-            item.appName ?? "",
-            item.role ?? null,
-            item.reviewerEmail ?? null,
-          ],
-        );
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const id = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, grace_period_days, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          id,
+          tenantId,
+          name,
+          b.scope ?? "all",
+          status,
+          b.reviewerPolicy ?? "manager",
+          b.dueDate ?? null,
+          b.gracePeriodDays ?? 7,
+          auth.email,
+        ],
+      );
+
+      const items = b.items as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(items) && items.length > 0) {
+        for (const item of items) {
+          await client.query(
+            `INSERT INTO access_review_items (id, campaign_id, tenant_id, user_id, user_email, app_id, app_name, role, reviewer_email)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+              crypto.randomUUID(),
+              id,
+              tenantId,
+              item.userId ?? "",
+              item.userEmail ?? "",
+              item.appId ?? "",
+              item.appName ?? "",
+              item.role ?? null,
+              item.reviewerEmail ?? null,
+            ],
+          );
+        }
       }
-    }
+      await client.query("COMMIT");
 
-    return ok({ status: "success", data: { id, status: "created" } }, 201);
+      return ok({ status: "success", data: { id, status: "created" } }, 201);
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
   // PATCH /api/v1/access-reviews/:id/items/:itemId — decide on an item
-  const arDecisionMatch = path.match(/^\/api\/v1\/access-reviews\/([^/]+)\/items\/([^/]+)$/);
-  if (arDecisionMatch && method === "PATCH") {
-    const campaignId = arDecisionMatch[1];
-    const itemId = arDecisionMatch[2];
-    const b = parseBody(event) as Record<string, unknown>;
-    const decision = b.decision as string;
-    if (!decision || !["approved", "revoked", "skipped"].includes(decision)) {
-      return fail(400, "decision must be approved, revoked, or skipped", "VALIDATION_FAILED");
-    }
+  if (method === "PATCH") {
+    const arDecisionMatch = path.match(/^\/api\/v1\/access-reviews\/([^/]+)\/items\/([^/]+)$/);
+    if (arDecisionMatch) {
+      const campaignId = arDecisionMatch[1];
+      const itemId = arDecisionMatch[2];
+      const b = parseBody(event) as Record<string, unknown>;
+      const decision = b.decision as string;
+      if (!decision || !["approved", "revoked", "skipped"].includes(decision)) {
+        return fail(400, "decision must be approved, revoked, or skipped", "VALIDATION_FAILED");
+      }
 
-    await pool.query(
-      `UPDATE access_review_items SET status = $1, decided_at = NOW(), decided_by = $2, notes = $3
-       WHERE id = $4 AND campaign_id = $5 AND tenant_id = $6`,
-      [decision, auth.email, b.notes ?? null, itemId, campaignId, tenantId],
-    );
-
-    if (decision !== "skipped") {
-      await pool.query(
-        `INSERT INTO access_review_decisions (id, item_id, campaign_id, tenant_id, decision, decided_by, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [crypto.randomUUID(), itemId, campaignId, tenantId, decision, auth.email, b.notes ?? null],
+      const upd = await pool.query(
+        `UPDATE access_review_items SET status = $1, decided_at = NOW(), decided_by = $2, notes = $3
+         WHERE id = $4 AND campaign_id = $5 AND tenant_id = $6`,
+        [decision, auth.email, b.notes ?? null, itemId, campaignId, tenantId],
       );
-    }
+      if (upd.rowCount === 0) return fail(404, "Review item not found", "NOT_FOUND");
 
-    return ok({ status: "success", data: { itemId, decision } });
+      if (decision !== "skipped") {
+        await pool.query(
+          `INSERT INTO access_review_decisions (id, item_id, campaign_id, tenant_id, decision, decided_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            crypto.randomUUID(),
+            itemId,
+            campaignId,
+            tenantId,
+            decision,
+            auth.email,
+            b.notes ?? null,
+          ],
+        );
+      }
+
+      return ok({ status: "success", data: { itemId, decision } });
+    }
   }
 
   // ── Notifications ───────────────────────────────────────────────────────────
