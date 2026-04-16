@@ -543,6 +543,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       frameworks?: string[];
     };
 
+    if (b.name !== undefined && b.name.trim() === "")
+      return fail(400, "name cannot be empty", "VALIDATION_FAILED");
+
     // Update tenants table
     await pool.query(
       `UPDATE tenants SET name = COALESCE($1, name), industry = COALESCE($2, industry),
@@ -561,15 +564,17 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     };
 
     if (b.logoUrl !== undefined) {
-      await upsertPref("logo_url", b.logoUrl);
+      const trimmed = b.logoUrl.trim();
+      if (trimmed !== "" && !/^https?:\/\/.+/.test(trimmed))
+        return fail(400, "logoUrl must be a valid http/https URL", "VALIDATION_FAILED");
+      await upsertPref("logo_url", trimmed);
     }
     if (b.accentColor !== undefined) {
-      const safe =
-        /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$|^[a-zA-Z]{2,30}$/.test(
-          (b.accentColor ?? "").trim(),
-        )
-          ? b.accentColor.trim()
-          : "";
+      const safe = /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$/.test(
+        (b.accentColor ?? "").trim(),
+      )
+        ? b.accentColor.trim()
+        : "";
       await upsertPref("accent_color", safe);
     }
     if (b.frameworks !== undefined && Array.isArray(b.frameworks)) {
