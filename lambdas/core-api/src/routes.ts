@@ -491,29 +491,106 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // GET /api/v1/tenant/settings — tenant configuration
+  // Returns flat TenantInfo shape expected by console-app settings page
   if (path === "/api/v1/tenant/settings" && method === "GET") {
     const tenant = await pool.query(
       `SELECT id, name, slug, tier, status, industry, size, config, created_at
        FROM tenants WHERE id = $1`,
       [auth.tenantId],
     );
+    const t = tenant.rows[0];
+    if (!t) return fail(404, "Tenant not found", "NOT_FOUND");
     const prefs = await pool.query(
       `SELECT key, value FROM tenant_preferences WHERE tenant_id = $1`,
       [auth.tenantId],
     );
-    const prefMap: Record<string, unknown> = {};
+    let logoUrl = "";
+    let accentColor = "";
+    let frameworks: string[] = [];
     for (const row of prefs.rows) {
-      try {
-        prefMap[row.key] = JSON.parse(row.value);
-      } catch {
-        prefMap[row.key] = row.value;
+      if (row.key === "logo_url") logoUrl = row.value;
+      if (row.key === "accent_color") accentColor = row.value;
+      if (row.key === "frameworks") {
+        try {
+          frameworks = JSON.parse(row.value);
+        } catch {}
       }
     }
     return ok({
-      status: "success",
-      data: { tenant: tenant.rows[0] ?? null, preferences: prefMap },
-      timestamp: new Date().toISOString(),
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      ownerEmail: t.config?.owner_email ?? "",
+      industry: t.industry ?? null,
+      size: t.size ?? null,
+      status: t.status,
+      tier: t.tier,
+      createdAt: t.created_at,
+      logoUrl,
+      accentColor,
+      frameworks,
     });
+  }
+
+  // PATCH /api/v1/tenant/settings — update tenant name/industry/size + preferences
+  if (path === "/api/v1/tenant/settings" && method === "PATCH") {
+    const b = body(event) as {
+      name?: string;
+      industry?: string;
+      size?: string;
+      logoUrl?: string;
+      accentColor?: string;
+      frameworks?: string[];
+    };
+
+    if (b.name !== undefined && b.name.trim() === "")
+      return fail(400, "name cannot be empty", "VALIDATION_FAILED");
+
+    // Update tenants table
+    await pool.query(
+      `UPDATE tenants SET name = COALESCE($1, name), industry = COALESCE($2, industry),
+       size = COALESCE($3, size) WHERE id = $4`,
+      [b.name ?? null, b.industry ?? null, b.size ?? null, auth.tenantId],
+    );
+
+    // Upsert preferences
+    const upsertPref = async (key: string, value: string) => {
+      await pool.query(
+        `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = $3, updated_at = NOW()`,
+        [auth.tenantId, key, value],
+      );
+    };
+
+    if (b.logoUrl !== undefined) {
+      const trimmed = b.logoUrl.trim();
+      if (trimmed !== "" && !/^https?:\/\/.+/.test(trimmed))
+        return fail(400, "logoUrl must be a valid http/https URL", "VALIDATION_FAILED");
+      await upsertPref("logo_url", trimmed);
+    }
+    if (b.accentColor !== undefined) {
+      const safe = /^#[0-9a-fA-F]{3,8}$|^rgb[a]?\([^)]+\)$|^hsl[a]?\([^)]+\)$/.test(
+        (b.accentColor ?? "").trim(),
+      )
+        ? b.accentColor.trim()
+        : "";
+      await upsertPref("accent_color", safe);
+    }
+    if (b.frameworks !== undefined && Array.isArray(b.frameworks)) {
+      const valid = ["SOC2", "ISO27001", "NIST CSF", "HIPAA", "GDPR"];
+      const filtered = b.frameworks.filter((f: string) => valid.includes(f));
+      if (filtered.length > 0) {
+        await upsertPref("frameworks", JSON.stringify(filtered));
+      } else {
+        await pool.query(
+          `DELETE FROM tenant_preferences WHERE tenant_id = $1 AND key = 'frameworks'`,
+          [auth.tenantId],
+        );
+      }
+    }
+
+    return ok({ success: true });
   }
 
   // GET /api/v1/tenant/users — list users in tenant
