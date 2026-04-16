@@ -8,6 +8,7 @@
  */
 
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { readFileSync } from "fs";
 
 const region = "us-east-1";
@@ -22,15 +23,40 @@ if (!sqlFile) {
 const sql = readFileSync(sqlFile, "utf8");
 console.log(`Applying migration: ${sqlFile} (${sql.length} bytes)`);
 
-// Split on semicolons for individual statements
-const statements = sql
+// Strip single-line comments and split on semicolons
+const stripped = sql
+  .split("\n")
+  .map((line) => line.replace(/--.*$/, ""))   // remove -- comments
+  .join("\n");
+const statements = stripped
   .split(";")
   .map((s) => s.trim())
-  .filter((s) => s.length > 0 && !s.startsWith("--"));
+  .filter((s) => s.length > 0);
 
 console.log(`Found ${statements.length} SQL statements`);
 
+const env = process.env.ENV || "dev";
 const client = new LambdaClient({ region });
+const ssm = new SSMClient({ region });
+
+// Read the internal API key from SSM
+let internalApiKey = process.env.INTERNAL_API_KEY || "";
+if (!internalApiKey) {
+  try {
+    const ssmResp = await ssm.send(new GetParameterCommand({
+      Name: `/atlasit/${env}/secrets/internal-api-key`,
+      WithDecryption: true,
+    }));
+    internalApiKey = ssmResp.Parameter?.Value || "";
+    console.log("Read INTERNAL_API_KEY from SSM");
+  } catch (e) {
+    console.warn("Could not read INTERNAL_API_KEY from SSM:", e.message);
+  }
+}
+if (!internalApiKey) {
+  console.error("ERROR: INTERNAL_API_KEY not available. Set ENV var or populate SSM.");
+  process.exit(1);
+}
 
 // Invoke the Lambda with a special admin event that runs raw SQL
 // This uses the internal API key auth path
@@ -42,7 +68,7 @@ const event = {
   },
   headers: {
     "content-type": "application/json",
-    "x-internal-api-key": "WILL_BE_READ_FROM_ENV_BY_LAMBDA",
+    "x-internal-api-key": internalApiKey,
   },
   body: JSON.stringify({ statements }),
   isBase64Encoded: false,

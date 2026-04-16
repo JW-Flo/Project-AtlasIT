@@ -784,7 +784,9 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // compliance posture. Tenant must opt in via tenants.config.trust_center_public = true.
   {
     const m = path.match(/^\/api\/v1\/trust\/([a-z0-9-]+)$/);
-    if (m && method === "GET") {
+    // Skip reserved admin paths — these are handled by authenticated routes below
+    const RESERVED_TRUST_PATHS = new Set(["access-requests", "settings", "questionnaire"]);
+    if (m && method === "GET" && !RESERVED_TRUST_PATHS.has(m[1])) {
       const slug = m[1];
       const pool = getPool();
       try {
@@ -1048,6 +1050,69 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     } catch (e) {
       console.error("[compliance-api] evaluate-all.error", { error: (e as Error).message });
       return fail(500, "Batch evaluation failed", "INTERNAL_ERROR");
+    }
+  }
+
+  // POST /api/v1/trust/:slug/access-request — public (no auth required)
+  // Visitor submits an NDA / access request from the public trust page.
+  {
+    const accessRequestMatchPub = path.match(/^\/api\/v1\/trust\/([^/]+)\/access-request$/);
+    if (accessRequestMatchPub && method === "POST") {
+      const slug = decodeURIComponent(accessRequestMatchPub[1]);
+      const b = parseBody(event) as {
+        name?: string;
+        email?: string;
+        company?: string;
+        reason?: string;
+      };
+      if (!b.name?.trim() || !b.email?.trim() || !b.company?.trim()) {
+        return fail(400, "name, email, and company are required", "VALIDATION_FAILED");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) {
+        return fail(400, "Invalid email address", "VALIDATION_FAILED");
+      }
+      const pubPool = getPool();
+      const tenantRow = await pubPool.query<{ id: string; name: string }>(
+        `SELECT t.id, t.name FROM tenants t
+         WHERE t.slug = $1 AND (t.config->>'trust_center_public')::boolean = true
+         LIMIT 1`,
+        [slug],
+      );
+      if (tenantRow.rows.length === 0) {
+        return fail(404, "Trust center not found", "NOT_FOUND");
+      }
+      const targetTenantId = tenantRow.rows[0].id;
+      const tenantName = tenantRow.rows[0].name;
+      const existing = await pubPool.query(
+        `SELECT id FROM trust_access_requests
+         WHERE tenant_id = $1 AND requester_email = $2 AND status = 'pending' LIMIT 1`,
+        [targetTenantId, b.email.trim().toLowerCase()],
+      );
+      if (existing.rows.length > 0) {
+        return ok({ status: "pending", message: "Your request is already under review." });
+      }
+      const reqId = crypto.randomUUID();
+      await pubPool.query(
+        `INSERT INTO trust_access_requests
+           (id, tenant_id, requester_name, requester_email, requester_company, reason)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          reqId,
+          targetTenantId,
+          b.name.trim(),
+          b.email.trim().toLowerCase(),
+          b.company.trim(),
+          b.reason?.trim() ?? null,
+        ],
+      );
+      await publishEvent(targetTenantId, "trust.access_request.created", "trust-center", {
+        requestId: reqId,
+        requesterName: b.name.trim(),
+        requesterEmail: b.email.trim().toLowerCase(),
+        requesterCompany: b.company.trim(),
+        tenantName,
+      });
+      return ok({ status: "submitted", requestId: reqId });
     }
   }
 
@@ -3042,15 +3107,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
     const offset = parseInt(qs.offset ?? "0", 10) || 0;
 
-    const conditions = ["tenant_id = $1"];
+    const conditions = ["p.tenant_id = $1"];
     const vals: unknown[] = [tenantId];
 
     if (status) {
-      conditions.push(`status = $${vals.length + 1}`);
+      conditions.push(`p.status = $${vals.length + 1}`);
       vals.push(status);
     }
     if (category) {
-      conditions.push(`category = $${vals.length + 1}`);
+      conditions.push(`p.category = $${vals.length + 1}`);
       vals.push(category);
     }
 
@@ -3071,7 +3136,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         [...vals, limit, offset],
       );
       const countRow = await pool.query(
-        `SELECT COUNT(*) as cnt FROM policies WHERE ${where}`,
+        `SELECT COUNT(*) as cnt FROM policies p WHERE ${where}`,
         vals,
       );
       return ok({
@@ -3939,82 +4004,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // -------------------------------------------------------------------------
-  // NDA / Trust Access Request workflow
+  // NDA / Trust Access Request workflow (admin routes — public route is pre-auth above)
   // -------------------------------------------------------------------------
-
-  // POST /api/v1/trust/:slug/access-request — public (no auth required)
-  // Visitor submits an NDA / access request from the public trust page.
-  const accessRequestMatch = path.match(/^\/api\/v1\/trust\/([^/]+)\/access-request$/);
-  if (accessRequestMatch && method === "POST") {
-    const slug = decodeURIComponent(accessRequestMatch[1]);
-    const b = parseBody(event) as {
-      name?: string;
-      email?: string;
-      company?: string;
-      reason?: string;
-    };
-    if (!b.name?.trim() || !b.email?.trim() || !b.company?.trim()) {
-      return fail(400, "name, email, and company are required", "VALIDATION_FAILED");
-    }
-    // Basic email format check
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email.trim())) {
-      return fail(400, "Invalid email address", "VALIDATION_FAILED");
-    }
-    // Look up tenant by slug (trust center must be published)
-    const tenantRow = await pool.query<{ id: string; name: string }>(
-      `SELECT t.id, t.name FROM tenants t
-       WHERE t.slug = $1 AND (t.config->>'trust_center_public')::boolean = true
-       LIMIT 1`,
-      [slug],
-    );
-    if (tenantRow.rows.length === 0) {
-      return fail(404, "Trust center not found", "NOT_FOUND");
-    }
-    const targetTenantId = tenantRow.rows[0].id;
-    const tenantName = tenantRow.rows[0].name;
-
-    // Prevent duplicate pending requests from the same email
-    const existing = await pool.query(
-      `SELECT id FROM trust_access_requests
-       WHERE tenant_id = $1 AND requester_email = $2 AND status = 'pending'
-       LIMIT 1`,
-      [targetTenantId, b.email.trim().toLowerCase()],
-    );
-    if (existing.rows.length > 0) {
-      return ok({ status: "pending", message: "Your request is already under review." });
-    }
-
-    const id = crypto.randomUUID();
-    await pool.query(
-      `INSERT INTO trust_access_requests
-         (id, tenant_id, requester_name, requester_email, requester_company, reason)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        id,
-        targetTenantId,
-        b.name.trim(),
-        b.email.trim().toLowerCase(),
-        b.company.trim(),
-        b.reason?.trim() ?? null,
-      ],
-    );
-
-    // Publish internal event so tenant admin sees a notification
-    await publishEvent(targetTenantId, "trust.access_request.created", "trust-center", {
-      requestId: id,
-      requesterName: b.name.trim(),
-      requesterEmail: b.email.trim().toLowerCase(),
-      requesterCompany: b.company.trim(),
-      tenantName,
-    });
-
-    return ok({ status: "submitted", requestId: id });
-  }
 
   // GET /api/v1/trust/access-requests — admin: list requests for this tenant
   if (path === "/api/v1/trust/access-requests" && method === "GET") {
-    const auth = await extractAuth(event, svc.authRepo);
-    const tenantId = auth.tenantId;
     const statusFilter = (event.queryStringParameters?.status as string | undefined) ?? "pending";
     const validStatuses = ["pending", "approved", "denied", "all"];
     if (!validStatuses.includes(statusFilter)) {
@@ -4054,8 +4048,6 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // POST /api/v1/trust/access-requests/:id/approve — admin: approve + issue signed URL
   const approveMatch = path.match(/^\/api\/v1\/trust\/access-requests\/([^/]+)\/approve$/);
   if (approveMatch && method === "POST") {
-    const auth = await extractAuth(event, svc.authRepo);
-    const tenantId = auth.tenantId;
     const requestId = approveMatch[1];
     const b = parseBody(event) as { note?: string; ttlDays?: number };
 
@@ -4128,8 +4120,6 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // POST /api/v1/trust/access-requests/:id/deny — admin: deny request
   const denyMatch = path.match(/^\/api\/v1\/trust\/access-requests\/([^/]+)\/deny$/);
   if (denyMatch && method === "POST") {
-    const auth = await extractAuth(event, svc.authRepo);
-    const tenantId = auth.tenantId;
     const requestId = denyMatch[1];
     const b = parseBody(event) as { note?: string };
 

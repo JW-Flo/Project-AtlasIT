@@ -1,10 +1,10 @@
 -- Migration 0062: Trust Center — NDA / access request workflow
 -- Stores visitor requests for detailed evidence access.
--- Tenant admins approve/deny via console; approved requests get a signed, time-limited URL.
+-- Tenant admins approve or deny via console. Approved requests get a signed, time-limited URL.
 
 CREATE TABLE IF NOT EXISTS trust_access_requests (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  tenant_id         TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   requester_name    TEXT NOT NULL,
   requester_email   TEXT NOT NULL,
   requester_company TEXT NOT NULL,
