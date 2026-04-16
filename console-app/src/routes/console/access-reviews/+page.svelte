@@ -30,13 +30,13 @@
     loading = true;
     error = null;
     try {
-      const res = await fetch("/api/compliance/api/v1/access-reviews");
+      const res = await fetch("/api/access-reviews");
       if (!res.ok) {
         error = `Failed to load campaigns (HTTP ${res.status})`;
         return;
       }
-      const json: ListResponse = await res.json();
-      campaigns = json.data?.items ?? [];
+      const json = await res.json();
+      campaigns = json.campaigns ?? [];
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -52,7 +52,7 @@
     formError = "";
     submitting = true;
     try {
-      const res = await fetch("/api/compliance/api/v1/access-reviews", {
+      const res = await fetch("/api/access-reviews", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
