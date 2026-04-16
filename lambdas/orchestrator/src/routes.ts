@@ -359,7 +359,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const workflowId = crypto.randomUUID();
 
     await pool.query(
-      `INSERT INTO workflow_runs (id, tenant_id, type, status, context, created_at)
+      `INSERT INTO workflow_runs (id, tenant_id, type, status, context, started_at)
        VALUES ($1,$2,$3,'running',$4,NOW())`,
       [workflowId, tenantId, b.definitionId, JSON.stringify(b.context ?? {})],
     );
@@ -623,11 +623,25 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // GET /api/v1/jml/policy — get JML policy for tenant
   if (path === "/api/v1/jml/policy" && method === "GET") {
     const row = await pool.query(
-      `SELECT tenant_id as "tenantId", policy FROM jml_policies WHERE tenant_id = $1`,
+      `SELECT tenant_id as "tenantId", enabled, auto_joiner, auto_leaver, auto_mover,
+              leaver_grace_ms, notify_manager, notify_user, require_joiner_approval
+       FROM jml_policies WHERE tenant_id = $1`,
       [tenantId],
     );
-    const policy =
-      row.rows.length > 0 ? row.rows[0].policy : { tenantId, enabled: false, rules: [] };
+    const r = row.rows[0];
+    const policy = r
+      ? {
+          tenantId: r.tenantId,
+          enabled: r.enabled,
+          autoJoiner: r.auto_joiner,
+          autoLeaver: r.auto_leaver,
+          autoMover: r.auto_mover,
+          leaverGraceMs: r.leaver_grace_ms,
+          notifyManager: r.notify_manager,
+          notifyUser: r.notify_user,
+          requireJoinerApproval: r.require_joiner_approval,
+        }
+      : { tenantId, enabled: false, rules: [] };
     return ok({ status: "success", data: policy, timestamp: ts });
   }
 
@@ -1053,8 +1067,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const where = conditions.join(" AND ");
     const rows = await pool.query(
       `SELECT id, tenant_id as "tenantId", type as "definitionId", type, status,
-              context, created_at as "createdAt", completed_at as "completedAt"
-       FROM workflow_runs WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1}`,
+              context, started_at as "createdAt", completed_at as "completedAt"
+       FROM workflow_runs WHERE ${where} ORDER BY started_at DESC LIMIT $${params.length + 1}`,
       [...params, limit],
     );
     return ok({ status: "success", data: rows.rows, timestamp: ts });
@@ -1066,7 +1080,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const [, runId] = jmlRunMatch;
     const row = await pool.query(
       `SELECT id, tenant_id as "tenantId", type as "definitionId", type, status,
-              context, created_at as "createdAt", completed_at as "completedAt"
+              context, started_at as "createdAt", completed_at as "completedAt"
        FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
       [runId, tenantId],
     );
@@ -1580,6 +1594,43 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // is stubbed here — Lambda doesn't have direct access to CF adapter workers.
   // These endpoints enqueue the work via SQS and return accepted status.
 
+  // GET /api/v1/nhi/discover — alias for /nhi/credentials (UI fetches this path)
+  if (path === "/api/v1/nhi/discover" && method === "GET") {
+    const limit = Math.min(parseInt(qs.limit ?? "100", 10) || 100, 500);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+    const conditions = ["tenant_id = $1"];
+    const params: unknown[] = [tenantId];
+    if (qs.status) {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(qs.status);
+    }
+    if (qs.type) {
+      conditions.push(`credential_type = $${params.length + 1}`);
+      params.push(qs.type);
+    }
+    if (qs.provider) {
+      conditions.push(`provider = $${params.length + 1}`);
+      params.push(qs.provider);
+    }
+    const where = conditions.join(" AND ");
+    const rows = await pool.query(
+      `SELECT id, tenant_id, credential_type, provider, display_name as name, status,
+              expires_at, last_rotated_at, risk_score, created_at
+       FROM nhi_credentials WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+    const countRow = await pool.query(
+      `SELECT COUNT(*) as total FROM nhi_credentials WHERE ${where}`,
+      params,
+    );
+    return ok({
+      status: "success",
+      data: rows.rows,
+      meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
+      timestamp: ts,
+    });
+  }
+
   // POST /api/v1/nhi/discover — discover NHIs from connected adapters (stubbed)
   if (path === "/api/v1/nhi/discover" && method === "POST") {
     const adapterUrls = parseAdapterUrls(process.env.ADAPTER_URLS);
@@ -1675,8 +1726,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const where = conditions.join(" AND ");
 
     const rows = await pool.query(
-      `SELECT id, tenant_id, credential_type, provider, name, status,
-              expires_at, last_rotated_at, created_at
+      `SELECT id, tenant_id, credential_type, provider, display_name as name, status,
+              expires_at, last_rotated_at, risk_score, created_at
        FROM nhi_credentials WHERE ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset],
     );
@@ -1711,7 +1762,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       ),
       pool.query(
         `SELECT status, COUNT(*)::int as count FROM workflow_runs
-         WHERE tenant_id = $1 AND created_at >= $2 GROUP BY status`,
+         WHERE tenant_id = $1 AND started_at >= $2 GROUP BY status`,
         [tenantId, since],
       ),
     ]);

@@ -27,6 +27,9 @@
       "/api/tenant/dashboard": "/api/v1/dashboard",
       "/api/platform/dashboard": "/api/v1/dashboard",
       "/api/analytics/dashboard": "/api/v1/dashboard",
+      "/api/dashboard/views": "/api/v1/dashboard",
+      // Audit log
+      "/api/tenant/audit-log": "/api/v1/audit-log",
       // Compliance
       "/api/tenant-compliance/scores": "/api/compliance/api/v1/policies/coverage",
       "/api/tenant-compliance/controls": "/api/compliance/api/v1/compliance-packs/registry/controls",
