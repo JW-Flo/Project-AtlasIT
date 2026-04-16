@@ -1,9 +1,10 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { listRules, listDismissedSuggestions, dismissSuggestion } from "$lib/server/automation";
+import { listRules, listDismissedSuggestions, dismissSuggestion } from "$lib/server/automation-pg";
 import { listConnectedApps } from "$lib/server/credentials";
 import { generateSuggestions, generatePatternSuggestions } from "@atlasit/shared";
 import { integrations } from "$lib/data/integrations";
+import { queryPg, queryPgOne } from "$lib/server/pg.js";
 
 /**
  * GET /api/automation/suggestions
@@ -16,9 +17,6 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ suggestions: [] });
-
   // Gather tenant state + event history + dismissed list — isolated so a
   // single failing data source does not abort the entire response.
   const [
@@ -29,33 +27,29 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     dismissedResult,
     selectedAppsResult,
   ] = await Promise.allSettled([
-    listRules(db, tenantId),
+    listRules(tenantId),
     listConnectedApps(platform, tenantId),
-    db
-      .prepare(
-        `SELECT m.group_id as groupId, g.name as groupName, m.app_id as appId, m.role
-         FROM group_app_mappings m
-         LEFT JOIN directory_groups g ON g.id = m.group_id
-         WHERE m.tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .all(),
-    db
-      .prepare(
-        `SELECT type, source, COUNT(*) as count, MAX(created_at) as latestAt
-         FROM events
-         WHERE tenant_id = ? AND created_at > datetime('now', '-30 days')
-         GROUP BY type, source
-         ORDER BY count DESC
-         LIMIT 50`,
-      )
-      .bind(tenantId)
-      .all(),
-    listDismissedSuggestions(db, tenantId),
-    db
-      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'selected_apps'`)
-      .bind(tenantId)
-      .first<{ value: string }>(),
+    queryPg<any>(
+      `SELECT m.group_id as groupId, g.name as groupName, m.app_id as appId, m.role
+       FROM group_app_mappings m
+       LEFT JOIN directory_groups g ON g.id = m.group_id
+       WHERE m.tenant_id = $1`,
+      [tenantId],
+    ),
+    queryPg<any>(
+      `SELECT type, source, COUNT(*) as count, MAX(created_at) as latestAt
+       FROM events
+       WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days'
+       GROUP BY type, source
+       ORDER BY count DESC
+       LIMIT 50`,
+      [tenantId],
+    ),
+    listDismissedSuggestions(tenantId),
+    queryPgOne<{ value: string }>(
+      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'selected_apps'",
+      [tenantId],
+    ),
   ]);
 
   const warnings: string[] = [];
@@ -97,7 +91,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
           }),
         ),
         warnings.push("group-mappings"),
-        { results: [] });
+        []);
 
   const eventHistoryResult =
     eventHistorySettled.status === "fulfilled"
@@ -110,7 +104,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
           }),
         ),
         warnings.push("event-history"),
-        { results: [] });
+        []);
 
   const dismissedIds =
     dismissedResult.status === "fulfilled"
@@ -152,7 +146,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
 
   // Only surface group-mapping suggestions for apps in the tenant's ecosystem
   const relevantAppIds = new Set(connectedApps.map((a) => a.appId));
-  const groupMappings = (mappingsResult.results || [])
+  const groupMappings = (mappingsResult || [])
     .filter((r: any) => relevantAppIds.has(r.appId))
     .map((r: any) => ({
       groupId: r.groupId,
@@ -161,7 +155,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       role: r.role || "member",
     }));
 
-  const eventHistory = (eventHistoryResult.results || []).map((r: any) => ({
+  const eventHistory = (eventHistoryResult || []).map((r: any) => ({
     type: r.type as string,
     source: r.source as string,
     count: r.count as number,
@@ -191,15 +185,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
  * POST /api/automation/suggestions
  * Dismiss a suggestion by templateId.
  */
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   let body: { templateId?: string };
   try {
@@ -212,6 +203,6 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     return json({ error: "templateId is required" }, { status: 400 });
   }
 
-  await dismissSuggestion(db, tenantId, body.templateId, user.email);
+  await dismissSuggestion(tenantId, body.templateId, user.email);
   return json({ ok: true });
 };

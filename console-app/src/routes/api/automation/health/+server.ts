@@ -4,28 +4,24 @@ import {
   getLatestHealthChecks,
   getHealthHistory,
   recordHealthCheck,
-} from "$lib/server/automation";
+} from "$lib/server/automation-pg";
 import { listConnectedApps, updateTestStatus } from "$lib/server/credentials";
 
-export const GET: RequestHandler = async ({ url, locals, platform }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ checks: [] });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const appId = url.searchParams.get("appId");
 
   if (appId) {
-    const history = await getHealthHistory(db, tenantId, appId);
+    const history = await getHealthHistory(tenantId, appId);
     return json({ history });
   }
 
-  const checks = await getLatestHealthChecks(db, tenantId);
+  const checks = await getLatestHealthChecks(tenantId);
   return json({ checks });
 };
 
@@ -35,18 +31,16 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const connectedApps = await listConnectedApps(platform, tenantId);
   const env = (platform?.env as any) || {};
   let adapterUrls: Record<string, string> = {};
   try {
     adapterUrls = JSON.parse(env.ADAPTER_URLS || "{}");
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
 
   const results = [];
 
@@ -76,7 +70,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
     const responseMs = Date.now() - start;
 
-    await recordHealthCheck(db, tenantId, {
+    await recordHealthCheck(tenantId, {
       appId: app.app_id,
       healthy,
       responseMs,

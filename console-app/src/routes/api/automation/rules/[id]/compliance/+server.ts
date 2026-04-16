@@ -1,20 +1,16 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { getRule } from "$lib/server/automation";
+import { getRule } from "$lib/server/automation-pg";
 import { ACTION_COMPLIANCE_MAP } from "@atlasit/shared";
 
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  const rule = await getRule(db, tenantId, params.id!);
+  const rule = await getRule(params.id!, tenantId);
   if (!rule) return json({ error: "Rule not found" }, { status: 404 });
 
   const actions = (rule.actions ?? []).map((action: any) => ({

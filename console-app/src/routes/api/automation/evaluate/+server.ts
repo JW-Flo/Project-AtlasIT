@@ -1,6 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { listRules, recordExecution } from "$lib/server/automation";
+import { listRules, recordExecution } from "$lib/server/automation-pg";
 import { executeAction } from "$lib/server/automation-actions";
 import { writeAudit } from "$lib/server/audit";
 import {
@@ -22,10 +22,10 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
   const orchestratorUrl = (platform?.env as any)?.ORCHESTRATOR_URL as string | undefined;
-  const serviceApiKey = ((platform?.env as any)?.ORCHESTRATOR_API_KEY || (platform?.env as any)?.INTERNAL_API_KEY || "") as string;
+  const serviceApiKey = ((platform?.env as any)?.ORCHESTRATOR_API_KEY ||
+    (platform?.env as any)?.INTERNAL_API_KEY ||
+    "") as string;
 
   let event: AutomationEvent;
   try {
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   event.timestamp = event.timestamp || new Date().toISOString();
 
   // Find matching rules
-  const allRules = await listRules(db, tenantId);
+  const allRules = await listRules(tenantId);
   const matched = matchRules(allRules, event);
 
   if (matched.length === 0) {
@@ -65,7 +65,6 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
         const interpolatedConfig = interpolateConfig(action.config, event.payload);
 
         const result = await executeAction(action.type, interpolatedConfig, {
-          db,
           tenantId,
           payload: event.payload,
           orchestratorUrl,
@@ -84,7 +83,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     const durationMs = Date.now() - startTime;
     const summary = buildExecutionSummary(rule, results, durationMs);
 
-    await recordExecution(db, tenantId, rule.id, {
+    await recordExecution(tenantId, rule.id, {
       triggerEvent: event.payload,
       status: summary.status,
       actionsRun: summary.actionsRun,
@@ -95,7 +94,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       completedAt: new Date().toISOString(),
     });
 
-    await writeAudit(db, {
+    await writeAudit({
       tenantId,
       actorUserId: "system",
       actorEmail: "automation@atlasit.io",

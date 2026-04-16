@@ -5,26 +5,22 @@ import { json } from "@sveltejs/kit";
  * GET /api/automation/executions/:id
  * Returns full execution detail including rule name and parsed results.
  */
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  const { queryPgOne } = await import("$lib/server/pg.js");
 
-  const row = await db
-    .prepare(
-      `SELECT e.*, r.name as rule_name, r.trigger_type
-       FROM automation_executions e
-       LEFT JOIN automation_rules r ON r.id = e.rule_id
-       WHERE e.id = ? AND e.tenant_id = ?`,
-    )
-    .bind(params.id, tenantId)
-    .first();
+  const row = await queryPgOne<any>(
+    `SELECT e.*, r.name as rule_name, r.trigger_type
+     FROM automation_executions e
+     LEFT JOIN automation_rules r ON r.id = e.rule_id
+     WHERE e.id = $1 AND e.tenant_id = $2`,
+    [params.id, tenantId],
+  );
 
   if (!row) {
     return json({ error: "Execution not found" }, { status: 404 });

@@ -1,48 +1,43 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg } from "$lib/server/pg.js";
 
-export const GET: RequestHandler = async ({ url, locals, platform }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ simulations: [] });
-
   const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
   const ruleId = url.searchParams.get("ruleId");
 
-  const filters = ["tenant_id = ?"];
-  const binds: (string | number)[] = [tenantId];
+  const filters = ["tenant_id = $1"];
+  const binds: any[] = [tenantId];
+  let paramIndex = 2;
 
   if (ruleId) {
-    filters.push("rule_id = ?");
+    filters.push(`rule_id = $${paramIndex++}`);
     binds.push(ruleId);
   }
 
   const where = `WHERE ${filters.join(" AND ")}`;
 
   const [countResult, rowsResult] = await Promise.all([
-    db
-      .prepare(`SELECT COUNT(*) as total FROM automation_simulations ${where}`)
-      .bind(...binds)
-      .first()
-      .catch(() => ({ total: 0 })),
-    db
-      .prepare(
-        `SELECT id, rule_id, rule_name, trigger_event, matched, actions_preview, condition_results, ran_by, created_at
-         FROM automation_simulations ${where}
-         ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      )
-      .bind(...binds, limit, offset)
-      .all()
-      .catch(() => ({ results: [] })),
+    queryPg<{ total: number }>(
+      `SELECT COUNT(*) as total FROM automation_simulations ${where}`,
+      binds,
+    ).catch(() => [{ total: 0 }]),
+    queryPg<any>(
+      `SELECT id, rule_id, rule_name, trigger_event, matched, actions_preview, condition_results, ran_by, created_at
+       FROM automation_simulations ${where}
+       ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...binds, limit, offset],
+    ).catch(() => []),
   ]);
 
-  const simulations = (rowsResult.results ?? []).map((row: any) => ({
+  const simulations = rowsResult.map((row: any) => ({
     id: row.id,
     ruleId: row.rule_id,
     ruleName: row.rule_name,
@@ -56,6 +51,6 @@ export const GET: RequestHandler = async ({ url, locals, platform }) => {
 
   return json({
     simulations,
-    total: (countResult as any)?.total ?? 0,
+    total: countResult[0]?.total ?? 0,
   });
 };
