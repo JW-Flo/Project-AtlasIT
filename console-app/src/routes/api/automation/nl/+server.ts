@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
   const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
+  const { queryPg } = await import("$lib/server/pg.js");
 
   let body: {
     prompt?: string;
@@ -41,27 +41,25 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   let connectedApps = body.connectedApps;
   let directoryGroups = body.directoryGroups;
 
-  if (!connectedApps && db) {
+  if (!connectedApps) {
     try {
-      const { results } = await db
-        .prepare(
-          "SELECT DISTINCT app_name FROM connected_apps WHERE tenant_id = ? AND status = 'active'",
-        )
-        .bind(tenantId)
-        .all();
-      connectedApps = (results ?? []).map((r: any) => r.app_name);
+      const rows = await queryPg<any>(
+        "SELECT DISTINCT app_name FROM connected_apps WHERE tenant_id = $1 AND status = 'active'",
+        [tenantId],
+      );
+      connectedApps = rows.map((r: any) => r.app_name);
     } catch {
       // table may not exist
     }
   }
 
-  if (!directoryGroups && db) {
+  if (!directoryGroups) {
     try {
-      const { results } = await db
-        .prepare("SELECT DISTINCT name FROM directory_groups WHERE tenant_id = ? LIMIT 50")
-        .bind(tenantId)
-        .all();
-      directoryGroups = (results ?? []).map((r: any) => r.name);
+      const rows = await queryPg<any>(
+        "SELECT DISTINCT name FROM directory_groups WHERE tenant_id = $1 LIMIT 50",
+        [tenantId],
+      );
+      directoryGroups = rows.map((r: any) => r.name);
     } catch {
       // table may not exist
     }
@@ -83,36 +81,33 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   let complianceGaps: any[] | undefined;
   let existingRulesSummary: string[] | undefined;
 
-  if (db) {
-    try {
-      const prefRow = await db
-        .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'")
-        .bind(tenantId)
-        .first<{ value: string }>();
+  try {
+    const prefRows = await queryPg<{ value: string }>(
+      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'frameworks'",
+      [tenantId],
+    );
+    const prefRow = prefRows[0];
 
-      const frameworks = prefRow?.value ? JSON.parse(prefRow.value) : ["SOC2"];
-      const gapResult = await analyzeComplianceGaps(db, tenantId, frameworks);
-      complianceGaps = gapResult.gaps
-        .filter((g: any) => g.priority === "critical" || g.priority === "high")
-        .slice(0, 5);
-    } catch {
-      // gap analysis unavailable
-    }
+    const frameworks = prefRow?.value ? JSON.parse(prefRow.value) : ["SOC2"];
+    const gapResult = await analyzeComplianceGaps(tenantId, frameworks);
+    complianceGaps = gapResult.gaps
+      .filter((g: any) => g.priority === "critical" || g.priority === "high")
+      .slice(0, 5);
+  } catch {
+    // gap analysis unavailable
+  }
 
-    try {
-      const { results: ruleRows } = await db
-        .prepare(
-          "SELECT name, trigger_type, actions FROM automation_rules WHERE tenant_id = ? AND enabled = 1 LIMIT 20",
-        )
-        .bind(tenantId)
-        .all<{ name: string; trigger_type: string; actions: string }>();
+  try {
+    const ruleRows = await queryPg<{ name: string; trigger_type: string; actions: string }>(
+      "SELECT name, trigger_type, actions FROM automation_rules WHERE tenant_id = $1 AND enabled = true LIMIT 20",
+      [tenantId],
+    );
 
-      existingRulesSummary = (ruleRows ?? []).map(
-        (r) => `${r.name} (trigger: ${r.trigger_type}, actions: ${r.actions})`,
-      );
-    } catch {
-      // rules table may not exist
-    }
+    existingRulesSummary = (ruleRows ?? []).map(
+      (r) => `${r.name} (trigger: ${r.trigger_type}, actions: ${r.actions})`,
+    );
+  } catch {
+    // rules table may not exist
   }
 
   try {

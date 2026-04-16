@@ -1,7 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { getRule } from "$lib/server/automation";
+import { getRule } from "$lib/server/automation-pg";
 import { simulateRule } from "@atlasit/shared";
+import { queryPg, queryPgOne } from "$lib/server/pg.js";
 import type { AutomationEvent, TriggerType } from "@atlasit/shared";
 
 const VALID_TRIGGER_TYPES: Set<string> = new Set([
@@ -21,15 +22,12 @@ const VALID_TRIGGER_TYPES: Set<string> = new Set([
  * Dry-run a single automation rule against a real or generated event.
  * Never executes any actions.
  */
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   let body: { ruleId?: string; testEvent?: { type: string; payload: Record<string, unknown> } };
   try {
@@ -42,7 +40,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     return json({ error: "ruleId is required" }, { status: 400 });
   }
 
-  const rule = await getRule(db, tenantId, body.ruleId);
+  const rule = await getRule(body.ruleId, tenantId);
   if (!rule) {
     return json({ error: "Rule not found" }, { status: 404 });
   }
@@ -72,7 +70,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       source: "simulate",
     };
   } else {
-    const payload = await generateSamplePayload(db, tenantId, rule.triggerType);
+    const payload = await generateSamplePayload(tenantId, rule.triggerType);
     // Merge rule's triggerConfig into payload so the simulation matches
     // (e.g., if the rule targets a specific groupId, include it)
     const mergedPayload = { ...payload, ...rule.triggerConfig };
@@ -89,24 +87,22 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
   // Persist simulation for history
   try {
-    await db
-      .prepare(
-        `INSERT INTO automation_simulations
-         (id, tenant_id, rule_id, rule_name, trigger_event, matched, actions_preview, condition_results, ran_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
+    await queryPg(
+      `INSERT INTO automation_simulations
+       (id, tenant_id, rule_id, rule_name, trigger_event, matched, actions_preview, condition_results, ran_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
         crypto.randomUUID(),
         tenantId,
         body.ruleId,
         rule.name,
         JSON.stringify(event),
-        result.matched ? 1 : 0,
+        result.matched ? true : false,
         JSON.stringify(result.actions ?? []),
         JSON.stringify(result.conditionResults ?? []),
         user.email,
-      )
-      .run();
+      ],
+    );
   } catch {
     // Non-fatal — simulation result still returned
   }
@@ -115,17 +111,16 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 };
 
 async function generateSamplePayload(
-  db: D1Database,
   tenantId: string,
   triggerType: string,
 ): Promise<Record<string, unknown>> {
   switch (triggerType) {
     case "user_created":
     case "user_deactivated": {
-      const user = await db
-        .prepare("SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1")
-        .bind(tenantId)
-        .first<{ id: string; email: string; display_name: string }>();
+      const user = await queryPgOne<{ id: string; email: string; display_name: string }>(
+        "SELECT id, email, display_name FROM directory_users WHERE tenant_id = $1 LIMIT 1",
+        [tenantId],
+      );
 
       return user
         ? { userId: user.id, email: user.email, displayName: user.display_name }
@@ -134,15 +129,15 @@ async function generateSamplePayload(
 
     case "user_joined_group":
     case "user_left_group": {
-      const user = await db
-        .prepare("SELECT id, email, display_name FROM directory_users WHERE tenant_id = ? LIMIT 1")
-        .bind(tenantId)
-        .first<{ id: string; email: string; display_name: string }>();
+      const user = await queryPgOne<{ id: string; email: string; display_name: string }>(
+        "SELECT id, email, display_name FROM directory_users WHERE tenant_id = $1 LIMIT 1",
+        [tenantId],
+      );
 
-      const group = await db
-        .prepare("SELECT id, name FROM directory_groups WHERE tenant_id = ? LIMIT 1")
-        .bind(tenantId)
-        .first<{ id: string; name: string }>();
+      const group = await queryPgOne<{ id: string; name: string }>(
+        "SELECT id, name FROM directory_groups WHERE tenant_id = $1 LIMIT 1",
+        [tenantId],
+      );
 
       return {
         userId: user?.id ?? "example-user-id",
@@ -156,10 +151,10 @@ async function generateSamplePayload(
     case "app_connected":
     case "app_disconnected":
     case "app_health_changed": {
-      const app = await db
-        .prepare("SELECT app_id FROM app_health_checks WHERE tenant_id = ? LIMIT 1")
-        .bind(tenantId)
-        .first<{ app_id: string }>();
+      const app = await queryPgOne<{ app_id: string }>(
+        "SELECT app_id FROM app_health_checks WHERE tenant_id = $1 LIMIT 1",
+        [tenantId],
+      );
 
       return {
         appId: app?.app_id ?? "example-app-id",

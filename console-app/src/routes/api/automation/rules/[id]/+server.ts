@@ -1,27 +1,24 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
-import { getRule, updateRule, deleteRule } from "$lib/server/automation";
+import { getRule, updateRule, deleteRule } from "$lib/server/automation-pg";
 import { writeAudit } from "$lib/server/audit";
 import { emitRuleComplianceEvidence } from "$lib/server/automation-evidence";
 
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  const rule = await getRule(db, tenantId, params.id!);
+  const rule = await getRule(params.id!, tenantId);
   if (!rule) return json({ error: "Rule not found" }, { status: 404 });
 
   return json({ rule });
 };
 
-export const PATCH: RequestHandler = async ({ params, request, locals, platform }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
@@ -31,9 +28,6 @@ export const PATCH: RequestHandler = async ({ params, request, locals, platform 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
   let body: any;
   try {
     body = await request.json();
@@ -41,10 +35,10 @@ export const PATCH: RequestHandler = async ({ params, request, locals, platform 
     return json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const rule = await updateRule(db, tenantId, params.id!, body);
+  const rule = await updateRule(params.id!, tenantId, body);
   if (!rule) return json({ error: "Rule not found" }, { status: 404 });
 
-  await writeAudit(db, {
+  await writeAudit({
     tenantId,
     actorUserId: user.userId,
     actorEmail: user.email,
@@ -62,7 +56,6 @@ export const PATCH: RequestHandler = async ({ params, request, locals, platform 
     const parsedActions = typeof ruleActions === "string" ? JSON.parse(ruleActions) : ruleActions;
     if (parsedActions.length > 0) {
       await emitRuleComplianceEvidence(
-        db,
         tenantId,
         params.id!,
         (rule as any).name ?? "",
@@ -75,7 +68,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals, platform 
   return json({ rule });
 };
 
-export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
+export const DELETE: RequestHandler = async ({ params, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
@@ -85,13 +78,10 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  const deleted = await deleteRule(db, tenantId, params.id!);
+  const deleted = await deleteRule(params.id!, tenantId);
   if (!deleted) return json({ error: "Rule not found" }, { status: 404 });
 
-  await writeAudit(db, {
+  await writeAudit({
     tenantId,
     actorUserId: user.userId,
     actorEmail: user.email,
