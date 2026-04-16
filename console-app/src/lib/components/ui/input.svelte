@@ -55,7 +55,8 @@
     "transition-colors duration-fast",
     "placeholder:text-muted-foreground/70",
     "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground file:mr-3",
-    "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring-primary",
+    "focus-visible:outline-none focus-visible:border-primary focus-visible:shadow-ring-primary focus-visible:text-foreground",
+    "focus:text-foreground dark:focus:text-white",
     "disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-muted",
     "read-only:bg-muted read-only:cursor-not-allowed",
     invalid
