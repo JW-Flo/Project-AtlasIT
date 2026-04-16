@@ -1,36 +1,30 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { toCamel } from "$lib/utils/dto";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 /** GET — list directory changelog entries, enriched with workflow data */
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, 401);
 
-  const db = getSharedDb(platform);
-  if (!db) return json({ error: "Database unavailable" }, 503);
-
-  const limit = Math.min(
-    parseInt(url.searchParams.get("limit") ?? "50", 10),
-    200,
-  );
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10), 200);
   const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10), 0);
   const action = url.searchParams.get("action");
 
-  const filters: string[] = ["c.tenant_id = ?"];
+  const filters: string[] = ["c.tenant_id = $1"];
   const params: unknown[] = [user.tenantId];
 
   if (action) {
-    filters.push("c.jml_action = ?");
     params.push(action);
+    filters.push(`c.jml_action = $${params.length}`);
   }
 
   const where = filters.join(" AND ");
 
-  // Join with workflow_runs for step counts and directory_users for email fallback
-  const [{ results }, countRow] = await Promise.all([
-    db
-      .prepare(
-        `SELECT
+  params.push(limit, offset);
+  const [results, countRow] = await Promise.all([
+    queryPg<any>(
+      `SELECT
           c.id,
           c.tenant_id,
           c.user_id,
@@ -53,18 +47,17 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
         LEFT JOIN directory_users du ON du.id = c.user_id AND du.tenant_id = c.tenant_id
         WHERE ${where}
         ORDER BY c.created_at DESC
-        LIMIT ? OFFSET ?`,
-      )
-      .bind(...params, limit, offset)
-      .all(),
-    db
-      .prepare(`SELECT COUNT(*) AS cnt FROM directory_changelog c WHERE ${where}`)
-      .bind(...params)
-      .first<{ cnt: number }>(),
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    ),
+    queryPgOne<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM directory_changelog c WHERE ${where}`,
+      params.slice(0, -2),
+    ),
   ]);
 
   // Enrich each entry with computed fields
-  const enriched = (results ?? []).map((row: any) => {
+  const enriched = results.map((row: any) => {
     // Resolve email: prefer changelog email, fall back to directory_users
     const email = row.email || row.dir_email || null;
     const displayName = row.dir_display_name || null;
@@ -139,11 +132,6 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
 
   return json({ entries: toCamel(enriched), total: countRow?.cnt ?? 0 });
 };
-
-function getSharedDb(platform: any): D1Database | null {
-  const env = (platform?.env as any) || {};
-  return env.DB ?? env.ATLAS_SHARED_DB ?? null;
-}
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {

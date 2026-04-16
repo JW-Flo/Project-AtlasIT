@@ -2,83 +2,59 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { toCamel } from "$lib/utils/dto";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
-function parseJsonField(value: unknown): unknown {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
-function mapDiscoveredRow(row: Record<string, unknown>): Record<string, unknown> {
-  const mapped = { ...row };
-  mapped.metadata = parseJsonField(mapped.metadata);
-  return mapped;
-}
-
-export const GET: RequestHandler = async ({ url, locals, platform }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
   const riskTier = url.searchParams.get("risk_tier") || "";
   const isAiTool = url.searchParams.get("is_ai_tool") || "";
   const status = url.searchParams.get("status") || "";
 
-  const conditions: string[] = ["tenant_id = ?"];
-  const binds: any[] = [tenantId];
+  const conditions: string[] = ["tenant_id = $1"];
+  const params: any[] = [tenantId];
 
   if (riskTier) {
-    conditions.push("risk_tier = ?");
-    binds.push(riskTier);
+    params.push(riskTier);
+    conditions.push(`risk_tier = $${params.length}`);
   }
 
   if (isAiTool !== "") {
-    conditions.push("is_ai_tool = ?");
-    binds.push(parseInt(isAiTool, 10));
+    params.push(isAiTool === "1" || isAiTool === "true");
+    conditions.push(`is_ai_tool = $${params.length}`);
   }
 
   if (status) {
-    conditions.push("status = ?");
-    binds.push(status);
+    params.push(status);
+    conditions.push(`status = $${params.length}`);
   }
 
   const where = conditions.join(" AND ");
 
   try {
-    const countRow = await db
-      .prepare(`SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`)
-      .bind(...binds)
-      .first();
+    const countRow = await queryPgOne<{ total: number }>(
+      `SELECT COUNT(*) as total FROM discovered_apps WHERE ${where}`,
+      params,
+    );
 
-    const rows = await db
-      .prepare(
-        `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
-                is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
-                created_at, updated_at
-         FROM discovered_apps
-         WHERE ${where}
-         ORDER BY is_ai_tool DESC, user_count DESC, last_seen_at DESC`,
-      )
-      .bind(...binds)
-      .all()
-      .then((r: any) => r.results || []);
+    const rows = await queryPg<any>(
+      `SELECT id, tenant_id, app_name, category, provider, user_count, risk_tier,
+              is_ai_tool, marketplace_match, first_seen_at, last_seen_at, status, metadata,
+              created_at, updated_at
+       FROM discovered_apps
+       WHERE ${where}
+       ORDER BY is_ai_tool DESC, user_count DESC, last_seen_at DESC`,
+      params,
+    );
 
-    const mapped = rows.map(mapDiscoveredRow);
-
-    return json({ apps: toCamel(mapped), total: countRow?.total ?? 0 });
+    return json({ apps: toCamel(rows), total: countRow?.total ?? 0 });
   } catch (err: any) {
     const msg = String(err);
-    if (msg.includes("no such table")) {
+    if (msg.includes("does not exist")) {
       return json({ apps: [], total: 0 });
     }
     console.error(
