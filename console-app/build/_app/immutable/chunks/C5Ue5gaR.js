@@ -1,0 +1,34 @@
+async function e(e, t) {
+  let n = await fetch(e, {
+    headers: { Accept: `application/json`, "Content-Type": `application/json` },
+    ...t,
+  });
+  if (!n.ok) {
+    let e = await n.text().catch(() => ``);
+    throw Error(`HTTP ${n.status}: ${e}`);
+  }
+  return n.json();
+}
+async function t(t, n, r) {
+  return (
+    await e(`/api/marketplace/installs`, {
+      method: `POST`,
+      body: JSON.stringify({ tenant_id: t, app_id: n, config: r }),
+    })
+  ).data;
+}
+async function n(t) {
+  await e(`/api/marketplace/installs/${t}`, { method: `DELETE` });
+}
+async function r(t) {
+  return (await e(`/api/marketplace/installs/${t}/activate`, { method: `POST` })).data;
+}
+async function i(t, n) {
+  return (
+    await e(`/api/marketplace/installs/${t}`, {
+      method: `PATCH`,
+      body: JSON.stringify({ config: n }),
+    })
+  ).data;
+}
+export { i, t as n, n as r, r as t };

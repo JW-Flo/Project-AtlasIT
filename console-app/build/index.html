@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" class="h-full" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>AtlasIT Console</title>
+    <script>
+      // Blocking theme init — prevents white flash (FOUC) on page load.
+      // Reads localStorage before first paint and sets data-theme so CSS
+      // custom properties from app.css take effect immediately.
+      (function() {
+        var t = 'dark';
+        try { var s = localStorage.getItem('atlasit.theme'); if (s === 'light' || s === 'dark') t = s; } catch(e) {}
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+
+      // Static SPA mode: intercept SvelteKit __data.json fetches (no server data in static bundle)
+      // Must run before SvelteKit bundle bootstraps.
+      (function() {
+        var _fetch = window.fetch.bind(window);
+        window.fetch = function(input, init) {
+          var url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input && input.url) || '');
+          if (url.indexOf('__data.json') !== -1) {
+            return Promise.resolve(new Response(
+              JSON.stringify({ type: 'data', nodes: [null, null, null] }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            ));
+          }
+          return _fetch(input, init);
+        };
+      })();
+    </script>
+    <link href="/_app/immutable/entry/start.CJkPR4e7.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CkfEZRj5.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BAML53hz.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CjbcrE1v.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Bupu4aFx.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CgBQPCl3.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.BRcDVsNS.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/lMhGBxBw.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/C8H49NTu.js" rel="modulepreload">
+		
+  </head>
+  <body data-sveltekit-preload-data="hover" class="h-full bg-background text-foreground">
+    <div style="display: contents">
+			<script>
+				{
+					__sveltekit_13ouqy8 = {
+						base: ""
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/_app/immutable/entry/start.CJkPR4e7.js"),
+						import("/_app/immutable/entry/app.BRcDVsNS.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>
