@@ -1827,7 +1827,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (path === "/api/v1/auth/mfa/status" && method === "GET") {
     const r = await pool.query(
       `SELECT u.mfa_enabled, m.enrolled_at
-       FROM users u LEFT JOIN mfa_enrollments m ON m.user_id = u.id
+       FROM users u LEFT JOIN mfa_enrollments m ON m.user_id::text = u.id
        WHERE u.id = $1`,
       [auth.userId],
     );
@@ -1863,16 +1863,17 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (path === "/api/v1/auth/mfa/confirm" && method === "POST") {
     const b = body(event) as { code?: string };
     if (!b.code) return fail(400, "code required", "VALIDATION_FAILED");
-    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id = $1`, [
+    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id::text = $1`, [
       auth.userId,
     ]);
     if (r.rows.length === 0) return fail(404, "No pending enrollment", "NOT_FOUND");
     if (!totpVerify(r.rows[0].secret_hash, b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
-    await pool.query(`UPDATE mfa_enrollments SET last_verified_at = NOW() WHERE user_id = $1`, [
-      auth.userId,
-    ]);
+    await pool.query(
+      `UPDATE mfa_enrollments SET last_verified_at = NOW() WHERE user_id::text = $1`,
+      [auth.userId],
+    );
     await pool.query(`UPDATE users SET mfa_enabled = TRUE WHERE id = $1`, [auth.userId]);
     await publishEvent(auth.tenantId, "mfa.enabled", "core-api", {
       userId: auth.userId,
@@ -1885,14 +1886,14 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (path === "/api/v1/auth/mfa/disable" && method === "POST") {
     const b = body(event) as { code?: string };
     if (!b.code) return fail(400, "current MFA code required", "VALIDATION_FAILED");
-    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id = $1`, [
+    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id::text = $1`, [
       auth.userId,
     ]);
     if (r.rows.length === 0) return fail(404, "No enrollment", "NOT_FOUND");
     if (!totpVerify(r.rows[0].secret_hash, b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
-    await pool.query(`DELETE FROM mfa_enrollments WHERE user_id = $1`, [auth.userId]);
+    await pool.query(`DELETE FROM mfa_enrollments WHERE user_id::text = $1`, [auth.userId]);
     await pool.query(`UPDATE users SET mfa_enabled = FALSE WHERE id = $1`, [auth.userId]);
     await publishEvent(auth.tenantId, "mfa.disabled", "core-api", {
       userId: auth.userId,
