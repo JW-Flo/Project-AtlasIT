@@ -1,55 +1,63 @@
-# Next Session: Demo Readiness Phases 5-7
+# Next Session: Post-Demo Strategic Work
 
 ## What's Done
 
-PRs #477-480 merged. Phases 1-4 complete:
+All demo readiness phases complete and merged:
 
-- Bug fixes (compliance-api prefix, settings pathMap, directory sync, policy content)
-- 41+ endpoint audit with Lambda fixes (MFA cast, JML columns, NHI handler, pathMap gaps)
-- Demo data seeded
-- UI response shapes aligned
+| Phase                  | PR   | Summary                                                                                              |
+| ---------------------- | ---- | ---------------------------------------------------------------------------------------------------- |
+| 1 — Bug Fixes          | #477 | compliance-api prefix, settings pathMap, directory sync, policy content                              |
+| 2 — Endpoint Audit     | #478 | 41+ endpoints, MFA cast, JML columns, NHI handler, pathMap gaps                                      |
+| 3 — Data Seeding       | #479 | Row count audit, compliance packs, evidence, automation rules, policies                              |
+| 4 — UI Shapes          | #480 | API response shape fixes for UI components                                                           |
+| 5 — UI/UX Polish       | #482 | Dark mode root cause fix (Tailwind `.dark` class), 18 pages + 11 components semantic color migration |
+| 6 — Perf & Reliability | #482 | Lambda cold <3s, warm <500ms. CORS, error handling, events pipeline validated                        |
+| 7 — Demo Script        | #482 | DEMO-SCRIPT.md — 11-screen click-path with talking points and known limitations                      |
 
-## What's Next
+Console deployed to S3/CloudFront at https://www.atlasit.pro
 
-### Phase 5: UI/UX Polish
+## What's Next (pick based on priority)
 
-Test every page at https://www.atlasit.pro in browser. Fix issues found.
+### 1. Stripe Live Billing
 
-1. **Dark mode audit** — check all pages for white-on-white, invisible inputs, broken focus states
-2. **Loading states** — verify spinners/skeletons on every data-fetching page
-3. **Toast notifications** — verify appear on save/error, auto-dismiss (4000ms)
-4. **Form validation** — settings save, policy create, automation rule create, invite user
-5. **Responsive layout** — test at 1024px, 768px, 375px
-6. **Navigation** — all AppFrame sidebar links work (no dead links or 404s)
-7. **Browser console** — clear JS errors/warnings on each page load
-8. **Empty states** — pages with no data show helpful messages, not blank screens
+Wire up real Stripe integration (currently 501 stub).
 
-### Phase 6: Performance & Reliability
+- Create Stripe products + prices for Free/Starter/Pro/Enterprise tiers
+- Set env vars on Lambda (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`)
+- Implement checkout session creation + webhook handler in `core-api`
+- Test E2E: signup → checkout → webhook → tier upgrade → feature gate enforcement
 
-1. **Lambda cold starts** — `curl` each endpoint after 15min idle. Target: <3s cold, <500ms warm
-2. **API response times** — time dashboard, compliance scores, policies list. Target: <500ms
-3. **Auth flow** — login -> session -> API calls E2E, session expiry handling
-4. **CORS** — no browser CORS errors
-5. **Error handling** — API errors return user-friendly messages, not stack traces
-6. **CloudWatch alarm** — add log-metric filter on `ERROR|Unhandled|TypeError` for compliance-api
-7. **Events consumer** — walk one event from publish -> SQS -> orchestrator -> processed
+### 2. NHI Inventory Dashboard
 
-### Phase 7: Demo Script & Prep
+Non-human identity discovery and risk scoring.
 
-1. **Demo click-path**: Login -> Dashboard -> Compliance -> Packs -> Policies -> Automation -> Directory -> Access Reviews -> Settings -> Marketplace -> Trust Center
-2. Talking points per screen
-3. Known limitations (what NOT to click)
-4. Capture "known good" screenshots as backup deck
+- Add `identity_type` column to directory tables (enum: human, service_account, api_key, bot)
+- Implement NHI risk scoring algorithm in compliance-api
+- Build dashboard page at `/console/nhi` with metrics widgets
+- Wire to existing discovery adapters (GitHub, Okta, Google Workspace)
+
+### 3. CF Decommission Prep (after 2026-04-25 stability window)
+
+- Audit remaining CF Worker bindings (adapters still on CF)
+- Plan adapter Lambda migration (9 adapters, same pattern as core)
+- Update DNS to remove CF proxy (already on Route 53)
+
+### 4. Housekeeping
+
+- Remove `console-app/build/` from git tracking (stale build artifacts committed)
+- Fix `stream.evidence.test.ts` WorkflowEntrypoint failure (CF Workers reference in AWS world)
+- Remove 125 dead SvelteKit `+server.ts` files (D1-backed, no longer used)
 
 ## Key Files
 
-| Purpose           | Path                                                         |
-| ----------------- | ------------------------------------------------------------ |
-| Fetch interceptor | `console-app/src/routes/+layout.svelte:25-100`               |
-| AppFrame/nav      | `console-app/src/lib/components/layout/AppFrame.svelte`      |
-| Toast system      | `console-app/src/lib/components/feedback/toastStore.ts`      |
-| Theme store       | `console-app/src/lib/stores/theme.ts`                        |
-| Full plan         | Plan file in `~/.claude/plans/drifting-splashing-volcano.md` |
+| Purpose          | Path                                |
+| ---------------- | ----------------------------------- |
+| Demo script      | `DEMO-SCRIPT.md`                    |
+| Status tracker   | `STATUS.md`                         |
+| Lambda functions | `lambdas/` (7 functions)            |
+| Terraform infra  | `infra/aws/` (18 files)             |
+| Console app      | `console-app/` (SvelteKit SPA)      |
+| Shared packages  | `packages/shared/src/platform/aws/` |
 
 ## Build & Deploy
 
