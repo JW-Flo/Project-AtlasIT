@@ -6,14 +6,9 @@ const KEY = "atlasit.theme";
 
 function detect(): Theme {
   const stored =
-    typeof localStorage !== "undefined"
-      ? (localStorage.getItem(KEY) as Theme | null)
-      : null;
+    typeof localStorage !== "undefined" ? (localStorage.getItem(KEY) as Theme | null) : null;
   if (stored === "light" || stored === "dark") return stored;
-  if (
-    typeof matchMedia !== "undefined" &&
-    matchMedia("(prefers-color-scheme: dark)").matches
-  )
+  if (typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches)
     return "dark";
   return "dark"; // default dark aesthetic
 }
@@ -28,6 +23,7 @@ function applyLocal(t: Theme) {
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, t);
   if (typeof document !== "undefined") {
     document.documentElement.dataset.theme = t;
+    document.documentElement.classList.toggle("dark", t === "dark");
     applyTheme(t === "dark" ? darkThemeVars : lightThemeVars);
   }
 }

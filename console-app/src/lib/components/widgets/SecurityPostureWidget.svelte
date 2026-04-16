@@ -43,14 +43,14 @@
   <div class="grid grid-cols-3 gap-4">
     <div class="rounded-lg bg-muted/50 p-3 text-center">
       <p class="text-xs text-muted-foreground">Open Incidents</p>
-      <p class="text-2xl font-bold {posture.openIncidents > 0 ? 'text-orange-500' : 'text-foreground'}">{posture.openIncidents}</p>
+      <p class="text-2xl font-bold {posture.openIncidents > 0 ? 'text-warning' : 'text-foreground'}">{posture.openIncidents}</p>
       {#if posture.criticalIncidents > 0}
         <Badge variant="destructive" class="text-[10px] mt-1">{posture.criticalIncidents} critical</Badge>
       {/if}
     </div>
     <div class="rounded-lg bg-muted/50 p-3 text-center">
       <p class="text-xs text-muted-foreground">Resolved</p>
-      <p class="text-2xl font-bold text-green-500">{posture.resolvedIncidents}</p>
+      <p class="text-2xl font-bold text-success">{posture.resolvedIncidents}</p>
     </div>
     <div class="rounded-lg bg-muted/50 p-3 text-center">
       <p class="text-xs text-muted-foreground">Access Reviews</p>
@@ -67,7 +67,7 @@
       </div>
       <div class="h-2 w-full overflow-hidden rounded-full bg-muted">
         <div
-          class="h-full rounded-full bg-green-500 transition-all duration-500"
+          class="h-full rounded-full bg-success transition-all duration-500"
           style="width: {posture.accessReviewCompletionRate}%"
         ></div>
       </div>

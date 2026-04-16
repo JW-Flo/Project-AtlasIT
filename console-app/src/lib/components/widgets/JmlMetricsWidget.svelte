@@ -57,18 +57,18 @@
   </Button>
 
   <div class="grid grid-cols-3 gap-3">
-    <div class="rounded-lg bg-green-500/10 p-3 text-center">
-      <UserPlus class="mx-auto mb-1 h-4 w-4 text-green-500" />
+    <div class="rounded-lg bg-success-muted p-3 text-center">
+      <UserPlus class="mx-auto mb-1 h-4 w-4 text-success" />
       <p class="text-2xl font-bold text-foreground">{metrics.joiners30d}</p>
       <p class="text-xs text-muted-foreground">Joiners</p>
     </div>
-    <div class="rounded-lg bg-blue-500/10 p-3 text-center">
-      <ArrowRightLeft class="mx-auto mb-1 h-4 w-4 text-blue-500" />
+    <div class="rounded-lg bg-info-muted p-3 text-center">
+      <ArrowRightLeft class="mx-auto mb-1 h-4 w-4 text-info" />
       <p class="text-2xl font-bold text-foreground">{metrics.movers30d}</p>
       <p class="text-xs text-muted-foreground">Movers</p>
     </div>
-    <div class="rounded-lg bg-orange-500/10 p-3 text-center">
-      <UserMinus class="mx-auto mb-1 h-4 w-4 text-orange-500" />
+    <div class="rounded-lg bg-warning-muted p-3 text-center">
+      <UserMinus class="mx-auto mb-1 h-4 w-4 text-warning" />
       <p class="text-2xl font-bold text-foreground">{metrics.leavers30d}</p>
       <p class="text-xs text-muted-foreground">Leavers</p>
     </div>

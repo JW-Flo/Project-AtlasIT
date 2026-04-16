@@ -49,7 +49,7 @@
       return "bg-primary-muted text-primary";
     }
     if (role === "viewer") {
-      return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300";
+      return "bg-muted text-muted-foreground";
     }
     return "bg-success-muted text-success";
   }

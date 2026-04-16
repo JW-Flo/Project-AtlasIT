@@ -68,15 +68,15 @@
   }
 
   function severityColor(s: string): string {
-    if (s === "critical") return "text-red-500";
-    if (s === "warning") return "text-yellow-500";
-    return "text-blue-500";
+    if (s === "critical") return "text-destructive";
+    if (s === "warning") return "text-warning";
+    return "text-info";
   }
 
   function severityBg(s: string): string {
-    if (s === "critical") return "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950";
-    if (s === "warning") return "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950";
-    return "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950";
+    if (s === "critical") return "bg-destructive-muted border-destructive/30";
+    if (s === "warning") return "bg-warning-muted border-warning/30";
+    return "bg-info-muted border-info/30";
   }
 
   function formatAlertType(type: string): string {
@@ -175,7 +175,7 @@
           <div class="mt-2 space-y-2">
             {#each acknowledgedAlerts as alert (alert.id)}
               <div class="flex items-center gap-2 rounded-md border border-border px-3 py-2 opacity-60">
-                <CheckCircle class="h-4 w-4 text-green-500 shrink-0" />
+                <CheckCircle class="h-4 w-4 text-success shrink-0" />
                 <span class="text-sm">{alert.title}</span>
                 <Badge variant="outline" class="text-xs ml-auto">{formatAlertType(alert.type)}</Badge>
               </div>

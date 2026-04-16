@@ -133,12 +133,12 @@
     return isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
   }
 
-  function statusClass(s: RequestStatus): string {
+  function statusBadgeClass(s: RequestStatus): string {
     if (s === "approved")
-      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success-muted text-success";
     if (s === "denied")
-      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive-muted text-destructive";
+    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-warning-muted text-warning";
   }
 
   function capitalize(s: string): string {
@@ -311,7 +311,7 @@
                   {req.justification ?? "—"}
                 </td>
                 <td class="px-4 py-3">
-                  <span class={statusClass(req.status)}>{capitalize(req.status)}</span>
+                  <span class={statusBadgeClass(req.status)}>{capitalize(req.status)}</span>
                 </td>
                 <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">
                   {formatDate(req.createdAt)}

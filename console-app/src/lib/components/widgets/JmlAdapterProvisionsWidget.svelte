@@ -60,8 +60,8 @@
       <div class="flex items-center justify-between rounded-lg border px-3 py-2">
         <span class="text-sm font-medium">{p.appName}</span>
         <div class="flex items-center gap-2 text-xs">
-          <span class="text-green-600">+{p.provisionedCount}</span>
-          <span class="text-red-500">-{p.deprovisionedCount}</span>
+          <span class="text-success">+{p.provisionedCount}</span>
+          <span class="text-destructive">-{p.deprovisionedCount}</span>
           {#if p.pendingCount > 0}
             <Badge variant="warning" class="text-[10px]">{p.pendingCount} pending</Badge>
           {/if}

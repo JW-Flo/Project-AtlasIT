@@ -14,10 +14,10 @@
   let adapters: AdapterHealth[] = [];
 
   function statusColor(s: AdapterHealth["status"]): string {
-    if (s === "healthy") return "bg-green-500";
-    if (s === "degraded") return "bg-yellow-500";
-    if (s === "down") return "bg-red-500";
-    return "bg-gray-400";
+    if (s === "healthy") return "bg-success";
+    if (s === "degraded") return "bg-warning";
+    if (s === "down") return "bg-destructive";
+    return "bg-muted-foreground";
   }
 
   function statusBadge(s: AdapterHealth["status"]): "success" | "warning" | "destructive" | "secondary" {
@@ -95,7 +95,7 @@
         </div>
         <div class="flex items-center gap-2">
           {#if adapter.errorCount > 0}
-            <span class="text-xs text-red-500">{adapter.errorCount} errors</span>
+            <span class="text-xs text-destructive">{adapter.errorCount} errors</span>
           {/if}
           <Badge variant={statusBadge(adapter.status)} class="text-xs">{adapter.status}</Badge>
           {#if adapter.lastSyncAt}

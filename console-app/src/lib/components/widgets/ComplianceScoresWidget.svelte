@@ -85,7 +85,7 @@
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
           <div
-            class="h-full rounded-full transition-all duration-500 {fw.score >= 80 ? 'bg-green-500' : fw.score >= 50 ? 'bg-yellow-500' : 'bg-red-500'}"
+            class="h-full rounded-full transition-all duration-500 {fw.score >= 80 ? 'bg-success' : fw.score >= 50 ? 'bg-warning' : 'bg-destructive'}"
             style="width: {fw.score}%"
           ></div>
         </div>

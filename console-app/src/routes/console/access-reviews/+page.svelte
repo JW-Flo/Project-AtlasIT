@@ -96,10 +96,10 @@
 
   function statusClass(s: string): string {
     if (s === "completed")
-      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success-muted text-success";
     if (s === "active")
-      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-primary";
-    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+      return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info-muted text-info";
+    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground";
   }
 
   function capitalize(s: string): string {

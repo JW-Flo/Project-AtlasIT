@@ -168,10 +168,10 @@
 
   function statusBadgeClass(s: string): string {
     if (s === "completed" || s === "success") return "bg-success-muted text-success";
-    if (s === "failed" || s === "error") return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
-    if (s === "running") return "bg-primary-muted text-primary";
+    if (s === "failed" || s === "error") return "bg-destructive-muted text-destructive";
+    if (s === "running") return "bg-info-muted text-info";
     if (s === "pending") return "bg-warning-muted text-warning";
-    return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+    return "bg-muted text-muted-foreground";
   }
 
   $: filteredRules = rules.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()));

@@ -327,17 +327,17 @@
             >
               <div class="flex items-start gap-2">
                 <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 mt-0.5
-                  {action.impact === 'critical' ? 'bg-red-500/15 text-red-600 dark:text-red-400' :
-                   action.impact === 'high' ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400' :
-                   action.impact === 'medium' ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' :
-                   'bg-blue-500/15 text-blue-600 dark:text-blue-400'}">
+                  {action.impact === 'critical' ? 'bg-destructive-muted text-destructive' :
+                   action.impact === 'high' ? 'bg-warning-muted text-warning' :
+                   action.impact === 'medium' ? 'bg-warning-muted text-warning' :
+                   'bg-info-muted text-info'}">
                   {action.impact}
                 </span>
                 <div class="flex-1 min-w-0">
                   <div class="font-medium">{action.title}</div>
                   <div class="text-xs text-muted-foreground mt-0.5">{action.description}</div>
                   {#if action.scoreImpact}
-                    <div class="text-[10px] text-green-600 dark:text-green-400 mt-1">+{action.scoreImpact}% estimated score improvement</div>
+                    <div class="text-[10px] text-success mt-1">+{action.scoreImpact}% estimated score improvement</div>
                   {/if}
                 </div>
                 <ArrowRight class="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />

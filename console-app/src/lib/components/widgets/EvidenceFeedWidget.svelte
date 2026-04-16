@@ -94,7 +94,7 @@
     {#each feed as item (item.id)}
       <div class="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-muted/30">
         <div class="flex items-center gap-3 min-w-0">
-          <div class="h-2 w-2 shrink-0 rounded-full {item.impact === 'positive' ? 'bg-green-500' : item.impact === 'detrimental' ? 'bg-red-500' : 'bg-gray-400'}"></div>
+          <div class="h-2 w-2 shrink-0 rounded-full {item.impact === 'positive' ? 'bg-success' : item.impact === 'detrimental' ? 'bg-destructive' : 'bg-muted-foreground'}"></div>
           <div class="min-w-0">
             <div class="truncate text-sm font-medium">
               {item.eventType || item.source}

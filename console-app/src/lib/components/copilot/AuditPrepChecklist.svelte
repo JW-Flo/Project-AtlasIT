@@ -56,9 +56,9 @@
   }
 
   function scoreColor(score: number): string {
-    if (score >= 80) return "text-green-500";
-    if (score >= 60) return "text-yellow-500";
-    return "text-red-500";
+    if (score >= 80) return "text-success";
+    if (score >= 60) return "text-warning";
+    return "text-destructive";
   }
 
   function statusIcon(status: string) {
@@ -68,9 +68,9 @@
   }
 
   function statusColor(status: string): string {
-    if (status === "complete") return "text-green-500";
-    if (status === "warning") return "text-yellow-500";
-    return "text-red-500";
+    if (status === "complete") return "text-success";
+    if (status === "warning") return "text-warning";
+    return "text-destructive";
   }
 </script>
 
@@ -83,7 +83,7 @@
   {:else}
     <!-- Readiness score -->
     <div class="flex items-center gap-3 rounded-lg border p-3">
-      <div class="h-12 w-12 rounded-full border-2 flex items-center justify-center shrink-0 {readinessScore >= 80 ? 'border-green-500' : readinessScore >= 60 ? 'border-yellow-500' : 'border-red-500'}">
+      <div class="h-12 w-12 rounded-full border-2 flex items-center justify-center shrink-0 {readinessScore >= 80 ? 'border-success' : readinessScore >= 60 ? 'border-warning' : 'border-destructive'}">
         <span class="text-lg font-bold {scoreColor(readinessScore)}">{readinessScore}%</span>
       </div>
       <div>
