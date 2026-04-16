@@ -2826,27 +2826,184 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
-  // ── Access Reviews (placeholder — schema not yet in PG) ────────────────────
+  // ── Access Reviews ──────────────────────────────────────────────────────────
 
-  // GET /api/v1/access-reviews — placeholder, returns empty list until schema is added
+  // GET /api/v1/access-reviews — list campaigns with item counts
   if (path === "/api/v1/access-reviews" && method === "GET") {
+    const statusFilter = qs.status;
+    const limit = Math.min(Math.max(parseInt(qs.limit ?? "50", 10) || 50, 1), 200);
+    const offset = parseInt(qs.offset ?? "0", 10) || 0;
+
+    const conditions = ["c.tenant_id = $1"];
+    const vals: unknown[] = [tenantId];
+    if (statusFilter) {
+      vals.push(statusFilter);
+      conditions.push(`c.status = $${vals.length}`);
+    }
+    const where = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*) FROM access_review_campaigns c WHERE ${where}`,
+      vals,
+    );
+    const total = parseInt(countRes.rows[0].count, 10);
+
+    vals.push(limit, offset);
+    const res = await pool.query(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM access_review_items i WHERE i.campaign_id = c.id) AS item_count,
+              (SELECT COUNT(*) FROM access_review_items i WHERE i.campaign_id = c.id AND i.status != 'pending') AS decided_count
+       FROM access_review_campaigns c
+       WHERE ${where}
+       ORDER BY c.created_at DESC
+       LIMIT $${vals.length - 1} OFFSET $${vals.length}`,
+      vals,
+    );
+
     return ok({
       status: "success",
-      data: { items: [], total: 0 },
+      data: {
+        items: res.rows.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          name: r.name,
+          scope: r.scope,
+          status: r.status,
+          reviewerPolicy: r.reviewer_policy,
+          dueDate: r.due_date,
+          gracePeriodDays: r.grace_period_days,
+          createdBy: r.created_by,
+          createdAt: r.created_at,
+          completedAt: r.completed_at,
+          itemCount: parseInt(r.item_count as string, 10),
+          decidedCount: parseInt(r.decided_count as string, 10),
+        })),
+        total,
+      },
       timestamp: new Date().toISOString(),
     });
   }
 
-  // POST /api/v1/access-reviews — placeholder
-  if (path === "/api/v1/access-reviews" && method === "POST") {
-    return ok(
-      {
-        status: "success",
-        data: { id: "placeholder", status: "created" },
-        timestamp: new Date().toISOString(),
-      },
-      201,
+  // GET /api/v1/access-reviews/:id — single campaign with items
+  const arParts = path.split("/").filter(Boolean);
+  if (path.startsWith("/api/v1/access-reviews/") && method === "GET" && arParts.length === 4) {
+    const campaignId = arParts[3];
+    const campaign = await pool.query(
+      "SELECT * FROM access_review_campaigns WHERE id = $1 AND tenant_id = $2",
+      [campaignId, tenantId],
     );
+    if (campaign.rows.length === 0) return fail(404, "Campaign not found", "NOT_FOUND");
+
+    const items = await pool.query(
+      "SELECT * FROM access_review_items WHERE campaign_id = $1 AND tenant_id = $2 ORDER BY user_email",
+      [campaignId, tenantId],
+    );
+
+    const c = campaign.rows[0];
+    return ok({
+      status: "success",
+      data: {
+        id: c.id,
+        name: c.name,
+        scope: c.scope,
+        status: c.status,
+        reviewerPolicy: c.reviewer_policy,
+        dueDate: c.due_date,
+        gracePeriodDays: c.grace_period_days,
+        createdBy: c.created_by,
+        createdAt: c.created_at,
+        completedAt: c.completed_at,
+        items: items.rows.map((i: Record<string, unknown>) => ({
+          id: i.id,
+          userId: i.user_id,
+          userEmail: i.user_email,
+          appId: i.app_id,
+          appName: i.app_name,
+          role: i.role,
+          reviewerEmail: i.reviewer_email,
+          status: i.status,
+          decidedAt: i.decided_at,
+          decidedBy: i.decided_by,
+          notes: i.notes,
+        })),
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // POST /api/v1/access-reviews — create campaign
+  if (path === "/api/v1/access-reviews" && method === "POST") {
+    const b = parseBody(event) as Record<string, unknown>;
+    const name = (b.name as string)?.trim();
+    if (!name) return fail(400, "name is required", "VALIDATION_FAILED");
+
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, grace_period_days, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        id,
+        tenantId,
+        name,
+        b.scope ?? "all",
+        b.status ?? "active",
+        b.reviewerPolicy ?? "manager",
+        b.dueDate ?? null,
+        b.gracePeriodDays ?? 7,
+        auth.email,
+      ],
+    );
+
+    // Bulk-insert items if provided
+    const items = b.items as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(items) && items.length > 0) {
+      for (const item of items) {
+        await pool.query(
+          `INSERT INTO access_review_items (id, campaign_id, tenant_id, user_id, user_email, app_id, app_name, role, reviewer_email)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            crypto.randomUUID(),
+            id,
+            tenantId,
+            item.userId ?? "",
+            item.userEmail ?? "",
+            item.appId ?? "",
+            item.appName ?? "",
+            item.role ?? null,
+            item.reviewerEmail ?? null,
+          ],
+        );
+      }
+    }
+
+    return ok({ status: "success", data: { id, status: "created" } }, 201);
+  }
+
+  // PATCH /api/v1/access-reviews/:id/items/:itemId — decide on an item
+  const arDecisionMatch = path.match(/^\/api\/v1\/access-reviews\/([^/]+)\/items\/([^/]+)$/);
+  if (arDecisionMatch && method === "PATCH") {
+    const campaignId = arDecisionMatch[1];
+    const itemId = arDecisionMatch[2];
+    const b = parseBody(event) as Record<string, unknown>;
+    const decision = b.decision as string;
+    if (!decision || !["approved", "revoked", "skipped"].includes(decision)) {
+      return fail(400, "decision must be approved, revoked, or skipped", "VALIDATION_FAILED");
+    }
+
+    await pool.query(
+      `UPDATE access_review_items SET status = $1, decided_at = NOW(), decided_by = $2, notes = $3
+       WHERE id = $4 AND campaign_id = $5 AND tenant_id = $6`,
+      [decision, auth.email, b.notes ?? null, itemId, campaignId, tenantId],
+    );
+
+    if (decision !== "skipped") {
+      await pool.query(
+        `INSERT INTO access_review_decisions (id, item_id, campaign_id, tenant_id, decision, decided_by, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [crypto.randomUUID(), itemId, campaignId, tenantId, decision, auth.email, b.notes ?? null],
+      );
+    }
+
+    return ok({ status: "success", data: { itemId, decision } });
   }
 
   // ── Notifications ───────────────────────────────────────────────────────────
@@ -3181,6 +3338,8 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       "acceptable-use",
       "byod",
       "retention",
+      "change-management",
+      "business-continuity",
       "other",
     ];
     if (!VALID_CATEGORIES.includes(b.category)) {
