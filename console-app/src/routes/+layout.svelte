@@ -53,6 +53,7 @@
       "/api/directory/groups": "/api/v1/directory/groups",
       "/api/directory/users": "/api/v1/directory/users",
       "/api/admin/tenants": "/api/v1/tenants",
+      "/api/tenant/settings": "/api/v1/tenant/settings",
       "/api/tenant/security": "/api/v1/tenant/settings",
       "/api/tenants/preferences": "/api/v1/tenant/settings",
       "/api/user/preferences": "/api/v1/user/profile",
