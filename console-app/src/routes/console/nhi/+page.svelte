@@ -145,8 +145,28 @@
       const res = await fetch(`/api/nhi?${params}`);
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
       const data = await res.json();
-      credentials = data.credentials ?? [];
-      total = data.total ?? 0;
+      const raw = data.data ?? data.credentials ?? [];
+      credentials = raw.map((c: Record<string, unknown>) => ({
+        id: c.id,
+        credentialType: c.credential_type ?? c.credentialType ?? "",
+        provider: c.provider ?? "",
+        externalId: c.external_id ?? c.externalId ?? "",
+        displayName: c.display_name ?? c.name ?? c.displayName ?? "",
+        ownerEmail: c.owner_email ?? c.ownerEmail ?? null,
+        scopes: c.scopes ?? null,
+        permissions: c.permissions ?? null,
+        expiresAt: c.expires_at ?? c.expiresAt ?? null,
+        lastUsedAt: c.last_used_at ?? c.lastUsedAt ?? null,
+        lastRotatedAt: c.last_rotated_at ?? c.lastRotatedAt ?? null,
+        riskScore: Number(c.risk_score ?? c.riskScore ?? 0),
+        riskFactors: c.risk_factors ?? c.riskFactors ?? null,
+        status: c.status ?? "unknown",
+        linkedUserEmail: c.linked_user_email ?? c.linkedUserEmail ?? null,
+        linkedUserName: c.linked_user_name ?? c.linkedUserName ?? null,
+        createdAt: c.created_at ?? c.createdAt ?? "",
+        updatedAt: c.updated_at ?? c.updatedAt ?? "",
+      }));
+      total = data.meta?.total ?? data.total ?? credentials.length;
     } catch (e: any) {
       error = e?.message || "Failed to load NHI credentials";
       credentials = [];

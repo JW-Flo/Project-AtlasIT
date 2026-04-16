@@ -36,7 +36,12 @@
         return;
       }
       const json = await res.json();
-      campaigns = json.campaigns ?? [];
+      const items = json.data?.items ?? json.campaigns ?? [];
+      campaigns = items.map((c: Record<string, unknown>) => ({
+        ...c,
+        totalItems: c.itemCount ?? c.totalItems ?? 0,
+        decidedItems: c.decidedCount ?? c.decidedItems ?? 0,
+      }));
     } catch (e) {
       error = (e as Error).message;
     } finally {
