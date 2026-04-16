@@ -3107,15 +3107,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 200);
     const offset = parseInt(qs.offset ?? "0", 10) || 0;
 
-    const conditions = ["tenant_id = $1"];
+    const conditions = ["p.tenant_id = $1"];
     const vals: unknown[] = [tenantId];
 
     if (status) {
-      conditions.push(`status = $${vals.length + 1}`);
+      conditions.push(`p.status = $${vals.length + 1}`);
       vals.push(status);
     }
     if (category) {
-      conditions.push(`category = $${vals.length + 1}`);
+      conditions.push(`p.category = $${vals.length + 1}`);
       vals.push(category);
     }
 
@@ -3136,7 +3136,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         [...vals, limit, offset],
       );
       const countRow = await pool.query(
-        `SELECT COUNT(*) as cnt FROM policies WHERE ${where}`,
+        `SELECT COUNT(*) as cnt FROM policies p WHERE ${where}`,
         vals,
       );
       return ok({
