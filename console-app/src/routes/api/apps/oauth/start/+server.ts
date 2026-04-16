@@ -1,5 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { getCredentials } from "$lib/server/credentials";
+import { getCredentialsPg } from "$lib/server/credentials-pg";
 import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
 
 /**
@@ -14,12 +14,7 @@ import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
  *
  * Usage: GET /api/apps/oauth/start?appId=slack
  */
-export const GET: RequestHandler = async ({
-  url,
-  platform,
-  cookies,
-  locals,
-}) => {
+export const GET: RequestHandler = async ({ url, platform, cookies, locals }) => {
   const user = locals.user;
   if (!user) {
     return jsonError("Unauthorized", 401);
@@ -49,10 +44,10 @@ export const GET: RequestHandler = async ({
     );
   }
 
-  // For tenant_domain apps, load the tenant's domain from D1
+  // For tenant_domain apps, load the tenant's domain from PG
   let tenantCreds: Record<string, string> | null = null;
   if (provider.model === "tenant_domain") {
-    tenantCreds = await getCredentials(platform, appId, tenantId);
+    tenantCreds = await getCredentialsPg(env, appId, tenantId);
     if (!tenantCreds?.domain && !tenantCreds?.tenant_url) {
       return jsonError(
         `${appId} requires your organization's domain. Please enter it in the marketplace first.`,
@@ -77,8 +72,7 @@ export const GET: RequestHandler = async ({
 
   // Resolve template vars in authorize URL for tenant-domain apps
   let authorizeUrl = provider.authorizeUrl;
-  if (tenantCreds?.domain)
-    authorizeUrl = authorizeUrl.replace("{domain}", tenantCreds.domain);
+  if (tenantCreds?.domain) authorizeUrl = authorizeUrl.replace("{domain}", tenantCreds.domain);
   if (tenantCreds?.tenant_url)
     authorizeUrl = authorizeUrl.replace("{tenant_url}", tenantCreds.tenant_url);
 
