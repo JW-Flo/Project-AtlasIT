@@ -28,8 +28,10 @@ jobs:
           tflint_version: latest
 
       - name: Init TFLint plugins
-        run: tflint --init --config infra/.tflint.hcl
+        run: tflint --init --config ../.tflint.hcl
         working-directory: infra/aws
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run TFLint (AWS)
         run: tflint --config ../.tflint.hcl --format compact
