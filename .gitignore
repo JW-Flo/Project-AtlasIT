@@ -107,6 +107,7 @@ packages/auth/src/*.js.map
 *.zip
 # Ignore SvelteKit build artifacts
 console-app/.svelte-kit/
+console-app/build/
 
 # Cloudflare Wrangler local state / telemetry
 .wrangler/
