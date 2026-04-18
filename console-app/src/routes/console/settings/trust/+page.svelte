@@ -102,11 +102,12 @@
       if (!userRaw) throw new Error("Not signed in");
       const user = JSON.parse(userRaw);
       tenantId = user.tenantId;
-      const res = await fetch("/api/v1/tenant/settings");
+      const res = await fetch(`/api/v1/tenants/${tenantId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      tenantSlug = json.data?.tenant?.slug ?? tenantId;
-      const cfg = json.data?.tenant?.config ?? {};
+      const t = json.data ?? {};
+      tenantSlug = t.slug ?? tenantId;
+      const cfg = t.config ?? {};
       trustPublic = Boolean(cfg.trust_center_public);
     } catch (e) {
       error = (e as Error).message;
