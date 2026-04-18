@@ -615,6 +615,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   }
 
   // GET /api/v1/directory/users/:id — single user + their group memberships
+  // PATCH /api/v1/directory/users/:id — update directory user attributes
   {
     const m = path.match(/^\/api\/v1\/directory\/users\/([^/]+)$/);
     if (m && method === "GET") {
@@ -640,11 +641,114 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         groups: groupRows.rows,
       });
     }
+    if (m && method === "PATCH") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const userId = decodeURIComponent(m[1]);
+      const b = body(event) as {
+        displayName?: string;
+        department?: string;
+        title?: string;
+        status?: string;
+      };
+      const allowedStatus = new Set(["active", "suspended", "inactive"]);
+      if (b.status !== undefined && !allowedStatus.has(b.status)) {
+        return fail(400, "status must be active, suspended, or inactive", "VALIDATION_FAILED");
+      }
+      const r = await pool.query(
+        `UPDATE directory_users
+           SET display_name = COALESCE($3, display_name),
+               department = COALESCE($4, department),
+               title = COALESCE($5, title),
+               status = COALESCE($6, status),
+               updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING id, external_id, email, display_name, department, title, status,
+                   created_at, updated_at`,
+        [
+          auth.tenantId,
+          userId,
+          b.displayName ?? null,
+          b.department ?? null,
+          b.title ?? null,
+          b.status ?? null,
+        ],
+      );
+      if (r.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+      return ok({
+        user: { ...r.rows[0], source: "directory", console_user_id: null },
+      });
+    }
+  }
+
+  // POST /api/v1/directory/groups/:id/members — add a user to a group
+  // DELETE /api/v1/directory/groups/:id/members — remove a user from a group
+  {
+    const m = path.match(/^\/api\/v1\/directory\/groups\/([^/]+)\/members$/);
+    if (m && (method === "POST" || method === "DELETE")) {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const groupId = decodeURIComponent(m[1]);
+      const b = body(event) as { userId?: string };
+      if (!b.userId) return fail(400, "userId required", "VALIDATION_FAILED");
+
+      // Verify both rows belong to this tenant before mutating membership
+      const g = await pool.query(
+        `SELECT 1 FROM directory_groups WHERE tenant_id = $1 AND id = $2`,
+        [auth.tenantId, groupId],
+      );
+      if (g.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      const u = await pool.query(`SELECT 1 FROM directory_users WHERE tenant_id = $1 AND id = $2`, [
+        auth.tenantId,
+        b.userId,
+      ]);
+      if (u.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+
+      if (method === "POST") {
+        await pool.query(
+          `INSERT INTO directory_memberships (tenant_id, user_id, group_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (tenant_id, user_id, group_id) DO NOTHING`,
+          [auth.tenantId, b.userId, groupId],
+        );
+        return ok({ status: "success" }, 201);
+      }
+      await pool.query(
+        `DELETE FROM directory_memberships
+         WHERE tenant_id = $1 AND user_id = $2 AND group_id = $3`,
+        [auth.tenantId, b.userId, groupId],
+      );
+      return ok({ status: "success" });
+    }
   }
 
   // GET /api/v1/directory/groups/:id — single group + members + app mappings
+  // PATCH /api/v1/directory/groups/:id — update group name / description
   {
     const m = path.match(/^\/api\/v1\/directory\/groups\/([^/]+)$/);
+    if (m && method === "PATCH") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const groupId = decodeURIComponent(m[1]);
+      const b = body(event) as { name?: string; description?: string };
+      if (b.name !== undefined && !b.name.trim()) {
+        return fail(400, "name cannot be empty", "VALIDATION_FAILED");
+      }
+      const r = await pool.query(
+        `UPDATE directory_groups
+           SET name = COALESCE($3, name),
+               description = COALESCE($4, description),
+               updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING id, external_id, name, description, created_at, updated_at`,
+        [auth.tenantId, groupId, b.name ?? null, b.description ?? null],
+      );
+      if (r.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      return ok({ group: r.rows[0] });
+    }
     if (m && method === "GET") {
       const groupId = decodeURIComponent(m[1]);
       const groupRow = await pool.query(
@@ -666,18 +770,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
          ORDER BY u.email ASC`,
         [auth.tenantId, groupId],
       );
-      // group_app_mappings may not exist in all envs; best-effort
-      let appMappings: Array<{ id: string; appId: string; role: string }> = [];
-      try {
-        const mapRows = await pool.query(
-          `SELECT id, app_id, role FROM group_app_mappings
-           WHERE tenant_id = $1 AND group_id = $2`,
-          [auth.tenantId, groupId],
-        );
-        appMappings = mapRows.rows.map((r) => ({ id: r.id, appId: r.app_id, role: r.role }));
-      } catch {
-        // table not provisioned — leave empty
-      }
+      const mapRows = await pool.query(
+        `SELECT id, app_provider, app_role FROM directory_mappings
+         WHERE tenant_id = $1 AND directory_group_id = $2`,
+        [auth.tenantId, groupId],
+      );
+      const appMappings = mapRows.rows.map((r) => ({
+        id: r.id,
+        appId: r.app_provider,
+        role: r.app_role,
+      }));
       return ok({
         group: {
           ...groupRow.rows[0],

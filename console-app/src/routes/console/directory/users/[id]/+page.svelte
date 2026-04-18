@@ -108,7 +108,7 @@
     if (!user) return;
     saving = true;
     try {
-      const res = await fetch(`/api/directory/users/${userId}`, {
+      const res = await fetch(`/api/v1/directory/users/${userId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -120,7 +120,7 @@
       });
       if (!res.ok) throw new Error("Failed to save user");
       const data = await res.json();
-      user = data.user;
+      user = data.user ?? data.data?.user ?? user;
       pushToast({ message: "User updated", variant: "success" });
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save user", variant: "error" });
@@ -133,7 +133,7 @@
     if (!selectedGroupId) return;
     addingToGroup = true;
     try {
-      const res = await fetch(`/api/directory/groups/${selectedGroupId}/members`, {
+      const res = await fetch(`/api/v1/directory/groups/${selectedGroupId}/members`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -151,7 +151,7 @@
 
   async function removeFromGroup(groupId: string) {
     try {
-      const res = await fetch(`/api/directory/groups/${groupId}/members`, {
+      const res = await fetch(`/api/v1/directory/groups/${groupId}/members`, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),
