@@ -44,6 +44,7 @@ Non-human identity discovery and risk scoring.
 
 ### 4. Housekeeping
 
+- Rotation-safe DB auth — wire 8 Lambdas to fetch RDS password from Secrets Manager at runtime (pg `password` async callback), then re-enable rotation on `rds!db-8b55494d-...` (disabled 2026-04-17 as stopgap after rotation broke login)
 - Remove `console-app/build/` from git tracking (stale build artifacts committed)
 - Fix `stream.evidence.test.ts` WorkflowEntrypoint failure (CF Workers reference in AWS world)
 - Remove 125 dead SvelteKit `+server.ts` files (D1-backed, no longer used)

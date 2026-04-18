@@ -22,7 +22,15 @@ locals {
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
     # DATABASE_URL set manually via CLI (includes password + SSL params from SSM /atlasit/dev/secrets/database-url)
-    # Do NOT manage via Terraform — it strips the password on every apply
+    # Do NOT manage via Terraform — it strips the password on every apply.
+    #
+    # RDS managed-secret rotation is intentionally DISABLED on dev to prevent
+    # Lambda env drift (rotation changes the master password in Secrets Manager
+    # but does not update the 8 Lambdas' DATABASE_URL envs, causing auth 500s).
+    # To re-enable rotation, first wire the Lambdas to fetch the password at
+    # runtime via the pg `password` async callback against
+    # `rds!db-8b55494d-...-Z3uwLd` and grant `secretsmanager:GetSecretValue`.
+    # Runbook: scripts/sync-db-password.sh (to be written) resyncs after manual rotation.
     SSM_PREFIX             = "/atlasit/${var.env}"
   }
 

@@ -28,8 +28,10 @@ jobs:
           tflint_version: latest
 
       - name: Init TFLint plugins
-        run: tflint --init --config infra/.tflint.hcl
+        run: tflint --init --config ../.tflint.hcl
         working-directory: infra/aws
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run TFLint (AWS)
         run: tflint --config ../.tflint.hcl --format compact
@@ -41,11 +43,8 @@ jobs:
         working-directory: infra/terraform/dispatch
         continue-on-error: true
 
-      - name: Run tfsec
-        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d131d3571f6f7db7a # v1.0.3
-        with:
-          working_directory: infra/
-          soft_fail: true
+      # tfsec is archived upstream; replaced by structural lint above. Add
+      # Trivy config scan here if we later want IaC security scanning.
 
   plan:
     name: Terraform Plan
@@ -67,7 +66,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.2.0
         with:
-          terraform_version: "~> 1.5"
+          terraform_version: "1.10.5"
 
       - name: Terraform Init
         run: terraform init -reconfigure
