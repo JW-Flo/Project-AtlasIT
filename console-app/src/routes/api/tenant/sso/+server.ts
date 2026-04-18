@@ -183,6 +183,10 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   }
 };
 
+// PUT is an alias for POST — the UI calls PUT, the SPA interceptor forwards
+// to Lambda's PUT, and the CF handler accepts either verb as upsert.
+export const PUT: RequestHandler = (event) => POST(event);
+
 /**
  * DELETE /api/tenant/sso — remove SSO configuration.
  */

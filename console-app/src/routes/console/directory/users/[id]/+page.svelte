@@ -75,7 +75,7 @@
     loading = true;
     error = "";
     try {
-      const res = await fetch(`/api/v1/directory/users/${userId}`);
+      const res = await fetch(`/api/directory/users/${userId}`);
       if (!res.ok) throw new Error(`Failed to load user (${res.status})`);
       const data = await res.json();
       user = data.user ?? data.data?.user ?? null;
@@ -96,7 +96,7 @@
 
   async function loadAllGroups() {
     try {
-      const res = await fetch("/api/v1/directory/groups");
+      const res = await fetch("/api/directory/groups");
       if (res.ok) {
         const data = await res.json();
         allGroups = data.groups ?? data.data?.items ?? [];
@@ -108,7 +108,7 @@
     if (!user) return;
     saving = true;
     try {
-      const res = await fetch(`/api/v1/directory/users/${userId}`, {
+      const res = await fetch(`/api/directory/users/${userId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -133,7 +133,7 @@
     if (!selectedGroupId) return;
     addingToGroup = true;
     try {
-      const res = await fetch(`/api/v1/directory/groups/${selectedGroupId}/members`, {
+      const res = await fetch(`/api/directory/groups/${selectedGroupId}/members`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -151,7 +151,7 @@
 
   async function removeFromGroup(groupId: string) {
     try {
-      const res = await fetch(`/api/v1/directory/groups/${groupId}/members`, {
+      const res = await fetch(`/api/directory/groups/${groupId}/members`, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),

@@ -101,7 +101,7 @@
     loading = true;
     error = "";
     try {
-      const res = await fetch(`/api/v1/directory/groups/${groupId}`);
+      const res = await fetch(`/api/directory/groups/${groupId}`);
       if (!res.ok) throw new Error(`Failed to load group (${res.status})`);
       const data = await res.json();
       group = data.group ?? data.data?.group ?? null;
@@ -125,7 +125,7 @@
 
   async function loadAllUsers() {
     try {
-      const res = await fetch("/api/v1/directory/users?limit=500");
+      const res = await fetch("/api/directory/users?limit=500");
       if (res.ok) {
         const data = await res.json();
         const items = data.users ?? data.data?.items ?? [];
@@ -146,7 +146,7 @@
     if (!group) return;
     saving = true;
     try {
-      const res = await fetch(`/api/v1/directory/groups/${groupId}`, {
+      const res = await fetch(`/api/directory/groups/${groupId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -170,7 +170,7 @@
     if (!selectedUserId) return;
     addingMember = true;
     try {
-      const res = await fetch(`/api/v1/directory/groups/${groupId}/members`, {
+      const res = await fetch(`/api/directory/groups/${groupId}/members`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId: selectedUserId }),
@@ -189,7 +189,7 @@
 
   async function removeMember(userId: string) {
     try {
-      const res = await fetch(`/api/v1/directory/groups/${groupId}/members`, {
+      const res = await fetch(`/api/directory/groups/${groupId}/members`, {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -215,20 +215,14 @@
   async function addAppAssignment() {
     if (!newAppId || groupApps.some(a => a.appId === newAppId)) return;
     try {
-      const res = await fetch("/api/v1/directory/mappings", {
+      const res = await fetch("/api/directory/mappings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directoryGroupId: group!.id,
-          directoryGroupName: group!.name,
-          appProvider: newAppId,
-          appRole: newAppRole || "member",
-        }),
+        body: JSON.stringify({ groupId: group!.id, appId: newAppId, role: newAppRole || "member" }),
       });
       if (!res.ok) throw new Error("Failed to save");
       const data = await res.json();
-      const mappingId = data.id ?? data.mapping?.id ?? data.data?.id;
-      groupApps = [...groupApps, { id: mappingId, appId: newAppId, role: newAppRole || "member" }];
+      groupApps = [...groupApps, { id: data.mapping?.id, appId: newAppId, role: newAppRole || "member" }];
       newAppId = "";
       newAppRole = "member";
     } catch {
@@ -239,7 +233,7 @@
   async function removeAppAssignment(appId: string) {
     const mapping = groupApps.find(a => a.appId === appId);
     if (mapping?.id) {
-      await fetch(`/api/v1/directory/mappings/${encodeURIComponent(mapping.id)}`, { method: "DELETE" });
+      await fetch(`/api/directory/mappings?id=${mapping.id}`, { method: "DELETE" });
     }
     groupApps = groupApps.filter(a => a.appId !== appId);
   }
