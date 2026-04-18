@@ -1,20 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  interface TenantSettings {
-    tenant: {
-      id: string;
-      name: string;
-      slug: string;
-      tier: string;
-      status: string;
-      industry: string | null;
-      size: string | null;
-    } | null;
-    preferences: Record<string, unknown>;
+  interface TenantInfo {
+    id: string;
+    name: string;
+    slug: string;
+    tier: string;
+    status: string;
+    industry: string | null;
+    size: string | null;
   }
 
-  let settings: TenantSettings | null = null;
+  let tenant: TenantInfo | null = null;
   let loading = true;
   let error: string | null = null;
 
@@ -27,9 +24,9 @@
         error = `Failed to load settings (HTTP ${res.status})`;
         return;
       }
-      const result = await res.json();
-      if (result.data) {
-        settings = result.data;
+      const data = (await res.json()) as TenantInfo;
+      if (data && data.id) {
+        tenant = data;
       } else {
         error = "No settings data returned";
       }
@@ -86,9 +83,9 @@
 <div class="animate-fade-in max-w-5xl mx-auto">
   <div class="mb-8">
     <h1 class="text-3xl font-bold text-foreground">Settings</h1>
-    {#if settings?.tenant}
+    {#if tenant}
       <p class="mt-1 text-sm text-muted-foreground">
-        {settings.tenant.name} · <span class="capitalize">{settings.tenant.tier}</span> tier
+        {tenant.name} · <span class="capitalize">{tenant.tier}</span> tier
       </p>
     {/if}
   </div>
