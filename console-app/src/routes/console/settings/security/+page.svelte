@@ -66,29 +66,42 @@
         return;
       }
       const data = await res.json();
-      ssoConfigured = data.configured;
-      if (data.config) {
-        ssoConfig = data.config;
-        ssoProtocol = data.config.protocol;
-        ssoDisplayName = data.config.displayName || "";
-        ssoIdpName = data.config.idpName || "";
-        ssoEnabled = data.config.enabled;
-        ssoJitProvisioning = data.config.jitProvisioning;
-        ssoForceSso = data.config.forceSso;
-        ssoBypassMfa = data.config.ssoBypassMfa;
-        ssoDefaultRoles = JSON.stringify(data.config.defaultRoles || ["member"]);
+      // Accept both the legacy `{configured, config}` shape and the Lambda
+      // core-api shape `{sso: row|null}` where row has flat DB columns.
+      const cfg: any = data.config
+        ?? (data.sso
+          ? {
+              protocol: data.sso.provider ?? "oidc",
+              enabled: data.sso.enabled ?? false,
+              samlEntityId: data.sso.entity_id ?? "",
+              samlSsoUrl: data.sso.sso_url ?? "",
+              samlMetadataUrl: data.sso.metadata_url ?? "",
+              oidcIssuer: data.sso.metadata_url ?? "",
+            }
+          : null);
+      ssoConfigured = data.configured ?? !!data.sso;
+      if (cfg) {
+        ssoConfig = cfg;
+        ssoProtocol = cfg.protocol ?? "oidc";
+        ssoDisplayName = cfg.displayName ?? "";
+        ssoIdpName = cfg.idpName ?? "";
+        ssoEnabled = cfg.enabled ?? false;
+        ssoJitProvisioning = cfg.jitProvisioning ?? true;
+        ssoForceSso = cfg.forceSso ?? false;
+        ssoBypassMfa = cfg.ssoBypassMfa ?? false;
+        ssoDefaultRoles = JSON.stringify(cfg.defaultRoles ?? ["member"]);
 
         // SAML
-        samlEntityId = data.config.samlEntityId || "";
-        samlSsoUrl = data.config.samlSsoUrl || "";
-        samlCertificate = data.config.samlCertificate || "";
-        samlMetadataUrl = data.config.samlMetadataUrl || "";
+        samlEntityId = cfg.samlEntityId ?? "";
+        samlSsoUrl = cfg.samlSsoUrl ?? "";
+        samlCertificate = cfg.samlCertificate ?? "";
+        samlMetadataUrl = cfg.samlMetadataUrl ?? "";
 
         // OIDC
-        oidcIssuer = data.config.oidcIssuer || "";
-        oidcClientId = data.config.oidcClientId || "";
+        oidcIssuer = cfg.oidcIssuer ?? "";
+        oidcClientId = cfg.oidcClientId ?? "";
         oidcClientSecret = "";
-        oidcScopes = data.config.oidcScopes || "openid email profile";
+        oidcScopes = cfg.oidcScopes ?? "openid email profile";
       }
     } catch (e) {
       ssoError = "Failed to load SSO configuration";
@@ -127,10 +140,24 @@
         payload.oidcScopes = oidcScopes;
       }
 
+      // Lambda accepts the flat shape { provider, entityId, metadataUrl,
+      // ssoUrl, ssoCertificate, attributeMapping, enabled } on PUT.
+      const lambdaPayload: Record<string, any> = {
+        provider: ssoProtocol,
+        enabled: ssoEnabled,
+      };
+      if (ssoProtocol === "saml") {
+        lambdaPayload.entityId = samlEntityId;
+        lambdaPayload.metadataUrl = samlMetadataUrl;
+        lambdaPayload.ssoUrl = samlSsoUrl;
+        lambdaPayload.ssoCertificate = samlCertificate;
+      } else {
+        lambdaPayload.metadataUrl = oidcIssuer;
+      }
       const res = await fetch("/api/tenant/sso", {
-        method: "POST",
+        method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...lambdaPayload, ...payload }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -263,9 +290,10 @@
       const res = await fetch("/api/auth/mfa/status");
       if (res.ok) {
         const data = await res.json();
-        totpEnabled = data.totpEnabled;
-        recoveryCodesRemaining = data.recoveryCodesRemaining;
-        enabledAt = data.enabledAt;
+        // Lambda returns { enabled, enrolledAt }; recovery codes not yet surfaced
+        totpEnabled = data.totpEnabled ?? data.enabled ?? false;
+        recoveryCodesRemaining = data.recoveryCodesRemaining ?? 0;
+        enabledAt = data.enabledAt ?? data.enrolledAt ?? null;
       }
     } catch {}
     loading = false;
@@ -277,9 +305,10 @@
       const res = await fetch("/api/auth/mfa/setup", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        setupSecret = data.secret;
-        setupUri = data.uri;
-        setupRecoveryCodes = data.recoveryCodes;
+        // Lambda returns { otpauth, secret, hashRef }; legacy UI used { uri, secret, recoveryCodes }
+        setupSecret = data.secret ?? "";
+        setupUri = data.uri ?? data.otpauth ?? "";
+        setupRecoveryCodes = data.recoveryCodes ?? [];
         setupStep = "qr";
       } else {
         pushToast({ message: data.error || "Failed to start setup", variant: "error" });
@@ -318,7 +347,8 @@
       const res = await fetch("/api/auth/mfa/disable", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: disablePassword }),
+        // Lambda expects a TOTP code, not a password
+        body: JSON.stringify({ code: disablePassword }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -355,9 +385,10 @@
       const res = await fetch("/api/tenant/security");
       if (res.ok) {
         const data = await res.json();
-        policy = data.policy;
+        // Policy management not yet implemented in Lambda core-api; hide the
+        // section when the endpoint returns tenant info without a policy block.
+        policy = data.policy ?? null;
       } else {
-        console.error("Failed to load security policy:", res.status);
         // H-9 FIX: Fail closed — don't show permissive defaults when policy can't be loaded
         policy = null;
         policyLoadError = "Unable to load security policy. Please try again.";
@@ -529,11 +560,13 @@
 
           {#if showDisable}
             <div class="border rounded-lg p-4 space-y-3">
-              <p class="text-sm font-medium">Confirm your password to disable MFA</p>
+              <p class="text-sm font-medium">Enter a current 6-digit TOTP code to disable MFA</p>
               <Input
-                type="password"
+                type="text"
+                inputmode="numeric"
+                maxlength={6}
                 bind:value={disablePassword}
-                placeholder="Current password"
+                placeholder="6-digit code from your authenticator"
               />
               <div class="flex gap-2">
                 <Button variant="destructive" on:click={disableTotp} disabled={disabling || !disablePassword}>
