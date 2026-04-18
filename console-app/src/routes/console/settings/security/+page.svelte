@@ -329,6 +329,10 @@
       });
       const data = await res.json();
       if (res.ok) {
+        // Lambda returns recoveryCodes only on successful confirm; show them once
+        if (Array.isArray(data.recoveryCodes) && data.recoveryCodes.length > 0) {
+          setupRecoveryCodes = data.recoveryCodes;
+        }
         setupStep = "done";
         pushToast({ message: "Two-factor authentication enabled!", variant: "success" });
         await loadStatus();
