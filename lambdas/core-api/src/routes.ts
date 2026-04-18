@@ -286,23 +286,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
     // ── MFA enforcement ────────────────────────────────────────────────────
     if (user.mfa_enabled) {
-      const mfaRow = await pool.query(
-        `SELECT secret_hash, recovery_codes, failed_mfa_count, mfa_locked_until
-         FROM mfa_enrollments WHERE user_id::text = $1`,
+      // Cheap outer check before we decide to open a transaction
+      const preflight = await pool.query(
+        `SELECT mfa_locked_until FROM mfa_enrollments WHERE user_id::text = $1`,
         [user.id],
       );
-      if (mfaRow.rows.length === 0) {
+      if (preflight.rows.length === 0) {
         return fail(
           403,
           "MFA required but not enrolled — contact administrator",
           "MFA_NOT_ENROLLED",
         );
       }
-      const m = mfaRow.rows[0];
-
-      // MFA lockout check
-      if (m.mfa_locked_until) {
-        const lockedUntil = new Date(m.mfa_locked_until).getTime();
+      if (preflight.rows[0].mfa_locked_until) {
+        const lockedUntil = new Date(preflight.rows[0].mfa_locked_until).getTime();
         if (lockedUntil > Date.now()) {
           const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
           return fail(
@@ -318,71 +315,113 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         return fail(401, "MFA code required", "MFA_REQUIRED");
       }
 
-      let mfaValid = false;
-      let consumedRecoveryIndex = -1;
+      // Verify + consume atomically: row lock prevents concurrent logins from
+      // spending the same recovery code twice and makes the lockout counter
+      // read/write race-free.
+      const client = await pool.connect();
+      let mfaResult:
+        | { ok: true; usedRecovery: boolean; remaining: number }
+        | { ok: false; code: "MFA_LOCKED" | "MFA_INVALID"; message: string };
+      try {
+        await client.query("BEGIN");
+        const locked = await client.query(
+          `SELECT secret_hash, recovery_codes, failed_mfa_count, mfa_locked_until
+             FROM mfa_enrollments WHERE user_id::text = $1
+             FOR UPDATE`,
+          [user.id],
+        );
+        const m = locked.rows[0];
 
-      if (/^\d{6}$/.test(submitted)) {
-        // TOTP path
-        mfaValid = totpVerify(m.secret_hash, submitted);
-      } else {
-        // Recovery code path — codes stored as bcrypt hashes; single-use
-        const codes: string[] = Array.isArray(m.recovery_codes) ? m.recovery_codes : [];
-        for (let i = 0; i < codes.length; i++) {
-          if (await bcrypt.compare(submitted, codes[i])) {
-            mfaValid = true;
-            consumedRecoveryIndex = i;
-            break;
+        // Re-check lockout inside the txn (another request may have locked us)
+        if (m.mfa_locked_until) {
+          const lockedUntil = new Date(m.mfa_locked_until).getTime();
+          if (lockedUntil > Date.now()) {
+            await client.query("ROLLBACK");
+            const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
+            mfaResult = {
+              ok: false,
+              code: "MFA_LOCKED",
+              message: `MFA locked, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+            };
+            return fail(429, mfaResult.message, mfaResult.code);
           }
         }
-      }
 
-      if (!mfaValid) {
-        const nextCount = (m.failed_mfa_count ?? 0) + 1;
-        if (nextCount >= 5) {
-          await pool.query(
-            `UPDATE mfa_enrollments
-               SET failed_mfa_count = $1,
-                   mfa_locked_until = NOW() + interval '15 minutes'
-             WHERE user_id::text = $2`,
-            [nextCount, user.id],
-          );
+        let valid = false;
+        let consumedIndex = -1;
+        if (/^\d{6}$/.test(submitted)) {
+          valid = totpVerify(m.secret_hash, submitted);
         } else {
-          await pool.query(
-            `UPDATE mfa_enrollments SET failed_mfa_count = $1 WHERE user_id::text = $2`,
-            [nextCount, user.id],
-          );
+          const codes: string[] = Array.isArray(m.recovery_codes) ? m.recovery_codes : [];
+          for (let i = 0; i < codes.length; i++) {
+            if (await bcrypt.compare(submitted, codes[i])) {
+              valid = true;
+              consumedIndex = i;
+              break;
+            }
+          }
         }
-        return fail(401, "Invalid MFA code", "MFA_INVALID");
+
+        if (!valid) {
+          const nextCount = (m.failed_mfa_count ?? 0) + 1;
+          if (nextCount >= 5) {
+            await client.query(
+              `UPDATE mfa_enrollments
+                 SET failed_mfa_count = $1,
+                     mfa_locked_until = NOW() + interval '15 minutes'
+               WHERE user_id::text = $2`,
+              [nextCount, user.id],
+            );
+          } else {
+            await client.query(
+              `UPDATE mfa_enrollments SET failed_mfa_count = $1 WHERE user_id::text = $2`,
+              [nextCount, user.id],
+            );
+          }
+          await client.query("COMMIT");
+          return fail(401, "Invalid MFA code", "MFA_INVALID");
+        }
+
+        if (consumedIndex >= 0) {
+          const remaining = (m.recovery_codes as string[]).filter(
+            (_: string, idx: number) => idx !== consumedIndex,
+          );
+          await client.query(
+            `UPDATE mfa_enrollments
+               SET recovery_codes = $1,
+                   failed_mfa_count = 0,
+                   mfa_locked_until = NULL,
+                   last_verified_at = NOW()
+             WHERE user_id::text = $2`,
+            [remaining, user.id],
+          );
+          await client.query("COMMIT");
+          mfaResult = { ok: true, usedRecovery: true, remaining: remaining.length };
+        } else {
+          await client.query(
+            `UPDATE mfa_enrollments
+               SET failed_mfa_count = 0,
+                   mfa_locked_until = NULL,
+                   last_verified_at = NOW()
+             WHERE user_id::text = $1`,
+            [user.id],
+          );
+          await client.query("COMMIT");
+          mfaResult = { ok: true, usedRecovery: false, remaining: -1 };
+        }
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally {
+        client.release();
       }
 
-      // MFA success — reset counters, consume recovery code if used
-      if (consumedRecoveryIndex >= 0) {
-        const remaining = (m.recovery_codes as string[]).filter(
-          (_: string, idx: number) => idx !== consumedRecoveryIndex,
-        );
-        await pool.query(
-          `UPDATE mfa_enrollments
-             SET recovery_codes = $1,
-                 failed_mfa_count = 0,
-                 mfa_locked_until = NULL,
-                 last_verified_at = NOW()
-           WHERE user_id::text = $2`,
-          [remaining, user.id],
-        );
+      if (mfaResult.ok && mfaResult.usedRecovery) {
         await publishEvent(user.tenant_id, "mfa.recovery_code.consumed", "core-api", {
           userId: user.id,
           email: user.email,
-          remaining: remaining.length,
+          remaining: mfaResult.remaining,
         });
-      } else {
-        await pool.query(
-          `UPDATE mfa_enrollments
-             SET failed_mfa_count = 0,
-                 mfa_locked_until = NULL,
-                 last_verified_at = NOW()
-           WHERE user_id::text = $1`,
-          [user.id],
-        );
       }
     }
 
@@ -1952,25 +1991,23 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
-  // POST /api/v1/auth/mfa/setup — generate + persist a new secret; return otpauth URI
-  // The secret is not confirmed until POST /mfa/confirm verifies a code; until
-  // then mfa_enabled stays false so login is not blocked mid-enrollment.
+  // POST /api/v1/auth/mfa/setup — stage a pending TOTP secret; returns the
+  // otpauth URI for QR display. The secret is written to `pending_secret`
+  // (not `secret_hash`) so an in-progress re-enrollment never invalidates the
+  // currently-active authenticator or recovery codes. Promotion to the active
+  // slot happens only when /mfa/confirm verifies a code.
   if (path === "/api/v1/auth/mfa/setup" && method === "POST") {
     const secretBytes = crypto.randomBytes(20);
     const secretB32 = base32Encode(secretBytes);
-    // We store the raw base32 secret because TOTP verification requires the
-    // original bytes (hashes are one-way). Column is named secret_hash for
-    // legacy reasons. Production-grade deployments should wrap this value with
-    // AES-256-GCM using an env-provided key (MFA_SECRET_KEY) before insert.
+    // Raw base32 is required for TOTP verification (hashes are one-way).
+    // Column names are legacy; production deployments should wrap this value
+    // with AES-256-GCM using an env-provided key (MFA_SECRET_KEY) before insert.
     await pool.query(
-      `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, recovery_codes, enrolled_at, failed_mfa_count, mfa_locked_until)
-       VALUES ($1, $2, $3, '{}', NOW(), 0, NULL)
+      `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, recovery_codes, enrolled_at, failed_mfa_count, mfa_locked_until, pending_secret, pending_started_at)
+       VALUES ($1, $2, '', '{}', NOW(), 0, NULL, $3, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
-         secret_hash = EXCLUDED.secret_hash,
-         recovery_codes = '{}',
-         enrolled_at = NOW(),
-         failed_mfa_count = 0,
-         mfa_locked_until = NULL`,
+         pending_secret = EXCLUDED.pending_secret,
+         pending_started_at = NOW()`,
       [auth.userId, auth.tenantId, secretB32],
     );
     const issuer = "AtlasIT";
@@ -1979,16 +2016,20 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ otpauth, uri: otpauth, secret: secretB32 });
   }
 
-  // POST /api/v1/auth/mfa/confirm — verify first TOTP code, enable MFA, issue
-  // single-use recovery codes (returned once; stored bcrypt-hashed).
+  // POST /api/v1/auth/mfa/confirm — verify first TOTP code against the pending
+  // secret, promote it to the active slot, enable MFA, and issue 10 single-use
+  // recovery codes (shown once; stored bcrypt-hashed).
   if (path === "/api/v1/auth/mfa/confirm" && method === "POST") {
     const b = body(event) as { code?: string };
     if (!b.code) return fail(400, "code required", "VALIDATION_FAILED");
-    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id::text = $1`, [
-      auth.userId,
-    ]);
-    if (r.rows.length === 0) return fail(404, "No pending enrollment", "NOT_FOUND");
-    if (!totpVerify(r.rows[0].secret_hash, b.code)) {
+    const r = await pool.query(
+      `SELECT pending_secret FROM mfa_enrollments WHERE user_id::text = $1`,
+      [auth.userId],
+    );
+    if (r.rows.length === 0 || !r.rows[0].pending_secret) {
+      return fail(404, "No pending enrollment", "NOT_FOUND");
+    }
+    if (!totpVerify(r.rows[0].pending_secret, b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
 
@@ -2002,9 +2043,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       recoveryHashes.push(await bcrypt.hash(formatted, 10));
     }
 
+    // Promote pending secret → active, clear pending, install new recovery codes,
+    // reset lockout. Invalidates any previous authenticator / codes in one write.
     await pool.query(
       `UPDATE mfa_enrollments
-         SET last_verified_at = NOW(),
+         SET secret_hash = pending_secret,
+             pending_secret = NULL,
+             pending_started_at = NULL,
+             enrolled_at = NOW(),
+             last_verified_at = NOW(),
              recovery_codes = $1,
              failed_mfa_count = 0,
              mfa_locked_until = NULL
