@@ -1,7 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { PageHeader, Card, Badge, EmptyState, Button } from "$lib/components/ui";
   import { AlertCircle, RefreshCw, Search, Users, UsersRound as UsersIcon } from "lucide-svelte";
+
+  function openUser(id: string) {
+    goto(`/console/directory/users/${encodeURIComponent(id)}`);
+  }
+  function openGroup(id: string) {
+    goto(`/console/directory/groups/${encodeURIComponent(id)}`);
+  }
+  function onRowKey(ev: KeyboardEvent, fn: () => void) {
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      fn();
+    }
+  }
 
   interface DirectoryUser {
     id: string;
@@ -239,7 +253,13 @@
             </thead>
             <tbody class="divide-y divide-border">
               {#each filteredUsers as user}
-                <tr class="row-hover">
+                <tr
+                  class="row-hover cursor-pointer hover:bg-muted/30 focus:bg-muted/30 focus:outline-none"
+                  role="link"
+                  tabindex="0"
+                  on:click={() => openUser(user.id)}
+                  on:keydown={(e) => onRowKey(e, () => openUser(user.id))}
+                >
                   <td class="px-5 py-2.5 text-sm font-medium text-foreground">{user.email}</td>
                   <td class="px-5 py-2.5 text-sm text-foreground/80">{user.display_name ?? "—"}</td>
                   <td class="px-5 py-2.5 text-xs text-muted-foreground">{user.department ?? "—"}</td>
@@ -309,7 +329,13 @@
             </thead>
             <tbody class="divide-y divide-border">
               {#each filteredGroups as group}
-                <tr class="row-hover">
+                <tr
+                  class="row-hover cursor-pointer hover:bg-muted/30 focus:bg-muted/30 focus:outline-none"
+                  role="link"
+                  tabindex="0"
+                  on:click={() => openGroup(group.id)}
+                  on:keydown={(e) => onRowKey(e, () => openGroup(group.id))}
+                >
                   <td class="px-5 py-2.5 text-sm font-medium text-foreground">{group.name}</td>
                   <td class="px-5 py-2.5 text-xs text-muted-foreground">{group.description ?? "—"}</td>
                   <td class="px-5 py-2.5 text-sm text-foreground tabular-nums">{group.member_count}</td>

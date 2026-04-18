@@ -614,6 +614,81 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // GET /api/v1/directory/users/:id — single user + their group memberships
+  {
+    const m = path.match(/^\/api\/v1\/directory\/users\/([^/]+)$/);
+    if (m && method === "GET") {
+      const userId = decodeURIComponent(m[1]);
+      const userRow = await pool.query(
+        `SELECT id, external_id, email, display_name, department, title, status,
+                created_at, updated_at
+         FROM directory_users
+         WHERE tenant_id = $1 AND id = $2`,
+        [auth.tenantId, userId],
+      );
+      if (userRow.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+      const groupRows = await pool.query(
+        `SELECT g.id, g.name, g.description, m.created_at as joined_at
+         FROM directory_memberships m
+         JOIN directory_groups g ON g.id = m.group_id
+         WHERE m.tenant_id = $1 AND m.user_id = $2
+         ORDER BY g.name ASC`,
+        [auth.tenantId, userId],
+      );
+      return ok({
+        user: { ...userRow.rows[0], source: "directory", console_user_id: null },
+        groups: groupRows.rows,
+      });
+    }
+  }
+
+  // GET /api/v1/directory/groups/:id — single group + members + app mappings
+  {
+    const m = path.match(/^\/api\/v1\/directory\/groups\/([^/]+)$/);
+    if (m && method === "GET") {
+      const groupId = decodeURIComponent(m[1]);
+      const groupRow = await pool.query(
+        `SELECT g.id, g.external_id, g.name, g.description, g.created_at, g.updated_at,
+                COUNT(m.user_id) as member_count
+         FROM directory_groups g
+         LEFT JOIN directory_memberships m ON m.group_id = g.id
+         WHERE g.tenant_id = $1 AND g.id = $2
+         GROUP BY g.id`,
+        [auth.tenantId, groupId],
+      );
+      if (groupRow.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      const memberRows = await pool.query(
+        `SELECT u.id, u.email, u.display_name, u.department, u.title, u.status,
+                m.created_at as joined_at
+         FROM directory_memberships m
+         JOIN directory_users u ON u.id = m.user_id
+         WHERE m.tenant_id = $1 AND m.group_id = $2
+         ORDER BY u.email ASC`,
+        [auth.tenantId, groupId],
+      );
+      // group_app_mappings may not exist in all envs; best-effort
+      let appMappings: Array<{ id: string; appId: string; role: string }> = [];
+      try {
+        const mapRows = await pool.query(
+          `SELECT id, app_id, role FROM group_app_mappings
+           WHERE tenant_id = $1 AND group_id = $2`,
+          [auth.tenantId, groupId],
+        );
+        appMappings = mapRows.rows.map((r) => ({ id: r.id, appId: r.app_id, role: r.role }));
+      } catch {
+        // table not provisioned — leave empty
+      }
+      return ok({
+        group: {
+          ...groupRow.rows[0],
+          member_count: parseInt(groupRow.rows[0].member_count ?? "0", 10),
+        },
+        members: memberRows.rows,
+        appMappings,
+      });
+    }
+  }
+
   // GET /api/v1/directory/sync/status — directory sync status per provider
   if (path === "/api/v1/directory/sync/status" && method === "GET") {
     const rows = await pool.query(
