@@ -244,7 +244,7 @@
   {:else}
     <!-- Hero compliance score card -->
     {#if installedPacks.length > 0}
-      <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden">
+      <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden" data-tour="hero-score">
         <div class="absolute top-0 right-0 w-72 h-72 rounded-full bg-primary/5 blur-2xl pointer-events-none"></div>
 
         <div class="relative grid lg:grid-cols-[1fr,auto,auto] gap-6 items-end">
@@ -399,7 +399,7 @@
             Manage packs <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
           </a>
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" data-tour="framework-cards">
           {#each installedPacks as p (p.id)}
             {@const score = p.controlCount > 0 && p.passCount !== null ? Math.round((p.passCount * 100) / p.controlCount) : 0}
             <a
@@ -431,7 +431,7 @@
     <!-- Two-column: integrations + evidence stream -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
       <!-- Connected apps -->
-      <Card padding="none" class="overflow-hidden">
+      <Card padding="none" class="overflow-hidden" data-tour="connected-apps">
         <div class="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 class="text-sm font-semibold text-foreground">Connected Apps</h2>
           <a
@@ -476,7 +476,7 @@
       </Card>
 
       <!-- Evidence stream -->
-      <Card padding="none" class="lg:col-span-2 overflow-hidden">
+      <Card padding="none" class="lg:col-span-2 overflow-hidden" data-tour="evidence-feed">
         <div class="px-4 py-3 border-b border-border flex items-center justify-between">
           <div>
             <h2 class="text-sm font-semibold text-foreground">Recent Evidence</h2>

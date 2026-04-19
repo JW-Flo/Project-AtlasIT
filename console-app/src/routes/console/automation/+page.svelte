@@ -192,7 +192,7 @@
   const actionsPlaceholder = '[{"type":"notify","config":{"channel":"slack"}}]';
 </script>
 
-<div class="animate-fade-in">
+<div class="animate-fade-in" data-tour="automation-rules">
   <!-- Header -->
   <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
