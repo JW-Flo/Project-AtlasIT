@@ -48,17 +48,21 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
   const demoIncident2Id = `${cfg.tenantId}-inc-2`;
   const demoIncident3Id = `${cfg.tenantId}-inc-3`;
   const demoAccessCampaignId = `${cfg.tenantId}-access-q2`;
+  const tenantSlug = `${cfg.tenantId}-demo`;
 
   await db
     .prepare(
       `INSERT INTO tenants (id, name, slug, status, tier, created_at, updated_at)
        VALUES (?, ?, ?, 'active', 'professional', ?, ?)
-       ON CONFLICT(id) DO UPDATE SET name=excluded.name, slug=excluded.slug, status='active', updated_at=excluded.updated_at`,
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, slug=excluded.slug, status='active', updated_at=excluded.updated_at`,
     )
-    .bind(cfg.tenantId, cfg.tenantName, "acme-dental-group-demo", now, now)
+    .bind(cfg.tenantId, cfg.tenantName, tenantSlug, now, now)
     .run();
 
-  await db.prepare("DELETE FROM console_users WHERE tenant_id = ?").bind(cfg.tenantId).run();
+  await db
+    .prepare("DELETE FROM console_users WHERE tenant_id = ? OR id = ? OR email = ?")
+    .bind(cfg.tenantId, DEMO_USER_ID, cfg.email)
+    .run();
   await db
     .prepare(
       `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
