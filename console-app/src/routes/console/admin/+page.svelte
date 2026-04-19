@@ -13,7 +13,7 @@
   import DialogTitle from "$lib/components/ui/dialog-title.svelte";
   import DialogFooter from "$lib/components/ui/dialog-footer.svelte";
   import Skeleton from "$lib/components/ui/skeleton.svelte";
-  import { AlertTriangle, Shield, UserX, Eye, Trash2 } from "lucide-svelte";
+  import { AlertTriangle, Shield, UserX, Eye, Trash2, KeyRound, Copy, Check } from "lucide-svelte";
 
   interface Tenant {
     id: string;
@@ -147,6 +147,45 @@
   }
 
   onMount(loadTenants);
+
+  // ── Password reset ────────────────────────────────────────────────
+  let resetEmail = "";
+  let resetLoading = false;
+  let resetResult: { tempPassword: string } | null = null;
+  let resetError = "";
+  let copied = false;
+
+  async function resetPassword() {
+    if (!resetEmail.trim()) return;
+    resetLoading = true;
+    resetResult = null;
+    resetError = "";
+    try {
+      const res = await fetch("/api/admin/users/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: resetEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        resetError = data.error || `Error ${res.status}`;
+      } else {
+        resetResult = data;
+        resetEmail = "";
+      }
+    } catch (e: any) {
+      resetError = e?.message || "Request failed";
+    } finally {
+      resetLoading = false;
+    }
+  }
+
+  async function copyPassword() {
+    if (!resetResult) return;
+    await navigator.clipboard.writeText(resetResult.tempPassword);
+    copied = true;
+    setTimeout(() => (copied = false), 2000);
+  }
 </script>
 
 <div class="space-y-6">
@@ -247,6 +286,62 @@
     </Card>
   {/if}
 </div>
+
+<!-- ── Password Reset ──────────────────────────────────────────────── -->
+<Card>
+  <CardHeader>
+    <CardTitle>
+      <div class="flex items-center gap-2">
+        <KeyRound class="h-4 w-4 text-primary" />
+        Reset User Password
+      </div>
+    </CardTitle>
+  </CardHeader>
+  <CardContent>
+    <p class="text-sm text-muted-foreground mb-4">
+      Generate a new temporary password for any platform user. Share it securely — the user should change it immediately after logging in.
+    </p>
+    <form on:submit|preventDefault={resetPassword} class="flex gap-2 max-w-md">
+      <input
+        type="email"
+        bind:value={resetEmail}
+        placeholder="user@example.com"
+        required
+        class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      <Button type="submit" disabled={resetLoading}>
+        {resetLoading ? "Resetting…" : "Reset"}
+      </Button>
+    </form>
+
+    {#if resetError}
+      <div class="mt-3 flex items-center gap-2 text-sm text-destructive">
+        <AlertTriangle class="h-4 w-4 shrink-0" />
+        {resetError}
+      </div>
+    {/if}
+
+    {#if resetResult}
+      <div class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 max-w-md">
+        <p class="text-xs font-medium text-amber-800 mb-1">Temporary password — share securely and discard</p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 font-mono text-sm text-amber-900 break-all">{resetResult.tempPassword}</code>
+          <button
+            on:click={copyPassword}
+            class="shrink-0 rounded p-1.5 text-amber-700 hover:bg-amber-100 transition-colors"
+            title="Copy to clipboard"
+          >
+            {#if copied}
+              <Check class="h-4 w-4 text-green-600" />
+            {:else}
+              <Copy class="h-4 w-4" />
+            {/if}
+          </button>
+        </div>
+      </div>
+    {/if}
+  </CardContent>
+</Card>
 
 <Dialog open={deleteModalOpen} onClose={closeDeleteModal}>
   <DialogHeader>
