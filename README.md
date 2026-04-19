@@ -37,7 +37,8 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 
 ### Adapters
 
-35 adapters in `adapters/` — 9 core-tier adapters are defined for AWS Lambda rollout in `infra/aws/adapters.tf`; repo Lambda implementations currently exist for a smaller subset (`adapter-github`, `adapter-okta`) while the remaining adapters stay legacy/in-progress.
+There are 35 adapters in `adapters/`. For AWS rollout, 9 core-tier adapters are defined in `infra/aws/adapters.tf`.
+Current repo Lambda implementations exist for a smaller subset (`adapter-github`, `adapter-okta`), while the remaining adapters stay legacy/in-progress.
 
 ### Infrastructure
 
