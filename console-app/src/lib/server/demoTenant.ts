@@ -60,13 +60,21 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
     .run();
 
   await db
-    .prepare("DELETE FROM console_users WHERE tenant_id = ? OR id = ? OR email = ?")
-    .bind(cfg.tenantId, DEMO_USER_ID, cfg.email)
+    .prepare("DELETE FROM console_users WHERE tenant_id = ? OR id = ?")
+    .bind(cfg.tenantId, DEMO_USER_ID)
     .run();
   await db
     .prepare(
       `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(email) DO UPDATE SET
+         id=excluded.id,
+         password_hash=excluded.password_hash,
+         salt=excluded.salt,
+         display_name=excluded.display_name,
+         roles=excluded.roles,
+         tenant_id=excluded.tenant_id,
+         created_at=excluded.created_at`,
     )
     .bind(
       DEMO_USER_ID,
