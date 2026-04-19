@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
+  import { goto } from "$app/navigation";
   import { tourState, nextStep, prevStep, skipTour, type TourState } from "./tour-store";
   import { TOUR_STEPS, type TourStep } from "./tour-steps";
   import { ArrowLeft, ArrowRight, X } from "lucide-svelte";
@@ -21,17 +22,19 @@
 
   async function navigateAndHighlight(s: TourStep) {
     if (s.route && window.location.pathname !== s.route) {
-      window.location.href = s.route + "?demo=true";
-      return;
+      await goto(s.route + "?demo=true");
+      await tick();
     }
     await tick();
-    setTimeout(() => findAndHighlight(s.selector), 300);
+    setTimeout(() => findAndHighlight(s.selector), 500);
   }
 
   function findAndHighlight(selector: string) {
     const el = document.querySelector(selector);
     if (!el) {
+      console.warn(`[DemoTour] Selector not found: ${selector}`);
       targetRect = null;
+      setTimeout(() => { if (state.active && !targetRect) nextStep(); }, 2000);
       return;
     }
     updateRect(el as HTMLElement);
