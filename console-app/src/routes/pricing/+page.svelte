@@ -7,13 +7,31 @@
   import CardContent from "$lib/components/ui/card-content.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import { Check, X, ArrowRight, Zap, ArrowLeft } from "lucide-svelte";
+  import { onMount } from "svelte";
 
   let annual = true;
   let selectedTier: string | null = null;
+  let resolvedPlan: string | null = null;
+  let planLoading = false;
 
   $: isLoggedIn = $page.data?.session?.authenticated === true;
-  // Passed by /console/settings/billing so we can render correct upgrade/downgrade CTAs
-  $: currentPlan = $page.url.searchParams.get("currentPlan") ?? null;
+  // URL param takes precedence; falls back to fetched billing data
+  $: urlPlan = $page.url.searchParams.get("currentPlan") ?? null;
+  $: currentPlan = urlPlan ?? resolvedPlan;
+
+  onMount(async () => {
+    if (!isLoggedIn || urlPlan) return;
+    // Fetch the current plan so CTAs are correct even on direct /pricing visits
+    planLoading = true;
+    try {
+      const res = await fetch("/api/billing");
+      if (res.ok) {
+        const data = await res.json();
+        resolvedPlan = data?.billing?.plan ?? null;
+      }
+    } catch {}
+    planLoading = false;
+  });
 
   const TIER_ORDER = ["free", "starter", "professional", "enterprise"];
   function tierRank(id: string) { return TIER_ORDER.indexOf(id); }
@@ -24,7 +42,8 @@
     if (plan.id === currentPlan) return "Current plan";
     if (currentPlan && tierRank(plan.id) > tierRank(currentPlan)) return `Upgrade to ${plan.name}`;
     if (currentPlan && tierRank(plan.id) < tierRank(currentPlan)) return `Downgrade to ${plan.name}`;
-    return plan.cta;
+    // logged in but plan not yet resolved — generic select label
+    return `Select ${plan.name}`;
   }
 
   function planCtaVariant(plan: Plan): "default" | "outline" | "ghost" {
@@ -35,7 +54,7 @@
   }
 
   function planCtaDisabled(plan: Plan): boolean {
-    return isLoggedIn && plan.id === currentPlan;
+    return isLoggedIn && (plan.id === currentPlan || planLoading);
   }
 
   interface Plan {
