@@ -167,6 +167,43 @@ function totpVerify(secretB32: string, code: string): boolean {
   return false;
 }
 
+// ── TOTP secret encryption (AES-256-GCM) ──────────────────────────────────
+// MFA_SECRET_KEY env var: 32 raw bytes encoded as base64 (44 chars) or hex (64
+// chars). Ciphertexts are prefixed "enc:v1:" so plaintext legacy rows remain
+// readable while the keyspace migrates. Writes always encrypt; reads decrypt
+// on prefix match and fall back to treating the value as raw base32 otherwise.
+const MFA_ENC_PREFIX = "enc:v1:";
+
+function mfaKey(): Buffer | null {
+  const raw = process.env.MFA_SECRET_KEY;
+  if (!raw) return null;
+  const buf = /^[0-9a-fA-F]{64}$/.test(raw) ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
+  return buf.length === 32 ? buf : null;
+}
+
+function encryptTotpSecret(plaintext: string): string {
+  const key = mfaKey();
+  if (!key) return plaintext; // Dev fallback; prod must set MFA_SECRET_KEY
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return MFA_ENC_PREFIX + Buffer.concat([iv, tag, ct]).toString("base64");
+}
+
+function decryptTotpSecret(stored: string): string {
+  if (!stored.startsWith(MFA_ENC_PREFIX)) return stored; // legacy plaintext row
+  const key = mfaKey();
+  if (!key) throw new Error("MFA_SECRET_KEY not configured; cannot decrypt TOTP secret");
+  const blob = Buffer.from(stored.slice(MFA_ENC_PREFIX.length), "base64");
+  const iv = blob.subarray(0, 12);
+  const tag = blob.subarray(12, 28);
+  const ct = blob.subarray(28);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+}
+
 export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   const path = event.rawPath;
   const method = event.requestContext.http.method.toUpperCase();
@@ -356,7 +393,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         let valid = false;
         let consumedIndex = -1;
         if (/^\d{6}$/.test(submitted)) {
-          valid = totpVerify(m.secret_hash, submitted);
+          valid = totpVerify(decryptTotpSecret(m.secret_hash), submitted);
         } else {
           const codes: string[] = Array.isArray(m.recovery_codes) ? m.recovery_codes : [];
           for (let i = 0; i < codes.length; i++) {
@@ -2182,16 +2219,16 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   if (path === "/api/v1/auth/mfa/setup" && method === "POST") {
     const secretBytes = crypto.randomBytes(20);
     const secretB32 = base32Encode(secretBytes);
-    // Raw base32 is required for TOTP verification (hashes are one-way).
-    // Column names are legacy; production deployments should wrap this value
-    // with AES-256-GCM using an env-provided key (MFA_SECRET_KEY) before insert.
+    // Store encrypted at rest (AES-256-GCM with MFA_SECRET_KEY). A DB leak
+    // alone no longer compromises authenticators.
+    const encrypted = encryptTotpSecret(secretB32);
     await pool.query(
       `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, recovery_codes, enrolled_at, failed_mfa_count, mfa_locked_until, pending_secret, pending_started_at)
        VALUES ($1, $2, '', '{}', NOW(), 0, NULL, $3, NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          pending_secret = EXCLUDED.pending_secret,
          pending_started_at = NOW()`,
-      [auth.userId, auth.tenantId, secretB32],
+      [auth.userId, auth.tenantId, encrypted],
     );
     const issuer = "AtlasIT";
     const label = `${issuer}:${auth.email ?? auth.userId}`;
@@ -2212,7 +2249,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (r.rows.length === 0 || !r.rows[0].pending_secret) {
       return fail(404, "No pending enrollment", "NOT_FOUND");
     }
-    if (!totpVerify(r.rows[0].pending_secret, b.code)) {
+    if (!totpVerify(decryptTotpSecret(r.rows[0].pending_secret), b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
 
@@ -2257,7 +2294,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       auth.userId,
     ]);
     if (r.rows.length === 0) return fail(404, "No enrollment", "NOT_FOUND");
-    if (!totpVerify(r.rows[0].secret_hash, b.code)) {
+    if (!totpVerify(decryptTotpSecret(r.rows[0].secret_hash), b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
     await pool.query(`DELETE FROM mfa_enrollments WHERE user_id::text = $1`, [auth.userId]);
