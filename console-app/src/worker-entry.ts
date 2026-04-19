@@ -51,6 +51,12 @@ export default {
     if (!demoConfig) return;
     const db = env.ATLAS_SHARED_DB as D1Database | undefined;
     if (!db) return;
-    ctx.waitUntil(resetDemoTenant(db, demoConfig));
+    ctx.waitUntil(
+      resetDemoTenant(db, demoConfig).catch((error) => {
+        try {
+          console.error("demo_tenant_reset_error", String(error));
+        } catch {}
+      }),
+    );
   },
 };
