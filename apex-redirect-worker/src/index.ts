@@ -23,7 +23,7 @@ export default {
     if (host === "status.atlasit.pro") {
       return new Response(null, {
         status: 302,
-        headers: buildHeaders({ Location: "https://www.atlasit.pro/support" }),
+        headers: buildHeaders({ Location: "https://www.atlasit.pro/status" }),
       });
     }
 
