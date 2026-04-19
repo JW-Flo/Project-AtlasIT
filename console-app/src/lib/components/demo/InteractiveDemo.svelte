@@ -72,20 +72,20 @@
   </div>
 
   <div class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
-    <div class="rounded-xl border bg-white p-4"><p class="text-xs text-slate-500">Compliance score</p><p class="text-xl font-semibold">{liveCompliance}%</p></div>
-    <div class="rounded-xl border bg-white p-4"><p class="text-xs text-slate-500">Employees</p><p class="text-xl font-semibold">{DEMO_TENANT.employees}</p></div>
-    <div class="rounded-xl border bg-white p-4"><p class="text-xs text-slate-500">Apps connected</p><p class="text-xl font-semibold">{DEMO_TENANT.appsConnected}</p></div>
-    <div class="rounded-xl border bg-white p-4"><p class="text-xs text-slate-500">Pending reviews</p><p class="text-xl font-semibold">{liveReviews}</p></div>
-    <div class="rounded-xl border bg-white p-4"><p class="text-xs text-slate-500">Open incidents</p><p class="text-xl font-semibold">{liveIncidents}</p></div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs text-slate-500">Compliance score</p><p class="text-xl font-semibold text-slate-900">{liveCompliance}%</p></div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs text-slate-500">Employees</p><p class="text-xl font-semibold text-slate-900">{DEMO_TENANT.employees}</p></div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs text-slate-500">Apps connected</p><p class="text-xl font-semibold text-slate-900">{DEMO_TENANT.appsConnected}</p></div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs text-slate-500">Pending reviews</p><p class="text-xl font-semibold text-slate-900">{liveReviews}</p></div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4"><p class="text-xs text-slate-500">Open incidents</p><p class="text-xl font-semibold text-slate-900">{liveIncidents}</p></div>
   </div>
 
   <div class="mb-6 flex flex-wrap gap-2">
     {#each DEMO_MODULES as module}
-      <button class="rounded-full border px-3 py-1 text-sm {activeModule === module.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:text-slate-900'}" on:click={() => selectModule(module.id)}>{module.label}</button>
+      <button class="rounded-full border border-slate-200 px-3 py-1 text-sm {activeModule === module.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900'}" on:click={() => selectModule(module.id)}>{module.label}</button>
     {/each}
   </div>
 
-  <div class="rounded-2xl border bg-white p-6 shadow-sm min-h-[320px]">
+  <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm min-h-[320px]">
     {#if activeModule === 'dashboard'}
       <h2 class="text-lg font-semibold">Guided Tour: Dashboard</h2>
       <p class="text-sm text-slate-600 mt-2">Automation executed today: <strong>{liveAutomations}</strong>. New-hire onboarding completed for <strong>Dr. Maya Lin</strong> at {new Date().toLocaleTimeString()}.</p>
@@ -122,12 +122,12 @@
   {/if}
 </div>
 
-<div class="fixed bottom-0 left-0 right-0 border-t bg-white/95 backdrop-blur">
+<div class="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white shadow-sm">
   <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-    <p class="text-xs text-slate-600">Try AtlasIT instantly with synthetic data. No setup required.</p>
-    <div class="flex gap-2">
+    <p class="hidden sm:block text-xs text-slate-500">Try AtlasIT instantly with synthetic data.</p>
+    <div class="flex w-full sm:w-auto gap-2 justify-center sm:justify-end">
       {#each ctas as cta}
-        <a href={cta.href} class="rounded-md border px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50" on:click={() => track(cta.event)}>{cta.label}</a>
+        <a href={cta.href} class="whitespace-nowrap rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 transition-colors" on:click={() => track(cta.event)}>{cta.label}</a>
       {/each}
     </div>
   </div>
