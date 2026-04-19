@@ -311,7 +311,7 @@
               <ArrowUpRight class="w-4 h-4 ml-1" />
             </Button>
           {/if}
-          <Button variant="outline" on:click={() => window.location.href = "/pricing"}>
+          <Button variant="outline" on:click={() => window.location.href = `/pricing?currentPlan=${billing?.plan ?? 'free'}`}>
             Compare plans
           </Button>
         </div>

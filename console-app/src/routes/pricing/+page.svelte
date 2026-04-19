@@ -12,6 +12,31 @@
   let selectedTier: string | null = null;
 
   $: isLoggedIn = $page.data?.session?.authenticated === true;
+  // Passed by /console/settings/billing so we can render correct upgrade/downgrade CTAs
+  $: currentPlan = $page.url.searchParams.get("currentPlan") ?? null;
+
+  const TIER_ORDER = ["free", "starter", "professional", "enterprise"];
+  function tierRank(id: string) { return TIER_ORDER.indexOf(id); }
+
+  function planCta(plan: Plan): string {
+    if (!isLoggedIn) return plan.cta;
+    if (plan.id === "enterprise") return "Contact sales";
+    if (plan.id === currentPlan) return "Current plan";
+    if (currentPlan && tierRank(plan.id) > tierRank(currentPlan)) return `Upgrade to ${plan.name}`;
+    if (currentPlan && tierRank(plan.id) < tierRank(currentPlan)) return `Downgrade to ${plan.name}`;
+    return plan.cta;
+  }
+
+  function planCtaVariant(plan: Plan): "default" | "outline" | "ghost" {
+    if (!isLoggedIn) return plan.ctaVariant;
+    if (plan.id === currentPlan) return "ghost";
+    if (currentPlan && tierRank(plan.id) === tierRank(currentPlan) + 1) return "default";
+    return "outline";
+  }
+
+  function planCtaDisabled(plan: Plan): boolean {
+    return isLoggedIn && plan.id === currentPlan;
+  }
 
   interface Plan {
     id: string;
@@ -214,15 +239,21 @@
   <main class="container-page py-8 lg:py-12">
     <!-- Hero -->
     <div class="text-center mb-10 lg:mb-14 max-w-3xl mx-auto animate-slide-up">
-      <Badge variant="default" size="md" class="mb-4">
-        <Zap class="h-3 w-3" strokeWidth={2.5} />
-        First app connected → compliance score in &lt;10 minutes
-      </Badge>
+      {#if !isLoggedIn}
+        <Badge variant="default" size="md" class="mb-4">
+          <Zap class="h-3 w-3" strokeWidth={2.5} />
+          First app connected → compliance score in &lt;10 minutes
+        </Badge>
+      {/if}
       <h1 class="text-4xl lg:text-5xl font-semibold tracking-tight mb-4 text-foreground">
-        Simple, transparent pricing
+        {isLoggedIn ? "Change your plan" : "Simple, transparent pricing"}
       </h1>
       <p class="text-md text-muted-foreground max-w-2xl mx-auto mb-8 leading-relaxed">
-        No sales calls required. Start free, ship compliance evidence to your auditors as a byproduct of running IT, and upgrade when you're ready.
+        {#if isLoggedIn}
+          Upgrades take effect immediately with prorated billing. Downgrades apply at the end of your current billing period.
+        {:else}
+          No sales calls required. Start free, ship compliance evidence to your auditors as a byproduct of running IT, and upgrade when you're ready.
+        {/if}
       </p>
 
       <!-- Billing toggle -->
@@ -286,12 +317,13 @@
             </CardHeader>
             <CardContent class="flex-1 flex flex-col">
               <Button
-                variant={selectedTier === plan.id ? "default" : plan.ctaVariant}
+                variant={selectedTier === plan.id ? "default" : planCtaVariant(plan)}
                 class="w-full mb-6"
+                disabled={planCtaDisabled(plan)}
                 on:click={(e) => { e.stopPropagation(); selectPlan(plan.id); }}
               >
-                {plan.cta}
-                <ArrowRight class="w-4 h-4 ml-1" />
+                {planCta(plan)}
+                {#if !planCtaDisabled(plan)}<ArrowRight class="w-4 h-4 ml-1" />{/if}
               </Button>
               <ul class="space-y-3 text-sm">
                 {#each plan.features as feature}
@@ -392,14 +424,22 @@
 
     <!-- CTA -->
     <div class="text-center py-12 border-t">
-      <div class="flex items-center justify-center gap-2 mb-4">
-        <Zap class="w-5 h-5 text-primary" />
-        <span class="font-semibold">Connect your first app and see your compliance score in under 10 minutes</span>
-      </div>
-      <Button on:click={() => goto(isLoggedIn ? "/console" : "/console/onboarding")} class="px-8">
-        {isLoggedIn ? "Go to console" : "Get started free"}
-        <ArrowRight class="w-4 h-4 ml-1" />
-      </Button>
+      {#if isLoggedIn}
+        <p class="text-sm text-muted-foreground mb-4">Need help choosing? Email us at <a href="mailto:sales@atlasit.pro" class="text-primary hover:underline">sales@atlasit.pro</a></p>
+        <Button variant="outline" on:click={() => goto("/console/settings/billing")} class="px-8">
+          <ArrowLeft class="w-4 h-4 mr-1" />
+          Back to billing settings
+        </Button>
+      {:else}
+        <div class="flex items-center justify-center gap-2 mb-4">
+          <Zap class="w-5 h-5 text-primary" />
+          <span class="font-semibold">Connect your first app and see your compliance score in under 10 minutes</span>
+        </div>
+        <Button on:click={() => goto("/console/onboarding")} class="px-8">
+          Get started free
+          <ArrowRight class="w-4 h-4 ml-1" />
+        </Button>
+      {/if}
     </div>
   </main>
 
