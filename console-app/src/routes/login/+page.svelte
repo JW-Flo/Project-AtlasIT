@@ -91,15 +91,15 @@
   </div>
 
   <!-- Top brand bar -->
-  <header class="container-page py-5 flex items-center justify-between">
-    <a href="/" class="flex items-center gap-2 group">
+  <header class="container-page py-5 flex items-center justify-between gap-4 flex-wrap">
+    <a href="/" class="flex items-center gap-2 group shrink-0">
       <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
         <ShieldCheck class="h-4.5 w-4.5 text-primary-foreground" strokeWidth={2.5} />
       </div>
       <span class="font-semibold text-lg tracking-tight">AtlasIT</span>
     </a>
-    <a href="/signup" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
-      Don't have an account? <span class="text-primary font-medium ml-1">Sign up →</span>
+    <a href="/signup" class="text-sm text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap">
+      <span class="hidden sm:inline">Don't have an account? </span><span class="text-primary font-medium sm:ml-1">Sign up →</span>
     </a>
   </header>
 
