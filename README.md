@@ -1,6 +1,6 @@
 # AtlasIT
 
-Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda + Aurora PG + DynamoDB + S3 + SQS), SvelteKit console on Cloudflare Pages.
+Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda + Aurora PG + DynamoDB + S3 + SQS), SvelteKit console on AWS.
 
 > **Migration status:** Phase 8.5 complete — 7 Lambda functions ported, Aurora schema live, Terraform infrastructure deployed. Phase 8.5a (route completion) in progress; staging validation and DNS cutover pending.
 
