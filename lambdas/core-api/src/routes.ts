@@ -331,6 +331,12 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           [user.id],
         );
         const m = locked.rows[0];
+        if (!m) {
+          // Enrollment row disappeared between preflight and lock (e.g. MFA
+          // disabled concurrently). Roll back and surface a stable error.
+          await client.query("ROLLBACK");
+          return fail(401, "MFA enrollment not found", "MFA_NOT_ENROLLED");
+        }
 
         // Re-check lockout inside the txn (another request may have locked us)
         if (m.mfa_locked_until) {
