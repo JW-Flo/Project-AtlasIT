@@ -20,21 +20,38 @@
     navigateAndHighlight(step);
   }
 
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
   async function navigateAndHighlight(s: TourStep) {
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    targetRect = null;
     if (s.route && window.location.pathname !== s.route) {
       await goto(s.route + "?demo=true");
       await tick();
     }
     await tick();
-    setTimeout(() => findAndHighlight(s.selector), 500);
+    waitForSelector(s.selector, 0);
+  }
+
+  function waitForSelector(selector: string, attempt: number) {
+    const el = document.querySelector(selector);
+    if (el) {
+      findAndHighlight(selector);
+      return;
+    }
+    if (attempt >= 10) {
+      console.warn(`[DemoTour] Selector not found after retries: ${selector}`);
+      targetRect = null;
+      retryTimer = setTimeout(() => { if (state.active && !targetRect) nextStep(); }, 1500);
+      return;
+    }
+    retryTimer = setTimeout(() => waitForSelector(selector, attempt + 1), 200);
   }
 
   function findAndHighlight(selector: string) {
     const el = document.querySelector(selector);
     if (!el) {
-      console.warn(`[DemoTour] Selector not found: ${selector}`);
       targetRect = null;
-      setTimeout(() => { if (state.active && !targetRect) nextStep(); }, 2000);
       return;
     }
     updateRect(el as HTMLElement);
@@ -70,32 +87,42 @@
   $: tooltipStyle = (() => {
     if (!targetRect || !step) return "display:none";
     const pad = 16;
+    const tw = 320; // tooltip max-width (w-80 = 320px)
+    const th = 200; // approximate tooltip height
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let top = 0;
     let left = 0;
+
     switch (step.placement) {
       case "bottom":
         top = targetRect.bottom + pad;
-        left = targetRect.left + targetRect.width / 2;
+        left = targetRect.left + targetRect.width / 2 - tw / 2;
         break;
       case "top":
-        top = targetRect.top - pad;
-        left = targetRect.left + targetRect.width / 2;
+        top = targetRect.top - pad - th;
+        left = targetRect.left + targetRect.width / 2 - tw / 2;
         break;
       case "left":
-        top = targetRect.top + targetRect.height / 2;
-        left = targetRect.left - pad;
+        top = targetRect.top + targetRect.height / 2 - th / 2;
+        left = targetRect.left - pad - tw;
         break;
       case "right":
-        top = targetRect.top + targetRect.height / 2;
+        top = targetRect.top + targetRect.height / 2 - th / 2;
         left = targetRect.right + pad;
         break;
     }
-    const transform =
-      step.placement === "bottom" ? "translate(-50%, 0)" :
-      step.placement === "top" ? "translate(-50%, -100%)" :
-      step.placement === "left" ? "translate(-100%, -50%)" :
-      "translate(0, -50%)";
-    return `position:fixed;top:${top}px;left:${left}px;transform:${transform};z-index:10001`;
+
+    // Flip to bottom if tooltip would go above viewport
+    if (top < 8) top = targetRect.bottom + pad;
+    // Flip to top if tooltip would go below viewport
+    if (top + th > vh - 8) top = targetRect.top - pad - th;
+    // Clamp vertically
+    top = Math.max(8, Math.min(top, vh - th - 8));
+    // Clamp horizontally
+    left = Math.max(8, Math.min(left, vw - tw - 8));
+
+    return `position:fixed;top:${top}px;left:${left}px;z-index:10001`;
   })();
 
   onMount(() => {
@@ -106,6 +133,7 @@
       window.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("scroll", onScroll, true);
       resizeObserver?.disconnect();
+      if (retryTimer) clearTimeout(retryTimer);
     };
   });
 </script>
