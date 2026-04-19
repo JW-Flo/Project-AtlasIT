@@ -90,15 +90,24 @@
 
     await loadBilling();
 
-    // Auto-trigger checkout if redirected from pricing page with plan param
+    // Auto-trigger checkout if redirected from pricing page with plan param.
+    // Strip the plan/cycle/checkout params from the URL afterwards so reloads
+    // or back-nav don't keep re-firing the upgrade attempt (the "setup loop").
     const planParam = $page.url.searchParams.get("plan");
     const cycleParam = $page.url.searchParams.get("cycle");
-    if (planParam && ["starter", "professional", "enterprise"].includes(planParam) && !checkout) {
+    const shouldUpgrade =
+      planParam && ["starter", "professional", "enterprise"].includes(planParam) && !checkout;
+    if (shouldUpgrade) {
       if (cycleParam === "monthly" || cycleParam === "annual") {
         upgradeCycle = cycleParam;
       }
-      handleUpgrade(planParam);
     }
+    if (planParam || cycleParam || checkout) {
+      try {
+        history.replaceState({}, "", "/console/settings/billing");
+      } catch {}
+    }
+    if (shouldUpgrade) handleUpgrade(planParam!);
   });
 
   async function loadBilling() {
