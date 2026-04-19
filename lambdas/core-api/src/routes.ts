@@ -2390,7 +2390,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     return ok({ mappings: r.rows });
   }
 
-  // POST /api/v1/directory/mappings — create mapping (admin)
+  // POST /api/v1/directory/mappings — create mapping (admin).
+  // Accepts both shapes for dual-adapter compat:
+  //   Lambda-native: {directoryGroupId, directoryGroupName?, appProvider, appRole, autoProvision?}
+  //   CF-native:     {groupId, appId, role}
   if (path === "/api/v1/directory/mappings" && method === "POST") {
     if (auth.role !== "admin" && auth.role !== "owner") {
       return fail(403, "Admin role required", "FORBIDDEN");
@@ -2401,9 +2404,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       appProvider?: string;
       appRole?: string;
       autoProvision?: boolean;
+      groupId?: string;
+      appId?: string;
+      role?: string;
     };
-    if (!b.directoryGroupId || !b.appProvider || !b.appRole) {
-      return fail(400, "directoryGroupId, appProvider, appRole required", "VALIDATION_FAILED");
+    const directoryGroupId = b.directoryGroupId ?? b.groupId;
+    const appProvider = b.appProvider ?? b.appId;
+    const appRole = b.appRole ?? b.role ?? "member";
+    if (!directoryGroupId || !appProvider) {
+      return fail(
+        400,
+        "directoryGroupId (or groupId) and appProvider (or appId) required",
+        "VALIDATION_FAILED",
+      );
     }
     const r = await pool.query(
       `INSERT INTO directory_mappings
@@ -2417,17 +2430,41 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
        RETURNING id`,
       [
         auth.tenantId,
-        b.directoryGroupId,
+        directoryGroupId,
         b.directoryGroupName ?? null,
-        b.appProvider,
-        b.appRole,
+        appProvider,
+        appRole,
         b.autoProvision ?? true,
       ],
     );
-    return ok({ id: r.rows[0].id, status: "success" }, 201);
+    const id = r.rows[0].id;
+    // Return both shapes so Lambda-native API callers get {id} and CF-style UI
+    // callers can read data.mapping.id.
+    return ok(
+      {
+        id,
+        status: "success",
+        mapping: { id, groupId: directoryGroupId, appId: appProvider, role: appRole },
+      },
+      201,
+    );
   }
 
-  // DELETE /api/v1/directory/mappings/:id
+  // DELETE /api/v1/directory/mappings?id=X — query-string form (CF parity)
+  if (path === "/api/v1/directory/mappings" && method === "DELETE") {
+    if (auth.role !== "admin" && auth.role !== "owner") {
+      return fail(403, "Admin role required", "FORBIDDEN");
+    }
+    const mapId = qs.id;
+    if (!mapId) return fail(400, "id query param required", "VALIDATION_FAILED");
+    await pool.query(`DELETE FROM directory_mappings WHERE tenant_id = $1 AND id = $2`, [
+      auth.tenantId,
+      mapId,
+    ]);
+    return ok({ status: "success" });
+  }
+
+  // DELETE /api/v1/directory/mappings/:id — path form
   const mapDelMatch = path.match(/^\/api\/v1\/directory\/mappings\/([^/]+)$/);
   if (mapDelMatch && method === "DELETE") {
     if (auth.role !== "admin" && auth.role !== "owner") {
