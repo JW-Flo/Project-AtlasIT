@@ -66,8 +66,8 @@ Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB loc
 
 ### Deprecated storage migration notes
 
-- Legacy session/cache/feature-flag stores were migrated to DynamoDB (`atlasit-sessions`, `atlasit-cache`, `atlasit-flags`).
-- Legacy relational store (`ATLAS_SHARED_DB`) was migrated to Aurora PG (`atlasit-db`).
+- Legacy KV stores for sessions/cache/feature flags were migrated to DynamoDB (`atlasit-sessions`, `atlasit-cache`, `atlasit-flags`).
+- Legacy D1 database (`ATLAS_SHARED_DB`) was migrated to Aurora PG (`atlasit-db`).
 
 ## Quick Start
 

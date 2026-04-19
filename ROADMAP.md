@@ -139,7 +139,7 @@ All items below have been merged to `main` and deployed. Session 3 (2026-04-13) 
 
 ### Phase 8.5 — AWS Migration (shipped — M1-M7 all complete)
 
-Full re-host from legacy edge workers + sqlite/kv/object-storage/queues to AWS Lambda/Aurora PG/DynamoDB/S3/SQS.
+Full re-host from the legacy edge stack to AWS Lambda/Aurora PG/DynamoDB/S3/SQS.
 
 - 18 Terraform files in `infra/aws/`, Aurora Serverless v2, 7 core Lambdas, 9 adapter Lambdas
 - Step Functions: JML workflow + automation rule state machines
