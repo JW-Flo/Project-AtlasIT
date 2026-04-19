@@ -197,6 +197,13 @@
           <div class="flex-1 h-px bg-border"></div>
         </div>
 
+        <a
+          href="/demo"
+          class="w-full h-10 inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background text-foreground text-sm font-medium hover:bg-muted transition-colors"
+        >
+          Try interactive demo
+        </a>
+
         <p class="text-xs text-center text-muted-foreground">
           Need help signing in? <a href="/support" class="text-primary hover:underline font-medium">Contact support</a>
         </p>

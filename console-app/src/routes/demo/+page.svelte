@@ -6,4 +6,6 @@
   <title>Interactive Demo · AtlasIT</title>
 </svelte:head>
 
-<InteractiveDemo authenticated={false} />
+<div class="min-h-screen bg-white">
+  <InteractiveDemo authenticated={false} />
+</div>
