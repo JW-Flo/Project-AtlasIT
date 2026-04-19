@@ -24,7 +24,7 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 | -------------- | ----------------------- | ----------------------- | ------------------------------------------------------ |
 | Console App    | `console-app/`          | S3 + CloudFront         | Compliance, directory, marketplace, workflows, billing |
 | Marketing Site | `apps/atlasit-web/`     | S3 + CloudFront         | Public marketing + landing                             |
-| Docs           | `documentation-worker/` | Lambda + API Gateway (legacy path name) | docs.atlasit.pro                                       |
+| Docs           | `documentation-worker/` | Lambda + API Gateway    | docs.atlasit.pro                                       |
 
 ### Shared Packages
 
@@ -63,8 +63,11 @@ Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB loc
 | DynamoDB  | AWS         | `atlasit-sessions` / `atlasit-cache` / `atlasit-flags` | Sessions, cache, feature flags                           |
 | S3        | AWS         | `atlasit-evidence-*`                                   | Policies, evidence, artifacts                            |
 | SQS       | AWS         | `atlasit-step-tasks`                                   | Workflow step dispatch                                   |
-| Legacy session/cache/flags store | Legacy edge | Deprecated: `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS` | Migrated to DynamoDB session/cache/flag tables |
-| Legacy relational store | Legacy edge | Deprecated: `ATLAS_SHARED_DB` | Migrated to Aurora PG (`atlasit-db`) |
+
+### Deprecated storage migration notes
+
+- Legacy session/cache/feature-flag stores were migrated to DynamoDB (`atlasit-sessions`, `atlasit-cache`, `atlasit-flags`).
+- Legacy relational store (`ATLAS_SHARED_DB`) was migrated to Aurora PG (`atlasit-db`).
 
 ## Quick Start
 
