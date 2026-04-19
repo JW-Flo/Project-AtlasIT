@@ -7,13 +7,13 @@
 - **Platform:** AWS-native (Lambda + Aurora PG + DynamoDB + S3 + SQS + CloudFront). Migration gate PASSED 2026-04-12. Stability window active until 2026-04-25.
 - **Package manager:** pnpm (workspace monorepo)
 - **Console app:** SvelteKit SPA on S3/CloudFront. Fetch interceptor in `+layout.svelte` maps UI paths → Lambda API Gateway (`ahjoepuw96.execute-api.us-east-1.amazonaws.com`). SvelteKit server routes are dead code.
-- **Active work:** Demo readiness complete (Phases 1-7 merged). Post-demo strategic work next (Stripe billing, NHI dashboard, CF decommission).
+- **Active work:** Demo readiness complete (Phases 1-7 merged). Post-demo strategic work next (Stripe billing, NHI dashboard, legacy edge stack decommission).
 
 ## Phase Completion
 
 | Phase                                             | Status                    | Key Deliverables                                                                                                                                                                                |
 | ------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0–6 — Foundation through Contract Stability       | ✅ Complete               | CF Workers era: workflow durability, auth, MCP orchestration, 35-app marketplace, production hardening, RBAC                                                                                    |
+| 0–6 — Foundation through Contract Stability       | ✅ Complete               | Pre-migration edge runtime era: workflow durability, auth, MCP orchestration, 35-app marketplace, production hardening, RBAC                                                                     |
 | 7 — Compliance-as-Automation                      | ✅ Complete               | 60 CDT rules, evidence classifier + locker, JML auto-evidence, 40+ control mappings. Policy eval stub remains (parked).                                                                         |
 | 7.5 — Scoring Unification                         | ✅ Complete               | Evidence-grounded scores, parseControlRef, adapter pass/fail wired, daily cron re-evaluation                                                                                                    |
 | 8 — Access Reviews                                | ✅ Complete               | Campaign CRUD, manager review UI, auto-revoke, evidence per cycle                                                                                                                               |
@@ -64,7 +64,7 @@
 
 1. Stripe live billing (Phase 7 of plan) — create Stripe prices, wire env vars, E2E test
 2. NHI Inventory Dashboard (Phase 10 alpha) — `identity_type` column, risk scoring, dashboard metrics
-3. Adapter binding cleanup + CF decommission prep (after 2026-04-25 stability window)
-4. Dead SvelteKit server route removal (125 D1-backed `+server.ts` files are dead code)
+3. Adapter binding cleanup + legacy edge stack decommission prep (after 2026-04-25 stability window)
+4. Dead SvelteKit server route removal (125 legacy edge-db-backed `+server.ts` files are dead code)
 5. `console-app/build/` — stale tracked build artifacts should be gitignored
-6. `stream.evidence.test.ts` — pre-existing WorkflowEntrypoint failure (CF Workers reference in test)
+6. `stream.evidence.test.ts` — pre-existing WorkflowEntrypoint failure (legacy edge runtime reference in test)

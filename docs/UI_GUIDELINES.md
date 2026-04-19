@@ -1,5 +1,7 @@
 # AtlasIT UI Guidelines (Initial Draft)
 
+Deployment baseline: console UI is hosted on AWS (S3 + CloudFront).
+
 ## Principles
 
 - Semantic first: components consume tokens (no raw hex in components).

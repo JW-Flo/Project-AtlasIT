@@ -20,11 +20,11 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 
 ### Frontend
 
-| Component      | Path                    | Runtime              | Purpose                                                |
-| -------------- | ----------------------- | -------------------- | ------------------------------------------------------ |
-| Console App    | `console-app/`          | CF Pages (SvelteKit) | Compliance, directory, marketplace, workflows, billing |
-| Marketing Site | `apps/atlasit-web/`     | CF Pages             | Public marketing + landing                             |
-| Docs           | `documentation-worker/` | CF Worker            | docs.atlasit.pro                                       |
+| Component      | Path                    | Runtime                 | Purpose                                                |
+| -------------- | ----------------------- | ----------------------- | ------------------------------------------------------ |
+| Console App    | `console-app/`          | S3 + CloudFront         | Compliance, directory, marketplace, workflows, billing |
+| Marketing Site | `apps/atlasit-web/`     | S3 + CloudFront         | Public marketing + landing                             |
+| Docs           | `documentation-worker/` | Lambda + API Gateway    | docs.atlasit.pro                                       |
 
 ### Shared Packages
 
@@ -37,7 +37,7 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 
 ### Adapters
 
-35 adapters in `adapters/` — 9 core-tier hand-written (GitHub, Okta, Slack, Microsoft 365, AWS, Google Workspace, Zscaler, etc.), 24 scaffolded via `adapter-gen`. Still deployed as CF Workers; AWS migration last.
+35 adapters in `adapters/` — 9 core-tier hand-written (GitHub, Okta, Slack, Microsoft 365, AWS, Google Workspace, Zscaler, etc.), 24 scaffolded via `adapter-gen`, deployed on AWS Lambda.
 
 ### Infrastructure
 
@@ -63,8 +63,8 @@ Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB loc
 | DynamoDB  | AWS         | `atlasit-sessions` / `atlasit-cache` / `atlasit-flags` | Sessions, cache, feature flags                           |
 | S3        | AWS         | `atlasit-evidence-*`                                   | Policies, evidence, artifacts                            |
 | SQS       | AWS         | `atlasit-step-tasks`                                   | Workflow step dispatch                                   |
-| KV        | CF (legacy) | `KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`          | Retained during cutover                                  |
-| D1        | CF (legacy) | `ATLAS_SHARED_DB`                                      | Retained during cutover                                  |
+| Legacy session/cache/flags store | Migrated    | `sessions`, `cache`, `feature_flags`          | Migrated to DynamoDB                                     |
+| Legacy relational store          | Migrated    | `atlas_shared`                                 | Migrated to Aurora PG                                    |
 
 ## Quick Start
 
@@ -74,7 +74,7 @@ Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB loc
 - pnpm (`corepack enable`)
 - AWS CLI v2 (`aws --version`)
 - Terraform 1.6+ (`terraform --version`)
-- Wrangler CLI — for CF Pages/adapters: `pnpm add -g wrangler`
+- AWS SAM CLI (optional for local Lambda workflows)
 
 ### Install & Run
 
@@ -133,11 +133,11 @@ pnpm run test:pw              # Playwright smoke tests
 
 **Lambda + Infrastructure:** Terraform via GitHub Actions on push to `main`. AWS credentials injected via OIDC (no static keys in CI).
 
-**Console App / CF Pages:** `.github/workflows/deploy-on-merge.yml` — detects changed paths, applies migrations if needed, deploys affected workers, runs smoke tests.
+**Console App / Frontend:** `.github/workflows/deploy-on-merge.yml` — detects changed paths, applies migrations if needed, deploys affected AWS services, runs smoke tests.
 
 Manual deploy: `workflow_dispatch` on either workflow.
 
-Secrets: Lambda env vars via SSM Parameter Store (`/atlasit/<env>/<key>`). CF Worker secrets via `wrangler secret put <KEY>`.
+Secrets: Lambda env vars via SSM Parameter Store (`/atlasit/<env>/<key>`) and AWS Secrets Manager.
 
 ## Live Endpoints
 

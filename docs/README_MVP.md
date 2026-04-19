@@ -2,19 +2,19 @@
 
 See `ops/hand-off.md` for the authoritative deploy runbook and smoke tests.
 
-This guide deploys a minimal, working demo stack:
+This guide deploys a minimal, working demo stack on AWS:
 
-- Dispatch Worker (Workers for Platforms gateway)
-- Compliance Worker (demo compliance API with D1 + R2 bindings)
+- Dispatch API (Lambda + API Gateway gateway path)
+- Compliance API (demo compliance API with Aurora + S3 bindings)
 - AI Orchestrator (health, rate/quota; optional)
-- Console App (SvelteKit UI on Workers)
+- Console App (SvelteKit UI on S3 + CloudFront)
 
 ## Prereqs
 
 - Node 18+
-- Wrangler logged in (wrangler login)
-- Cloudflare account and required resources (D1, KV, R2) in wrangler.toml
-- Run Auth Preflight first: see `ops/hand-off.md` (clears conflicting env, re-auths Wrangler)
+- AWS CLI configured (`aws configure` or SSO)
+- Terraform state/backend access for shared AWS resources
+- Run Auth Preflight first: see `ops/hand-off.md` (clears conflicting env and refreshes AWS auth/session)
 
 ## One-shot deploy
 
@@ -27,7 +27,7 @@ npm run deploy:mvp
 Optional smoke after deploy:
 
 ```bash
-export CONSOLE_PUBLIC_URL="https://atlasit-console.YOUR.workers.dev"
+export CONSOLE_PUBLIC_URL="https://console.YOURDOMAIN.com"
 node scripts/deploy-mvp.mjs
 ```
 
@@ -36,15 +36,15 @@ node scripts/deploy-mvp.mjs
 - Console: /console/platform-status
 - Console health API: /api/health
 - Runtime config: /api/config
-- Compliance worker: /api/compliance/health, /api/compliance/snapshot
+- Compliance API: /api/compliance/health, /api/compliance/snapshot
 - Dispatch: /\_\_health, /admin/usage/summary (requires x-admin-token)
 - Orchestrator: /health
 
 ## Notes
 
 - Health/config responses are append-only by convention.
-- D1 writes are parameterized.
-- Demo disables console auth via wrangler vars; re-enable for prod.
+- Aurora writes are parameterized.
+- Demo auth toggles are environment-variable driven; re-enable for prod.
 
 ---
 

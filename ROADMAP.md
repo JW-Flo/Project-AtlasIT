@@ -99,18 +99,18 @@ All items below have been merged to `main` and deployed. Session 3 (2026-04-13) 
 
 ### Session 3 highlights (2026-04-13 — PRs #446-459)
 
-- **AWS orphan cleanup** — deleted 9 CF-era Lambdas + 10 IAM roles + 14 policies + 17 log groups + 1 Lambda layer + orphan VPC (cascade) + 2 API Gateways (HTTP + WebSocket) + 2 CloudFront distros + 1 RDS snapshot + 3 DynamoDB tables + 2 S3 buckets. Prod `atlasit.pro` untouched. **Cost dropped ~$26/mo → ~$14/mo.**
+- **AWS orphan cleanup** — deleted 9 legacy migration-era Lambdas + 10 IAM roles + 14 policies + 17 log groups + 1 Lambda layer + orphan VPC (cascade) + 2 API Gateways (HTTP + WebSocket) + 2 CloudFront distros + 1 RDS snapshot + 3 DynamoDB tables + 2 S3 buckets. Prod `atlasit.pro` untouched. **Cost dropped ~$26/mo → ~$14/mo.**
 - **Terraform hygiene** — 30-day log retention on 9 adapter log groups (for_each + imports), S3 lifecycle rules (policies/artifacts/console), scoped IAM perms for `atlasit-dev-cli`, Lambda version prune in CI (keep last 5).
 - **20+ stub endpoints wired** — Tier 1 (apps/marketplace/observability), Tier 2 (MFA with inline TOTP, SSO, directory mappings, support, DSAR, compliance anomalies + migration 0057), Tier 3 (Stripe billing + migrations 0058+0059). stubMap reduced 20 → 2.
 - **P0 silent production bug fixes** — compliance-api + orchestrator crashed on every EventBridge scheduler tick (caught + swallowed → CW errors=0 while core features broke). Scheduler aggregator lied about success. onboarding-api was 100% broken (every route 404). Fixed.
 - **Phase 9.1: PDF auditor export** — `GET /api/v1/trust/:slug/export.pdf` with framework scoping + optional per-control detail + SHA-256 content hash per page for tamper detection. Pure `pdf-lib`, no Puppeteer.
-- **CI cleanup** — removed 14 dead CF deploy jobs (workflow 760 → 244 lines). Replaced legacy D1 migration step with PG Lambda runner. **Cloudflare is no longer a deploy target.**
+- **CI cleanup** — removed 14 dead legacy edge deploy jobs (workflow 760 → 244 lines). Replaced legacy sqlite migration step with PG Lambda runner. AWS is now the sole deploy target.
 - **Events pipeline wired** — `publishEvent()` helper in core-api, onboarding-api, compliance-api. 10 business actions now publish (user.{invited, activated, created}, tenant.created, integration.{connected, disconnected, tested}, mfa.{enabled, disabled}, compliance.score_evaluated).
 - **UUIDs/slug hygiene** — migration 0060 adds `slug <> ''` CHECK + UNIQUE index; signup now generates UUID for `tenants.id`.
 
 ### Platform foundation (Phases 0–6 — all shipped)
 
-- CF Workers era: Workflow durability, Auth hardening, MCP orchestration, 35-app marketplace scaffold, Production hardening (Okta SCIM, k6, OPA drift detection, rate limiting, security headers), RBAC expansion to 27 routes, BFF normalization (snake_case → camelCase).
+- Pre-migration edge runtime era: Workflow durability, Auth hardening, MCP orchestration, 35-app marketplace scaffold, Production hardening (Okta SCIM, k6, OPA drift detection, rate limiting, security headers), RBAC expansion to 27 routes, BFF normalization (snake_case → camelCase).
 - `packages/shared` with Zod types, auth middleware, platform adapters, observability (logger, metrics, tracer).
 
 ### Phase 7 — Compliance-as-Automation (shipped except policy eval stub)
@@ -139,14 +139,14 @@ All items below have been merged to `main` and deployed. Session 3 (2026-04-13) 
 
 ### Phase 8.5 — AWS Migration (shipped — M1-M7 all complete)
 
-Full re-host from Cloudflare Workers/D1/KV/R2/Queues to AWS Lambda/Aurora PG/DynamoDB/S3/SQS.
+Full re-host from legacy edge workers + sqlite/kv/object-storage/queues to AWS Lambda/Aurora PG/DynamoDB/S3/SQS.
 
 - 18 Terraform files in `infra/aws/`, Aurora Serverless v2, 7 core Lambdas, 9 adapter Lambdas
 - Step Functions: JML workflow + automation rule state machines
 - CloudFront + WAF (3 managed + 2 rate-limit rules) + ACM wildcard
 - EventBridge Scheduler replaces cron triggers
 - NAT instance (t4g.nano) replaces managed NAT Gateway — saves $29/mo
-- Data migrated: 23 D1 tables → PG (1,151 rows), KV → DynamoDB, R2 → S3
+- Data migrated: 23 legacy sqlite tables → PG (1,151 rows), key-value data → DynamoDB, object artifacts → S3
 - DNS cutover complete — `www.atlasit.pro` + `atlasit.pro` serve from CloudFront
 - Security: `x-tenant-id` now requires `INTERNAL_API_KEY` for service-to-service auth; 7 unscoped SQL queries fixed
 - Migration gate **PASSED** 2026-04-12. 2-week stability monitoring runs 2026-04-11 → 2026-04-25.
@@ -173,7 +173,7 @@ Nothing active — post-session-3 is a clean baseline.
 Each item is bounded, has no external blockers, and ships in <3 days of focused work.
 
 1. **Questionnaire AI Lambda port (Phase 9 finish — ~3 days)**  
-   Port `console-app/src/lib/server/questionnaire-ai.ts` to `lambdas/compliance-api/`. Currently uses D1-style `db.prepare().bind()` that doesn't work in SPA mode. Replace with `pg` pool queries against `compliance_evidence`. Add `questionnaire_responses` table (migration 0061). Wire Groq API key via SSM + Lambda env var. New endpoints: `POST /api/v1/trust/questionnaire/parse`, `POST /api/v1/trust/questionnaire/generate`, `POST /api/v1/trust/questionnaire/feedback`.
+   Port `console-app/src/lib/server/questionnaire-ai.ts` to `lambdas/compliance-api/`. Currently uses legacy edge-style `db.prepare().bind()` that doesn't work in SPA mode. Replace with `pg` pool queries against `compliance_evidence`. Add `questionnaire_responses` table (migration 0061). Wire Groq API key via SSM + Lambda env var. New endpoints: `POST /api/v1/trust/questionnaire/parse`, `POST /api/v1/trust/questionnaire/generate`, `POST /api/v1/trust/questionnaire/feedback`.
 
 2. **NDA workflow (Phase 9 finish — ~2 days)**  
    New `trust_access_requests` table + email notification + signed time-limited access token. Visitor fills a form on `/trust/:slug` → tenant admin approves in console → visitor gets signed URL to detailed evidence bundle. Reuse the `/export.pdf` route with a signed scope parameter.
@@ -182,7 +182,7 @@ Each item is bounded, has no external blockers, and ships in <3 days of focused 
    Extend directory schema with `identity_type: human | service | bot | api_key | oauth_grant`. Surface service accounts (AWS IAM), API tokens (GitHub), OAuth apps (Google Workspace, M365). Read from existing adapter evidence — data is already flowing in. New UI page `/console/directory/nhi`.
 
 4. **Adapter binding hardening (M7.2 finish — ~1 day)**  
-   Okta + AWS adapters gracefully degrade but reference missing CF-era bindings in their code paths. Clean up and move config to Lambda env vars. Flagged in M7.2.
+   Okta + AWS adapters gracefully degrade but reference missing legacy edge bindings in their code paths. Clean up and move config to Lambda env vars. Flagged in M7.2.
 
 5. **compliance-api runtime errors log-metric filter (~30 min)**  
    Our P0 pass found CloudWatch Errors metric unreliable because Lambda catches and returns 500 bodies. Add a CW Logs metric filter on `ERROR|Unhandled|TypeError` strings with an alarm — otherwise the same class of silent failure can hide again.
@@ -254,7 +254,7 @@ The compliance market is overwhelmingly sales-led with opaque pricing. 187 G2 co
 Items we've explicitly chosen not to work on right now.
 
 - **Rego policy evaluation** — Phase 7 P3. `evaluatePolicy()` stub hashes input and returns it. No real policy logic runs. Low customer demand relative to evidence-based scoring; park until a customer asks.
-- **CF decommission finalization** — M6.3. 2-week stability window ends 2026-04-25. Don't delete CF Workers/D1/KV/R2/Queues until stability confirmed. Tracking in memory.
+- **Legacy edge decommission finalization** — M6.3. 2-week stability window ends 2026-04-25. Don't delete remaining edge workers/sqlite/kv/object-storage/queues until stability confirmed. Tracking in memory.
 - **RDS Proxy TLS tuning** — Proxy is provisioned (`atlasit-rds-proxy-dev`) but Lambda connection via proxy returns "Connection terminated unexpectedly". Reverted to direct RDS. ~45s cold start timeout on write ops remains. Fix when cold starts become customer-blocking.
 - **NAT instance EIP allocation** — NAT instance uses auto-assigned public IP (brittle; survives reboot but not stop/start). Allocating an EIP (+$3.60/mo) would stabilize the IP for customer security allowlists. Defer until a customer requires allowlist.
 - **Legacy tenant ID migration** — 8 tenants have slug-style IDs (atlasit, test, …) from pre-signup era; 2 new ones have UUIDs. Zero FK orphans — not broken. Going forward all new tenants get UUIDs (signup flow updated). Don't migrate the 8 legacy ones; touching 30+ tables of `tenant_id` references is too risky for non-bug cleanup.
@@ -269,9 +269,9 @@ Preserved so future sessions know what happened. Not a task list.
 
 | Phase | What                                   | Shipped                         |
 | ----- | -------------------------------------- | ------------------------------- |
-| M1    | Route completion (parity with CF)      | 2026-04-11                      |
+| M1    | Route completion (parity with legacy edge stack) | 2026-04-11             |
 | M2    | Infrastructure convergence (Terraform) | 2026-04-10                      |
-| M3    | Data migration (D1 → RDS: 1,151 rows)  | 2026-04-11                      |
+| M3    | Data migration (legacy sqlite → RDS: 1,151 rows) | 2026-04-11            |
 | M4    | Integration testing + QA               | 2026-04-11                      |
 | M5    | DNS cutover (CloudFront + Route 53)    | 2026-04-11                      |
 | M6    | Adapter migration (7/9 adapters live)  | 2026-04-11                      |
@@ -291,7 +291,7 @@ Migration gate PASSED 2026-04-12. Platform Phase 9 work commenced same day. Sess
 | Secrets             | AWS Secrets Manager + SSM Parameter Store + Lambda env vars                                                                         |
 | Config              | Terraform-managed for infra; `DATABASE_URL` set manually via CLI (ignore_changes on Lambda env)                                     |
 | Performance         | DynamoDB + CloudFront caching; SQS for async dispatch                                                                               |
-| Testing             | Vitest (unit), Miniflare (remaining CF-era tests), Puppeteer (console E2E)                                                          |
+| Testing             | Vitest (unit), Miniflare (remaining legacy edge runtime tests), Puppeteer (console E2E)                                             |
 | Observability       | CloudWatch Logs (30d retention), 3 alarms (5xx, Lambda errors, Lambda duration). **Next: log-metric filter for silent-500 errors.** |
 | IaC                 | Terraform in `infra/aws/` (26 files). Legacy `terraform/aws/` stack is frozen.                                                      |
 | Events pipeline     | `publishEvent()` helper in Lambdas writes row + SQS step-task. Orchestrator SQS consumer processes to completion.                   |
