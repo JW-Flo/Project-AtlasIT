@@ -9,8 +9,8 @@ if [[ -z "$ADMIN_COOKIE" ]]; then
   exit 1
 fi
 
-curl -sS -X POST "${API_URL}/api/admin/demo/reset" \
+curl --fail -sS -X POST "${API_URL}/api/admin/demo/reset" \
   -H "Cookie: atlas_session=${ADMIN_COOKIE}" \
   -H "content-type: application/json"
 
-echo "\nDemo tenant reset complete."
+printf '\nDemo tenant reset complete.\n'
