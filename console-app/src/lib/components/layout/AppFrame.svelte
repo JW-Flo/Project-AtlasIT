@@ -322,8 +322,9 @@
 
   async function signOut() {
     clearComplianceCache();
-    await fetch("/api/auth/logout", { method: "POST" });
-    location.href = "/console/login";
+    // Delegate to /logout — it clears sessionStorage, posts /api/auth/logout,
+    // and redirects to /login. Keeps teardown logic in one place.
+    location.href = "/logout";
   }
 
   const ACRONYMS = new Set(["nhi", "jml", "sso", "mfa", "api", "sla", "ai", "rbac", "oidc", "saml", "scim"]);
