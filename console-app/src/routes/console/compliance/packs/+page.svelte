@@ -149,7 +149,7 @@
   onMount(loadPacks);
 </script>
 
-<div class="animate-fade-in">
+<div class="animate-fade-in" data-tour="compliance-packs">
   <div class="mb-6">
     <h1 class="text-3xl font-bold text-foreground">Compliance Packs</h1>
     <p class="mt-1 text-sm text-muted-foreground">

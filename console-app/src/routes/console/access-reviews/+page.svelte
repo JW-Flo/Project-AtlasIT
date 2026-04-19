@@ -109,7 +109,7 @@
   onMount(load);
 </script>
 
-<div class="p-8 max-w-7xl mx-auto space-y-6">
+<div class="p-8 max-w-7xl mx-auto space-y-6" data-tour="access-reviews">
   <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>

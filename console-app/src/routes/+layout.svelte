@@ -3,6 +3,8 @@
   import AppFrame from "$lib/components/layout/AppFrame.svelte";
   import { page } from "$app/stores";
   import { isSpaMode } from "$lib/client-api";
+  import { isDemoMode, initDemo } from "$lib/demo/state";
+  import { getDemoResponse } from "$lib/demo/mock-fetch";
   import { onMount } from "svelte";
 
   // Install fetch interceptor at module-load time in browser (before hydration)
@@ -10,6 +12,8 @@
   if (typeof window !== "undefined" && isSpaMode) {
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch.bind(window);
+    const demoActive = isDemoMode();
+    if (demoActive) initDemo();
 
     // Stub responses for edge-case paths only. All feature endpoints are now
     // wired to real Lambda backends.
@@ -113,6 +117,13 @@
         );
       }
 
+      // Demo mode: intercept all API calls with mock data
+      if (demoActive && (url.startsWith("/api/") || url.startsWith("/orchestrator/") || url.startsWith("/adapters/"))) {
+        const method = init?.method?.toUpperCase() ?? "GET";
+        const demoRes = getDemoResponse(url, method);
+        if (demoRes) return Promise.resolve(demoRes);
+      }
+
       // Only intercept /api/, /orchestrator/, and /adapters/ paths
       if (!url.startsWith("/api/") && !url.startsWith("/orchestrator/") && !url.startsWith("/adapters/")) {
         return originalFetch(input, init);
@@ -179,6 +190,7 @@
   onMount(() => {
     if (!isSpaMode) return;
 
+    if (isDemoMode()) return;
     const token = sessionStorage.getItem("atlasit_token");
     const path = window.location.pathname;
     const isPublic = ["/login", "/signup", "/", "/demo", "/interactive-demo", "/see-atlasit-live", "/support", "/trust", "/faq", "/privacy", "/developers", "/accept-invite", "/status"].some(

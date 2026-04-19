@@ -9,6 +9,10 @@
   import Avatar from "../ui/avatar.svelte";
   import Separator from "../ui/separator.svelte";
   import { getRuntimeConfig } from "../../config";
+  import { isDemoMode } from "$lib/demo/state";
+  import DemoModePill from "$lib/demo/DemoModePill.svelte";
+  import DemoTour from "$lib/demo/DemoTour.svelte";
+  import { startTour, getTourState } from "$lib/demo/tour-store";
   import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache, hydrateComplianceScore } from "../../stores/compliance";
   import {
@@ -65,6 +69,7 @@
   let orgName = "";
   let logoUrl = "";
   let accentColor = "";
+  const demoMode = isDemoMode();
 
   const navSections: NavSection[] = [
     {
@@ -242,6 +247,11 @@
       hydrateComplianceScore(prefetchedScores);
     } else {
       fetchComplianceScore().catch(() => {});
+    }
+
+    if (demoMode) {
+      const ts = getTourState();
+      if (!ts.active && !ts.completed) startTour();
     }
 
     return () => window.removeEventListener("branding-updated", onBrandingUpdated);
@@ -589,11 +599,18 @@
         </a>
 
         <!-- Compliance Score Pill -->
+        {#if demoMode}
+          <div class="mx-1.5">
+            <DemoModePill />
+          </div>
+        {/if}
+
         {#if $complianceScore}
           {@const score = $complianceScore.overallScore}
           {@const tone = score >= 80 ? 'success' : score >= 60 ? 'warning' : 'destructive'}
           <a
             href="/console/compliance"
+            data-tour="compliance-pill"
             class="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 mx-1.5 rounded-full text-xs font-medium transition-all duration-fast
               {tone === 'success' ? 'bg-success-muted text-success hover:bg-success-muted/80' : ''}
               {tone === 'warning' ? 'bg-warning-muted text-warning hover:bg-warning-muted/80' : ''}
@@ -715,6 +732,10 @@
 
   <!-- Copilot Panel -->
   <CopilotPanel bind:open={copilotOpen} onClose={() => copilotOpen = false} />
+
+  {#if demoMode}
+    <DemoTour />
+  {/if}
 </div>
 
 <style>

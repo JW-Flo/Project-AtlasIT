@@ -276,7 +276,7 @@
   });
 </script>
 
-<div class="animate-fade-in">
+<div class="animate-fade-in" data-tour="policies">
   <!-- Header -->
   <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>

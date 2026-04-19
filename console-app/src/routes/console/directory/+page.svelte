@@ -157,7 +157,7 @@
   <title>Directory · AtlasIT</title>
 </svelte:head>
 
-<div class="animate-fade-in">
+<div class="animate-fade-in" data-tour="directory-users">
   <PageHeader
     title="Directory"
     description={!loadingStatus && syncStatus
