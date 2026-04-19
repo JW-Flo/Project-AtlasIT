@@ -62,7 +62,7 @@
   });
 </script>
 
-<div class="mx-auto max-w-7xl px-4 pb-24 pt-8">
+<div class="mx-auto max-w-7xl px-4 pb-24 pt-8 text-slate-900">
   <div class="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
     <p class="text-xs uppercase tracking-wide text-slate-500">Interactive AtlasIT Demo</p>
     <h1 class="text-2xl font-semibold text-slate-900">{DEMO_TENANT.name} — Live Security Operations</h1>
@@ -81,7 +81,7 @@
 
   <div class="mb-6 flex flex-wrap gap-2">
     {#each DEMO_MODULES as module}
-      <button class="rounded-full border px-3 py-1 text-sm {activeModule === module.id ? 'bg-slate-900 text-white' : 'bg-white'}" on:click={() => selectModule(module.id)}>{module.label}</button>
+      <button class="rounded-full border px-3 py-1 text-sm {activeModule === module.id ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 hover:text-slate-900'}" on:click={() => selectModule(module.id)}>{module.label}</button>
     {/each}
   </div>
 
@@ -127,7 +127,7 @@
     <p class="text-xs text-slate-600">Try AtlasIT instantly with synthetic data. No setup required.</p>
     <div class="flex gap-2">
       {#each ctas as cta}
-        <a href={cta.href} class="rounded-md border px-3 py-2 text-sm font-medium" on:click={() => track(cta.event)}>{cta.label}</a>
+        <a href={cta.href} class="rounded-md border px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50" on:click={() => track(cta.event)}>{cta.label}</a>
       {/each}
     </div>
   </div>
