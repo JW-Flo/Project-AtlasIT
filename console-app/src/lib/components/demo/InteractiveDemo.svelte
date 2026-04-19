@@ -151,7 +151,7 @@
       {#each DEMO_MODULES as mod}
         <button
           class="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap {activeModule === mod.id
-            ? 'bg-violet-600 text-white shadow-sm'
+            ? 'bg-[hsl(252,87%,58%)] text-white shadow-sm'
             : 'text-slate-600 hover:bg-white hover:text-slate-900 hover:shadow-sm'}"
           on:click={() => selectModule(mod.id)}
         >{mod.label}</button>
@@ -481,7 +481,7 @@
         <a
           href={cta.href}
           class="whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors {cta.primary
-            ? 'bg-violet-600 text-white hover:bg-violet-700 shadow-sm'
+            ? 'bg-[hsl(252,87%,58%)] text-white hover:bg-[hsl(252,87%,50%)] shadow-sm'
             : 'border border-slate-200 text-slate-700 hover:bg-slate-50'}"
           on:click={() => track(cta.event)}
         >{cta.label}</a>
