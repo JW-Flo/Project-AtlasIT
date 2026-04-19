@@ -12,6 +12,11 @@ export const DEMO_USER = {
 
 export function isDemoMode(): boolean {
   if (typeof window === "undefined") return false;
+  const realToken = sessionStorage.getItem(TOKEN_KEY);
+  if (realToken && realToken !== "demo-token") {
+    sessionStorage.removeItem(DEMO_KEY);
+    return false;
+  }
   if (new URLSearchParams(window.location.search).get("demo") === "true") return true;
   return sessionStorage.getItem(DEMO_KEY) === "true";
 }
@@ -26,5 +31,5 @@ export function exitDemo(): void {
   sessionStorage.removeItem(DEMO_KEY);
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
-  window.location.href = "/demo";
+  window.location.href = "/signup?from=demo";
 }

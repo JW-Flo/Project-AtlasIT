@@ -188,9 +188,8 @@
 
   // Redirect unauthenticated users on mount
   onMount(() => {
-    if (!isSpaMode) return;
-
     if (isDemoMode()) return;
+    if (!isSpaMode) return;
     const token = sessionStorage.getItem("atlasit_token");
     const path = window.location.pathname;
     const isPublic = ["/login", "/signup", "/", "/demo", "/interactive-demo", "/see-atlasit-live", "/support", "/trust", "/faq", "/privacy", "/developers", "/accept-invite", "/status"].some(
