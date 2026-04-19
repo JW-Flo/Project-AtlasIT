@@ -58,6 +58,10 @@ routes = [
 	"www.atlasit.pro/api/user/*",
 	"www.atlasit.pro/api/billing*",
 	"www.atlasit.pro/pricing*",
+	"www.atlasit.pro/demo*",
+	"www.atlasit.pro/interactive-demo*",
+	"www.atlasit.pro/see-atlasit-live*",
+	"www.atlasit.pro/api/demo/*",
 	"www.atlasit.pro/api/compliance-packs*",
 	"www.atlasit.pro/_app/*",
 	"www.atlasit.pro/favicon.png",
@@ -81,7 +85,12 @@ ORCHESTRATOR_BASE = "https://orchestrator.atlasit.pro"
 ORCHESTRATOR_URL = "https://orchestrator.atlasit.pro"
 SUPER_ADMIN_EMAIL = "joe.whittle@atlasit.app"
 TENANT_ID = "atlasit"
+DEMO_MODE = "false"
+DEMO_SEEDED_EMAIL = "demo@atlasit.pro"
+DEMO_TENANT_ID = "demo-acme-dental"
+DEMO_TENANT_NAME = "Acme Dental Group"
 # Secret bindings (set via `wrangler secret put <KEY> --name atlasit-console`):
+# DEMO_SEEDED_PASSWORD — Demo login password (required when DEMO_MODE=true)
 # GROQ_API_KEY — Required for NL automation rule builder and AI features
 # STRIPE_SECRET_KEY — Stripe secret key for billing/checkout (1Password: "Stripe - AtlasIT")
 # STRIPE_PUBLISHABLE_KEY — Stripe publishable key for client-side checkout
@@ -94,6 +103,9 @@ TENANT_ID = "atlasit"
 
 [observability]
 enabled = true
+
+[triggers]
+crons = ["0 3 * * *"]
 
 # --- Resource bindings ---
 [[d1_databases]]

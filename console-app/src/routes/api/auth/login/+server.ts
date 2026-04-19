@@ -7,6 +7,7 @@ import {
   isMfaRequiredForUser,
   getSessionTtl,
 } from "@atlasit/shared/security/policies";
+import { resolveDemoTenantConfig, resetDemoTenant } from "$lib/server/demoTenant";
 
 const MFA_CHALLENGE_TTL = 300; // 5 minutes
 
@@ -20,6 +21,8 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   }
 
   const db = env.ATLAS_SHARED_DB;
+  const demoMode = String(env.DEMO_MODE ?? "false").toLowerCase() === "true";
+  const demoConfig = resolveDemoTenantConfig(env);
   const kv = env.KV_SESSIONS;
   const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET;
   if (!jwtSecret) {
@@ -32,6 +35,20 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
       }),
     );
     return json({ error: "Authentication service misconfigured" }, { status: 503 });
+  }
+
+  if (
+    demoMode &&
+    demoConfig &&
+    email.toLowerCase() === demoConfig.email &&
+    password === demoConfig.password &&
+    db
+  ) {
+    try {
+      await resetDemoTenant(db as D1Database, demoConfig);
+    } catch {
+      // keep login path resilient; normal auth below still applies
+    }
   }
 
   if (!db) {

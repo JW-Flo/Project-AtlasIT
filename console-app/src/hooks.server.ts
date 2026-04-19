@@ -3,11 +3,7 @@ import { redirect, isRedirect, isHttpError } from "@sveltejs/kit";
 import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
-import {
-  checkBodySizeLimit,
-  parseBodySizeLimit,
-  BODY_METHODS,
-} from "$lib/server/body-size-limit";
+import { checkBodySizeLimit, parseBodySizeLimit, BODY_METHODS } from "$lib/server/body-size-limit";
 
 /**
  * Default maximum request body size (512 KB).
@@ -32,6 +28,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/platform/health", // platform status (public)
   "/api/support", // public support form submissions
   "/api/privacy/dsar", // public data subject access requests
+  "/api/demo/", // public interactive demo analytics
 ];
 
 function isPublicApiRoute(pathname: string): boolean {
@@ -97,10 +94,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   //    (fast path) then streams actual bytes — preventing spoofing attacks.
   // ------------------------------------------------------------------
   if (BODY_METHODS.has(event.request.method) && event.request.body) {
-    const bodySizeLimit = parseBodySizeLimit(
-      envRaw?.["BODY_SIZE_LIMIT"],
-      BODY_SIZE_LIMIT_DEFAULT,
-    );
+    const bodySizeLimit = parseBodySizeLimit(envRaw?.["BODY_SIZE_LIMIT"], BODY_SIZE_LIMIT_DEFAULT);
     const result = await checkBodySizeLimit(event.request, bodySizeLimit);
     if (result.blocked) {
       return result.response;
@@ -177,10 +171,10 @@ export const handle: Handle = async ({ event, resolve }) => {
       event.cookies.delete("atlas_session", { path: "/" });
       const isApiRoute = event.url.pathname.startsWith("/api/");
       if (isApiRoute) {
-        return new Response(
-          JSON.stringify({ error: "Session invalid", code: "session_invalid" }),
-          { status: 401, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ error: "Session invalid", code: "session_invalid" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
       }
       throw redirect(302, "/console/login?error=session_invalid");
     }
@@ -347,9 +341,9 @@ export const handleError: HandleServerError = ({ error, event }) => {
   const debug = event.url.searchParams.get("_debug") === "1";
   const user = event.locals.user as UserPrincipal | null | undefined;
   const isSuperAdmin = Boolean(user?.superAdmin || (user?.roles ?? []).includes("super-admin"));
-  const isProduction = (event.platform?.env as Record<string, string | undefined> | undefined)?.[
-    "NODE_ENV"
-  ] !== "development";
+  const isProduction =
+    (event.platform?.env as Record<string, string | undefined> | undefined)?.["NODE_ENV"] !==
+    "development";
 
   if (debug && isSuperAdmin) {
     if (isProduction) {

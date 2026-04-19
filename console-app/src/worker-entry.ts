@@ -1,6 +1,7 @@
 // Cloudflare Worker entry that re-exports the SvelteKit generated worker.
 // Wrangler `main` in wrangler.toml points here. Ensure a build has produced
 // .svelte-kit/cloudflare/_worker.js before deploying.
+import { resolveDemoTenantConfig, resetDemoTenant } from "./lib/server/demoTenant";
 
 // Dynamic import wrapper so lint/type passes before build artifact exists.
 let _worker: any;
@@ -34,5 +35,28 @@ export default {
     }
     const w = await load();
     return w.fetch(request, env, ctx);
+  },
+  async scheduled(
+    controller: ScheduledController,
+    env: Record<string, unknown>,
+    ctx: ExecutionContext,
+  ) {
+    const w = await load();
+    if (typeof w.scheduled === "function") {
+      ctx.waitUntil(w.scheduled(controller, env, ctx));
+    }
+    const demoMode = String(env.DEMO_MODE ?? "false").toLowerCase() === "true";
+    if (!demoMode) return;
+    const demoConfig = resolveDemoTenantConfig(env);
+    if (!demoConfig) return;
+    const db = env.ATLAS_SHARED_DB as D1Database | undefined;
+    if (!db) return;
+    ctx.waitUntil(
+      resetDemoTenant(db, demoConfig).catch((error) => {
+        try {
+          console.error("demo_tenant_reset_error", String(error));
+        } catch {}
+      }),
+    );
   },
 };
