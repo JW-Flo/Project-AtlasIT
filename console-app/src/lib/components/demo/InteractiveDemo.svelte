@@ -67,12 +67,12 @@
 
   const frameworks = [
     { name: "HIPAA", score: 89, passing: 31, total: 36, color: "bg-blue-500" },
-    { name: "SOC 2", score: 83, passing: 42, total: 48, color: "bg-violet-500" },
+    { name: "SOC 2", score: 83, passing: 42, total: 48, color: "bg-[hsl(252,87%,65%)]" },
   ];
 
   const recentActivity = [
     { icon: CheckCircle2, color: "text-green-500", msg: "New-hire onboarding completed — Dr. Maya Lin", time: "Just now" },
-    { icon: Zap, color: "text-violet-500", msg: "Device quarantine flow triggered automatically", time: "4m ago" },
+    { icon: Zap, color: "text-[hsl(252,87%,58%)]", msg: "Device quarantine flow triggered automatically", time: "4m ago" },
     { icon: FileCheck, color: "text-blue-500", msg: "SOC 2 evidence collected — Okta login events (128 items)", time: "12m ago" },
     { icon: AlertTriangle, color: "text-amber-500", msg: "MFA bypass attempt detected — investigating", time: "31m ago" },
   ];
@@ -133,15 +133,15 @@
   <!-- Top nav bar -->
   <div class="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center justify-between sticky top-0 z-10">
     <div class="flex items-center gap-2.5">
-      <div class="h-7 w-7 rounded-lg bg-violet-600 flex items-center justify-center shrink-0">
+      <div class="h-7 w-7 rounded-lg bg-[hsl(252,87%,58%)] flex items-center justify-center shrink-0">
         <ShieldCheck class="h-4 w-4 text-white" strokeWidth={2.5} />
       </div>
       <span class="font-semibold text-slate-900 text-sm">AtlasIT</span>
-      <span class="hidden sm:inline-flex items-center rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-medium text-violet-700">Demo</span>
+      <span class="hidden sm:inline-flex items-center rounded-full bg-[hsl(252,87%,96%)] px-2.5 py-0.5 text-xs font-medium text-[hsl(252,87%,48%)]">Demo</span>
     </div>
     <div class="flex items-center gap-3">
       <span class="hidden sm:block text-xs text-slate-500">{DEMO_TENANT.name}</span>
-      <div class="h-7 w-7 rounded-full bg-violet-100 flex items-center justify-center text-xs font-semibold text-violet-700">AD</div>
+      <div class="h-7 w-7 rounded-full bg-[hsl(252,87%,92%)] flex items-center justify-center text-xs font-semibold text-[hsl(252,87%,48%)]">AD</div>
     </div>
   </div>
 
@@ -186,7 +186,7 @@
         <!-- Stat cards -->
         <div class="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
           <div class="flex items-center gap-2 mb-2">
-            <div class="rounded-md bg-violet-50 p-1.5"><Zap class="h-3.5 w-3.5 text-violet-600" /></div>
+            <div class="rounded-md bg-[hsl(252,87%,96%)] p-1.5"><Zap class="h-3.5 w-3.5 text-[hsl(252,87%,58%)]" /></div>
             <p class="text-xs text-slate-500">Automations</p>
           </div>
           <p class="text-2xl font-bold text-slate-900">{liveAutomations}</p>
@@ -338,7 +338,7 @@
           </div>
           <div class="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
             <p class="text-xs text-slate-500 mb-1">Executions today</p>
-            <p class="text-2xl font-bold text-violet-600">{liveAutomations}</p>
+            <p class="text-2xl font-bold text-[hsl(252,87%,58%)]">{liveAutomations}</p>
           </div>
           <div class="col-span-2 sm:col-span-1 rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
             <p class="text-xs text-slate-500 mb-1">Success rate</p>
@@ -353,7 +353,7 @@
           <div class="divide-y divide-slate-50">
             {#each automationRules as rule}
               <div class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
-                <div class="rounded-md bg-violet-50 p-1.5 shrink-0"><Zap class="h-3.5 w-3.5 text-violet-600" /></div>
+                <div class="rounded-md bg-[hsl(252,87%,96%)] p-1.5 shrink-0"><Zap class="h-3.5 w-3.5 text-[hsl(252,87%,58%)]" /></div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-slate-900">{rule.name}</p>
                   <p class="text-xs text-slate-400">{rule.trigger}</p>
@@ -413,7 +413,7 @@
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
             <p class="text-xs text-slate-500 mb-1">Hours saved / mo</p>
-            <p class="text-2xl font-bold text-violet-600">117</p>
+            <p class="text-2xl font-bold text-[hsl(252,87%,58%)]">117</p>
           </div>
           <div class="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
             <p class="text-xs text-slate-500 mb-1">Risk reduction</p>
@@ -433,7 +433,7 @@
           <div class="flex items-end gap-1 h-20">
             {#each [77, 78, 79, 79, 80, 81, 81, 82, 82, 83, 83, 84, 84, 84, 85, 85, 85, 86, 86, 86, 86, 87, 87, 87, 87, 87, 88, 88, 89, liveCompliance] as val, i}
               <div
-                class="flex-1 rounded-t-sm bg-violet-500 opacity-80 transition-all"
+                class="flex-1 rounded-t-sm bg-[hsl(252,87%,65%)] opacity-80 transition-all"
                 style="height: {((val - 75) / 25) * 100}%"
                 title="{val}%"
               ></div>
@@ -481,7 +481,7 @@
         <a
           href={cta.href}
           class="whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors {cta.primary
-            ? 'bg-[hsl(252,87%,58%)] text-white hover:bg-[hsl(252,87%,50%)] shadow-sm'
+            ? 'bg-[hsl(252,87%,58%)] text-white hover:bg-[hsl(252,87%,48%)] shadow-sm'
             : 'border border-slate-200 text-slate-700 hover:bg-slate-50'}"
           on:click={() => track(cta.event)}
         >{cta.label}</a>
