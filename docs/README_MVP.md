@@ -2,12 +2,12 @@
 
 See `ops/hand-off.md` for the authoritative deploy runbook and smoke tests.
 
-This guide deploys a minimal, working demo stack using the current Wrangler/Cloudflare flow:
+This guide deploys a minimal, working demo stack using the current `npm run deploy:mvp` flow (Wrangler-deployed workers plus console deploy step):
 
 - Dispatch API (Workers for Platforms gateway route)
 - Compliance API (demo compliance worker with D1 + R2 resources)
 - AI Orchestrator (health, rate/quota; optional)
-- Console App (SvelteKit UI on S3 + CloudFront)
+- Console App (SvelteKit UI deploy step from `deploy-mvp.mjs`)
 
 ## Prereqs
 
