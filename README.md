@@ -24,7 +24,7 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 | -------------- | ----------------------- | ----------------------- | ------------------------------------------------------ |
 | Console App    | `console-app/`          | S3 + CloudFront         | Compliance, directory, marketplace, workflows, billing |
 | Marketing Site | `apps/atlasit-web/`     | S3 + CloudFront         | Public marketing + landing                             |
-| Docs           | `documentation-worker/` | Lambda + API Gateway    | docs.atlasit.pro                                       |
+| Docs           | `documentation-worker/` | Cloudflare Worker (legacy deploy path) | docs.atlasit.pro                           |
 
 ### Shared Packages
 
@@ -37,7 +37,7 @@ Multi-tenant IT automation and compliance platform. AWS-native backend (Lambda +
 
 ### Adapters
 
-35 adapters in `adapters/` — 9 core-tier hand-written (GitHub, Okta, Slack, Microsoft 365, AWS, Google Workspace, Zscaler, etc.), 24 scaffolded via `adapter-gen`, deployed on AWS Lambda.
+35 adapters in `adapters/` — 9 core-tier adapters are defined for AWS Lambda rollout in `infra/aws/adapters.tf`; repo Lambda implementations currently exist for a smaller subset (`adapter-github`, `adapter-okta`) while the remaining adapters stay legacy/in-progress.
 
 ### Infrastructure
 

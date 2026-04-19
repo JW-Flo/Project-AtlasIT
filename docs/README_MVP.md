@@ -2,10 +2,10 @@
 
 See `ops/hand-off.md` for the authoritative deploy runbook and smoke tests.
 
-This guide deploys a minimal, working demo stack on AWS:
+This guide deploys a minimal, working demo stack using the current Wrangler/Cloudflare flow:
 
-- Dispatch API (Lambda + API Gateway gateway path)
-- Compliance API (demo compliance API with Aurora + S3 bindings)
+- Dispatch API (Workers for Platforms gateway route)
+- Compliance API (demo compliance worker with D1 + R2 resources)
 - AI Orchestrator (health, rate/quota; optional)
 - Console App (SvelteKit UI on S3 + CloudFront)
 
@@ -14,7 +14,7 @@ This guide deploys a minimal, working demo stack on AWS:
 - Node 18+
 - AWS CLI configured (`aws configure` or SSO)
 - Terraform state/backend access for shared AWS resources
-- Run Auth Preflight first: see `ops/hand-off.md` (clears conflicting env and refreshes AWS auth/session)
+- Run Auth Preflight first: see `ops/hand-off.md` (clears conflicting Cloudflare env vars, runs `wrangler login`, verifies D1/R2 resources)
 
 ## One-shot deploy
 
