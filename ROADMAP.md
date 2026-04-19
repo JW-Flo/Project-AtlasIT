@@ -31,6 +31,53 @@ Directory Event / Schedule / Webhook
 
 ---
 
+## Strategic Platform Expansion (2026)
+
+AtlasIT strategic scope now explicitly spans five platform pillars:
+
+- Identity Lifecycle (JML)
+- Compliance Digital Twin (CDT)
+- Security Orchestration
+- Vendor Assurance / Third-Party Risk (TPRM)
+- Exposure Management / Threat Scanning
+
+### Expansion Phasing (acquisition-oriented)
+
+This delivery track is framed for strategic adjacency attractive to ServiceNow, CrowdStrike, Okta, Vanta, and Drata.
+
+**Phase 1**
+
+- Vendor inventory
+- Trust Center MVP
+- Exposure Lite scanner
+- Customer-facing demo flows
+
+**Phase 2**
+
+- AI questionnaire response generation
+- Continuous external monitoring
+- Vendor reassessment automation
+- Risk scoring engine
+
+**Phase 3**
+
+- Autonomous remediation
+- Dependency-aware compliance simulation
+- MSSP multi-tenant federation
+
+### Patentability Additions
+
+- Mapping third-party evidence into live compliance state
+- Automated trust center evidence lineage
+- Exposure findings mutating compliance posture
+- Autonomous remediation tied to evidence graph
+
+### Competitive Adjacency
+
+AtlasIT now directly competes or overlaps with Vanta, Drata, SafeBase, OneTrust, Tenable, Rapid7, and CrowdStrike EASM, while differentiating on unified automation + evidence graph architecture.
+
+---
+
 ## Status at a glance (2026-04-13)
 
 | Area                 | State                                                                                     |

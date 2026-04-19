@@ -47,6 +47,49 @@ Directory Event / Schedule / Webhook
 
 > Everything in the phases below is infrastructure to make these automations reliable, observable, and trustworthy.
 
+## Strategic Expansion Track (Vendor Assurance + Exposure)
+
+AtlasIT platform scope is expanded to five unified pillars:
+
+- Identity Lifecycle (JML)
+- Compliance Digital Twin (CDT)
+- Security Orchestration
+- Vendor Assurance / Third-Party Risk
+- Exposure Management / Threat Scanning
+
+### Phase 1
+
+- Vendor inventory
+- Trust Center MVP
+- Exposure Lite scanner
+- Customer-facing demo flows
+
+### Phase 2
+
+- AI questionnaire response generation
+- Continuous external monitoring
+- Vendor reassessment automation
+- Risk scoring engine
+
+### Phase 3
+
+- Autonomous remediation
+- Dependency-aware compliance simulation
+- MSSP multi-tenant federation
+
+### Patentability Focus
+
+- Third-party evidence mapped into live compliance state
+- Automated trust center evidence lineage
+- Exposure findings that mutate compliance posture
+- Autonomous remediation tied to an evidence graph
+
+### Competitive Positioning Expansion
+
+Adjacency and direct overlap include Vanta, Drata, SafeBase, OneTrust, Tenable, Rapid7, and CrowdStrike EASM.
+
+---
+
 ### Competitive Intelligence — ScalePad ControlMap
 
 > **ScalePad ControlMap** (www.scalepad.com) — Direct competitor targeting MSPs/CaaS practices.
@@ -849,6 +892,7 @@ These items from the Codex Review are not yet fully addressed and should be prio
 > 38 of 39 remediated same-day across 4 squash-merged PRs.
 
 ### Security (Critical)
+
 - [x] **C-1** Lock down compliance-worker — all evidence routes require `x-api-key` auth; tenant from token only
 - [x] **C-2** Client-side QR generation — TOTP secrets no longer leak to third-party QR service
 - [x] **C-3** TOTP secrets encrypted at rest (AES-256-GCM via `CRED_ENCRYPTION_KEY`)
@@ -860,6 +904,7 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **C-9** Cron tenant limits raised from 100 → 10,000
 
 ### Auth & Reliability (High)
+
 - [x] **H-1** Removed tempPassword from invite response
 - [x] **H-2** Service role in auth hierarchy; API key auth requires X-Tenant-ID
 - [x] **H-3** Per-tenant error tracking (was global cross-tenant leak)
@@ -872,6 +917,7 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **H-12** Automation action forwarding includes `X-API-Key`
 
 ### Data Integrity & UX (Medium + Low)
+
 - [x] **M-1** Debug mode gated behind super-admin; stacks redacted in production
 - [x] **M-2** Unsafe tenant inference fallback removed — sessions invalidated
 - [x] **M-3** Security settings use UPSERT not DELETE+INSERT
@@ -891,11 +937,13 @@ These items from the Codex Review are not yet fully addressed and should be prio
 - [x] **L-7** Marketplace cards clickable for setup wizard
 
 ### Infrastructure
+
 - `INTERNAL_API_KEY` on console-app, orchestrator, compliance-worker
 - `COMPLIANCE_API_KEY` + `API_ALLOWED_KEYS` on orchestrator
-- Service token in `API_TOKENS` KV (tenantId: "*", roles: service/admin/member)
+- Service token in `API_TOKENS` KV (tenantId: "\*", roles: service/admin/member)
 
 ### Remaining
+
 - [ ] **H-11** Incident detail view — needs live debugging (code structurally correct)
 
 ## Long-Term Platform Modules

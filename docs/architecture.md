@@ -1,12 +1,12 @@
 # AtlasIT Architecture
 
 Status: Draft (initial commit)
-Last Updated: 2025-08-20
+Last Updated: 2026-04-19
 Owner: JW-Flo
 
 ## 1. Executive Summary
 
-AtlasIT is a modular, multi-tenant IT automation and lifecycle management platform. Core capabilities: identity & entitlement modeling, policy-driven provisioning/deprovisioning, standardized connector framework, auditable workflows, and protocol support (OAuth/OIDC, SAML, SCIM) delivered via an edge-first (Cloudflare Workers) architecture.
+AtlasIT is a modular, multi-tenant IT automation and lifecycle management platform. Core capabilities: identity & entitlement modeling, policy-driven provisioning/deprovisioning, standardized connector framework, auditable workflows, vendor assurance (TPRM), trust center operations, and exposure management with protocol support (OAuth/OIDC, SAML, SCIM) delivered via an edge-first architecture.
 
 ## 2. High-Level Architecture
 
@@ -22,6 +22,24 @@ Layers:
 8. Security & Secrets: Encryption (envelope), secret storage, key rotation, tenant isolation enforcement.
 9. Developer Platform: Connector SDK, CLI scaffolding, test harness, (future) marketplace & sandbox runtime (WASM).
 
+10. Vendor Assurance Engine: Third-party inventory, tiering, owner workflows, questionnaire orchestration, and evidence collection lifecycle.
+11. Trust Center Service: Controlled evidence publishing, request/approval gating, watermarking, and access analytics.
+12. Exposure Scanner: Domain/subdomain discovery, TLS/DNS/header/port posture checks, external asset inventory, and finding normalization.
+13. Risk Scoring Engine: Correlates identity, vendor, and exposure findings into a unified risk model feeding CDT and remediation workflows.
+
+## 2.1 Strategic Module Topology (2026 Expansion)
+
+```
+External Assets ──> Exposure Scanner ──> Findings Normalizer ─┐
+                                                              │
+Vendors/Third Parties ─> Vendor Assurance Engine ─> Evidence ─┼─> Risk Scoring Engine ─> CDT State
+                                                              │
+Identity & JML Events ────────────────────────────────────────┘
+                                      │
+                                      ├─> Trust Center (gated evidence sharing, lineage, analytics)
+                                      └─> Orchestrator (approval workflows, remediation, reassessment)
+```
+
 ## 3. Component Responsibilities
 
 - Identity Service: Canonical user record, attribute merge, external account references.
@@ -34,6 +52,11 @@ Layers:
 - SCIM Server: Standards-compliant ingress for user/group lifecycle.
 - SAML Service: Multi-tenant SAML SP for admin SSO; assertion validation to signed session/JWT.
 - OAuth/OIDC Service: Client registration, token issuance (access/refresh/ID), JWKS rotation & publishing.
+
+- Vendor Assurance Engine: Maintains vendor system-of-record, reassessment cadences, control questionnaire lifecycle, and approval workflows.
+- Trust Center Service: Publishes policy/evidence packages with evidence lineage, watermarked downloads, gated access, and audit logs.
+- Exposure Scanner: Runs continuous external attack-surface scans and maps findings to controls and remediation playbooks.
+- Risk Scoring Engine: Produces weighted vendor/exposure/compliance risk scores and pushes deltas to orchestration rules.
 
 ## 4. Data Model (Key Entities)
 
@@ -118,11 +141,11 @@ Phase 3 (Beta): SLOs (p95 SCIM create→provision < 120s), anomaly detection for
 MVP Policy Expression: Simple comparisons (==, !=) and logical AND; future: OR, IN list, attribute presence. Evaluated using safe CEL subset or custom parser.
 Example Rule:
 {
-  "if": "department == 'Sales' && country == 'US'",
-  "actions": [
-    {"type": "assign_group", "connector": "slack", "value": "sales-team"},
-    {"type": "assign_license", "connector": "google_workspace", "sku": "BUSINESS_STANDARD"}
-  ]
+"if": "department == 'Sales' && country == 'US'",
+"actions": [
+{"type": "assign_group", "connector": "slack", "value": "sales-team"},
+{"type": "assign_license", "connector": "google_workspace", "sku": "BUSINESS_STANDARD"}
+]
 }
 Mapping DSL: Key = external field, value = internal path or expression (JMESPath subset) e.g. {"email":"user.primary_email","display_name":"concat(user.first_name,' ',user.last_name)"}.
 
@@ -131,12 +154,12 @@ Mapping DSL: Key = external field, value = internal path or expression (JMESPath
 Manifest Fields: name, version, capabilities[], auth (type, scopes), rateLimits, mappings (default), configSchema.
 Interface (TypeScript sketch):
 export interface Connector {
-  provisionUser(ctx, user): Promise<Result>;
-  updateUser(ctx, user, changes): Promise<Result>;
-  deactivateUser(ctx, externalRef): Promise<Result>;
-  addUserToGroup(ctx, externalUserId, group): Promise<Result>;
-  removeUserFromGroup(ctx, externalUserId, group): Promise<Result>;
-  healthCheck(): Promise<Health>;
+provisionUser(ctx, user): Promise<Result>;
+updateUser(ctx, user, changes): Promise<Result>;
+deactivateUser(ctx, externalRef): Promise<Result>;
+addUserToGroup(ctx, externalUserId, group): Promise<Result>;
+removeUserFromGroup(ctx, externalUserId, group): Promise<Result>;
+healthCheck(): Promise<Health>;
 }
 Packaging: Versioned, checksum verified; sandbox (Beta) executes untrusted connectors in WASM isolate.
 
@@ -159,16 +182,17 @@ See docs/product-roadmap.md for phased delivery plan.
 - Queue evolution path (DB polling → durable queue provider).
 - Policy engine implementation detail (CEL vs custom DSL transpilable to AST).
 - WASM sandbox feasibility within Workers constraints.
+- Risk model weighting strategy across identity, vendor, and exposure signals.
 
 ## 14. Risks & Mitigations (Summary)
 
-| Risk | Mitigation |
-|------|------------|
-| CI workflow instability | Canary job + alert on missing triggers |
-| Connector API drift | Nightly healthCheck + manifest validation |
-| Tenant data leak | Automated cross-tenant access tests in CI |
-| Audit tampering | Hash chain + external digest notarization |
-| Over-engineering early | Phase gating (sandbox & marketplace only at Beta) |
+| Risk                    | Mitigation                                        |
+| ----------------------- | ------------------------------------------------- |
+| CI workflow instability | Canary job + alert on missing triggers            |
+| Connector API drift     | Nightly healthCheck + manifest validation         |
+| Tenant data leak        | Automated cross-tenant access tests in CI         |
+| Audit tampering         | Hash chain + external digest notarization         |
+| Over-engineering early  | Phase gating (sandbox & marketplace only at Beta) |
 
 ## 15. Glossary
 
@@ -179,4 +203,5 @@ See docs/product-roadmap.md for phased delivery plan.
 - Hash Chain: Cryptographic chaining of audit records for tamper detection.
 
 ---
+
 Feedback & updates: open an issue with label architecture.

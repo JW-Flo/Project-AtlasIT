@@ -7,7 +7,7 @@ This document consolidates **all required artifacts, risks, enhancements, and di
 ## 1. Vision & Objectives
 
 - Deliver a **unified, automation-first IT/DevSecOps platform** for SMB and mid-market.
-- Bundle **Identity Lifecycle (JML)**, **Compliance Automation (CDT)**, **Security Orchestration** into one console.
+- Bundle **Identity Lifecycle (JML)**, **Compliance Automation (CDT)**, **Security Orchestration**, **Vendor Assurance (TPRM)**, and **Exposure Management** into one console.
 - Provide **auditless compliance evidence** and **zero-touch lifecycle management**.
 - Target **acquisition by ServiceNow, CrowdStrike, Okta** within 36–60 months.
 
@@ -149,6 +149,10 @@ This document consolidates **all required artifacts, risks, enhancements, and di
 - **JML (Joiner/Mover/Leaver)**: automated workflows, mapped to compliance.
 - **Orchestration Graph**: action/gate/evidence/remediation model.
 - **AI Policy Codex**: LLM-to-policy compiler with explainability.
+- **Vendor Assurance / TPRM**: vendor inventory, attestations, questionnaire lifecycle, and reassessment automation.
+- **Trust Center**: controlled external evidence sharing with approval gates, watermarking, and audit analytics.
+- **Exposure Management**: external attack-surface discovery/scanning mapped to compliance controls and remediation workflows.
+- **Risk Scoring Engine**: weighted risk correlation across identity, compliance, vendor, and exposure signals.
 
 ---
 
@@ -163,7 +167,7 @@ This document consolidates **all required artifacts, risks, enhancements, and di
 
 ## 8. Market & Strategy
 
-- Competitors: Drata, Vanta, Secureframe, Tugboat, Okta, SailPoint, Lumos, Splunk SOAR, Cortex XSOAR, ServiceNow.
+- Competitors: Drata, Vanta, Secureframe, Tugboat, Okta, SailPoint, Lumos, Splunk SOAR, Cortex XSOAR, ServiceNow, SafeBase, OneTrust, Tenable, Rapid7, CrowdStrike EASM.
 - Differentiation: unified CDT + JML + orchestration; SMB-first.
 - TAM Models: conservative bottom-up (~$1–2B); aspirational top-down ($10B+).
 - **Exit Focus**: acquisition by ServiceNow, CrowdStrike, Okta.
@@ -204,9 +208,9 @@ This document consolidates **all required artifacts, risks, enhancements, and di
 
 ## 11. Strategic Roadmap (0–60 Months)
 
-- **0–6 mo**: MVP (CDT + JML), 2 provisional patents, 3–5 design partners.
-- **6–18 mo**: AI Policy Codex v1, patents filed, SMB tiers, $1M ARR.
-- **18–36 mo**: Compliance Simulation Engine, MSSP federation, $5–10M ARR.
+- **0–6 mo**: MVP (CDT + JML + Vendor Assurance + Exposure Lite), 2 provisional patents, 3–5 design partners.
+- **6–18 mo**: AI questionnaire automation, continuous external monitoring, risk scoring engine, SMB tiers, $1M ARR.
+- **18–36 mo**: Autonomous remediation, dependency-aware compliance simulation, MSSP federation, $5–10M ARR.
 - **36–60 mo**: Auditless certification, behavioral agents, exit readiness.
 
 ---
@@ -217,6 +221,8 @@ This document consolidates **all required artifacts, risks, enhancements, and di
 - All code paths emit Evidence objects.
 - No release without updated schemas & OPA tests.
 - Security is a feature, not an afterthought.
+- Third-party evidence, trust center artifacts, and exposure findings must preserve end-to-end lineage.
+- External findings must be mappable to control state and remediation proof.
 
 ---
 
