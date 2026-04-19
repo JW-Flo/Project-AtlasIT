@@ -1,3 +1,6 @@
+import { clearSession } from "$lib/stores/session";
+import { clearComplianceCache } from "$lib/stores/compliance";
+
 const DEMO_KEY = "atlasit_demo";
 const TOKEN_KEY = "atlasit_token";
 const USER_KEY = "atlasit_user";
@@ -31,5 +34,8 @@ export function exitDemo(): void {
   sessionStorage.removeItem(DEMO_KEY);
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
-  window.location.href = "/signup?from=demo";
+  sessionStorage.removeItem("atlasit_demo_tour");
+  clearSession();
+  clearComplianceCache();
+  window.location.href = "/login";
 }
