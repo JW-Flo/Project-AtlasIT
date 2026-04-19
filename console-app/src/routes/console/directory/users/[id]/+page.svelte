@@ -78,8 +78,8 @@
       const res = await fetch(`/api/directory/users/${userId}`);
       if (!res.ok) throw new Error(`Failed to load user (${res.status})`);
       const data = await res.json();
-      user = data.user;
-      groups = data.groups || [];
+      user = data.user ?? data.data?.user ?? null;
+      groups = data.groups ?? data.data?.groups ?? [];
 
       if (user) {
         editDisplayName = user.display_name || "";
@@ -99,7 +99,7 @@
       const res = await fetch("/api/directory/groups");
       if (res.ok) {
         const data = await res.json();
-        allGroups = data.groups || [];
+        allGroups = data.groups ?? data.data?.items ?? [];
       }
     } catch {}
   }
@@ -120,7 +120,7 @@
       });
       if (!res.ok) throw new Error("Failed to save user");
       const data = await res.json();
-      user = data.user;
+      user = data.user ?? data.data?.user ?? user;
       pushToast({ message: "User updated", variant: "success" });
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save user", variant: "error" });

@@ -4,6 +4,8 @@
 
   let email = $state("");
   let password = $state("");
+  let mfaCode = $state("");
+  let mfaRequired = $state(false);
   let error = $state("");
   let loading = $state(false);
 
@@ -13,15 +15,36 @@
     error = "";
     loading = true;
     try {
+      const payload: Record<string, string> = { email, password };
+      if (mfaRequired && mfaCode) {
+        const trimmed = mfaCode.trim();
+        if (/^\d{6}$/.test(trimmed)) payload.mfaCode = trimmed;
+        else payload.recoveryCode = trimmed;
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/auth/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        error = (data as { message?: string }).message ?? `Login failed (${res.status})`;
+        const data = (await res.json().catch(() => ({}))) as {
+          message?: string;
+          code?: string;
+        };
+        if (data.code === "MFA_REQUIRED") {
+          mfaRequired = true;
+          error = mfaCode ? "Invalid MFA code" : "";
+          return;
+        }
+        if (data.code === "MFA_INVALID") {
+          mfaRequired = true;
+          error = data.message ?? "Invalid MFA code";
+          mfaCode = "";
+          return;
+        }
+        error = data.message ?? `Login failed (${res.status})`;
         return;
       }
 
@@ -128,6 +151,27 @@
               class="w-full h-10 px-3 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground/60 transition-colors focus:outline-none focus:border-primary focus:shadow-ring-primary"
             />
           </div>
+
+          {#if mfaRequired}
+            <div>
+              <label for="mfaCode" class="block text-xs font-medium text-foreground mb-1.5">
+                Authentication code
+              </label>
+              <input
+                id="mfaCode"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                bind:value={mfaCode}
+                required
+                placeholder="6-digit code or recovery code"
+                class="w-full h-10 px-3 text-sm rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground/60 transition-colors focus:outline-none focus:border-primary focus:shadow-ring-primary"
+              />
+              <p class="mt-1.5 text-2xs text-muted-foreground">
+                Enter the 6-digit code from your authenticator app, or a single-use recovery code.
+              </p>
+            </div>
+          {/if}
 
           <button
             type="submit"

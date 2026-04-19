@@ -212,9 +212,15 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     }
   }
 
-  // POST /api/v1/auth/token — issue session token (bcrypt password verification + lockout)
+  // POST /api/v1/auth/token — issue session token (bcrypt password + MFA + lockout)
   if (path === "/api/v1/auth/token" && method === "POST") {
-    const b = body(event) as { email?: string; password?: string; tenantId?: string };
+    const b = body(event) as {
+      email?: string;
+      password?: string;
+      tenantId?: string;
+      mfaCode?: string;
+      recoveryCode?: string;
+    };
     if (!b.email) return fail(400, "email is required", "VALIDATION_FAILED");
     if (!b.password) return fail(400, "password is required", "VALIDATION_FAILED");
 
@@ -222,7 +228,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     // Look up user by email (across all tenants for now; production needs tenantId scoping)
     const result = await pool.query(
       `SELECT u.id, u.email, u.role, u.status, u.tenant_id, u.password_hash,
-              u.failed_login_count, u.locked_until, t.name as tenant_name
+              u.failed_login_count, u.locked_until, u.mfa_enabled, t.name as tenant_name
        FROM users u JOIN tenants t ON u.tenant_id = t.id
        WHERE u.email = $1 ${b.tenantId ? "AND u.tenant_id = $2" : ""}
        LIMIT 1`,
@@ -273,11 +279,160 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       return fail(401, "Invalid credentials", "UNAUTHORIZED");
     }
 
-    // Success — reset lockout counters + update last_login_at
-    await pool.query(
-      `UPDATE users SET failed_login_count = 0, locked_until = NULL, last_login_at = NOW() WHERE id = $1`,
-      [user.id],
-    );
+    // Password OK — reset password lockout counters
+    await pool.query(`UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = $1`, [
+      user.id,
+    ]);
+
+    // ── MFA enforcement ────────────────────────────────────────────────────
+    if (user.mfa_enabled) {
+      // Cheap outer check before we decide to open a transaction
+      const preflight = await pool.query(
+        `SELECT mfa_locked_until FROM mfa_enrollments WHERE user_id::text = $1`,
+        [user.id],
+      );
+      if (preflight.rows.length === 0) {
+        return fail(
+          403,
+          "MFA required but not enrolled — contact administrator",
+          "MFA_NOT_ENROLLED",
+        );
+      }
+      if (preflight.rows[0].mfa_locked_until) {
+        const lockedUntil = new Date(preflight.rows[0].mfa_locked_until).getTime();
+        if (lockedUntil > Date.now()) {
+          const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
+          return fail(
+            429,
+            `MFA locked, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+            "MFA_LOCKED",
+          );
+        }
+      }
+
+      const submitted = (b.mfaCode ?? b.recoveryCode ?? "").trim();
+      if (!submitted) {
+        return fail(401, "MFA code required", "MFA_REQUIRED");
+      }
+
+      // Verify + consume atomically: row lock prevents concurrent logins from
+      // spending the same recovery code twice and makes the lockout counter
+      // read/write race-free.
+      const client = await pool.connect();
+      let mfaResult:
+        | { ok: true; usedRecovery: boolean; remaining: number }
+        | { ok: false; code: "MFA_LOCKED" | "MFA_INVALID"; message: string };
+      try {
+        await client.query("BEGIN");
+        const locked = await client.query(
+          `SELECT secret_hash, recovery_codes, failed_mfa_count, mfa_locked_until
+             FROM mfa_enrollments WHERE user_id::text = $1
+             FOR UPDATE`,
+          [user.id],
+        );
+        const m = locked.rows[0];
+        if (!m) {
+          // Enrollment row disappeared between preflight and lock (e.g. MFA
+          // disabled concurrently). Roll back and surface a stable error.
+          await client.query("ROLLBACK");
+          return fail(401, "MFA enrollment not found", "MFA_NOT_ENROLLED");
+        }
+
+        // Re-check lockout inside the txn (another request may have locked us)
+        if (m.mfa_locked_until) {
+          const lockedUntil = new Date(m.mfa_locked_until).getTime();
+          if (lockedUntil > Date.now()) {
+            await client.query("ROLLBACK");
+            const minutes = Math.ceil((lockedUntil - Date.now()) / 60_000);
+            mfaResult = {
+              ok: false,
+              code: "MFA_LOCKED",
+              message: `MFA locked, try again in ${minutes} minute${minutes === 1 ? "" : "s"}`,
+            };
+            return fail(429, mfaResult.message, mfaResult.code);
+          }
+        }
+
+        let valid = false;
+        let consumedIndex = -1;
+        if (/^\d{6}$/.test(submitted)) {
+          valid = totpVerify(m.secret_hash, submitted);
+        } else {
+          const codes: string[] = Array.isArray(m.recovery_codes) ? m.recovery_codes : [];
+          for (let i = 0; i < codes.length; i++) {
+            if (await bcrypt.compare(submitted, codes[i])) {
+              valid = true;
+              consumedIndex = i;
+              break;
+            }
+          }
+        }
+
+        if (!valid) {
+          const nextCount = (m.failed_mfa_count ?? 0) + 1;
+          if (nextCount >= 5) {
+            await client.query(
+              `UPDATE mfa_enrollments
+                 SET failed_mfa_count = $1,
+                     mfa_locked_until = NOW() + interval '15 minutes'
+               WHERE user_id::text = $2`,
+              [nextCount, user.id],
+            );
+          } else {
+            await client.query(
+              `UPDATE mfa_enrollments SET failed_mfa_count = $1 WHERE user_id::text = $2`,
+              [nextCount, user.id],
+            );
+          }
+          await client.query("COMMIT");
+          return fail(401, "Invalid MFA code", "MFA_INVALID");
+        }
+
+        if (consumedIndex >= 0) {
+          const remaining = (m.recovery_codes as string[]).filter(
+            (_: string, idx: number) => idx !== consumedIndex,
+          );
+          await client.query(
+            `UPDATE mfa_enrollments
+               SET recovery_codes = $1,
+                   failed_mfa_count = 0,
+                   mfa_locked_until = NULL,
+                   last_verified_at = NOW()
+             WHERE user_id::text = $2`,
+            [remaining, user.id],
+          );
+          await client.query("COMMIT");
+          mfaResult = { ok: true, usedRecovery: true, remaining: remaining.length };
+        } else {
+          await client.query(
+            `UPDATE mfa_enrollments
+               SET failed_mfa_count = 0,
+                   mfa_locked_until = NULL,
+                   last_verified_at = NOW()
+             WHERE user_id::text = $1`,
+            [user.id],
+          );
+          await client.query("COMMIT");
+          mfaResult = { ok: true, usedRecovery: false, remaining: -1 };
+        }
+      } catch (e) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw e;
+      } finally {
+        client.release();
+      }
+
+      if (mfaResult.ok && mfaResult.usedRecovery) {
+        await publishEvent(user.tenant_id, "mfa.recovery_code.consumed", "core-api", {
+          userId: user.id,
+          email: user.email,
+          remaining: mfaResult.remaining,
+        });
+      }
+    }
+
+    // Update last_login_at (post-MFA so failed MFA attempts don't mark a login)
+    await pool.query(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
 
     // Generate session token and store in DynamoDB sessions table
     const token = crypto.randomBytes(32).toString("hex");
@@ -463,6 +618,183 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       data: { items: rows.rows, total: rows.rows.length },
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // GET /api/v1/directory/users/:id — single user + their group memberships
+  // PATCH /api/v1/directory/users/:id — update directory user attributes
+  {
+    const m = path.match(/^\/api\/v1\/directory\/users\/([^/]+)$/);
+    if (m && method === "GET") {
+      const userId = decodeURIComponent(m[1]);
+      const userRow = await pool.query(
+        `SELECT id, external_id, email, display_name, department, title, status,
+                created_at, updated_at
+         FROM directory_users
+         WHERE tenant_id = $1 AND id = $2`,
+        [auth.tenantId, userId],
+      );
+      if (userRow.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+      const groupRows = await pool.query(
+        `SELECT g.id, g.name, g.description, m.created_at as joined_at
+         FROM directory_memberships m
+         JOIN directory_groups g ON g.id = m.group_id
+         WHERE m.tenant_id = $1 AND m.user_id = $2
+         ORDER BY g.name ASC`,
+        [auth.tenantId, userId],
+      );
+      return ok({
+        user: { ...userRow.rows[0], source: "directory", console_user_id: null },
+        groups: groupRows.rows,
+      });
+    }
+    if (m && method === "PATCH") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const userId = decodeURIComponent(m[1]);
+      const b = body(event) as {
+        displayName?: string;
+        department?: string;
+        title?: string;
+        status?: string;
+      };
+      const allowedStatus = new Set(["active", "suspended", "inactive"]);
+      if (b.status !== undefined && !allowedStatus.has(b.status)) {
+        return fail(400, "status must be active, suspended, or inactive", "VALIDATION_FAILED");
+      }
+      const r = await pool.query(
+        `UPDATE directory_users
+           SET display_name = COALESCE($3, display_name),
+               department = COALESCE($4, department),
+               title = COALESCE($5, title),
+               status = COALESCE($6, status),
+               updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING id, external_id, email, display_name, department, title, status,
+                   created_at, updated_at`,
+        [
+          auth.tenantId,
+          userId,
+          b.displayName ?? null,
+          b.department ?? null,
+          b.title ?? null,
+          b.status ?? null,
+        ],
+      );
+      if (r.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+      return ok({
+        user: { ...r.rows[0], source: "directory", console_user_id: null },
+      });
+    }
+  }
+
+  // POST /api/v1/directory/groups/:id/members — add a user to a group
+  // DELETE /api/v1/directory/groups/:id/members — remove a user from a group
+  {
+    const m = path.match(/^\/api\/v1\/directory\/groups\/([^/]+)\/members$/);
+    if (m && (method === "POST" || method === "DELETE")) {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const groupId = decodeURIComponent(m[1]);
+      const b = body(event) as { userId?: string };
+      if (!b.userId) return fail(400, "userId required", "VALIDATION_FAILED");
+
+      // Verify both rows belong to this tenant before mutating membership
+      const g = await pool.query(
+        `SELECT 1 FROM directory_groups WHERE tenant_id = $1 AND id = $2`,
+        [auth.tenantId, groupId],
+      );
+      if (g.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      const u = await pool.query(`SELECT 1 FROM directory_users WHERE tenant_id = $1 AND id = $2`, [
+        auth.tenantId,
+        b.userId,
+      ]);
+      if (u.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+
+      if (method === "POST") {
+        await pool.query(
+          `INSERT INTO directory_memberships (tenant_id, user_id, group_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (tenant_id, user_id, group_id) DO NOTHING`,
+          [auth.tenantId, b.userId, groupId],
+        );
+        return ok({ status: "success" }, 201);
+      }
+      await pool.query(
+        `DELETE FROM directory_memberships
+         WHERE tenant_id = $1 AND user_id = $2 AND group_id = $3`,
+        [auth.tenantId, b.userId, groupId],
+      );
+      return ok({ status: "success" });
+    }
+  }
+
+  // GET /api/v1/directory/groups/:id — single group + members + app mappings
+  // PATCH /api/v1/directory/groups/:id — update group name / description
+  {
+    const m = path.match(/^\/api\/v1\/directory\/groups\/([^/]+)$/);
+    if (m && method === "PATCH") {
+      if (auth.role !== "admin" && auth.role !== "owner") {
+        return fail(403, "Admin role required", "FORBIDDEN");
+      }
+      const groupId = decodeURIComponent(m[1]);
+      const b = body(event) as { name?: string; description?: string };
+      if (b.name !== undefined && !b.name.trim()) {
+        return fail(400, "name cannot be empty", "VALIDATION_FAILED");
+      }
+      const r = await pool.query(
+        `UPDATE directory_groups
+           SET name = COALESCE($3, name),
+               description = COALESCE($4, description),
+               updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING id, external_id, name, description, created_at, updated_at`,
+        [auth.tenantId, groupId, b.name ?? null, b.description ?? null],
+      );
+      if (r.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      return ok({ group: r.rows[0] });
+    }
+    if (m && method === "GET") {
+      const groupId = decodeURIComponent(m[1]);
+      const groupRow = await pool.query(
+        `SELECT g.id, g.external_id, g.name, g.description, g.created_at, g.updated_at,
+                COUNT(m.user_id) as member_count
+         FROM directory_groups g
+         LEFT JOIN directory_memberships m ON m.group_id = g.id
+         WHERE g.tenant_id = $1 AND g.id = $2
+         GROUP BY g.id`,
+        [auth.tenantId, groupId],
+      );
+      if (groupRow.rows.length === 0) return fail(404, "Group not found", "NOT_FOUND");
+      const memberRows = await pool.query(
+        `SELECT u.id, u.email, u.display_name, u.department, u.title, u.status,
+                m.created_at as joined_at
+         FROM directory_memberships m
+         JOIN directory_users u ON u.id = m.user_id
+         WHERE m.tenant_id = $1 AND m.group_id = $2
+         ORDER BY u.email ASC`,
+        [auth.tenantId, groupId],
+      );
+      const mapRows = await pool.query(
+        `SELECT id, app_provider, app_role FROM directory_mappings
+         WHERE tenant_id = $1 AND directory_group_id = $2`,
+        [auth.tenantId, groupId],
+      );
+      const appMappings = mapRows.rows.map((r) => ({
+        id: r.id,
+        appId: r.app_provider,
+        role: r.app_role,
+      }));
+      return ok({
+        group: {
+          ...groupRow.rows[0],
+          member_count: parseInt(groupRow.rows[0].member_count ?? "0", 10),
+        },
+        members: memberRows.rows,
+        appMappings,
+      });
+    }
   }
 
   // GET /api/v1/directory/sync/status — directory sync status per provider
@@ -1826,60 +2158,95 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // GET /api/v1/auth/mfa/status — current user's MFA state
   if (path === "/api/v1/auth/mfa/status" && method === "GET") {
     const r = await pool.query(
-      `SELECT u.mfa_enabled, m.enrolled_at
+      `SELECT u.mfa_enabled, m.enrolled_at, m.recovery_codes
        FROM users u LEFT JOIN mfa_enrollments m ON m.user_id::text = u.id
        WHERE u.id = $1`,
       [auth.userId],
     );
     const row = r.rows[0];
+    const codes: string[] = Array.isArray(row?.recovery_codes) ? row.recovery_codes : [];
     return ok({
       enabled: row?.mfa_enabled ?? false,
+      totpEnabled: row?.mfa_enabled ?? false,
+      enabledAt: row?.enrolled_at ?? null,
       enrolledAt: row?.enrolled_at ?? null,
+      recoveryCodesRemaining: codes.length,
     });
   }
 
-  // POST /api/v1/auth/mfa/setup — generate + persist a new secret; return otpauth URI
+  // POST /api/v1/auth/mfa/setup — stage a pending TOTP secret; returns the
+  // otpauth URI for QR display. The secret is written to `pending_secret`
+  // (not `secret_hash`) so an in-progress re-enrollment never invalidates the
+  // currently-active authenticator or recovery codes. Promotion to the active
+  // slot happens only when /mfa/confirm verifies a code.
   if (path === "/api/v1/auth/mfa/setup" && method === "POST") {
     const secretBytes = crypto.randomBytes(20);
     const secretB32 = base32Encode(secretBytes);
-    const secretHash = crypto.createHash("sha256").update(secretB32).digest("hex");
-    // Store the base32 secret encrypted at rest is ideal; for now, store hash
-    // plus the raw secret in a temporary pre-enrollment slot via a separate
-    // ephemeral mechanism. Simplest: store the base32 raw in secret_hash
-    // column (rename later); we never expose it after confirm.
+    // Raw base32 is required for TOTP verification (hashes are one-way).
+    // Column names are legacy; production deployments should wrap this value
+    // with AES-256-GCM using an env-provided key (MFA_SECRET_KEY) before insert.
     await pool.query(
-      `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, enrolled_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (user_id) DO UPDATE SET secret_hash = EXCLUDED.secret_hash, enrolled_at = NOW()`,
+      `INSERT INTO mfa_enrollments (user_id, tenant_id, secret_hash, recovery_codes, enrolled_at, failed_mfa_count, mfa_locked_until, pending_secret, pending_started_at)
+       VALUES ($1, $2, '', '{}', NOW(), 0, NULL, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         pending_secret = EXCLUDED.pending_secret,
+         pending_started_at = NOW()`,
       [auth.userId, auth.tenantId, secretB32],
     );
     const issuer = "AtlasIT";
     const label = `${issuer}:${auth.email ?? auth.userId}`;
     const otpauth = `otpauth://totp/${encodeURIComponent(label)}?secret=${secretB32}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
-    return ok({ otpauth, secret: secretB32, hashRef: secretHash });
+    return ok({ otpauth, uri: otpauth, secret: secretB32 });
   }
 
-  // POST /api/v1/auth/mfa/confirm — verify the first TOTP code to enable MFA
+  // POST /api/v1/auth/mfa/confirm — verify first TOTP code against the pending
+  // secret, promote it to the active slot, enable MFA, and issue 10 single-use
+  // recovery codes (shown once; stored bcrypt-hashed).
   if (path === "/api/v1/auth/mfa/confirm" && method === "POST") {
     const b = body(event) as { code?: string };
     if (!b.code) return fail(400, "code required", "VALIDATION_FAILED");
-    const r = await pool.query(`SELECT secret_hash FROM mfa_enrollments WHERE user_id::text = $1`, [
-      auth.userId,
-    ]);
-    if (r.rows.length === 0) return fail(404, "No pending enrollment", "NOT_FOUND");
-    if (!totpVerify(r.rows[0].secret_hash, b.code)) {
+    const r = await pool.query(
+      `SELECT pending_secret FROM mfa_enrollments WHERE user_id::text = $1`,
+      [auth.userId],
+    );
+    if (r.rows.length === 0 || !r.rows[0].pending_secret) {
+      return fail(404, "No pending enrollment", "NOT_FOUND");
+    }
+    if (!totpVerify(r.rows[0].pending_secret, b.code)) {
       return fail(401, "Invalid code", "INVALID_CODE");
     }
+
+    // Generate 10 single-use recovery codes (shown once, stored hashed)
+    const recoveryCodes: string[] = [];
+    const recoveryHashes: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const raw = crypto.randomBytes(5).toString("hex").toUpperCase(); // 10-char code
+      const formatted = `${raw.slice(0, 5)}-${raw.slice(5)}`;
+      recoveryCodes.push(formatted);
+      recoveryHashes.push(await bcrypt.hash(formatted, 10));
+    }
+
+    // Promote pending secret → active, clear pending, install new recovery codes,
+    // reset lockout. Invalidates any previous authenticator / codes in one write.
     await pool.query(
-      `UPDATE mfa_enrollments SET last_verified_at = NOW() WHERE user_id::text = $1`,
-      [auth.userId],
+      `UPDATE mfa_enrollments
+         SET secret_hash = pending_secret,
+             pending_secret = NULL,
+             pending_started_at = NULL,
+             enrolled_at = NOW(),
+             last_verified_at = NOW(),
+             recovery_codes = $1,
+             failed_mfa_count = 0,
+             mfa_locked_until = NULL
+       WHERE user_id::text = $2`,
+      [recoveryHashes, auth.userId],
     );
     await pool.query(`UPDATE users SET mfa_enabled = TRUE WHERE id = $1`, [auth.userId]);
     await publishEvent(auth.tenantId, "mfa.enabled", "core-api", {
       userId: auth.userId,
       email: auth.email,
     });
-    return ok({ enabled: true });
+    return ok({ enabled: true, recoveryCodes });
   }
 
   // POST /api/v1/auth/mfa/disable — remove MFA enrollment

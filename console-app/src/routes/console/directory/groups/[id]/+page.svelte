@@ -104,11 +104,12 @@
       const res = await fetch(`/api/directory/groups/${groupId}`);
       if (!res.ok) throw new Error(`Failed to load group (${res.status})`);
       const data = await res.json();
-      group = data.group;
-      members = data.members || [];
+      group = data.group ?? data.data?.group ?? null;
+      members = data.members ?? data.data?.members ?? [];
 
-      if (data.appMappings) {
-        groupApps = data.appMappings.map((m: any) => ({ id: m.id, appId: m.appId || m.app_id, role: m.role }));
+      const appMappings = data.appMappings ?? data.data?.appMappings;
+      if (appMappings) {
+        groupApps = appMappings.map((m: any) => ({ id: m.id, appId: m.appId || m.app_id, role: m.role }));
       }
 
       if (group) {
@@ -127,7 +128,16 @@
       const res = await fetch("/api/directory/users?limit=500");
       if (res.ok) {
         const data = await res.json();
-        allUsers = data.users || [];
+        const items = data.users ?? data.data?.items ?? [];
+        // Normalize to {id, name, email, department, title, status}
+        allUsers = items.map((u: any) => ({
+          id: u.id,
+          name: u.display_name ?? u.name ?? u.email,
+          email: u.email,
+          department: u.department,
+          title: u.title,
+          status: u.status ?? "active",
+        }));
       }
     } catch {}
   }
@@ -146,7 +156,8 @@
       });
       if (!res.ok) throw new Error("Failed to save group");
       const data = await res.json();
-      group = { ...group, ...data.group };
+      const updated = data.group ?? data.data?.group;
+      group = updated ? { ...group, ...updated } : group;
       pushToast({ message: "Group updated", variant: "success" });
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to save group", variant: "error" });

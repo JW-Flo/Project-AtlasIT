@@ -1,34 +1,38 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { verifyPassword } from "$lib/server/password";
+import { verifyTotp, decryptTotpSecret, isEncryptedSecret } from "@atlasit/shared/crypto/totp";
 import { writeAudit } from "$lib/server/audit";
 
-/** Disable TOTP MFA — requires current password confirmation. */
+/** Disable TOTP MFA — requires a valid TOTP code from the active authenticator. */
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const env = (platform?.env as any) || {};
   const db = env.ATLAS_SHARED_DB;
+  const encryptionKey: string | undefined = env.CRED_ENCRYPTION_KEY;
   if (!db) return json({ error: "Service unavailable" }, { status: 503 });
 
   const body = await request.json().catch(() => ({}));
-  const { password } = body as { password?: string };
+  const { code } = body as { code?: string };
 
-  if (!password) return json({ error: "Password required to disable MFA" }, { status: 400 });
+  if (!code) return json({ error: "TOTP code required to disable MFA" }, { status: 400 });
 
-  // Verify current password
-  const userRow = await db
-    .prepare("SELECT password_hash, salt FROM console_users WHERE id = ?")
+  const totpRow = await db
+    .prepare("SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
     .bind(user.userId)
-    .first<{ password_hash: string; salt: string }>();
+    .first<{ secret_encrypted: string }>();
 
-  if (!userRow) return json({ error: "User not found" }, { status: 404 });
+  if (!totpRow) return json({ error: "MFA is not enrolled" }, { status: 400 });
 
-  const valid = await verifyPassword(password, userRow.salt, userRow.password_hash);
-  if (!valid) return json({ error: "Incorrect password" }, { status: 401 });
+  let totpSecret = totpRow.secret_encrypted;
+  if (encryptionKey && isEncryptedSecret(totpSecret)) {
+    totpSecret = await decryptTotpSecret(totpSecret, encryptionKey);
+  }
 
-  // Delete TOTP secret and recovery codes
+  const result = await verifyTotp(totpSecret, code);
+  if (!result.valid) return json({ error: "Invalid code" }, { status: 401 });
+
   await db.prepare("DELETE FROM mfa_totp_secrets WHERE user_id = ?").bind(user.userId).run();
   await db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id = ?").bind(user.userId).run();
 
