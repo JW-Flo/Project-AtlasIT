@@ -63,8 +63,8 @@ Terraform state: S3 bucket `atlasit-terraform-state-457335975503` + DynamoDB loc
 | DynamoDB  | AWS         | `atlasit-sessions` / `atlasit-cache` / `atlasit-flags` | Sessions, cache, feature flags                           |
 | S3        | AWS         | `atlasit-evidence-*`                                   | Policies, evidence, artifacts                            |
 | SQS       | AWS         | `atlasit-step-tasks`                                   | Workflow step dispatch                                   |
-| Legacy session/cache/flags store | Migrated    | `sessions`, `cache`, `feature_flags`          | Migrated to DynamoDB                                     |
-| Legacy relational store          | Migrated    | `atlas_shared`                                 | Migrated to Aurora PG                                    |
+| Legacy session/cache/flags store | Migrated    | Deprecated pre-migration identifiers (`KV_SESSIONS`, `KV_CACHE`, `KV_FEATURE_FLAGS`) | Migrated to DynamoDB (`atlasit-sessions`, `atlasit-cache`, `atlasit-flags`) |
+| Legacy relational store          | Migrated    | Deprecated pre-migration identifier (`ATLAS_SHARED_DB`) | Migrated to Aurora PG (`atlasit-db`)                    |
 
 ## Quick Start
 
