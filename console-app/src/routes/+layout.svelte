@@ -180,7 +180,7 @@
 
     const token = sessionStorage.getItem("atlasit_token");
     const path = window.location.pathname;
-    const isPublic = ["/login", "/signup", "/", "/support", "/trust", "/faq", "/privacy", "/developers", "/accept-invite"].some(
+    const isPublic = ["/login", "/signup", "/", "/demo", "/interactive-demo", "/see-atlasit-live", "/support", "/trust", "/faq", "/privacy", "/developers", "/accept-invite"].some(
       (r) => path === r || path.startsWith(r + "/"),
     );
     if (!token && !isPublic) {
@@ -190,7 +190,7 @@
   });
 
   // Public routes that should not use the AppFrame shell
-  const PUBLIC_ROUTES = ["/login", "/signup", "/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers", "/accept-invite"];
+  const PUBLIC_ROUTES = ["/login", "/signup", "/demo", "/interactive-demo", "/see-atlasit-live", "/support", "/trust", "/console/login", "/console/onboarding", "/faq", "/privacy", "/developers", "/accept-invite"];
 
   $: isBare =
     $page.url.pathname === "/" ||
