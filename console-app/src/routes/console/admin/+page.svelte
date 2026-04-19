@@ -140,11 +140,39 @@
     try {
       const res = await fetch(`/api/admin/tenants/${tenant.id}/impersonate`, { method: "POST" });
       if (!res.ok) throw new Error("Failed to impersonate tenant");
+      const data = await res.json();
+      const { token, user } = data?.data ?? {};
+      if (!token || !user) throw new Error("Invalid impersonation response");
+      // Preserve admin session so we can restore it on exit
+      const originalToken = sessionStorage.getItem("atlasit_token");
+      const originalUser = sessionStorage.getItem("atlasit_user");
+      if (originalToken) sessionStorage.setItem("atlasit_original_token", originalToken);
+      if (originalUser) sessionStorage.setItem("atlasit_original_user", originalUser);
+      // Switch to tenant session
+      sessionStorage.setItem("atlasit_token", token);
+      sessionStorage.setItem("atlasit_user", JSON.stringify(user));
       location.href = "/console";
     } catch (e: any) {
       pushToast({ message: e?.message || "Failed to impersonate", variant: "error" });
     }
   }
+
+  function exitImpersonation() {
+    const originalToken = sessionStorage.getItem("atlasit_original_token");
+    const originalUser = sessionStorage.getItem("atlasit_original_user");
+    if (originalToken) {
+      sessionStorage.setItem("atlasit_token", originalToken);
+      sessionStorage.removeItem("atlasit_original_token");
+    }
+    if (originalUser) {
+      sessionStorage.setItem("atlasit_user", originalUser);
+      sessionStorage.removeItem("atlasit_original_user");
+    }
+    location.href = "/console/admin";
+  }
+
+  $: isImpersonating = typeof window !== "undefined" &&
+    !!sessionStorage.getItem("atlasit_original_token");
 
   onMount(loadTenants);
 
@@ -189,6 +217,16 @@
 </script>
 
 <div class="space-y-6">
+  {#if isImpersonating}
+    <div class="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+      <div class="flex items-center gap-2 text-sm text-amber-800">
+        <Eye class="h-4 w-4 shrink-0" />
+        <span>You are impersonating a tenant. Actions taken here affect their account.</span>
+      </div>
+      <Button size="sm" variant="outline" on:click={exitImpersonation}>Exit impersonation</Button>
+    </div>
+  {/if}
+
   <div class="flex items-center justify-between gap-3">
     <div>
       <h1 class="text-2xl font-semibold tracking-tight">Platform Administration</h1>

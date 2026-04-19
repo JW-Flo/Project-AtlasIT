@@ -17,6 +17,7 @@ import { ALL_MANIFESTS } from "@atlasit/connector-schema";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import pg from "pg";
+import { sendInviteEmail, sendPasswordResetEmail } from "./email.js";
 
 const { Pool } = pg;
 
@@ -593,8 +594,10 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     const limit = Math.min(parseInt(qs.limit ?? "50", 10) || 50, 100);
     const offset = parseInt(qs.offset ?? "0", 10) || 0;
     const result = await pool.query(
-      `SELECT id, name, slug, industry, status, tier, config, created_at as "createdAt"
-       FROM tenants ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      `SELECT t.id, t.name, t.slug, t.industry, t.status, t.tier, t.created_at as "createdAt",
+              (SELECT u.email FROM users u WHERE u.tenant_id = t.id AND u.role = 'owner' LIMIT 1) as "ownerEmail",
+              (SELECT COUNT(*) FROM users u2 WHERE u2.tenant_id = t.id)::int as "user_count"
+       FROM tenants t ORDER BY t.created_at DESC LIMIT $1 OFFSET $2`,
       [limit, offset],
     );
     const countRow = await pool.query(`SELECT COUNT(*) as total FROM tenants`);
@@ -604,6 +607,84 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       meta: { total: parseInt(countRow.rows[0]?.total ?? "0", 10), limit, offset },
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // POST /api/v1/admin/users/reset-password — reset any user's password (admin only)
+  if (path === "/api/v1/admin/users/reset-password" && method === "POST") {
+    if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+    const b = body(event) as { email?: string };
+    const email = b.email?.trim().toLowerCase();
+    if (!email) return fail(400, "email is required", "VALIDATION_FAILED");
+
+    const userRow = await pool.query(
+      `SELECT id, tenant_id FROM users WHERE lower(email) = $1 LIMIT 1`,
+      [email],
+    );
+    if (userRow.rows.length === 0) return fail(404, "User not found", "NOT_FOUND");
+    const target = userRow.rows[0];
+
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
+    const bytes = crypto.randomBytes(16);
+    const tempPassword = Array.from(bytes)
+      .map((b) => chars[b % chars.length])
+      .join("");
+
+    const hash = await bcrypt.hash(tempPassword, 12);
+    await pool.query(
+      `UPDATE users SET password_hash = $1, failed_login_count = 0, locked_until = NULL WHERE id = $2`,
+      [hash, target.id],
+    );
+
+    // Non-fatal: best-effort email
+    void sendPasswordResetEmail({ to: email, tempPassword });
+
+    return ok({ status: "success", data: { tempPassword }, timestamp: new Date().toISOString() });
+  }
+
+  // POST /api/v1/tenants/:id/impersonate — start impersonation session (admin only)
+  {
+    const m = path.match(/^\/api\/v1\/tenants\/([^/]+)\/impersonate$/);
+    if (m && method === "POST") {
+      if (auth.role !== "admin") return fail(403, "Admin role required", "FORBIDDEN");
+      const [, tenantId] = m;
+      const ownerRow = await pool.query(
+        `SELECT id, email, role, tenant_id, display_name FROM users
+         WHERE tenant_id = $1 AND role = 'owner' LIMIT 1`,
+        [tenantId],
+      );
+      if (ownerRow.rows.length === 0) return fail(404, "Tenant owner not found", "NOT_FOUND");
+      const owner = ownerRow.rows[0];
+
+      const token = crypto.randomBytes(32).toString("base64url");
+      const ttl = 60 * 60; // 1 hour
+      await svc.sessionRepo.set(
+        token,
+        {
+          userId: owner.id,
+          email: owner.email,
+          tenantId: owner.tenant_id,
+          role: owner.role,
+          displayName: owner.display_name ?? owner.email,
+          impersonatedBy: auth.userId,
+        },
+        ttl,
+      );
+
+      return ok({
+        status: "success",
+        data: {
+          token,
+          user: {
+            userId: owner.id,
+            email: owner.email,
+            tenantId: owner.tenant_id,
+            role: owner.role,
+            displayName: owner.display_name ?? owner.email,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 
   // GET /api/v1/tenants/:id — get tenant by ID
@@ -1014,6 +1095,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         role,
         invitedBy: auth.userId,
       });
+
+      // Fetch tenant name for the invite email
+      const tenantRow = await pool.query(`SELECT name FROM tenants WHERE id = $1`, [auth.tenantId]);
+      const tenantName = tenantRow.rows[0]?.name ?? "your organisation";
+      void sendInviteEmail({ to: email, inviteUrl, tenantName, role });
 
       return ok(
         {

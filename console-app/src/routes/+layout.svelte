@@ -56,6 +56,7 @@
       "/api/directory/groups": "/api/v1/directory/groups",
       "/api/directory/users": "/api/v1/directory/users",
       "/api/admin/tenants": "/api/v1/tenants",
+      "/api/admin/users/reset-password": "/api/v1/admin/users/reset-password",
       "/api/tenant/settings": "/api/v1/tenant/settings",
       "/api/tenant/security": "/api/v1/tenant/settings",
       "/api/tenants/preferences": "/api/v1/tenant/settings",
