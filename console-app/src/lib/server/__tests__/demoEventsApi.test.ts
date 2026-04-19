@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { POST } from "./+server";
+import { POST } from "../../../routes/api/demo/events/+server";
 
 type QueryCall = { query: string; args: unknown[] };
 
