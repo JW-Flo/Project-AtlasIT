@@ -41,6 +41,13 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
   const now = new Date().toISOString();
   const salt = crypto.randomUUID();
   const passwordHash = await hashPasswordPBKDF2(cfg.password, salt);
+  const demoRuleOnboardId = `${cfg.tenantId}-onboard-dentist`;
+  const demoRuleOffboardId = `${cfg.tenantId}-offboard-contractor`;
+  const demoRuleQuarantineId = `${cfg.tenantId}-device-quarantine`;
+  const demoIncident1Id = `${cfg.tenantId}-inc-1`;
+  const demoIncident2Id = `${cfg.tenantId}-inc-2`;
+  const demoIncident3Id = `${cfg.tenantId}-inc-3`;
+  const demoAccessCampaignId = `${cfg.tenantId}-access-q2`;
 
   await db
     .prepare(
@@ -92,20 +99,23 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
       `INSERT INTO automation_rules
       (id, tenant_id, name, description, enabled, trigger_type, trigger_config, conditions, actions, created_at, updated_at, created_by)
       VALUES
-      ('demo-onboard-dentist', ?, 'Onboard Dentist workflow', 'Provision baseline access for new dentist hires', 1, 'user_created', '{}', '[]', '[{"type":"assign_apps","apps":["okta","slack","google-workspace"]}]', ?, ?, ?),
-      ('demo-offboard-contractor', ?, 'Offboard Contractor workflow', 'Revoke all app access and archive data', 1, 'user_deactivated', '{}', '[]', '[{"type":"revoke_access","scope":"all"}]', ?, ?, ?),
-      ('demo-device-quarantine', ?, 'Device quarantine flow', 'Contain risky endpoint automatically', 1, 'app_health_changed', '{}', '[]', '[{"type":"create_incident","severity":"high"}]', ?, ?, ?)
+      (?, ?, 'Onboard Dentist workflow', 'Provision baseline access for new dentist hires', 1, 'user_created', '{}', '[]', '[{"type":"assign_apps","apps":["okta","slack","google-workspace"]}]', ?, ?, ?),
+      (?, ?, 'Offboard Contractor workflow', 'Revoke all app access and archive data', 1, 'user_deactivated', '{}', '[]', '[{"type":"revoke_access","scope":"all"}]', ?, ?, ?),
+      (?, ?, 'Device quarantine flow', 'Contain risky endpoint automatically', 1, 'app_health_changed', '{}', '[]', '[{"type":"create_incident","severity":"high"}]', ?, ?, ?)
       `,
     )
     .bind(
+      demoRuleOnboardId,
       cfg.tenantId,
       now,
       now,
       DEMO_USER_ID,
+      demoRuleOffboardId,
       cfg.tenantId,
       now,
       now,
       DEMO_USER_ID,
+      demoRuleQuarantineId,
       cfg.tenantId,
       now,
       now,
@@ -117,20 +127,30 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
     .prepare(
       `INSERT INTO incidents (id, tenant_id, title, severity, status, source, description, created_at)
        VALUES
-       ('demo-inc-1', ?, 'Suspicious login blocked', 'high', 'resolved', 'automation', 'Impossible-travel login blocked and account challenged.', ?),
-       ('demo-inc-2', ?, 'MFA bypass attempt', 'critical', 'investigating', 'identity', 'Legacy protocol access attempt detected for privileged user.', ?),
-       ('demo-inc-3', ?, 'Terminated employee access removed', 'medium', 'resolved', 'automation', 'Offboarding flow revoked access across connected SaaS apps.', ?)
+       (?, ?, 'Suspicious login blocked', 'high', 'resolved', 'automation', 'Impossible-travel login blocked and account challenged.', ?),
+       (?, ?, 'MFA bypass attempt', 'critical', 'investigating', 'identity', 'Legacy protocol access attempt detected for privileged user.', ?),
+       (?, ?, 'Terminated employee access removed', 'medium', 'resolved', 'automation', 'Offboarding flow revoked access across connected SaaS apps.', ?)
       `,
     )
-    .bind(cfg.tenantId, now, cfg.tenantId, now, cfg.tenantId, now)
+    .bind(
+      demoIncident1Id,
+      cfg.tenantId,
+      now,
+      demoIncident2Id,
+      cfg.tenantId,
+      now,
+      demoIncident3Id,
+      cfg.tenantId,
+      now,
+    )
     .run();
 
   await db
     .prepare(
       `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, created_by, created_at)
-      VALUES ('demo-access-q2', ?, 'Q2 Privileged Access Review', 'all', 'active', 'owner', datetime('now', '+10 day'), ?, ?)`,
+      VALUES (?, ?, 'Q2 Privileged Access Review', 'all', 'active', 'owner', datetime('now', '+10 day'), ?, ?)`,
     )
-    .bind(cfg.tenantId, DEMO_USER_ID, now)
+    .bind(demoAccessCampaignId, cfg.tenantId, DEMO_USER_ID, now)
     .run();
 
   const prefs: Array<[string, unknown]> = [
