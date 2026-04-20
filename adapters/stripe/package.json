@@ -6,14 +6,19 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "hono": "^4.4.0"
+    "hono": "^4.4.0",
+    "stripe": "^14.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240320.0",
+    "@types/node": "^22.0.0",
     "typescript": "^5.7.2",
+    "vitest": "^2.0.0",
     "wrangler": "^3.60.0"
   }
 }

@@ -183,6 +183,73 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   { pattern: "/api/v1/apps/connect", handler: () => MUTATE_SUCCESS },
   { pattern: "/api/v1/apps/disconnect", handler: () => MUTATE_SUCCESS },
   { pattern: "/api/v1/apps/test", handler: () => ({ data: { healthy: true } }) },
+  {
+    pattern: "/api/v1/adapters/stripe/evidence/collect",
+    handler: () => ({
+      status: "success",
+      data: {
+        collected: 52,
+        controls: ["SOC2-CC6.1", "SOC2-CC6.6", "SOC2-CC7.2", "SOC2-CC7.3", "PCI-10.2", "PCI-12.8"],
+        frameworks: ["SOC2", "PCI-DSS"],
+        items: [
+          {
+            type: "api_key_permissions",
+            controlRefs: ["SOC2-CC6.1"],
+            status: "pass",
+            details: {
+              totalKeys: 5,
+              testKeys: 3,
+              liveKeys: 2,
+              note: "API keys managed via Stripe Dashboard",
+            },
+          },
+          {
+            type: "webhook_security",
+            controlRefs: ["SOC2-CC6.6"],
+            status: "pass",
+            details: {
+              totalWebhooks: 2,
+              allHttps: true,
+              allActive: true,
+            },
+          },
+          {
+            type: "payment_events",
+            controlRefs: ["SOC2-CC7.2", "PCI-10.2"],
+            status: "pass",
+            details: {
+              totalEvents: 37,
+              successfulPayments: 34,
+              failedPayments: 3,
+              periodDays: 90,
+            },
+          },
+          {
+            type: "dispute_tracking",
+            controlRefs: ["SOC2-CC7.3"],
+            status: "pass",
+            details: {
+              totalDisputes: 8,
+              openDisputes: 0,
+              closedDisputes: 8,
+              periodDays: 90,
+            },
+          },
+          {
+            type: "pci_compliance",
+            controlRefs: ["PCI-12.8"],
+            status: "pass",
+            details: {
+              provider: "Stripe",
+              complianceLevel: "PCI DSS Level 1 Service Provider",
+              attestation: "Stripe maintains PCI DSS Level 1 certification",
+            },
+          },
+        ],
+      },
+      timestamp: new Date().toISOString(),
+    }),
+  },
   { pattern: "/api/v1/marketplace", handler: () => getMarketplaceResponse() },
   { pattern: "/api/marketplace", handler: () => getMarketplaceResponse() },
   {
