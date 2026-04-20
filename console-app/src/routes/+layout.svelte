@@ -85,6 +85,12 @@
       "/api/privacy/dsar": "/api/v1/privacy/dsar",
       // Compliance anomalies (Tier 2)
       "/api/compliance-intelligence/anomalies": "/api/compliance/api/v1/compliance-intelligence/anomalies",
+      // Trust Center / Questionnaires
+      "/api/v1/trust/questionnaire/list": "/api/compliance/api/v1/trust/questionnaire/list",
+      "/api/v1/trust/questionnaire/parse": "/api/compliance/api/v1/trust/questionnaire/parse",
+      "/api/v1/trust/questionnaire/generate": "/api/compliance/api/v1/trust/questionnaire/generate",
+      "/api/v1/trust/questionnaire/feedback": "/api/compliance/api/v1/trust/questionnaire/feedback",
+      "/api/v1/trust/questionnaire/export": "/api/compliance/api/v1/trust/questionnaire/export",
       // Marketplace catalog
       "/api/marketplace": "/api/v1/marketplace",
       // Platform / operations
