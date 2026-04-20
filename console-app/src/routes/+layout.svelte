@@ -18,9 +18,6 @@
     // Stub responses for edge-case paths only. All feature endpoints are now
     // wired to real Lambda backends.
     const stubMap: Record<string, unknown> = {
-      // Marketplace /installs sub-route — base /api/marketplace returns an
-      // `installed` flag per item; dedicated /installs endpoint is obsolete.
-      "/api/marketplace/installs": { installs: [] },
       // Public health (API Gateway /health already returns 200)
       "/api/health": { status: "healthy" },
     };
@@ -93,6 +90,7 @@
       "/api/v1/trust/questionnaire/export": "/api/compliance/api/v1/trust/questionnaire/export",
       // Marketplace catalog
       "/api/marketplace": "/api/v1/marketplace",
+      "/api/marketplace/installs": "/api/v1/marketplace/installs",
       // Platform / operations
       "/api/platform/health-deep": "/api/v1/platform/health-deep",
       "/api/incidents/sla-config": "/api/v1/incidents/sla-config",

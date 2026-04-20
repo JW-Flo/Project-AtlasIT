@@ -2220,6 +2220,40 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     });
   }
 
+  // GET /api/v1/marketplace/installs — tenant-scoped installed integrations
+  if (path === "/api/v1/marketplace/installs" && method === "GET") {
+    const result = await pool.query(
+      `SELECT
+         id,
+         tenant_id,
+         provider AS app_id,
+         status,
+         config,
+         installed_at,
+         updated_at
+       FROM integrations
+       WHERE tenant_id = $1 AND status = 'active'
+       ORDER BY installed_at DESC`,
+      [auth.tenantId],
+    );
+    return ok({
+      status: "success",
+      data: result.rows.map((row) => ({
+        id: row.id,
+        tenant_id: row.tenant_id,
+        app_id: row.app_id,
+        status: row.status === "active" ? "active" : "installed",
+        config: row.config,
+        installed_by: null,
+        installed_at: row.installed_at,
+        activated_at: row.status === "active" ? row.updated_at : null,
+        uninstalled_at: null,
+        updated_at: row.updated_at,
+      })),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // GET /api/v1/platform/health-deep — deep health check (DB + ping each service)
   if (path === "/api/v1/platform/health-deep" && method === "GET") {
     const checks: Record<string, { ok: boolean; latencyMs?: number; error?: string }> = {};

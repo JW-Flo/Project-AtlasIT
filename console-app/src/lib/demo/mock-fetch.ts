@@ -186,6 +186,51 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   { pattern: "/api/v1/marketplace", handler: () => getMarketplaceResponse() },
   { pattern: "/api/marketplace", handler: () => getMarketplaceResponse() },
   {
+    pattern: "/api/v1/marketplace/installs",
+    handler: () => ({
+      status: "success",
+      data: [
+        {
+          id: "install-1",
+          tenant_id: "demo-tenant-001",
+          app_id: "github",
+          status: "active",
+          config: null,
+          installed_by: null,
+          installed_at: "2026-04-01T10:00:00Z",
+          activated_at: "2026-04-01T10:05:00Z",
+          uninstalled_at: null,
+          updated_at: "2026-04-20T08:00:00Z",
+        },
+        {
+          id: "install-2",
+          tenant_id: "demo-tenant-001",
+          app_id: "okta",
+          status: "active",
+          config: null,
+          installed_by: null,
+          installed_at: "2026-04-05T14:30:00Z",
+          activated_at: "2026-04-05T14:35:00Z",
+          uninstalled_at: null,
+          updated_at: "2026-04-20T07:45:00Z",
+        },
+        {
+          id: "install-3",
+          tenant_id: "demo-tenant-001",
+          app_id: "google-workspace",
+          status: "active",
+          config: null,
+          installed_by: null,
+          installed_at: "2026-04-10T09:15:00Z",
+          activated_at: "2026-04-10T09:20:00Z",
+          uninstalled_at: null,
+          updated_at: "2026-04-20T08:30:00Z",
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    }),
+  },
+  {
     pattern: "/api/v1/tenant/settings",
     handler: (_, method) => {
       if (method !== "GET") return MUTATE_SUCCESS;
