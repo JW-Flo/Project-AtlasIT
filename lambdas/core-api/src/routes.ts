@@ -54,11 +54,27 @@ function ok(body: unknown, status = 200): APIGatewayProxyResultV2 {
   return { statusCode: status, headers: JSON_HEADERS, body: JSON.stringify(body) };
 }
 
-function fail(status: number, message: string, code = "ERROR"): APIGatewayProxyResultV2 {
+interface ErrorAction {
+  label: string;
+  url: string;
+}
+
+function fail(
+  status: number,
+  message: string,
+  code = "ERROR",
+  action?: ErrorAction,
+): APIGatewayProxyResultV2 {
   return {
     statusCode: status,
     headers: JSON_HEADERS,
-    body: JSON.stringify({ status: "error", code, message, timestamp: new Date().toISOString() }),
+    body: JSON.stringify({
+      status: "error",
+      code,
+      message,
+      action,
+      timestamp: new Date().toISOString(),
+    }),
   };
 }
 

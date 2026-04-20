@@ -1,31 +1,30 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { listCampaigns, createCampaign } from "$lib/server/access-reviews";
-import { writeAudit } from "$lib/server/audit";
+import { listCampaignsPg, createCampaignPg } from "$lib/server/access-reviews";
+import { writeAuditPg } from "$lib/server/audit";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ campaigns: [] });
-
-  const campaigns = await listCampaigns(db, tenantId);
-  return json({ campaigns });
+  try {
+    const campaigns = await listCampaignsPg(tenantId);
+    return json({ campaigns });
+  } catch (e) {
+    console.error("List campaigns error:", e);
+    return json({ error: "Failed to load campaigns" }, { status: 500 });
+  }
 };
 
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   let body: any;
   try {
@@ -38,30 +37,34 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     return json({ error: "name is required" }, { status: 400 });
   }
 
-  const campaign = await createCampaign(db, tenantId, {
-    name: body.name.trim(),
-    scope: body.scope,
-    reviewerPolicy: body.reviewerPolicy,
-    dueDate: body.dueDate ?? null,
-    gracePeriodDays: body.gracePeriodDays,
-    createdBy: user.email,
-  });
-
-  // Non-blocking audit — writeAudit already catches internally,
-  // but wrap to be safe so audit failure never blocks campaign creation
   try {
-    await writeAudit(db, {
-      tenantId,
-      actorUserId: user.userId ?? "unknown",
-      actorEmail: user.email ?? "unknown",
-      action: "access_review.campaign_created",
-      targetType: "access_review_campaign",
-      targetId: campaign.id,
-      detail: JSON.stringify({ name: campaign.name, scope: campaign.scope }),
+    const campaign = await createCampaignPg(tenantId, {
+      name: body.name.trim(),
+      scope: body.scope,
+      reviewerPolicy: body.reviewerPolicy,
+      dueDate: body.dueDate ?? null,
+      gracePeriodDays: body.gracePeriodDays,
+      createdBy: user.email,
     });
-  } catch {
-    // Non-fatal: audit failure should not break campaign creation
-  }
 
-  return json({ campaign }, { status: 201 });
+    // Non-blocking audit
+    try {
+      await writeAuditPg({
+        tenantId,
+        actorUserId: user.userId ?? "unknown",
+        actorEmail: user.email ?? "unknown",
+        action: "access_review.campaign_created",
+        targetType: "access_review_campaign",
+        targetId: campaign.id,
+        detail: JSON.stringify({ name: campaign.name, scope: campaign.scope }),
+      });
+    } catch {
+      // Non-fatal: audit failure should not break campaign creation
+    }
+
+    return json({ campaign }, { status: 201 });
+  } catch (e) {
+    console.error("Create campaign error:", e);
+    return json({ error: "Failed to create campaign" }, { status: 500 });
+  }
 };

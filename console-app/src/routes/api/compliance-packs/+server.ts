@@ -73,7 +73,13 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const plan: string = billing?.plan ?? "free";
   if (plan !== "professional" && plan !== "enterprise" && !user.superAdmin) {
     return json(
-      { error: "Custom compliance packs require a Professional or Enterprise plan" },
+      {
+        error: "Custom compliance packs require a Professional or Enterprise plan",
+        action: {
+          label: "Upgrade Plan",
+          url: "/console/settings/billing",
+        },
+      },
       { status: 403 },
     );
   }
