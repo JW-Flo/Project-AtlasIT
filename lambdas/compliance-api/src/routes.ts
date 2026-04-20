@@ -1161,12 +1161,21 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
         [tenantId],
       );
+
+      // Check if tenant has any synthetic evidence (F-28 quick-start feature)
+      const syntheticCheck = await pool.query(
+        `SELECT 1 FROM compliance_evidence WHERE tenant_id = $1 AND source = 'synthetic' LIMIT 1`,
+        [tenantId],
+      );
+      const hasSynthetic = syntheticCheck.rows.length > 0;
+
       return ok({
         status: "success",
         data: {
           frameworks,
           totalEvidence: parseInt(totalRow.rows[0]?.cnt ?? "0", 10),
           lastUpdated: new Date().toISOString(),
+          hasSyntheticEvidence: hasSynthetic,
         },
         timestamp: new Date().toISOString(),
       });

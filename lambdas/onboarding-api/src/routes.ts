@@ -12,6 +12,10 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
+import {
+  generateSyntheticEvidence,
+  insertSyntheticEvidence,
+} from "@atlasit/shared/onboarding/synthetic-evidence.js";
 import crypto from "crypto";
 import pg from "pg";
 import bcrypt from "bcryptjs";
@@ -346,6 +350,9 @@ async function handleSignup(
     password?: unknown;
     companyName?: unknown;
     fullName?: unknown;
+    industry?: unknown;
+    employeeCount?: unknown;
+    frameworks?: unknown;
   };
 
   // Validate inputs
@@ -353,6 +360,9 @@ async function handleSignup(
   const password = typeof b.password === "string" ? b.password : "";
   const companyName = typeof b.companyName === "string" ? b.companyName.trim() : "";
   const fullName = typeof b.fullName === "string" ? b.fullName.trim() : "";
+  const industry = typeof b.industry === "string" ? b.industry.toLowerCase() : "technology";
+  const employeeCount = typeof b.employeeCount === "number" ? b.employeeCount : 50;
+  const frameworks = Array.isArray(b.frameworks) ? b.frameworks : ["SOC2"];
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!email || !emailRegex.test(email)) {
@@ -386,11 +396,11 @@ async function handleSignup(
   // Generate user UUID
   const userId = crypto.randomUUID();
 
-  // Insert tenant
+  // Insert tenant with industry metadata
   await pool.query(
-    `INSERT INTO tenants (id, name, slug, tier, status, created_at, updated_at)
-     VALUES ($1, $2, $3, 'free', 'active', NOW(), NOW())`,
-    [tenantId, companyName, slug],
+    `INSERT INTO tenants (id, name, slug, industry, tier, status, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 'free', 'active', NOW(), NOW())`,
+    [tenantId, companyName, slug, industry],
   );
 
   // Insert user
@@ -400,7 +410,7 @@ async function handleSignup(
     [userId, tenantId, email, fullName, passwordHash],
   );
 
-  // Insert initial evidence record for CDT scoring
+  // Insert initial evidence record for CDT scoring (tenant creation event)
   const evidenceId = crypto.randomUUID();
   await pool.query(
     `INSERT INTO compliance_evidence
@@ -420,12 +430,35 @@ async function handleSignup(
     ],
   );
 
+  // Generate and insert synthetic evidence for quick-start (F-28 fix)
+  try {
+    const syntheticEvidence = generateSyntheticEvidence({
+      tenantId,
+      industry,
+      employeeCount,
+      frameworks,
+    });
+
+    const result = await insertSyntheticEvidence(pool, syntheticEvidence);
+    console.log(
+      `[onboarding-api] Inserted ${result.inserted} synthetic evidence items for tenant ${tenantId}`,
+    );
+  } catch (err) {
+    // Non-fatal: log error but don't block signup
+    console.error(
+      `[onboarding-api] Failed to generate synthetic evidence for tenant ${tenantId}:`,
+      err,
+    );
+  }
+
   await publishEvent(tenantId, "tenant.created", "onboarding-api", {
     tenantId,
     slug,
     adminUserId: userId,
     adminEmail: email,
     companyName,
+    industry,
+    employeeCount,
   });
   await publishEvent(tenantId, "user.created", "onboarding-api", {
     userId,

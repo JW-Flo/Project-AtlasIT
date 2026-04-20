@@ -322,6 +322,20 @@ async function writeEvidence(
   rows: EvidenceRow[],
 ): Promise<number> {
   if (rows.length === 0) return 0;
+
+  // Replace synthetic evidence for these control IDs before inserting real data
+  const controlIds = [...new Set(rows.map((r) => r.controlId))];
+  if (controlIds.length > 0) {
+    try {
+      await pool.query(
+        `DELETE FROM compliance_evidence WHERE tenant_id = $1 AND source = 'synthetic' AND control_id = ANY($2)`,
+        [tenantId, controlIds],
+      );
+    } catch (err) {
+      console.warn(`[adapter-github] Failed to delete synthetic evidence:`, err);
+    }
+  }
+
   const values: unknown[] = [];
   const placeholders = rows
     .map((r, i) => {
