@@ -9,10 +9,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "hono": "^4.0.0"
+    "hono": "^4.12.14"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "@cloudflare/workers-types": "^4.20250927.0"
+    "@cloudflare/workers-types": "^4.20250927.0",
+    "typescript": "^5.7.2"
   }
 }
