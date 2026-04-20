@@ -207,7 +207,7 @@
       {#if connectedCount > 0}
         <a href="/console/integrations">
           <Badge variant="success" class="cursor-pointer">
-            {connectedCount} Connected &rarr; API Manager
+            {connectedCount} Connected &rarr; Connected Apps
           </Badge>
         </a>
       {/if}
@@ -271,7 +271,7 @@
               <a href="/console/integrations">
                 <Button variant="outline" size="sm" class="w-full">
                   <ExternalLink class="h-3 w-3 mr-1.5" />
-                  Manage in API Manager
+                  Manage in Connected Apps
                 </Button>
               </a>
               <Button variant="destructive" size="sm" class="w-full" on:click={() => disconnectApp(integration)}>
@@ -398,12 +398,12 @@
         <div>
           <p class="text-sm font-semibold">{wizardApp.name} Connected</p>
           <p class="text-xs text-muted-foreground mt-1">
-            JML workflows are now available for this application. You can manage credentials anytime in the API Manager.
+            JML workflows are now available for this application. You can manage credentials anytime in the Connected Apps.
           </p>
         </div>
         <DialogFooter>
           <a href="/console/integrations">
-            <Button size="sm">API Manager</Button>
+            <Button size="sm">Connected Apps</Button>
           </a>
           <a href="/console/workflows">
             <Button variant="outline" size="sm">Workflows</Button>
