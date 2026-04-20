@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
-  import { goto } from "$app/navigation";
   import { tourState, nextStep, prevStep, skipTour, type TourState } from "./tour-store";
   import { TOUR_STEPS, type TourStep } from "./tour-steps";
   import { ArrowLeft, ArrowRight, X } from "lucide-svelte";
@@ -12,6 +11,7 @@
   let targetRect: DOMRect | null = null;
   let tooltipEl: HTMLDivElement;
   let resizeObserver: ResizeObserver | null = null;
+  let animating = false;
 
   $: step = state.active && state.currentStep < TOUR_STEPS.length ? TOUR_STEPS[state.currentStep] : null;
   $: isLastStep = state.currentStep >= TOUR_STEPS.length - 1;
@@ -20,32 +20,14 @@
     navigateAndHighlight(step);
   }
 
-  let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
   async function navigateAndHighlight(s: TourStep) {
-    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
-    targetRect = null;
     if (s.route && window.location.pathname !== s.route) {
-      await goto(s.route + "?demo=true");
-      await tick();
+      window.location.href = s.route + "?demo=true";
+      return;
     }
     await tick();
-    waitForSelector(s.selector, 0);
-  }
-
-  function waitForSelector(selector: string, attempt: number) {
-    const el = document.querySelector(selector);
-    if (el) {
-      findAndHighlight(selector);
-      return;
-    }
-    if (attempt >= 10) {
-      console.warn(`[DemoTour] Selector not found after retries: ${selector}`);
-      targetRect = null;
-      retryTimer = setTimeout(() => { if (state.active && !targetRect) nextStep(); }, 1500);
-      return;
-    }
-    retryTimer = setTimeout(() => waitForSelector(selector, attempt + 1), 200);
+    // Wait for DOM to settle after navigation
+    setTimeout(() => findAndHighlight(s.selector), 300);
   }
 
   function findAndHighlight(selector: string) {
@@ -58,11 +40,14 @@
     resizeObserver?.disconnect();
     resizeObserver = new ResizeObserver(() => updateRect(el as HTMLElement));
     resizeObserver.observe(el);
+
     el.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function updateRect(el: HTMLElement) {
+    animating = true;
     targetRect = el.getBoundingClientRect();
+    setTimeout(() => (animating = false), 200);
   }
 
   function handleNext() {
@@ -81,64 +66,61 @@
   }
 
   $: clipPath = targetRect
-    ? `polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%, 0% 0%, ${targetRect.left - 6}px ${targetRect.top - 6}px, ${targetRect.left - 6}px ${targetRect.bottom + 6}px, ${targetRect.right + 6}px ${targetRect.bottom + 6}px, ${targetRect.right + 6}px ${targetRect.top - 6}px, ${targetRect.left - 6}px ${targetRect.top - 6}px)`
+    ? `polygon(
+        0% 0%, 0% 100%, 100% 100%, 100% 0%, 0% 0%,
+        ${targetRect.left - 6}px ${targetRect.top - 6}px,
+        ${targetRect.left - 6}px ${targetRect.bottom + 6}px,
+        ${targetRect.right + 6}px ${targetRect.bottom + 6}px,
+        ${targetRect.right + 6}px ${targetRect.top - 6}px,
+        ${targetRect.left - 6}px ${targetRect.top - 6}px
+      )`
     : "none";
 
   $: tooltipStyle = (() => {
     if (!targetRect || !step) return "display:none";
     const pad = 16;
-    const tw = 320; // tooltip max-width (w-80 = 320px)
-    const th = 200; // approximate tooltip height
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
     let top = 0;
     let left = 0;
-
     switch (step.placement) {
       case "bottom":
         top = targetRect.bottom + pad;
-        left = targetRect.left + targetRect.width / 2 - tw / 2;
+        left = targetRect.left + targetRect.width / 2;
         break;
       case "top":
-        top = targetRect.top - pad - th;
-        left = targetRect.left + targetRect.width / 2 - tw / 2;
+        top = targetRect.top - pad;
+        left = targetRect.left + targetRect.width / 2;
         break;
       case "left":
-        top = targetRect.top + targetRect.height / 2 - th / 2;
-        left = targetRect.left - pad - tw;
+        top = targetRect.top + targetRect.height / 2;
+        left = targetRect.left - pad;
         break;
       case "right":
-        top = targetRect.top + targetRect.height / 2 - th / 2;
+        top = targetRect.top + targetRect.height / 2;
         left = targetRect.right + pad;
         break;
     }
-
-    // Flip to bottom if tooltip would go above viewport
-    if (top < 8) top = targetRect.bottom + pad;
-    // Flip to top if tooltip would go below viewport
-    if (top + th > vh - 8) top = targetRect.top - pad - th;
-    // Clamp vertically
-    top = Math.max(8, Math.min(top, vh - th - 8));
-    // Clamp horizontally
-    left = Math.max(8, Math.min(left, vw - tw - 8));
-
-    return `position:fixed;top:${top}px;left:${left}px;z-index:10001`;
+    const transform =
+      step.placement === "bottom" ? "translate(-50%, 0)" :
+      step.placement === "top" ? "translate(-50%, -100%)" :
+      step.placement === "left" ? "translate(-100%, -50%)" :
+      "translate(0, -50%)";
+    return `position:fixed;top:${top}px;left:${left}px;transform:${transform};z-index:10001`;
   })();
 
   onMount(() => {
     window.addEventListener("keydown", handleKeydown);
-    const onScroll = () => { if (step) findAndHighlight(step.selector); };
-    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("scroll", () => {
+      if (step) findAndHighlight(step.selector);
+    }, true);
     return () => {
       window.removeEventListener("keydown", handleKeydown);
-      window.removeEventListener("scroll", onScroll, true);
       resizeObserver?.disconnect();
-      if (retryTimer) clearTimeout(retryTimer);
     };
   });
 </script>
 
 {#if state.active && step}
+  <!-- Overlay with cutout -->
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div
@@ -147,6 +129,7 @@
     on:click={skipTour}
   ></div>
 
+  <!-- Spotlight ring around target -->
   {#if targetRect}
     <div
       class="fixed z-[10000] pointer-events-none rounded-lg ring-2 ring-primary/60 transition-all duration-300"
@@ -154,6 +137,7 @@
     ></div>
   {/if}
 
+  <!-- Tooltip -->
   <div
     bind:this={tooltipEl}
     style={tooltipStyle}
