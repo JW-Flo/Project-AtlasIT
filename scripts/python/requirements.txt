@@ -1,5 +1,7 @@
 openai
 PyGithub
 requests>=2.33.0
+pytest>=9.0.3
 python-dotenv
-cryptography>=46.0.6
+cryptography>=46.0.7
+Pygments>=2.20.0
