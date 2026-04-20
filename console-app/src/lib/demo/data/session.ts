@@ -1,26 +1,15 @@
-import { hoursAgo } from "./helpers.js";
-
-export const DEMO_USER = {
-  userId: "demo-user-001",
-  email: "alex@acmecorp.io",
-  tenantId: "demo-tenant-001",
-  role: "admin",
-  displayName: "Alex Morgan",
-};
+import { DEMO_USER } from "../state";
 
 export function getSessionResponse() {
   return {
     authenticated: true,
     email: DEMO_USER.email,
-    roles: [DEMO_USER.role],
+    roles: ["admin"],
     superAdmin: false,
     tenantId: DEMO_USER.tenantId,
     displayName: DEMO_USER.displayName,
     orgName: "Acme Corp",
-    branding: {
-      logoUrl: null,
-      accentColor: "#6366f1",
-    },
+    branding: { logoUrl: "", accentColor: "#6366f1" },
   };
 }
 
@@ -30,10 +19,10 @@ export function getUserProfileResponse() {
       id: DEMO_USER.userId,
       email: DEMO_USER.email,
       displayName: DEMO_USER.displayName,
-      role: DEMO_USER.role,
+      role: "admin",
       tenantId: DEMO_USER.tenantId,
       mfaEnabled: true,
-      createdAt: hoursAgo(8760), // 1 year ago
+      createdAt: "2025-11-15T09:00:00Z",
     },
   };
 }
