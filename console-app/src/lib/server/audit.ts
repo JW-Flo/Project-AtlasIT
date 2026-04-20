@@ -1,4 +1,5 @@
 import { lookupAuditEvidence, parseControlRef } from "@atlasit/shared";
+import { queryPg, getPgPool } from "$lib/server/pg";
 
 export interface AuditEntry {
   tenantId: string;
@@ -73,6 +74,66 @@ export async function writeAudit(db: any, entry: AuditEntry): Promise<void> {
         .run();
     } catch {
       // Non-fatal — audit log already written
+    }
+  }
+}
+
+export async function writeAuditPg(entry: AuditEntry): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    const id = crypto.randomUUID();
+    await queryPg(
+      `INSERT INTO audit_log (id, tenant_id, actor_id, actor_type, action, resource_type, resource_id, details, created_at)
+       VALUES ($1, $2, $3, 'user', $4, $5, $6, $7, $8)`,
+      [
+        id,
+        entry.tenantId,
+        entry.actorUserId,
+        entry.action,
+        entry.targetType,
+        entry.targetId ?? null,
+        JSON.stringify({ actorEmail: entry.actorEmail, detail: entry.detail }),
+        now,
+      ],
+    );
+  } catch (e) {
+    console.error("audit write failed:", e);
+  }
+
+  // Dual-write compliance evidence
+  const mapping = lookupAuditEvidence(entry.action);
+  if (!mapping) return;
+
+  for (const controlRef of mapping.controlRefs) {
+    const { framework, controlId } = parseControlRef(controlRef);
+    try {
+      await queryPg(
+        `INSERT INTO compliance_evidence
+           (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'platform', $7, $8, $9, $10, $11)
+         ON CONFLICT DO NOTHING`,
+        [
+          crypto.randomUUID(),
+          entry.tenantId,
+          framework,
+          controlId,
+          mapping.description,
+          mapping.category,
+          entry.targetId ?? null,
+          entry.actorEmail,
+          entry.detail ?? entry.targetType,
+          JSON.stringify({
+            impact: mapping.impact,
+            eventType: entry.action,
+            reasoning: mapping.description,
+            confidence: 1.0,
+            auditAction: entry.action,
+          }),
+          now,
+        ],
+      );
+    } catch {
+      // Non-fatal
     }
   }
 }
