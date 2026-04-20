@@ -7,6 +7,16 @@ import { route } from "./routes.js";
 // segment (set by API Gateway proxy mapping).
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  // Warmup detection (F-14): EventBridge scheduler sends keepalive pings every 5 min
+  const body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
+  if (body?.source === "warmup" || body?.action === "keepalive") {
+    return {
+      statusCode: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "warm", timestamp: new Date().toISOString() }),
+    };
+  }
+
   try {
     return await route(event);
   } catch (err) {

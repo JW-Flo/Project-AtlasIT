@@ -17,10 +17,20 @@ type AnyEvent = APIGatewayProxyEventV2 | SchedulerEvent;
 
 export async function handler(event: AnyEvent): Promise<APIGatewayProxyResultV2> {
   try {
+    // Warmup detection (F-14): EventBridge scheduler sends keepalive pings every 5 min
+    const schedulerEvent = event as SchedulerEvent;
+    if (schedulerEvent.source === "warmup" || schedulerEvent.action === "keepalive") {
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "warm", timestamp: new Date().toISOString() }),
+      };
+    }
+
     // Scheduler-invoked cron — synthesize an API Gateway event shape so route() works.
     const apiEvent = event as APIGatewayProxyEventV2;
-    if (!apiEvent.rawPath && (event as SchedulerEvent).source === "scheduler") {
-      const action = (event as SchedulerEvent).action ?? "";
+    if (!apiEvent.rawPath && schedulerEvent.source === "scheduler") {
+      const action = schedulerEvent.action ?? "";
       const path = SCHEDULER_ACTION_PATH[action];
       if (!path) {
         console.log("[compliance-api] scheduler.unknown_action", { action });

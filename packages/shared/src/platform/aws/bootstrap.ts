@@ -86,12 +86,23 @@ export function bootstrap(): ServiceContainer {
 }
 
 // Secret caching (warm Lambda reuse) — uses SSM SecureString (free) instead of Secrets Manager ($0.40/secret/mo)
-const _secretCache = new Map<string, string>();
+// Cache TTL: 5 minutes (supports key rotation without Lambda redeploy)
+interface CachedSecret {
+  value: string;
+  fetchedAt: number;
+}
+const _secretCache = new Map<string, CachedSecret>();
 const ssmClient = new SSMClient({});
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export async function getSecret(name: string): Promise<string> {
   const cached = _secretCache.get(name);
-  if (cached) return cached;
+  const now = Date.now();
+
+  // Return cached value if still fresh (within TTL)
+  if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.value;
+  }
 
   const prefix = process.env.SSM_PREFIX ?? "/atlasit/dev";
   const result = await ssmClient.send(
@@ -99,6 +110,7 @@ export async function getSecret(name: string): Promise<string> {
   );
   const value = result.Parameter?.Value;
   if (!value) throw new Error(`Secret ${prefix}/secrets/${name} not found in SSM`);
-  _secretCache.set(name, value);
+
+  _secretCache.set(name, { value, fetchedAt: now });
   return value;
 }
