@@ -132,10 +132,7 @@ export async function getProject(
   accessToken: string,
   projectIdOrKey: string,
 ): Promise<JiraProject> {
-  const url = restUrl(
-    cloudId,
-    `/project/${encodeURIComponent(projectIdOrKey)}`,
-  );
+  const url = restUrl(cloudId, `/project/${encodeURIComponent(projectIdOrKey)}`);
   return jiraFetch<JiraProject>(url, accessToken);
 }
 
@@ -186,10 +183,7 @@ export async function scimListUsers(
     url.searchParams.set("filter", options.filter);
   }
 
-  return jiraFetch<ScimListResponse<ScimUserResource>>(
-    url.toString(),
-    accessToken,
-  );
+  return jiraFetch<ScimListResponse<ScimUserResource>>(url.toString(), accessToken);
 }
 
 export async function scimGetUser(
@@ -249,10 +243,7 @@ export async function scimListGroups(
     url.searchParams.set("filter", options.filter);
   }
 
-  return jiraFetch<ScimListResponse<ScimGroupResource>>(
-    url.toString(),
-    accessToken,
-  );
+  return jiraFetch<ScimListResponse<ScimGroupResource>>(url.toString(), accessToken);
 }
 
 export async function scimGetGroup(
@@ -262,4 +253,99 @@ export async function scimGetGroup(
 ): Promise<ScimGroupResource> {
   const url = scimUrl(directoryId, `/Groups/${encodeURIComponent(groupId)}`);
   return jiraFetch<ScimGroupResource>(url, accessToken);
+}
+
+// ---------- REST: Project Permissions ----------
+
+export interface JiraProjectRole {
+  self: string;
+  name: string;
+  id: number;
+  description?: string;
+  actors?: Array<{
+    id: number;
+    displayName: string;
+    type: string;
+    actorUser?: { accountId: string };
+    actorGroup?: { name: string; groupId?: string };
+  }>;
+}
+
+export async function getProjectRoles(
+  cloudId: string,
+  accessToken: string,
+  projectIdOrKey: string,
+): Promise<Record<string, string>> {
+  const url = restUrl(cloudId, `/project/${encodeURIComponent(projectIdOrKey)}/role`);
+  return jiraFetch<Record<string, string>>(url, accessToken);
+}
+
+export async function getProjectRole(
+  cloudId: string,
+  accessToken: string,
+  projectIdOrKey: string,
+  roleId: number,
+): Promise<JiraProjectRole> {
+  const url = restUrl(cloudId, `/project/${encodeURIComponent(projectIdOrKey)}/role/${roleId}`);
+  return jiraFetch<JiraProjectRole>(url, accessToken);
+}
+
+// ---------- REST: Audit Log ----------
+
+export interface JiraAuditRecord {
+  id: number;
+  created: string;
+  summary: string;
+  remoteAddress?: string;
+  authorAccountId?: string;
+  category?: string;
+  eventSource?: string;
+  description?: string;
+  objectItem?: {
+    id?: string;
+    name?: string;
+    typeName?: string;
+    parentId?: string;
+    parentName?: string;
+  };
+  changedValues?: Array<{
+    fieldName: string;
+    changedFrom?: string;
+    changedTo?: string;
+  }>;
+  associatedItems?: Array<{
+    id?: string;
+    name?: string;
+    typeName?: string;
+    parentId?: string;
+    parentName?: string;
+  }>;
+}
+
+export interface JiraAuditResponse {
+  offset: number;
+  limit: number;
+  total: number;
+  records: JiraAuditRecord[];
+}
+
+export async function getAuditRecords(
+  cloudId: string,
+  accessToken: string,
+  options?: {
+    offset?: number;
+    limit?: number;
+    filter?: string;
+    from?: string;
+    to?: string;
+  },
+): Promise<JiraAuditResponse> {
+  const url = new URL(restUrl(cloudId, "/auditing/record"));
+  if (options?.offset !== undefined) url.searchParams.set("offset", String(options.offset));
+  if (options?.limit !== undefined) url.searchParams.set("limit", String(options.limit));
+  if (options?.filter) url.searchParams.set("filter", options.filter);
+  if (options?.from) url.searchParams.set("from", options.from);
+  if (options?.to) url.searchParams.set("to", options.to);
+
+  return jiraFetch<JiraAuditResponse>(url.toString(), accessToken);
 }

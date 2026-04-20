@@ -4,6 +4,13 @@ import { authMiddleware, getAuthorizationUrl, exchangeCodeForToken } from "./aut
 import { syncUsers } from "./sync/users.js";
 import { syncGroups } from "./sync/groups.js";
 import { handleWebhook } from "./webhooks.js";
+import {
+  listProjects,
+  getProjectRoles,
+  getAuditRecords,
+  searchIssues,
+  type JiraAuditRecord,
+} from "./client.js";
 import type { Bindings, JiraWebhookPayload, JiraTenantConfig, SyncResult } from "./types.js";
 
 type Variables = {
@@ -617,6 +624,265 @@ app.post("/webhooks/jira/events", async (c) => {
       }),
     );
     return c.json({ error: errorMsg, correlationId }, 500);
+  }
+});
+
+// ── Adapter evidence collection ──────────────────────────────────────────────
+// POST /api/evidence — return compliance evidence items for Jira projects
+
+app.post("/api/evidence", async (c) => {
+  const correlationId = c.get("correlationId");
+  const tenantId = c.req.header("X-Tenant-ID");
+
+  if (!tenantId) {
+    return c.json({ items: [] });
+  }
+
+  // Load OAuth token
+  const tokenRow = await c.env.DB.prepare(
+    `SELECT access_token FROM connector_tokens
+     WHERE tenant_id = ?1 AND connector_slug = 'jira'
+     ORDER BY created_at DESC LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ access_token: string }>();
+
+  if (!tokenRow) {
+    return c.json({ items: [] });
+  }
+
+  // Load cloudId config
+  const configRow = await c.env.DB.prepare(
+    `SELECT config FROM connector_configs
+     WHERE tenant_id = ?1 AND connector_slug = 'jira' LIMIT 1`,
+  )
+    .bind(tenantId)
+    .first<{ config: string }>();
+
+  if (!configRow) {
+    return c.json({ items: [] });
+  }
+
+  const config = JSON.parse(configRow.config) as { cloudId?: string };
+  if (!config.cloudId) {
+    return c.json({ items: [] });
+  }
+
+  const accessToken = tokenRow.access_token;
+  const cloudId = config.cloudId;
+
+  type EvidenceItem = {
+    type: string;
+    controlRefs: string[];
+    status: "pass" | "fail" | "unknown";
+    details: Record<string, unknown>;
+  };
+
+  const items: EvidenceItem[] = [];
+
+  try {
+    // 1. Collect project permissions (SOC2 CC6.1)
+    const projects = await listProjects(cloudId, accessToken, { maxResults: 30 });
+    const projectPermissions: Array<{ projectKey: string; projectName: string; roles: string[] }> =
+      [];
+
+    for (const project of projects) {
+      try {
+        const roles = await getProjectRoles(cloudId, accessToken, project.key);
+        projectPermissions.push({
+          projectKey: project.key,
+          projectName: project.name,
+          roles: Object.keys(roles),
+        });
+      } catch {
+        // Skip projects with insufficient permission
+      }
+    }
+
+    items.push({
+      type: "project_permissions",
+      controlRefs: ["SOC2-CC6.1"],
+      status: projectPermissions.length > 0 ? "pass" : "unknown",
+      details: {
+        projectCount: projectPermissions.length,
+        projects: projectPermissions.slice(0, 10),
+        collectedAt: new Date().toISOString(),
+      },
+    });
+
+    // 2. Collect audit log entries (SOC2 CC6.3, CC7.3)
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const fromDate = ninetyDaysAgo.toISOString().split("T")[0];
+
+    let auditRecords: JiraAuditRecord[] = [];
+    try {
+      const auditResponse = await getAuditRecords(cloudId, accessToken, {
+        from: fromDate,
+        limit: 100,
+      });
+      auditRecords = auditResponse.records;
+    } catch (auditErr) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          correlationId,
+          tenantId,
+          message: "Audit log access requires admin permissions",
+          error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        }),
+      );
+    }
+
+    const userEvents = auditRecords.filter(
+      (r) => r.category === "user" || r.summary.includes("user"),
+    );
+    const securityEvents = auditRecords.filter(
+      (r) =>
+        r.category === "security" || r.summary.includes("permission") || r.summary.includes("role"),
+    );
+
+    items.push({
+      type: "audit_log_user_events",
+      controlRefs: ["SOC2-CC6.3"],
+      status: auditRecords.length > 0 ? "pass" : "unknown",
+      details: {
+        totalRecords: auditRecords.length,
+        userEvents: userEvents.length,
+        recentEvents: userEvents.slice(0, 5).map((e) => ({
+          summary: e.summary,
+          created: e.created,
+          category: e.category,
+        })),
+        collectedAt: new Date().toISOString(),
+      },
+    });
+
+    items.push({
+      type: "audit_log_security_events",
+      controlRefs: ["SOC2-CC7.3"],
+      status: auditRecords.length > 0 ? "pass" : "unknown",
+      details: {
+        totalRecords: auditRecords.length,
+        securityEvents: securityEvents.length,
+        recentEvents: securityEvents.slice(0, 5).map((e) => ({
+          summary: e.summary,
+          created: e.created,
+          category: e.category,
+        })),
+        collectedAt: new Date().toISOString(),
+      },
+    });
+
+    // 3. Collect security/compliance issue tracking (ISO27001 A.12.6.1, SOC2 CC7.3)
+    try {
+      const securityIssuesResponse = await searchIssues(
+        cloudId,
+        accessToken,
+        "labels in (security, compliance, vulnerability) AND created >= -90d",
+        { maxResults: 100 },
+      );
+
+      const vulnerabilityIssues = securityIssuesResponse.issues.filter((i) =>
+        i.fields.labels?.includes("vulnerability"),
+      );
+      const complianceIssues = securityIssuesResponse.issues.filter(
+        (i) => i.fields.labels?.includes("compliance") || i.fields.labels?.includes("security"),
+      );
+
+      const resolvedCount = securityIssuesResponse.issues.filter(
+        (i) => i.fields.status.name === "Done" || i.fields.status.name === "Resolved",
+      ).length;
+
+      items.push({
+        type: "vulnerability_tracking",
+        controlRefs: ["ISO-27001-A.12.6.1"],
+        status: vulnerabilityIssues.length > 0 ? "pass" : "unknown",
+        details: {
+          totalIssues: vulnerabilityIssues.length,
+          resolvedIssues: vulnerabilityIssues.filter(
+            (i) => i.fields.status.name === "Done" || i.fields.status.name === "Resolved",
+          ).length,
+          recentIssues: vulnerabilityIssues.slice(0, 5).map((i) => ({
+            key: i.key,
+            summary: i.fields.summary,
+            status: i.fields.status.name,
+            priority: i.fields.priority?.name,
+            created: i.fields.created,
+          })),
+          collectedAt: new Date().toISOString(),
+        },
+      });
+
+      items.push({
+        type: "security_incident_tracking",
+        controlRefs: ["SOC2-CC7.3", "ISO-27001-A.12.1.1"],
+        status: complianceIssues.length > 0 ? "pass" : "unknown",
+        details: {
+          totalIssues: securityIssuesResponse.issues.length,
+          complianceIssues: complianceIssues.length,
+          resolvedCount,
+          resolutionRate:
+            securityIssuesResponse.issues.length > 0
+              ? Math.round((resolvedCount / securityIssuesResponse.issues.length) * 100)
+              : 0,
+          recentIssues: complianceIssues.slice(0, 5).map((i) => ({
+            key: i.key,
+            summary: i.fields.summary,
+            status: i.fields.status.name,
+            created: i.fields.created,
+          })),
+          collectedAt: new Date().toISOString(),
+        },
+      });
+    } catch (searchErr) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          correlationId,
+          tenantId,
+          message: "Issue search failed — insufficient permissions or no matching issues",
+          error: searchErr instanceof Error ? searchErr.message : String(searchErr),
+        }),
+      );
+      // Add unknown status items for issue tracking
+      items.push({
+        type: "vulnerability_tracking",
+        controlRefs: ["ISO-27001-A.12.6.1"],
+        status: "unknown",
+        details: { error: "Failed to search Jira issues" },
+      });
+      items.push({
+        type: "security_incident_tracking",
+        controlRefs: ["SOC2-CC7.3", "ISO-27001-A.12.1.1"],
+        status: "unknown",
+        details: { error: "Failed to search Jira issues" },
+      });
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        correlationId,
+        tenantId,
+        message: "Evidence collection completed",
+        itemCount: items.length,
+        cloudId,
+      }),
+    );
+
+    return c.json({ items });
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        correlationId,
+        tenantId,
+        message: "Evidence collection failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return c.json({ items: [] });
   }
 });
 

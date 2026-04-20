@@ -26,3 +26,4 @@ export * from "./incidents/index";
 export * from "./billing/index";
 export * from "./security/index";
 export * from "./sso/index";
+export * from "./onboarding/synthetic-evidence";

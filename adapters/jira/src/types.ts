@@ -53,6 +53,7 @@ export interface JiraIssue {
     updated: string;
     project: { id: string; key: string; name: string };
     description?: unknown;
+    labels?: string[];
     [key: string]: unknown;
   };
 }

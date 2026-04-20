@@ -22,6 +22,7 @@
     frameworks: FrameworkSummary[];
     totalEvidence: number;
     lastUpdated: string;
+    hasSyntheticEvidence?: boolean;
   }
 
   interface EvidenceItem {
@@ -88,6 +89,7 @@
           })),
           totalEvidence: Number(d.totalEvidence ?? d.total_evidence ?? 0),
           lastUpdated: String(d.lastUpdated ?? d.last_updated ?? ""),
+          hasSyntheticEvidence: Boolean(d.hasSyntheticEvidence ?? d.has_synthetic_evidence ?? false),
         };
       } else {
         summaryError = "No summary data returned";
@@ -177,6 +179,26 @@
       </Button>
     </svelte:fragment>
   </PageHeader>
+
+  <!-- Synthetic Evidence Banner (F-28 quick-start) -->
+  {#if summary?.hasSyntheticEvidence}
+    <Card padding="md" class="mb-6 bg-info-muted border-info/20">
+      <div class="flex items-start gap-3">
+        <ShieldCheck class="h-5 w-5 text-info shrink-0 mt-0.5" strokeWidth={2} />
+        <div class="flex-1">
+          <p class="font-medium text-info">Estimated Compliance Score</p>
+          <p class="text-sm text-muted-foreground mt-1">
+            Your current score is based on industry benchmarks and estimated evidence.
+            Connect adapters to see your actual compliance posture with real-time data.
+          </p>
+          <a href="/console/marketplace" class="text-sm font-medium text-info underline underline-offset-2 mt-2 inline-flex items-center gap-1.5 hover:text-info/80 transition-colors">
+            Connect Adapters
+            <ArrowRight class="h-3.5 w-3.5" strokeWidth={2.25} />
+          </a>
+        </div>
+      </div>
+    </Card>
+  {/if}
 
   <!-- Framework cards -->
   {#if summaryLoading}
