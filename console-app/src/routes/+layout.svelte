@@ -12,8 +12,8 @@
   if (typeof window !== "undefined" && isSpaMode) {
     const API_BASE: string = import.meta.env?.VITE_API_URL ?? "";
     const originalFetch = window.fetch.bind(window);
-    const demoActive = isDemoMode();
-    if (demoActive) initDemo();
+    // Check demo mode and init if URL param present
+    if (isDemoMode()) initDemo();
 
     // Stub responses for edge-case paths only. All feature endpoints are now
     // wired to real Lambda backends.
@@ -123,11 +123,18 @@
         );
       }
 
-      // Demo mode: intercept all API calls with mock data
-      if (demoActive && (url.startsWith("/api/") || url.startsWith("/orchestrator/") || url.startsWith("/adapters/"))) {
+      // Demo mode: intercept all API calls with mock data (check dynamically)
+      if (isDemoMode() && (url.startsWith("/api/") || url.startsWith("/orchestrator/") || url.startsWith("/adapters/"))) {
         const method = init?.method?.toUpperCase() ?? "GET";
         const demoRes = getDemoResponse(url, method);
         if (demoRes) return Promise.resolve(demoRes);
+        // Fallback: return graceful empty response for unmapped demo routes
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ status: "success", data: null, items: [] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
       }
 
       // Only intercept /api/, /orchestrator/, and /adapters/ paths

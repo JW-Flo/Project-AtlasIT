@@ -40,6 +40,8 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   { pattern: "/api/v1/auth/validate", handler: () => getSessionResponse() },
   { pattern: "/api/auth/session", handler: () => getSessionResponse() },
   { pattern: "/api/v1/user/profile", handler: () => getUserProfileResponse() },
+  { pattern: "/api/user/preferences", handler: () => getUserProfileResponse() },
+  { pattern: "/api/user", handler: () => getUserProfileResponse() },
   { pattern: "/api/v1/dashboard", handler: () => getDashboardResponse() },
   {
     pattern: "/api/compliance/api/v1/compliance-packs/history/aggregate",
@@ -48,6 +50,31 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   {
     pattern: "/api/compliance/api/v1/compliance-packs/registry/controls",
     handler: () => getControlsRegistryResponse(),
+  },
+  {
+    pattern: /^\/api\/compliance\/api\/v1\/compliance-packs\/([^/]+)\/evaluate$/,
+    handler: () => ({
+      status: "success",
+      data: {
+        packId: "soc2",
+        controlCount: 42,
+        passCount: 38,
+        failCount: 2,
+        unknownCount: 2,
+        score: 90,
+        durationMs: 234,
+      },
+    }),
+  },
+  {
+    pattern: /^\/api\/compliance\/api\/v1\/compliance-packs\/([^/]+)$/,
+    handler: (url: string) => {
+      const match = url.match(/\/compliance-packs\/([^/?]+)/);
+      const packId = match?.[1] ?? "soc2";
+      const packs = getCompliancePacksResponse();
+      const pack = packs.data?.installed?.find((p: any) => p.id === packId);
+      return { status: "success", data: pack ?? null };
+    },
   },
   {
     pattern: "/api/compliance/api/v1/compliance-packs",
@@ -69,7 +96,20 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   },
   {
     pattern: /^\/api\/compliance\/api\/v1\/policies\/([^/]+)\/acknowledgements/,
-    handler: () => ({ data: { items: [] } }),
+    handler: () => ({
+      status: "success",
+      data: {
+        items: [
+          {
+            id: "att-1",
+            policy_id: "demo-pol-1",
+            acknowledged_by: "alex@acmecorp.io",
+            acknowledged_at: "2026-04-01T10:00:00Z",
+            version: "1.0",
+          },
+        ],
+      },
+    }),
   },
   {
     pattern: /^\/api\/compliance\/api\/v1\/policies\/([^/]+)/,
@@ -300,6 +340,19 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
   },
   // Trust center access requests
   { pattern: "/api/compliance/api/v1/trust/access-requests", handler: () => ({ requests: [] }) },
+  // Catch-all for compliance-packs operations (install/uninstall)
+  {
+    pattern: /^\/api\/compliance\/api\/v1\/compliance-packs\/[^/]+\/(install|uninstall)$/,
+    handler: () => MUTATE_SUCCESS,
+  },
+  // Catch-all for any unmapped POST/PUT/PATCH/DELETE operations
+  {
+    pattern: /.*/,
+    handler: (_, method) => {
+      if (method !== "GET") return MUTATE_SUCCESS;
+      return { status: "success", data: null, items: [] };
+    },
+  },
 ];
 
 export function getDemoResponse(url: string, method: string): Response | null {
