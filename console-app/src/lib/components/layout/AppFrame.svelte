@@ -16,6 +16,7 @@
   import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache, hydrateComplianceScore } from "../../stores/compliance";
   import { preferences, fetchPreferences } from "../../stores/preferences";
+  import Breadcrumb from "../ui/breadcrumb.svelte";
   import {
     LayoutDashboard,
     Shield,
@@ -149,6 +150,19 @@
 
   // Collect all nav hrefs for precise active-state matching
   $: allNavHrefs = computedSections.flatMap((s) => s.items.map((i) => i.href));
+
+  // Generate breadcrumb segments from current path
+  $: breadcrumbSegments = (() => {
+    const parts = current.split("/").filter(Boolean);
+    if (parts[0] === "console") parts.shift(); // Remove "console" prefix
+    if (parts.length === 0) return [{ label: "Dashboard", href: undefined }];
+
+    return parts.map((part, i) => {
+      const label = part.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const href = i === parts.length - 1 ? undefined : `/console/${parts.slice(0, i + 1).join("/")}`;
+      return { label, href };
+    });
+  })();
 
   function isActive(href: string, pathname: string): boolean {
     if (href === "/console") return pathname === "/console" || pathname === "/console/";
@@ -576,13 +590,7 @@
             <Menu class="h-5 w-5" />
           {/if}
         </button>
-        <a href="/console" class="hover:text-foreground transition-colors font-medium">Console</a>
-        {#if current !== "/console" && current !== "/console/"}
-          <span class="text-muted-foreground/40 text-xs select-none">/</span>
-          <span class="text-foreground font-medium truncate">
-            {titleCase(current.split("/").filter(Boolean).slice(1).join(" / ").replace(/-/g, " "))}
-          </span>
-        {/if}
+        <Breadcrumb segments={breadcrumbSegments} />
       </div>
 
       <!-- Right: Actions -->
