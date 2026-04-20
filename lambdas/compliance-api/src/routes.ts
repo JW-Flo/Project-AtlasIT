@@ -3456,7 +3456,7 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
 
       try {
         const existing = await pool.query(
-          `SELECT id, status FROM policies WHERE id = $1 AND tenant_id = $2`,
+          `SELECT id, status, version, content, created_by FROM policies WHERE id = $1 AND tenant_id = $2`,
           [policyId, tenantId],
         );
         if (existing.rows.length === 0) return fail(404, "Policy not found", "NOT_FOUND");
@@ -3501,6 +3501,22 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           }
         }
 
+        // Snapshot current version before updating content
+        if (b.content !== undefined && b.content.trim() !== existing.rows[0].content) {
+          await pool.query(
+            `INSERT INTO policy_versions (policy_id, version, content, status, created_by, notes)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              policyId,
+              existing.rows[0].version,
+              existing.rows[0].content,
+              existing.rows[0].status,
+              existing.rows[0].created_by,
+              "Auto-snapshot before content update",
+            ],
+          );
+        }
+
         vals.push(policyId, tenantId);
         await pool.query(
           `UPDATE policies SET ${sets.join(", ")} WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
@@ -3526,6 +3542,37 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           error: (e as Error).message,
         });
         return fail(500, "Failed to update policy", "INTERNAL_ERROR");
+      }
+    }
+  }
+
+  // GET /api/v1/policies/:id/versions — fetch version history
+  {
+    const m = path.match(/^\/api\/v1\/policies\/([^/]+)\/versions$/);
+    if (m && method === "GET") {
+      const policyId = m[1];
+      const pool = getPool();
+      try {
+        const versions = await pool.query(
+          `SELECT id, policy_id as "policyId", version, content, status,
+                  created_by as "createdBy", created_at as "createdAt", notes
+           FROM policy_versions
+           WHERE policy_id = $1
+           ORDER BY created_at DESC`,
+          [policyId],
+        );
+
+        return ok({
+          status: "success",
+          data: { versions: versions.rows },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.error("[compliance-api] policies.versions.error", {
+          policyId,
+          error: (e as Error).message,
+        });
+        return fail(500, "Failed to fetch policy versions", "INTERNAL_ERROR");
       }
     }
   }

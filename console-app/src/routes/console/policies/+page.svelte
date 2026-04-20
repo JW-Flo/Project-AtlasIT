@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { session, fetchSession } from "$lib/stores/session";
   import { relativeTime } from "$lib/utils/time";
+  import VersionSelector from "$lib/components/ui/version-selector.svelte";
+  import DiffViewer from "$lib/components/ui/diff-viewer.svelte";
 
   // ── Types ────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,11 @@
   let acks: Ack[] = [];
   let acksLoading = false;
   let acksError: string | null = null;
+
+  let policyVersions: Array<{ id: string; policyId: string; version: string; content: string; createdAt: string }> = [];
+  let selectedVersionId: string | null = null;
+  let loadingVersions = false;
+  let activeTab: "content" | "history" = "content";
 
   let showPanel = false;
   let showNewForm = false;
@@ -126,6 +133,8 @@
     ackSuccess = false;
     ackError = null;
     editMode = false;
+    policyVersions = [];
+    activeTab = "content";
     showPanel = true;
     detailLoading = true;
     try {
@@ -156,7 +165,28 @@
     } finally {
       detailLoading = false;
     }
-    if (selectedPolicy) loadAcks(selectedPolicy.id);
+    if (selectedPolicy) {
+      loadAcks(selectedPolicy.id);
+      loadVersions(selectedPolicy.id);
+    }
+  }
+
+  async function loadVersions(policyId: string) {
+    loadingVersions = true;
+    try {
+      const res = await fetch(`/api/compliance/api/v1/policies/${policyId}/versions`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      policyVersions = json.data?.versions ?? [];
+      if (policyVersions.length > 0) {
+        selectedVersionId = policyVersions[0].version;
+      }
+    } catch (e) {
+      console.error("Failed to load policy versions:", e);
+      policyVersions = [];
+    } finally {
+      loadingVersions = false;
+    }
   }
 
   async function loadAcks(policyId: string) {
@@ -612,9 +642,55 @@
                   {editSaving ? "Saving..." : "Save changes"}
                 </button>
               {:else}
-                <div class="max-h-64 overflow-y-auto bg-background/40 border border-border rounded p-3 text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
-                  {selectedPolicy.content ?? "(no content)"}
+                <!-- Tab headers -->
+                <div class="flex gap-2 border-b border-border mb-3">
+                  <button
+                    on:click={() => (activeTab = "content")}
+                    class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'content'
+                      ? 'border-b-2 border-primary text-primary'
+                      : 'text-muted-foreground hover:text-foreground'}"
+                  >
+                    Content
+                  </button>
+                  <button
+                    on:click={() => (activeTab = "history")}
+                    class="px-4 py-2 text-sm font-medium transition-colors {activeTab === 'history'
+                      ? 'border-b-2 border-primary text-primary'
+                      : 'text-muted-foreground hover:text-foreground'}"
+                  >
+                    Version History {#if policyVersions.length > 0}({policyVersions.length}){/if}
+                  </button>
                 </div>
+
+                <!-- Tab content -->
+                {#if activeTab === "content"}
+                  <div class="max-h-64 overflow-y-auto bg-background/40 border border-border rounded p-3 text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap leading-relaxed">
+                    {selectedPolicy.content ?? "(no content)"}
+                  </div>
+                {:else if activeTab === "history"}
+                  {#if loadingVersions}
+                    <div class="text-sm text-muted-foreground">Loading version history...</div>
+                  {:else if policyVersions.length === 0}
+                    <div class="text-sm text-muted-foreground italic">No version history available.</div>
+                  {:else}
+                    <div class="space-y-4">
+                      <VersionSelector
+                        versions={policyVersions.map((v) => ({ version: v.version, createdAt: v.createdAt }))}
+                        selected={selectedVersionId ?? policyVersions[0].version}
+                        onSelect={(ver) => (selectedVersionId = ver)}
+                      />
+                      {@const selectedVersion = policyVersions.find((v) => v.version === selectedVersionId)}
+                      {#if selectedVersion}
+                        <DiffViewer
+                          oldContent={selectedVersion.content}
+                          newContent={selectedPolicy.content ?? ""}
+                          oldLabel="Version {selectedVersion.version}"
+                          newLabel="Current (v{selectedPolicy.version})"
+                        />
+                      {/if}
+                    </div>
+                  {/if}
+                {/if}
               {/if}
             </div>
 
