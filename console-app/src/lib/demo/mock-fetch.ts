@@ -203,6 +203,10 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
     pattern: "/api/v1/auth/mfa/status",
     handler: () => ({ data: { enabled: true, method: "totp" } }),
   },
+  {
+    pattern: "/api/v1/auth/forgot-password",
+    handler: () => ({ status: "success", message: "Reset link sent" }),
+  },
   { pattern: "/orchestrator/api/v1/events", handler: () => ({ data: { items: [] } }) },
   { pattern: "/orchestrator/api/v1/nhi/discover", handler: () => ({ data: { items: [] } }) },
   { pattern: "/orchestrator/api/v1/nhi", handler: () => ({ data: { items: [] } }) },
