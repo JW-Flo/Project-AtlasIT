@@ -315,6 +315,24 @@
       </ul>
     </div>
 
+    <!-- Questionnaire AI -->
+    <div class="mt-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+      <div class="px-6 py-5 flex items-center justify-between gap-4">
+        <div class="flex-1">
+          <div class="font-medium text-gray-900 dark:text-white">Questionnaire AI</div>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Paste vendor security questionnaires and get AI-generated responses grounded in your real compliance evidence, adapter data, and previously accepted answers.
+          </p>
+        </div>
+        <a
+          href="/console/settings/trust/questionnaires"
+          class="shrink-0 h-9 px-4 inline-flex items-center text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+        >
+          Open
+        </a>
+      </div>
+    </div>
+
     <!-- Evidence Access Requests -->
     <div class="mt-8">
       <div class="flex items-center justify-between mb-3">
