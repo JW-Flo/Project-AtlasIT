@@ -66,6 +66,74 @@ resource "aws_scheduler_schedule" "orchestrator_dispatch" {
   }
 }
 
+# Lambda warmup to prevent cold starts on critical paths (F-14)
+# Invokes each Lambda every 5 minutes with noop payload to keep instances warm
+resource "aws_scheduler_schedule" "lambda_warmup_core" {
+  name       = "atlasit-warmup-core-${var.env}"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = "rate(5 minutes)"
+
+  target {
+    arn      = aws_lambda_function.core_api.arn
+    role_arn = aws_iam_role.scheduler_exec.arn
+
+    input = jsonencode({
+      source  = "warmup"
+      action  = "keepalive"
+      version = "2024"
+    })
+  }
+}
+
+resource "aws_scheduler_schedule" "lambda_warmup_compliance" {
+  name       = "atlasit-warmup-compliance-${var.env}"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = "rate(5 minutes)"
+
+  target {
+    arn      = aws_lambda_function.compliance_api.arn
+    role_arn = aws_iam_role.scheduler_exec.arn
+
+    input = jsonencode({
+      source  = "warmup"
+      action  = "keepalive"
+      version = "2024"
+    })
+  }
+}
+
+resource "aws_scheduler_schedule" "lambda_warmup_onboarding" {
+  name       = "atlasit-warmup-onboarding-${var.env}"
+  group_name = "default"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  schedule_expression = "rate(5 minutes)"
+
+  target {
+    arn      = aws_lambda_function.onboarding_api.arn
+    role_arn = aws_iam_role.scheduler_exec.arn
+
+    input = jsonencode({
+      source  = "warmup"
+      action  = "keepalive"
+      version = "2024"
+    })
+  }
+}
+
 # Scheduler execution role
 resource "aws_iam_role" "scheduler_exec" {
   name = "atlasit-scheduler-exec-${var.env}"
@@ -91,6 +159,8 @@ resource "aws_iam_policy" "scheduler_invoke" {
         aws_lambda_function.compliance_api.arn,
         aws_lambda_function.orchestrator.arn,
         aws_lambda_function.scheduler.arn,
+        aws_lambda_function.core_api.arn,
+        aws_lambda_function.onboarding_api.arn,
       ]
     }]
   })
