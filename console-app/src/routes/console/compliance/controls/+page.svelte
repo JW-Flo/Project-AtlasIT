@@ -366,8 +366,14 @@
                       {ctrl.state}
                     </span>
                   </td>
-                  <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                    {ctrl.evidenceSampleSize} record{ctrl.evidenceSampleSize === 1 ? "" : "s"}
+                  <td class="px-4 py-3 text-xs whitespace-nowrap">
+                    <a
+                      href="/console/compliance/evidence?controlId={encodeURIComponent(ctrl.controlId)}"
+                      class="text-primary hover:underline"
+                      on:click={(e) => e.stopPropagation()}
+                    >
+                      {ctrl.evidenceSampleSize} record{ctrl.evidenceSampleSize === 1 ? "" : "s"}
+                    </a>
                   </td>
                   <td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                     {relativeTime(ctrl.evaluatedAt)}
@@ -413,6 +419,14 @@
                             </ul>
                           </div>
                         {/if}
+                        <div class="mt-3">
+                          <a
+                            href="/console/compliance/evidence?controlId={encodeURIComponent(ctrl.controlId)}"
+                            class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                          >
+                            View {ctrl.evidenceSampleSize} Evidence Item{ctrl.evidenceSampleSize === 1 ? "" : "s"} →
+                          </a>
+                        </div>
                       </div>
                     </td>
                   </tr>

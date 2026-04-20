@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { relativeTime } from "$lib/utils/time";
   import HelpIcon from "$lib/components/ui/help-icon.svelte";
   import { helpContent } from "$lib/data/help-content";
+  import Badge from "$lib/components/ui/badge.svelte";
 
   interface EvidenceMeta {
     impact?: "positive" | "neutral" | "negative";
@@ -43,6 +46,7 @@
   let impactFilter = "all";
   let controlSearch = "";
   let expandedId: string | null = null;
+  let controlIdFilter: string | null = null;
 
   $: filtered = allItems.filter((item) => {
     if (frameworkFilter !== "all" && item.framework !== frameworkFilter) return false;
@@ -60,6 +64,7 @@
   function buildUrl(cursor?: string | null): string {
     const p = new URLSearchParams({ limit: "50" });
     if (cursor) p.set("cursor", cursor);
+    if (controlIdFilter) p.set("controlId", controlIdFilter);
     return `/api/compliance/api/v1/evidence?${p.toString()}`;
   }
 
@@ -139,7 +144,17 @@
     return s.length > n ? s.slice(0, n) + "…" : s;
   }
 
-  onMount(loadEvidence);
+  function clearControlFilter() {
+    controlIdFilter = null;
+    goto("/console/compliance/evidence");
+    loadEvidence();
+  }
+
+  onMount(() => {
+    const query = $page.url.searchParams.get("controlId");
+    if (query) controlIdFilter = query;
+    loadEvidence();
+  });
 </script>
 
 <div class="animate-fade-in">
@@ -152,6 +167,21 @@
       </p>
     {/if}
   </div>
+
+  <!-- Control ID filter badge -->
+  {#if controlIdFilter}
+    <div class="mb-3 flex items-center gap-2">
+      <Badge variant="info" class="text-xs">
+        Filtered by Control: {controlIdFilter}
+      </Badge>
+      <button
+        on:click={clearControlFilter}
+        class="text-xs text-primary hover:underline"
+      >
+        Clear Filter
+      </button>
+    </div>
+  {/if}
 
   <!-- Filter bar -->
   <div class="mb-5 flex flex-wrap items-center gap-3">
