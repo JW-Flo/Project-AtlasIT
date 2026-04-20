@@ -4111,17 +4111,19 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
     if (!b.mappings || !Array.isArray(b.mappings)) {
       return fail(400, "mappings array required", "VALIDATION_FAILED");
     }
-    const { buildEvidenceSummaries, buildLearningContext, generateResponses } =
+    const { buildEvidenceSummaries, buildLearningContext, buildTenantContext, generateResponses } =
       await import("./questionnaire.js");
-    const [evidenceSummaries, priorAnswers] = await Promise.all([
+    const [evidenceSummaries, priorAnswers, tenantCtx] = await Promise.all([
       buildEvidenceSummaries(pool, tenantId),
       buildLearningContext(pool, tenantId),
+      buildTenantContext(pool, tenantId),
     ]);
     const responses = await generateResponses(
       b.mappings,
       evidenceSummaries,
       process.env.GROQ_API_KEY,
       priorAnswers,
+      tenantCtx,
     );
     // Persist drafts so feedback can update them later
     for (const r of responses) {
