@@ -11,9 +11,14 @@
     decidedItems: number;
   }
 
-  interface ListResponse {
-    status: string;
-    data: { items: AccessReviewCampaign[]; total: number };
+  interface ReviewItem {
+    id: string;
+    userEmail: string;
+    resource: string;
+    currentAccess: string;
+    decision: string | null;
+    decidedBy: string | null;
+    notes: string | null;
   }
 
   let campaigns: AccessReviewCampaign[] = [];
@@ -25,6 +30,12 @@
   let formName = "";
   let formDueDate = "";
   let formScope = "";
+
+  let expandedId: string | null = null;
+  let detailItems: ReviewItem[] = [];
+  let detailLoading = false;
+  let detailError: string | null = null;
+  let decidingItemId: string | null = null;
 
   async function load() {
     loading = true;
@@ -104,6 +115,67 @@
 
   function capitalize(s: string): string {
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  async function toggleExpand(id: string) {
+    if (expandedId === id) {
+      expandedId = null;
+      return;
+    }
+    expandedId = id;
+    detailLoading = true;
+    detailError = null;
+    detailItems = [];
+    try {
+      const res = await fetch(`/api/access-reviews/${id}/items`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      detailItems = (json.items ?? []).map((it: Record<string, unknown>) => ({
+        id: it.id ?? it.item_id ?? "",
+        userEmail: it.userEmail ?? it.user_email ?? it.email ?? "—",
+        resource: it.resource ?? it.app_name ?? it.application ?? "—",
+        currentAccess: it.currentAccess ?? it.current_access ?? it.access_level ?? "—",
+        decision: it.decision ?? null,
+        decidedBy: it.decidedBy ?? it.decided_by ?? null,
+        notes: it.notes ?? null,
+      }));
+    } catch (e) {
+      detailError = (e as Error).message;
+    } finally {
+      detailLoading = false;
+    }
+  }
+
+  async function submitDecision(campaignId: string, itemId: string, decision: "approved" | "revoked") {
+    decidingItemId = itemId;
+    try {
+      const res = await fetch(`/api/access-reviews/${campaignId}/decisions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ itemId, decision }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert((d as { error?: string }).error ?? `Failed (HTTP ${res.status})`);
+        return;
+      }
+      detailItems = detailItems.map((it) =>
+        it.id === itemId ? { ...it, decision } : it
+      );
+      campaigns = campaigns.map((c) =>
+        c.id === campaignId ? { ...c, decidedItems: c.decidedItems + 1 } : c
+      );
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      decidingItemId = null;
+    }
+  }
+
+  function decisionBadge(d: string | null): string {
+    if (d === "approved") return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success-muted text-success";
+    if (d === "revoked") return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive-muted text-destructive";
+    return "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground";
   }
 
   onMount(load);
@@ -225,8 +297,21 @@
           <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
             {#each campaigns as c}
               {@const pct = progress(c)}
-              <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                <td class="px-4 py-3 font-medium text-foreground">{c.name}</td>
+              <tr
+                class="hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer"
+                on:click={() => toggleExpand(c.id)}
+              >
+                <td class="px-4 py-3 font-medium text-foreground">
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-4 h-4 text-muted-foreground transition-transform {expandedId === c.id ? 'rotate-90' : ''}"
+                      fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    {c.name}
+                  </div>
+                </td>
                 <td class="px-4 py-3 text-muted-foreground">{c.scope ?? "—"}</td>
                 <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">
                   {formatDate(c.dueDate)}
@@ -245,6 +330,73 @@
                   <span class={statusClass(c.status)}>{capitalize(c.status)}</span>
                 </td>
               </tr>
+              {#if expandedId === c.id}
+                <tr>
+                  <td colspan="5" class="px-4 py-4 bg-background/50">
+                    {#if detailLoading}
+                      <div class="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                        <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"></circle>
+                          <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" class="opacity-75"></path>
+                        </svg>
+                        Loading review items…
+                      </div>
+                    {:else if detailError}
+                      <p class="text-sm text-destructive py-2">Failed to load items: {detailError}</p>
+                    {:else if detailItems.length === 0}
+                      <p class="text-sm text-muted-foreground py-2">No review items in this campaign. Add items to begin the review.</p>
+                    {:else}
+                      <table class="w-full text-sm">
+                        <thead>
+                          <tr class="text-left text-xs text-muted-foreground uppercase tracking-wider border-b border-border">
+                            <th class="pb-2 font-medium">User</th>
+                            <th class="pb-2 font-medium">Resource</th>
+                            <th class="pb-2 font-medium">Access Level</th>
+                            <th class="pb-2 font-medium">Decision</th>
+                            <th class="pb-2 font-medium">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                          {#each detailItems as item}
+                            <tr>
+                              <td class="py-2 text-foreground">{item.userEmail}</td>
+                              <td class="py-2 text-muted-foreground">{item.resource}</td>
+                              <td class="py-2 text-muted-foreground">{item.currentAccess}</td>
+                              <td class="py-2">
+                                <span class={decisionBadge(item.decision)}>
+                                  {item.decision ? capitalize(item.decision) : "Pending"}
+                                </span>
+                              </td>
+                              <td class="py-2">
+                                {#if !item.decision && c.status === "active"}
+                                  <div class="flex gap-2">
+                                    <button
+                                      disabled={decidingItemId === item.id}
+                                      on:click|stopPropagation={() => submitDecision(c.id, item.id, "approved")}
+                                      class="px-2.5 py-1 text-xs font-medium rounded bg-success-muted text-success hover:bg-success/20 disabled:opacity-50"
+                                    >Approve</button>
+                                    <button
+                                      disabled={decidingItemId === item.id}
+                                      on:click|stopPropagation={() => submitDecision(c.id, item.id, "revoked")}
+                                      class="px-2.5 py-1 text-xs font-medium rounded bg-destructive-muted text-destructive hover:bg-destructive/20 disabled:opacity-50"
+                                    >Revoke</button>
+                                  </div>
+                                {:else if item.decision}
+                                  <span class="text-xs text-muted-foreground">
+                                    by {item.decidedBy ?? "—"}
+                                  </span>
+                                {:else}
+                                  <span class="text-xs text-muted-foreground">—</span>
+                                {/if}
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

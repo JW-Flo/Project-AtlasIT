@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
+  import HelpIcon from "$lib/components/ui/help-icon.svelte";
+  import { helpContent } from "$lib/data/help-content";
 
   interface EvidenceMeta {
     impact?: "positive" | "neutral" | "negative";
@@ -70,7 +73,20 @@
       const res = await fetch(buildUrl());
       if (!res.ok) throw new Error(`Failed to load evidence (HTTP ${res.status})`);
       const json = await res.json();
-      allItems = json.data?.items ?? [];
+      const raw: Record<string, unknown>[] = json.data?.items ?? [];
+      allItems = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        tenantId: String(r.tenantId ?? r.tenant_id ?? ""),
+        framework: r.framework as string | null ?? null,
+        controlId: String(r.controlId ?? r.control_id ?? "") || null,
+        controlName: String(r.controlName ?? r.control_name ?? "") || null,
+        evidenceType: String(r.evidenceType ?? r.evidence_type ?? "") || null,
+        source: String(r.source ?? "") || null,
+        sourceId: String(r.sourceId ?? r.source_id ?? "") || null,
+        actor: String(r.actor ?? "") || null,
+        metadata: (r.metadata ?? null) as EvidenceMeta | null,
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+      }));
       nextCursor = json.data?.nextCursor ?? null;
       total = json.data?.total ?? allItems.length;
     } catch (e) {
@@ -87,7 +103,21 @@
       const res = await fetch(buildUrl(nextCursor));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      allItems = [...allItems, ...(json.data?.items ?? [])];
+      const raw: Record<string, unknown>[] = json.data?.items ?? [];
+      const normalized = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        tenantId: String(r.tenantId ?? r.tenant_id ?? ""),
+        framework: r.framework as string | null ?? null,
+        controlId: String(r.controlId ?? r.control_id ?? "") || null,
+        controlName: String(r.controlName ?? r.control_name ?? "") || null,
+        evidenceType: String(r.evidenceType ?? r.evidence_type ?? "") || null,
+        source: String(r.source ?? "") || null,
+        sourceId: String(r.sourceId ?? r.source_id ?? "") || null,
+        actor: String(r.actor ?? "") || null,
+        metadata: (r.metadata ?? null) as EvidenceMeta | null,
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+      }));
+      allItems = [...allItems, ...normalized];
       nextCursor = json.data?.nextCursor ?? null;
     } catch (e) {
       error = (e as Error).message;
@@ -102,16 +132,6 @@
       case "negative": return "bg-destructive-muted text-destructive";
       default:         return "bg-muted text-muted-foreground";
     }
-  }
-
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return mins > 0 ? `${mins}m ago` : "just now";
   }
 
   function truncate(s: string | null | undefined, n = 80): string {
@@ -232,8 +252,18 @@
               <th class="px-5 py-3 font-medium">Control ID</th>
               <th class="px-5 py-3 font-medium">Framework</th>
               <th class="px-5 py-3 font-medium">Event Type</th>
-              <th class="px-5 py-3 font-medium">Impact</th>
-              <th class="px-5 py-3 font-medium">Source</th>
+              <th class="px-5 py-3 font-medium">
+                <span class="inline-flex items-center">
+                  Impact
+                  <HelpIcon content={helpContent.evidenceImpact} />
+                </span>
+              </th>
+              <th class="px-5 py-3 font-medium">
+                <span class="inline-flex items-center">
+                  Source
+                  <HelpIcon content={helpContent.evidenceSource} />
+                </span>
+              </th>
               <th class="px-5 py-3 font-medium">Actor</th>
               <th class="px-5 py-3 font-medium">Reasoning</th>
               <th class="px-5 py-3 font-medium">Created</th>

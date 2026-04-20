@@ -11,6 +11,8 @@
     AlertTriangle, ChevronDown, ChevronUp, RefreshCw, Key, Bot, Shield,
     Clock, User, Search, Filter
   } from "lucide-svelte";
+  import HelpIcon from "$lib/components/ui/help-icon.svelte";
+  import { helpContent } from "$lib/data/help-content";
 
   interface NhiCredential {
     id: string;
@@ -509,6 +511,7 @@
                                   <Button size="sm" variant="outline" disabled={updatingId.has(cred.id)}
                                     on:click={() => updateStatus(cred.id, "rotation_pending")}>
                                     <RefreshCw class="h-3 w-3 mr-1" /> Request Rotation
+                                    <HelpIcon content={helpContent.nhiRotation} placement="right" />
                                   </Button>
                                   <Button size="sm" variant="destructive" disabled={updatingId.has(cred.id)}
                                     on:click={() => revokeCredential(cred.id)}>

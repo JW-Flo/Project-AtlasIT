@@ -73,6 +73,11 @@
       description: "Publicly share your compliance posture with customers.",
       href: "/console/settings/trust",
     },
+    {
+      title: "Interface Preferences",
+      description: "Customize UI preferences like help tooltips and onboarding aids.",
+      href: "/console/settings/preferences",
+    },
   ];
 
   onMount(() => {

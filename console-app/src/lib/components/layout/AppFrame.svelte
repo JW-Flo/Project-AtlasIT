@@ -15,6 +15,7 @@
   import { startTour, getTourState } from "$lib/demo/tour-store";
   import { session as sessionStore, fetchSession, refreshSession } from "../../stores/session";
   import { complianceScore, fetchComplianceScore, refreshComplianceScore, clearComplianceCache, hydrateComplianceScore } from "../../stores/compliance";
+  import { preferences, fetchPreferences } from "../../stores/preferences";
   import {
     LayoutDashboard,
     Shield,
@@ -240,6 +241,9 @@
 
     // Sync theme preference from DB
     syncThemeFromServer().catch(() => {});
+
+    // Fetch user preferences (help icons, etc.)
+    fetchPreferences().catch(() => {});
 
     // Use server-prefetched compliance scores when available, else fetch client-side
     const prefetchedScores = $page.data?.complianceScores;

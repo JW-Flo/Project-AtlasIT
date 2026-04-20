@@ -1,5 +1,67 @@
 import { daysAgo, hoursAgo, uuid } from "./helpers.js";
 
+export function getAccessReviewItemsResponse() {
+  return {
+    campaign: { id: "demo-campaign", name: "Q1 2026 Access Review", status: "active" },
+    items: [
+      {
+        id: uuid(),
+        userEmail: "jordan.lee@acmecorp.io",
+        resource: "AWS Production",
+        currentAccess: "Admin",
+        decision: null,
+        decidedBy: null,
+        notes: null,
+      },
+      {
+        id: uuid(),
+        userEmail: "taylor.chen@acmecorp.io",
+        resource: "GitHub",
+        currentAccess: "Write",
+        decision: "approved",
+        decidedBy: "admin@acmecorp.io",
+        notes: null,
+      },
+      {
+        id: uuid(),
+        userEmail: "morgan.patel@acmecorp.io",
+        resource: "Salesforce",
+        currentAccess: "Read",
+        decision: null,
+        decidedBy: null,
+        notes: null,
+      },
+      {
+        id: uuid(),
+        userEmail: "quinn.martinez@acmecorp.io",
+        resource: "Slack",
+        currentAccess: "Member",
+        decision: "approved",
+        decidedBy: "admin@acmecorp.io",
+        notes: null,
+      },
+      {
+        id: uuid(),
+        userEmail: "casey.williams@acmecorp.io",
+        resource: "Datadog",
+        currentAccess: "Admin",
+        decision: "revoked",
+        decidedBy: "admin@acmecorp.io",
+        notes: "No longer on security team",
+      },
+      {
+        id: uuid(),
+        userEmail: "alex.nguyen@acmecorp.io",
+        resource: "AWS Staging",
+        currentAccess: "Read",
+        decision: null,
+        decidedBy: null,
+        notes: null,
+      },
+    ],
+  };
+}
+
 export function getAccessReviewsResponse() {
   const today = new Date();
   const q1DueDate = new Date(today.getFullYear(), 2, 31); // March 31

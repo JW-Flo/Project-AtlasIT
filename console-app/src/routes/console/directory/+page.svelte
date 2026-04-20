@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { PageHeader, Card, Badge, EmptyState, Button } from "$lib/components/ui";
+  import { relativeTime } from "$lib/utils/time";
   import { AlertCircle, RefreshCw, Search, Users, UsersRound as UsersIcon } from "lucide-svelte";
 
   function openUser(id: string) {
@@ -54,17 +55,6 @@
   let searchQuery = "";
   let refreshing = false;
 
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    if (mins > 0) return `${mins}m ago`;
-    return "just now";
-  }
-
   function lastSynced(): string {
     if (!syncStatus?.connections?.length) return "never";
     const dates = syncStatus.connections
@@ -110,7 +100,18 @@
       const res = await fetch("/api/v1/directory/sync/status");
       if (!res.ok) return;
       const result = await res.json();
-      syncStatus = result?.data ?? null;
+      const d = result?.data;
+      if (d) {
+        syncStatus = {
+          userCount: Number(d.userCount ?? d.user_count ?? 0),
+          groupCount: Number(d.groupCount ?? d.group_count ?? 0),
+          connections: Array.isArray(d.connections)
+            ? d.connections.map((c: Record<string, unknown>) => ({
+                lastSyncAt: String(c.lastSyncAt ?? c.last_sync_at ?? ""),
+              }))
+            : [],
+        };
+      }
     } catch {
       // non-critical
     } finally {

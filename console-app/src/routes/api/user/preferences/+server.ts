@@ -7,6 +7,7 @@ const ALLOWED_KEYS = new Set([
   "notification_email_on_compliance",
   "notification_in_app_alerts",
   "digest_preferences",
+  "showHelpIcons",
 ]);
 
 // Table created via migration 0016_user_preferences.sql

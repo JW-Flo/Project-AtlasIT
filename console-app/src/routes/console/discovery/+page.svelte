@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface DiscoveredApp {
     id: string;
@@ -116,17 +117,6 @@
       case "blocked": return "Blocked";
       default: return "Unknown";
     }
-  }
-
-  function relativeTime(iso: string | undefined): string {
-    if (!iso) return "—";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return `${mins}m ago`;
   }
 
   onMount(() => {

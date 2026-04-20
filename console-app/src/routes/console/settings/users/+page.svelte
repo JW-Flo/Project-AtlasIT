@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { session } from "$lib/stores/session";
+  import { relativeTime } from "$lib/utils/time";
 
   interface User {
     id: string;
@@ -115,18 +116,6 @@
     return status === "active"
       ? "bg-success-muted text-success"
       : "bg-muted text-muted-foreground";
-  }
-
-  function relativeTime(iso: string | null): string {
-    if (!iso) return "Never";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 30) return new Date(iso).toLocaleDateString();
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return `${mins}m ago`;
   }
 
   onMount(() => {

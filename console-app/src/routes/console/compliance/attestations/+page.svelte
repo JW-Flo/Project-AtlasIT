@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface Attestation {
     id: string;
@@ -52,7 +53,25 @@
       const res = await fetch(`/api/compliance/api/v1/attestations?${p.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      items = j.data?.items ?? [];
+      const raw: Record<string, unknown>[] = j.data?.items ?? [];
+      items = raw.map((a) => ({
+        id: String(a.id ?? ""),
+        framework: String(a.framework ?? ""),
+        controlId: String(a.controlId ?? a.control_id ?? ""),
+        attestationKey: String(a.attestationKey ?? a.attestation_key ?? ""),
+        status: (a.status ?? "active") as "active" | "expired" | "revoked",
+        statement: String(a.statement ?? ""),
+        attestedById: String(a.attestedById ?? a.attested_by_id ?? ""),
+        attestedByEmail: String(a.attestedByEmail ?? a.attested_by_email ?? "") || null,
+        attestedByName: String(a.attestedByName ?? a.attested_by_name ?? "") || null,
+        attestedAt: String(a.attestedAt ?? a.attested_at ?? ""),
+        validUntil: String(a.validUntil ?? a.valid_until ?? "") || null,
+        evidenceRefIds: (a.evidenceRefIds ?? a.evidence_ref_ids ?? null) as string[] | null,
+        revokedAt: String(a.revokedAt ?? a.revoked_at ?? "") || null,
+        revokedBy: String(a.revokedBy ?? a.revoked_by ?? "") || null,
+        revocationReason: String(a.revocationReason ?? a.revocation_reason ?? "") || null,
+        createdAt: String(a.createdAt ?? a.created_at ?? ""),
+      }));
       facets = j.data?.facets?.byFramework ?? [];
     } catch (e) {
       error = (e as Error).message;
@@ -129,16 +148,6 @@
       GDPR: "bg-primary-muted text-primary",
     };
     return map[key] ?? "bg-muted text-muted-foreground";
-  }
-
-  function relativeTime(iso: string | null): string {
-    if (!iso) return "—";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    return "just now";
   }
 
   function applyFilters() {

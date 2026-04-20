@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface AuditRow {
     id: string;
@@ -46,8 +47,20 @@
       const res = await fetch(buildUrl());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      items = j.data?.items ?? [];
-      nextCursor = j.data?.nextCursor ?? null;
+      const raw = j.data?.items ?? [];
+      items = raw.map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        actorId: String(r.actor_id ?? r.actorId ?? ''),
+        actorType: String(r.actor_type ?? r.actorType ?? ''),
+        action: String(r.action ?? ''),
+        resourceType: (r.resource_type ?? r.resourceType ?? null) as string | null,
+        resourceId: (r.resource_id ?? r.resourceId ?? null) as string | null,
+        details: (r.details ?? null) as Record<string, unknown> | null,
+        ipAddress: (r.ip_address ?? r.ipAddress ?? null) as string | null,
+        correlationId: (r.correlation_id ?? r.correlationId ?? null) as string | null,
+        createdAt: String(r.created_at ?? r.createdAt ?? ''),
+      }));
+      nextCursor = j.data?.nextCursor ?? j.data?.next_cursor ?? null;
       total = j.data?.total ?? 0;
       facets = j.data?.facets ?? { actions: [], resourceTypes: [] };
     } catch (e) {
@@ -64,8 +77,21 @@
       const res = await fetch(buildUrl(nextCursor));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      items = [...items, ...(j.data?.items ?? [])];
-      nextCursor = j.data?.nextCursor ?? null;
+      const raw = j.data?.items ?? [];
+      const mapped = raw.map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        actorId: String(r.actor_id ?? r.actorId ?? ''),
+        actorType: String(r.actor_type ?? r.actorType ?? ''),
+        action: String(r.action ?? ''),
+        resourceType: (r.resource_type ?? r.resourceType ?? null) as string | null,
+        resourceId: (r.resource_id ?? r.resourceId ?? null) as string | null,
+        details: (r.details ?? null) as Record<string, unknown> | null,
+        ipAddress: (r.ip_address ?? r.ipAddress ?? null) as string | null,
+        correlationId: (r.correlation_id ?? r.correlationId ?? null) as string | null,
+        createdAt: String(r.created_at ?? r.createdAt ?? ''),
+      }));
+      items = [...items, ...mapped];
+      nextCursor = j.data?.nextCursor ?? j.data?.next_cursor ?? null;
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -86,16 +112,6 @@
   }
 
   onMount(load);
-
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return mins > 0 ? `${mins}m ago` : "just now";
-  }
 
   function actionColor(action: string): string {
     const prefix = action.split(".")[0];
@@ -196,7 +212,11 @@
     </div>
   {:else if items.length === 0}
     <div class="bg-card border border-dashed border-input rounded-lg p-12 text-center">
-      <p class="text-muted-foreground text-sm">No audit events match your filters.</p>
+      <svg class="mx-auto h-12 w-12 text-muted-foreground/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+      <p class="font-semibold text-foreground mb-1">No audit events found</p>
+      <p class="text-muted-foreground text-sm">No events match your current filters. Try adjusting your search criteria.</p>
     </div>
   {:else}
     <div class="bg-card border border-border rounded-lg overflow-hidden">

@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
+  import HelpIcon from "$lib/components/ui/help-icon.svelte";
+  import { helpContent } from "$lib/data/help-content";
 
   interface InstalledPack {
     id: string;
@@ -103,17 +106,6 @@
     }
   }
 
-  function relativeTime(iso: string | null): string {
-    if (!iso) return "never";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return mins > 0 ? `${mins}m ago` : "just now";
-  }
-
   async function load() {
     loading = true;
     error = null;
@@ -123,7 +115,17 @@
       const res = await fetch("/api/compliance/api/v1/compliance-packs/installed");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      installedPacks = j.data?.items ?? [];
+      const rawPacks: Record<string, unknown>[] = j.data?.items ?? [];
+      installedPacks = rawPacks.map((p) => ({
+        id: String(p.id ?? ""),
+        label: String(p.label ?? ""),
+        framework: String(p.framework ?? ""),
+        controlCount: Number(p.controlCount ?? p.control_count ?? 0),
+        passCount: p.passCount !== undefined ? Number(p.passCount) : (p.pass_count !== undefined ? Number(p.pass_count) : null),
+        failCount: p.failCount !== undefined ? Number(p.failCount) : (p.fail_count !== undefined ? Number(p.fail_count) : null),
+        unknownCount: p.unknownCount !== undefined ? Number(p.unknownCount) : (p.unknown_count !== undefined ? Number(p.unknown_count) : null),
+        lastEvaluatedAt: String(p.lastEvaluatedAt ?? p.last_evaluated_at ?? "") || null,
+      }));
 
       if (installedPacks.length === 0) {
         loading = false;
@@ -135,8 +137,15 @@
           const dr = await fetch(`/api/compliance/api/v1/compliance-packs/${pack.id}`);
           if (!dr.ok) return [];
           const dj = await dr.json();
-          const controls: Control[] = (dj.data?.controls ?? []).map((c: Omit<Control, "packId" | "packLabel" | "framework">) => ({
-            ...c,
+          const rawControls: Record<string, unknown>[] = dj.data?.controls ?? [];
+          const controls: Control[] = rawControls.map((c) => ({
+            controlId: String(c.controlId ?? c.control_id ?? ""),
+            title: String(c.title ?? ""),
+            ruleFn: String(c.ruleFn ?? c.rule_fn ?? ""),
+            state: (c.state ?? "unknown") as "pass" | "fail" | "unknown",
+            rationale: (c.rationale ?? null) as string[] | null,
+            evaluatedAt: String(c.evaluatedAt ?? c.evaluated_at ?? "") || null,
+            evidenceSampleSize: Number(c.evidenceSampleSize ?? c.evidence_sample_size ?? 0),
             packId: pack.id,
             packLabel: pack.label,
             framework: pack.framework,
@@ -312,9 +321,12 @@
                   </button>
                 </th>
                 <th class="px-4 py-3 font-medium">
-                  <button on:click={() => toggleSort("state")} class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
-                    State{sortIndicator("state")}
-                  </button>
+                  <span class="inline-flex items-center">
+                    <button on:click={() => toggleSort("state")} class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+                      State{sortIndicator("state")}
+                    </button>
+                    <HelpIcon content={helpContent.controlState} />
+                  </span>
                 </th>
                 <th class="px-4 py-3 font-medium">
                   <button on:click={() => toggleSort("evidenceSampleSize")} class="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">

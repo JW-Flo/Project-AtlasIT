@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
+  import HelpIcon from "$lib/components/ui/help-icon.svelte";
+  import { helpContent } from "$lib/data/help-content";
 
   interface AutomationRule {
     id: string;
@@ -159,13 +162,6 @@
     }
   }
 
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const d = Math.floor(ms / 86400000); if (d > 0) return `${d}d ago`;
-    const h = Math.floor(ms / 3600000); if (h > 0) return `${h}h ago`;
-    return `${Math.floor(ms / 60000)}m ago`;
-  }
-
   function statusBadgeClass(s: string): string {
     if (s === "completed" || s === "success") return "bg-success-muted text-success";
     if (s === "failed" || s === "error") return "bg-destructive-muted text-destructive";
@@ -290,7 +286,12 @@
           <thead class="bg-background">
             <tr>
               <th class="{th} text-left">Name</th>
-              <th class="{th} text-left hidden sm:table-cell">Trigger</th>
+              <th class="{th} text-left hidden sm:table-cell">
+                <span class="inline-flex items-center">
+                  Trigger
+                  <HelpIcon content={helpContent.automationTriggers} />
+                </span>
+              </th>
               <th class="{th} text-center">Enabled</th>
               <th class="{th} text-right hidden md:table-cell">Runs</th>
               <th class="{th} text-left hidden lg:table-cell">Last Run</th>

@@ -19,7 +19,11 @@ import {
   getAutomationRunsResponse,
 } from "./data/automation";
 import { getPoliciesResponse, getPolicyDetailResponse } from "./data/policies";
-import { getAccessReviewsResponse, getAccessRequestsResponse } from "./data/access";
+import {
+  getAccessReviewsResponse,
+  getAccessReviewItemsResponse,
+  getAccessRequestsResponse,
+} from "./data/access";
 import { getIncidentsResponse } from "./data/incidents";
 import { getIntegrationsResponse, getAppsStatusResponse } from "./data/integrations";
 import { getSettingsResponse, getBillingResponse } from "./data/settings";
@@ -100,6 +104,17 @@ const routes: Array<{ pattern: string | RegExp; handler: RouteHandler }> = [
       if (method !== "GET") return MUTATE_SUCCESS;
       return getAccessRequestsResponse();
     },
+  },
+  {
+    pattern: /^\/api\/access-reviews\/[^/]+\/items/,
+    handler: (_, method) => {
+      if (method !== "GET") return MUTATE_SUCCESS;
+      return getAccessReviewItemsResponse();
+    },
+  },
+  {
+    pattern: /^\/api\/access-reviews\/[^/]+\/decisions/,
+    handler: () => MUTATE_SUCCESS,
   },
   {
     pattern: "/api/access-reviews",

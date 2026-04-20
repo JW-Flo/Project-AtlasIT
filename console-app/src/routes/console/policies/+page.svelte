@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { session, fetchSession } from "$lib/stores/session";
+  import { relativeTime } from "$lib/utils/time";
 
   // ── Types ────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,22 @@
       const res = await fetch("/api/compliance/api/v1/policies?limit=200");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      policies = j.data?.items ?? [];
+      const raw: Record<string, unknown>[] = j.data?.items ?? [];
+      policies = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        tenantId: String(r.tenantId ?? r.tenant_id ?? ""),
+        name: String(r.name ?? ""),
+        category: String(r.category ?? ""),
+        version: String(r.version ?? "1"),
+        content: r.content as string | undefined,
+        status: String(r.status ?? "draft") as Policy["status"],
+        frameworkRefs: (r.frameworkRefs ?? r.framework_refs ?? []) as string[],
+        createdBy: (r.createdBy ?? r.created_by ?? null) as string | null,
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+        updatedAt: String(r.updatedAt ?? r.updated_at ?? ""),
+        publishedAt: (r.publishedAt ?? r.published_at ?? null) as string | null,
+        ackCount: Number(r.ackCount ?? r.ack_count ?? 0),
+      }));
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -116,9 +132,24 @@
       const res = await fetch(`/api/compliance/api/v1/policies/${p.id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      selectedPolicy = j.data;
-      editContent = j.data.content ?? "";
-      editStatus = j.data.status;
+      const d = j.data ?? {};
+      selectedPolicy = {
+        id: String(d.id ?? ""),
+        tenantId: String(d.tenantId ?? d.tenant_id ?? ""),
+        name: String(d.name ?? ""),
+        category: String(d.category ?? ""),
+        version: String(d.version ?? "1"),
+        content: d.content as string | undefined,
+        status: String(d.status ?? "draft") as Policy["status"],
+        frameworkRefs: (d.frameworkRefs ?? d.framework_refs ?? []) as string[],
+        createdBy: (d.createdBy ?? d.created_by ?? null) as string | null,
+        createdAt: String(d.createdAt ?? d.created_at ?? ""),
+        updatedAt: String(d.updatedAt ?? d.updated_at ?? ""),
+        publishedAt: (d.publishedAt ?? d.published_at ?? null) as string | null,
+        ackCount: Number(d.ackCount ?? d.ack_count ?? 0),
+      };
+      editContent = selectedPolicy.content ?? "";
+      editStatus = selectedPolicy.status;
     } catch (e) {
       banner = { type: "error", msg: `Failed to load policy: ${(e as Error).message}` };
       showPanel = false;
@@ -135,7 +166,14 @@
       const res = await fetch(`/api/compliance/api/v1/policies/${policyId}/acknowledgements`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      acks = j.data?.items ?? [];
+      const rawAcks: Record<string, unknown>[] = j.data?.items ?? [];
+      acks = rawAcks.map((a) => ({
+        id: String(a.id ?? ""),
+        userId: String(a.userId ?? a.user_id ?? ""),
+        userEmail: (a.userEmail ?? a.user_email ?? null) as string | null,
+        acknowledgedAt: String(a.acknowledgedAt ?? a.acknowledged_at ?? ""),
+        policyVersion: String(a.policyVersion ?? a.policy_version ?? ""),
+      }));
     } catch (e) {
       acksError = (e as Error).message;
     } finally {
@@ -204,7 +242,22 @@
         throw new Error((j as { message?: string }).message ?? `HTTP ${res.status}`);
       }
       const j = await res.json();
-      selectedPolicy = j.data;
+      const upd = j.data ?? {};
+      selectedPolicy = {
+        id: String(upd.id ?? selectedPolicy.id),
+        tenantId: String(upd.tenantId ?? upd.tenant_id ?? selectedPolicy.tenantId),
+        name: String(upd.name ?? selectedPolicy.name),
+        category: String(upd.category ?? selectedPolicy.category),
+        version: String(upd.version ?? selectedPolicy.version),
+        content: upd.content as string | undefined,
+        status: String(upd.status ?? "draft") as Policy["status"],
+        frameworkRefs: (upd.frameworkRefs ?? upd.framework_refs ?? selectedPolicy.frameworkRefs) as string[],
+        createdBy: (upd.createdBy ?? upd.created_by ?? selectedPolicy.createdBy) as string | null,
+        createdAt: String(upd.createdAt ?? upd.created_at ?? selectedPolicy.createdAt),
+        updatedAt: String(upd.updatedAt ?? upd.updated_at ?? selectedPolicy.updatedAt),
+        publishedAt: (upd.publishedAt ?? upd.published_at ?? selectedPolicy.publishedAt) as string | null,
+        ackCount: Number(upd.ackCount ?? upd.ack_count ?? selectedPolicy.ackCount),
+      };
       editMode = false;
       banner = { type: "success", msg: "Policy updated." };
       await loadPolicies();
@@ -258,16 +311,6 @@
 
   function categoryLabel(c: string): string {
     return CATEGORIES.find((x) => x.value === c)?.label ?? c;
-  }
-
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return mins > 0 ? `${mins}m ago` : "just now";
   }
 
   onMount(async () => {

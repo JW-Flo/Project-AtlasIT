@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
   import Card from "$lib/components/ui/card.svelte";
   import CardHeader from "$lib/components/ui/card-header.svelte";
   import CardTitle from "$lib/components/ui/card-title.svelte";
@@ -211,8 +212,28 @@
       if (filterAction) params.set("action", filterAction);
       const res = await fetch(`/api/jml/changelog?${params}`);
       if (!res.ok) throw new Error(`Failed to load JML changelog (${res.status})`);
-      const data: { entries?: JmlChangelogEntry[]; total?: number } = await res.json();
-      entries = Array.isArray(data.entries) ? data.entries : [];
+      const data = await res.json();
+      const raw: Record<string, unknown>[] = Array.isArray(data.entries) ? data.entries : [];
+      entries = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        tenantId: String(r.tenantId ?? r.tenant_id ?? ""),
+        userId: String(r.userId ?? r.user_id ?? ""),
+        email: (r.email as string) ?? null,
+        displayName: (r.displayName ?? r.display_name ?? null) as string | null,
+        changeType: String(r.changeType ?? r.change_type ?? ""),
+        delta: (typeof r.delta === "string" ? JSON.parse(r.delta) : r.delta ?? {}) as Record<string, { old?: unknown; new?: unknown }>,
+        jmlAction: String(r.jmlAction ?? r.jml_action ?? "") as JmlAction,
+        workflowRunId: (r.workflowRunId ?? r.workflow_run_id ?? null) as string | null,
+        workflowStatus: (r.workflowStatus ?? r.workflow_status ?? null) as string | null,
+        workflowStepsTotal: Number(r.workflowStepsTotal ?? r.workflow_steps_total ?? 0),
+        workflowStepsDone: Number(r.workflowStepsDone ?? r.workflow_steps_done ?? 0),
+        policyApplied: (r.policyApplied ?? r.policy_applied ?? null) as string | null,
+        appsProvisioned: Number(r.appsProvisioned ?? r.apps_provisioned ?? 0),
+        appsDeprovisioned: Number(r.appsDeprovisioned ?? r.apps_deprovisioned ?? 0),
+        source: String(r.source ?? ""),
+        processed: Number(r.processed ?? 0),
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+      }));
       total = data.total ?? entries.length;
 
       // Load evidence feed separately so its failure doesn't wipe the changelog
@@ -389,7 +410,7 @@
                     {/if}
                   </td>
                   <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "—"}
+                    {relativeTime(entry.createdAt)}
                   </td>
                 </tr>
                 {#if expandedRows.has(entry.id)}

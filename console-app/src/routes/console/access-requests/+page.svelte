@@ -58,8 +58,23 @@
         error = `Failed to load requests (HTTP ${res.status})`;
         return;
       }
-      const json: ListResponse = await res.json();
-      requests = json.data?.items ?? [];
+      const json = await res.json();
+      const raw: Record<string, unknown>[] = json.data?.items ?? [];
+      requests = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        requesterId: String(r.requesterId ?? r.requester_id ?? ""),
+        requesterEmail: String(r.requesterEmail ?? r.requester_email ?? r.requester ?? ""),
+        resourceType: String(r.resourceType ?? r.resource_type ?? ""),
+        resourceId: String(r.resourceId ?? r.resource_id ?? ""),
+        resourceName: (r.resourceName ?? r.resource_name ?? r.resource ?? null) as string | null,
+        justification: (r.justification ?? null) as string | null,
+        status: String(r.status ?? "pending") as RequestStatus,
+        decidedBy: (r.decidedBy ?? r.decided_by ?? null) as string | null,
+        decidedAt: (r.decidedAt ?? r.decided_at ?? null) as string | null,
+        expiresAt: (r.expiresAt ?? r.expires_at ?? null) as string | null,
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+        updatedAt: String(r.updatedAt ?? r.updated_at ?? ""),
+      }));
       total = json.data?.total ?? requests.length;
 
       // Recompute stats from this batch (accurate when no filter is active)
@@ -281,8 +296,16 @@
       </button>
     </div>
   {:else if requests.length === 0}
-    <div class="bg-card border border-dashed border-input rounded-lg py-12 text-center">
-      <p class="text-muted-foreground text-sm">No access requests found.</p>
+    <div class="bg-card border border-dashed border-input rounded-lg py-16 text-center px-6">
+      <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-muted mb-4">
+        <svg class="w-6 h-6 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+      </div>
+      <p class="text-foreground font-medium">No access requests yet</p>
+      <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+        Access requests will appear here when users request elevated permissions or access to resources.
+      </p>
     </div>
   {:else}
     <!-- Table -->

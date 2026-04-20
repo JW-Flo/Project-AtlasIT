@@ -17,8 +17,11 @@
   "dependencies": {
     "@atlasit/shared": "workspace:*",
     "@sveltejs/kit": "^2.57.1",
+    "@types/diff": "^8.0.0",
+    "diff": "^9.0.0",
     "esbuild": "^0.25.10",
     "jspdf": "^4.2.1",
+    "marked": "^18.0.2",
     "qrcode": "^1.5.4",
     "svelte": "^5.0.0"
   },

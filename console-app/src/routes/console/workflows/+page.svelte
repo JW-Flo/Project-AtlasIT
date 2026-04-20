@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface WorkflowRun {
     id: string;
@@ -51,7 +52,17 @@
       const res = await fetch("/orchestrator/api/v1/workflows?limit=50");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      runs = Array.isArray(json.data) ? json.data : [];
+      const raw: Record<string, unknown>[] = Array.isArray(json.data) ? json.data : [];
+      runs = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        tenantId: String(r.tenantId ?? r.tenant_id ?? ""),
+        definitionId: String(r.definitionId ?? r.definition_id ?? ""),
+        type: String(r.type ?? ""),
+        status: String(r.status ?? ""),
+        context: (r.context as Record<string, unknown>) ?? null,
+        createdAt: String(r.createdAt ?? r.created_at ?? ""),
+        completedAt: r.completedAt ?? r.completed_at ? String(r.completedAt ?? r.completed_at) : null,
+      }));
     } catch (e) {
       runsError = (e as Error).message;
     } finally {
@@ -67,7 +78,15 @@
       const res = await fetch("/orchestrator/api/v1/jml/changelog?limit=50");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      changelog = Array.isArray(json.data) ? json.data : [];
+      const raw: Record<string, unknown>[] = Array.isArray(json.data) ? json.data : [];
+      changelog = raw.map((r) => ({
+        id: String(r.id ?? ""),
+        user_id: String(r.user_id ?? r.userId ?? ""),
+        jml_action: String(r.jml_action ?? r.jmlAction ?? ""),
+        delta: r.delta ?? null,
+        source: String(r.source ?? ""),
+        created_at: String(r.created_at ?? r.createdAt ?? ""),
+      }));
     } catch (e) {
       changelogError = (e as Error).message;
     } finally {
@@ -127,15 +146,6 @@
   }
 
   function toggleExpand(id: string): void { expandedId = expandedId === id ? null : id; }
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(ms / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  }
   function switchTab(t: Tab): void { tab = t; if (t === "changelog") loadChangelog(); }
   onMount(() => { loadRuns(); });
 </script>

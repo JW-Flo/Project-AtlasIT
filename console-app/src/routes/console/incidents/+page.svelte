@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface Incident {
     id: string;
@@ -52,8 +53,18 @@
       const res = await fetch(buildUrl());
       if (!res.ok) throw new Error(`Failed to load incidents (HTTP ${res.status})`);
       const json = await res.json();
-      incidents = json.data?.items ?? [];
-      nextCursor = json.data?.nextCursor ?? null;
+      const raw = json.data?.items ?? [];
+      incidents = raw.map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+        title: String(r.title ?? ''),
+        severity: String(r.severity ?? 'medium'),
+        status: String(r.status ?? 'open'),
+        source: (r.source ?? null) as string | null,
+        createdAt: String(r.created_at ?? r.createdAt ?? ''),
+        resolvedAt: (r.resolved_at ?? r.resolvedAt ?? null) as string | null,
+      }));
+      nextCursor = json.data?.nextCursor ?? json.data?.next_cursor ?? null;
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -68,8 +79,19 @@
       const res = await fetch(buildUrl(nextCursor));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      incidents = [...incidents, ...(json.data?.items ?? [])];
-      nextCursor = json.data?.nextCursor ?? null;
+      const raw = json.data?.items ?? [];
+      const mapped = raw.map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+        title: String(r.title ?? ''),
+        severity: String(r.severity ?? 'medium'),
+        status: String(r.status ?? 'open'),
+        source: (r.source ?? null) as string | null,
+        createdAt: String(r.created_at ?? r.createdAt ?? ''),
+        resolvedAt: (r.resolved_at ?? r.resolvedAt ?? null) as string | null,
+      }));
+      incidents = [...incidents, ...mapped];
+      nextCursor = json.data?.nextCursor ?? json.data?.next_cursor ?? null;
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -127,15 +149,6 @@
       case "resolved":      return "bg-success-muted text-success";
       default:              return "bg-muted text-muted-foreground";
     }
-  }
-
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    return `${Math.floor(ms / 60000)}m ago`;
   }
 
   onMount(loadIncidents);
@@ -260,8 +273,11 @@
     </div>
   {:else if incidents.length === 0}
     <div class="bg-card border border-dashed border-input rounded-lg p-12 text-center">
-      <p class="text-muted-foreground text-sm">No incidents</p>
-      <p class="mt-1 text-muted-foreground/70 text-xs">Click "New Incident" to create one.</p>
+      <svg class="mx-auto h-12 w-12 text-muted-foreground/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <p class="font-semibold text-foreground mb-1">No incidents found</p>
+      <p class="text-muted-foreground text-sm">There are no security or compliance incidents to display. Click "New Incident" to create one manually.</p>
     </div>
   {:else}
     <div class="bg-card border border-border rounded-lg overflow-hidden">

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { relativeTime } from "$lib/utils/time";
 
   interface Pack {
     id: string;
@@ -51,7 +52,21 @@
       const res = await fetch("/api/compliance/api/v1/compliance-packs");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      packs = j.data?.items ?? [];
+      const raw: Record<string, unknown>[] = j.data?.items ?? [];
+      packs = raw.map((p) => ({
+        id: String(p.id ?? ""),
+        label: String(p.label ?? ""),
+        framework: String(p.framework ?? ""),
+        controlCount: Number(p.controlCount ?? p.control_count ?? 0),
+        description: String(p.description ?? "") || null,
+        version: String(p.version ?? ""),
+        status: String(p.status ?? ""),
+        installedAt: String(p.installedAt ?? p.installed_at ?? "") || null,
+        lastEvaluatedAt: String(p.lastEvaluatedAt ?? p.last_evaluated_at ?? "") || null,
+        passCount: p.passCount !== undefined ? Number(p.passCount) : (p.pass_count !== undefined ? Number(p.pass_count) : null),
+        failCount: p.failCount !== undefined ? Number(p.failCount) : (p.fail_count !== undefined ? Number(p.fail_count) : null),
+        unknownCount: p.unknownCount !== undefined ? Number(p.unknownCount) : (p.unknown_count !== undefined ? Number(p.unknown_count) : null),
+      }));
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -67,7 +82,34 @@
       const res = await fetch(`/api/compliance/api/v1/compliance-packs/${packId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      detail = j.data;
+      const rawData = j.data ?? {};
+      const rawPack = rawData.pack ?? {};
+      const rawControls: Record<string, unknown>[] = rawData.controls ?? [];
+      detail = {
+        pack: {
+          id: String(rawPack.id ?? ""),
+          label: String(rawPack.label ?? ""),
+          framework: String(rawPack.framework ?? ""),
+          controlCount: Number(rawPack.controlCount ?? rawPack.control_count ?? 0),
+          description: String(rawPack.description ?? "") || null,
+          version: String(rawPack.version ?? ""),
+          status: String(rawPack.status ?? ""),
+          installedAt: String(rawPack.installedAt ?? rawPack.installed_at ?? "") || null,
+          lastEvaluatedAt: String(rawPack.lastEvaluatedAt ?? rawPack.last_evaluated_at ?? "") || null,
+          passCount: rawPack.passCount !== undefined ? Number(rawPack.passCount) : (rawPack.pass_count !== undefined ? Number(rawPack.pass_count) : null),
+          failCount: rawPack.failCount !== undefined ? Number(rawPack.failCount) : (rawPack.fail_count !== undefined ? Number(rawPack.fail_count) : null),
+          unknownCount: rawPack.unknownCount !== undefined ? Number(rawPack.unknownCount) : (rawPack.unknown_count !== undefined ? Number(rawPack.unknown_count) : null),
+        },
+        controls: rawControls.map((c) => ({
+          controlId: String(c.controlId ?? c.control_id ?? ""),
+          title: String(c.title ?? ""),
+          ruleFn: String(c.ruleFn ?? c.rule_fn ?? ""),
+          state: (c.state ?? "unknown") as "pass" | "fail" | "unknown",
+          rationale: (c.rationale ?? null) as string[] | null,
+          evaluatedAt: String(c.evaluatedAt ?? c.evaluated_at ?? "") || null,
+          evidenceSampleSize: Number(c.evidenceSampleSize ?? c.evidence_sample_size ?? 0),
+        })),
+      };
     } catch (e) {
       banner = { type: "error", msg: `Failed to load detail: ${(e as Error).message}` };
     } finally {
@@ -133,17 +175,6 @@
       case "fail":    return "bg-destructive-muted text-destructive";
       default:        return "bg-muted text-muted-foreground";
     }
-  }
-
-  function relativeTime(iso: string | null): string {
-    if (!iso) return "never";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return mins > 0 ? `${mins}m ago` : "just now";
   }
 
   onMount(loadPacks);

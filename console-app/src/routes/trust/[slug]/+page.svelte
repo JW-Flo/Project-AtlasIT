@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { page } from "$app/stores";
   import { cn } from "$lib/utils";
+  import { relativeTime } from "$lib/utils/time";
   import {
     ShieldCheck,
     Download,
@@ -86,15 +87,6 @@
       GDPR: "bg-destructive-muted text-destructive",
     };
     return map[key] ?? "bg-muted text-muted-foreground";
-  }
-  function relativeTime(iso: string | null): string {
-    if (!iso) return "never";
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    return "just now";
   }
   $: pdfUrl = data
     ? `/api/compliance/api/v1/trust/${encodeURIComponent(data.tenant.slug)}/export.pdf`

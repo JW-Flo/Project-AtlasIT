@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { PageHeader, Card, Badge, EmptyState, Button } from "$lib/components/ui";
+  import { relativeTime } from "$lib/utils/time";
   import {
     AlertCircle,
     ArrowRight,
@@ -42,16 +43,6 @@
   let evidenceNextCursor: string | null = null;
   let evidenceLoadingMore = false;
 
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return `${mins}m ago`;
-  }
-
   function scoreColorClass(score: number): string {
     if (score >= 80) return "text-success";
     if (score >= 60) return "text-warning";
@@ -85,7 +76,19 @@
       }
       const result = await res.json();
       if (result.data) {
-        summary = result.data as SummaryData;
+        const d = result.data;
+        const rawFw: Record<string, unknown>[] = d.frameworks ?? [];
+        summary = {
+          frameworks: rawFw.map((f) => ({
+            framework: String(f.framework ?? ""),
+            controlsTotal: Number(f.controlsTotal ?? f.controls_total ?? 0),
+            controlsPassing: Number(f.controlsPassing ?? f.controls_passing ?? 0),
+            evidenceCount: Number(f.evidenceCount ?? f.evidence_count ?? 0),
+            score: Number(f.score ?? 0),
+          })),
+          totalEvidence: Number(d.totalEvidence ?? d.total_evidence ?? 0),
+          lastUpdated: String(d.lastUpdated ?? d.last_updated ?? ""),
+        };
       } else {
         summaryError = "No summary data returned";
       }
@@ -114,12 +117,21 @@
       }
       const result = await res.json();
       if (result.data) {
+        const raw: Record<string, unknown>[] = result.data.items ?? [];
+        const mapped: EvidenceItem[] = raw.map((r) => ({
+          id: String(r.id ?? ""),
+          framework: String(r.framework ?? ""),
+          controlId: String(r.controlId ?? r.control_id ?? ""),
+          controlName: String(r.controlName ?? r.control_name ?? ""),
+          source: String(r.source ?? ""),
+          createdAt: String(r.createdAt ?? r.created_at ?? ""),
+        }));
         if (cursor) {
-          evidenceItems = [...evidenceItems, ...(result.data.items as EvidenceItem[])];
+          evidenceItems = [...evidenceItems, ...mapped];
         } else {
-          evidenceItems = result.data.items as EvidenceItem[];
+          evidenceItems = mapped;
         }
-        evidenceNextCursor = result.data.nextCursor ?? null;
+        evidenceNextCursor = result.data.nextCursor ?? result.data.next_cursor ?? null;
       } else {
         evidenceError = "No evidence data returned";
       }

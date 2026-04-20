@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { PageHeader, Card, Badge, Button, EmptyState, StatCard } from "$lib/components/ui";
+  import { relativeTime } from "$lib/utils/time";
   import { AlertCircle, AppWindow, CheckCircle2, Plug, Plus } from "lucide-svelte";
 
   interface Integration {
@@ -52,16 +53,6 @@
   $: inactiveCount = integrations.filter(
     (i) => i.status === "inactive" || i.status === "disabled",
   ).length;
-
-  function relativeTime(iso: string): string {
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86400000);
-    if (days > 0) return `${days}d ago`;
-    const hours = Math.floor(ms / 3600000);
-    if (hours > 0) return `${hours}h ago`;
-    const mins = Math.floor(ms / 60000);
-    return `${mins}m ago`;
-  }
 
   function statusBadgeClass(status: string): string {
     switch (status) {
