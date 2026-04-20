@@ -28,7 +28,9 @@
     Users,
     Workflow,
     Zap,
+    X,
   } from "lucide-svelte";
+  import Checklist from "$lib/components/ui/checklist.svelte";
 
   interface DashboardData {
     tenant: { id: string; name: string; slug: string; tier: string; status: string } | null;
@@ -126,6 +128,44 @@
     .reverse()[0] as string | undefined;
   $: activeIntegrations = integrations.filter((i) => i.status === "active").length;
 
+  // Getting Started checklist
+  let checklistDismissed = false;
+  $: checklistItems = [
+    {
+      id: "connect-adapter",
+      label: "Connect your first application",
+      completed: activeIntegrations > 0,
+      href: "/console/apps",
+    },
+    {
+      id: "install-pack",
+      label: "Install a compliance pack",
+      completed: installedPacks.length > 0,
+      href: "/console/compliance/packs",
+    },
+    {
+      id: "configure-automation",
+      label: "Set up automation rules",
+      completed: (dashboard?.stats?.automationRulesTotal ?? 0) > 0,
+      href: "/console/automation",
+    },
+    {
+      id: "review-evidence",
+      label: "Review collected evidence",
+      completed: (dashboard?.stats?.evidenceCount ?? 0) > 0,
+      href: "/console/compliance/evidence",
+    },
+  ];
+  $: allCompleted = checklistItems.every((item) => item.completed);
+  $: showChecklist = !allCompleted && !checklistDismissed && !loading;
+
+  function dismissChecklist() {
+    checklistDismissed = true;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("atlasit_checklist_dismissed", "true");
+    }
+  }
+
   const quickActions = [
     { href: "/console/compliance/controls", label: "Controls", hint: "All state across packs", icon: ShieldCheck },
     { href: "/console/policies", label: "Policies", hint: "Create + acknowledge", icon: FileCheck },
@@ -156,7 +196,12 @@
     }
   }
 
-  onMount(loadAll);
+  onMount(() => {
+    if (typeof localStorage !== "undefined") {
+      checklistDismissed = localStorage.getItem("atlasit_checklist_dismissed") === "true";
+    }
+    loadAll();
+  });
 
   function scoreColorClass(score: number): string {
     if (score >= 80) return "text-success";
@@ -232,6 +277,26 @@
       </div>
     </Card>
   {:else}
+    <!-- Getting Started checklist -->
+    {#if showChecklist}
+      <Card padding="lg" class="mb-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 relative">
+        <button
+          on:click={dismissChecklist}
+          class="absolute top-4 right-4 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
+          aria-label="Dismiss checklist"
+        >
+          <X class="h-4 w-4 text-blue-600 dark:text-blue-400" />
+        </button>
+        <div class="mb-3">
+          <h2 class="text-lg font-semibold text-foreground">Getting Started</h2>
+          <p class="text-sm text-muted-foreground mt-1">
+            Complete these steps to get the most out of AtlasIT
+          </p>
+        </div>
+        <Checklist items={checklistItems} />
+      </Card>
+    {/if}
+
     <!-- Hero compliance score card -->
     {#if installedPacks.length > 0}
       <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden" data-tour="hero-score">
