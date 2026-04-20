@@ -237,7 +237,7 @@
 <div class="animate-fade-in">
   <PageHeader
     title="Dashboard"
-    description={dashboard?.tenant ? `${dashboard.tenant.name} · ${dashboard.tenant.tier} tier` : "Loading workspace…"}
+    description={dashboard?.tenant?.name ?? "Loading workspace…"}
   >
     <svelte:fragment slot="actions">
       {#if installedPacks.length > 0}

@@ -16,6 +16,8 @@ export interface SessionData {
   impersonatedBy?: string;
   orgName?: string;
   branding?: TenantBranding;
+  billingTier?: string;
+  tier?: string; // alias for billingTier (for backward compatibility)
 }
 
 export const session = writable<SessionData | null>(null);

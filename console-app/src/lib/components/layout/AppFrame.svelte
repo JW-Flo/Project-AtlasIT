@@ -71,6 +71,8 @@
   let orgName = "";
   let logoUrl = "";
   let accentColor = "";
+  let tenantId = "";
+  let billingTier = "";
   const demoMode = isDemoMode();
 
   const navSections: NavSection[] = [
@@ -208,6 +210,8 @@
     isImpersonating = sessionData.impersonating || false;
     impersonatedBy = sessionData.impersonatedBy || "";
     orgName = sessionData.orgName || "";
+    tenantId = sessionData.tenantId || "";
+    billingTier = sessionData.billingTier || sessionData.tier || "";
     applyBranding(sessionData.branding?.logoUrl || "", sessionData.branding?.accentColor || "");
     // Populate the shared session store so child pages can react to it.
     // Only set on client — during SSR, child reactive blocks would trigger
@@ -688,6 +692,24 @@
                   {/if}
                 </div>
               </div>
+
+              {#if billingTier || tenantId}
+                <div class="py-2 px-3 border-b border-border space-y-2">
+                  {#if billingTier}
+                    <div class="flex flex-col gap-0.5">
+                      <div class="text-2xs text-muted-foreground">Plan</div>
+                      <div class="text-sm font-medium text-foreground capitalize">{billingTier}</div>
+                    </div>
+                  {/if}
+                  {#if tenantId}
+                    <div class="flex flex-col gap-0.5">
+                      <div class="text-2xs text-muted-foreground">Tenant ID</div>
+                      <div class="text-xs font-mono text-foreground truncate" title={tenantId}>{tenantId}</div>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+
               <div class="py-1">
                 <a
                   href="/console/profile"

@@ -10,6 +10,7 @@ export function getSessionResponse() {
     displayName: DEMO_USER.displayName,
     orgName: "Acme Corp",
     branding: { logoUrl: "", accentColor: "#6366f1" },
+    billingTier: "professional",
   };
 }
 
