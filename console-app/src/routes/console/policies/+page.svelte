@@ -679,14 +679,16 @@
                         selected={selectedVersionId ?? policyVersions[0].version}
                         onSelect={(ver) => (selectedVersionId = ver)}
                       />
-                      {@const selectedVersion = policyVersions.find((v) => v.version === selectedVersionId)}
-                      {#if selectedVersion}
-                        <DiffViewer
-                          oldContent={selectedVersion.content}
-                          newContent={selectedPolicy.content ?? ""}
-                          oldLabel="Version {selectedVersion.version}"
-                          newLabel="Current (v{selectedPolicy.version})"
-                        />
+                      {#if selectedVersionId !== null}
+                        {@const selectedVersion = policyVersions.find((v) => v.version === selectedVersionId)}
+                        {#if selectedVersion}
+                          <DiffViewer
+                            oldContent={selectedVersion.content}
+                            newContent={selectedPolicy.content ?? ""}
+                            oldLabel="Version {selectedVersion.version}"
+                            newLabel="Current (v{selectedPolicy.version})"
+                          />
+                        {/if}
                       {/if}
                     </div>
                   {/if}

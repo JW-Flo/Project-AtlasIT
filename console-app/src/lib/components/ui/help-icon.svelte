@@ -72,8 +72,9 @@
   $: parsedContent = marked.parse(content, { async: false }) as string;
 </script>
 
+<svelte:window on:keydown={handleKeydown} />
+
 {#if showHelp}
-  <svelte:window on:keydown={handleKeydown} />
 
   <button
     bind:this={buttonEl}

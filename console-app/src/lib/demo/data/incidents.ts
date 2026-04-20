@@ -1,5 +1,5 @@
-import { DEMO_USER } from "./session.js";
-import { hoursAgo, daysAgo, uuid } from "./helpers.js";
+import { DEMO_USER } from "../state";
+import { hoursAgo, daysAgo, uuid } from "./helpers";
 
 export function getIncidentsResponse() {
   return {

@@ -1,5 +1,5 @@
-import { DEMO_USER } from "./session.js";
-import { daysAgo } from "./helpers.js";
+import { DEMO_USER } from "../state";
+import { daysAgo } from "./helpers";
 
 export function getSettingsResponse() {
   const currentPeriodEnd = new Date();
