@@ -29,7 +29,7 @@ function getPool(): pg.Pool {
   if (!_pool) {
     _pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 5,
+      max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
       ssl: { rejectUnauthorized: false },
@@ -1341,25 +1341,32 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         ),
       ]);
 
-      return ok({
-        status: "success",
-        data: {
-          tenant: tenant.rows[0] ?? null,
-          user: {
-            id: auth.userId,
-            email: auth.email,
-            role: auth.role,
-          },
-          stats: {
-            evidenceCount: parseInt(evidenceCount.rows[0]?.cnt ?? "0", 10),
-            automationRulesTotal: parseInt(rulesCount.rows[0]?.cnt ?? "0", 10),
-            automationRulesEnabled: parseInt(rulesCount.rows[0]?.enabled ?? "0", 10),
-            openIncidents: parseInt(incidentCount.rows[0]?.cnt ?? "0", 10),
-          },
-          recentEvents: recentEvents.rows,
+      return {
+        statusCode: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "private, max-age=60, stale-while-revalidate=30",
         },
-        timestamp: new Date().toISOString(),
-      });
+        body: JSON.stringify({
+          status: "success",
+          data: {
+            tenant: tenant.rows[0] ?? null,
+            user: {
+              id: auth.userId,
+              email: auth.email,
+              role: auth.role,
+            },
+            stats: {
+              evidenceCount: parseInt(evidenceCount.rows[0]?.cnt ?? "0", 10),
+              automationRulesTotal: parseInt(rulesCount.rows[0]?.cnt ?? "0", 10),
+              automationRulesEnabled: parseInt(rulesCount.rows[0]?.enabled ?? "0", 10),
+              openIncidents: parseInt(incidentCount.rows[0]?.cnt ?? "0", 10),
+            },
+            recentEvents: recentEvents.rows,
+          },
+          timestamp: new Date().toISOString(),
+        }),
+      };
     } catch (e) {
       console.error("[core-api] dashboard.error", { error: (e as Error).message });
       return fail(500, "Failed to load dashboard", "INTERNAL_ERROR");

@@ -36,7 +36,7 @@ function getPool(): pg.Pool {
   if (!_pool) {
     _pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      max: 5,
+      max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
       ssl: { rejectUnauthorized: false },
