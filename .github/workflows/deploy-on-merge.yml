@@ -137,7 +137,12 @@ jobs:
             FUNC=$(basename "$dir")
             FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
             echo "Packaging ${FUNC}..."
-            cd "${dir}dist"
+            # Use dist/ if exists, otherwise root
+            if [ -d "${dir}dist" ]; then
+              cd "${dir}dist"
+            else
+              cd "${dir}"
+            fi
             if grep -q 'require.*"pg"' handler.js 2>/dev/null; then
               mkdir -p /tmp/pg-deps && cd /tmp/pg-deps
               echo '{"dependencies":{"pg":"^8"}}' > package.json
