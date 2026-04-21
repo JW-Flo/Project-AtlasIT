@@ -4,7 +4,20 @@ import { ruleTemplates } from "@atlasit/shared";
 
 export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) {
+    return json({ error: "Authentication required. Please sign in again." }, { status: 401 });
+  }
 
-  return json({ templates: ruleTemplates });
+  try {
+    return json({ templates: ruleTemplates });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "Failed to load automation templates",
+        error: String(error),
+      }),
+    );
+    return json({ error: "Failed to load templates. Please try again." }, { status: 500 });
+  }
 };

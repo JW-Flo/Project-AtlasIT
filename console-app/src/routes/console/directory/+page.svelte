@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { PageHeader, Card, Badge, EmptyState, Button } from "$lib/components/ui";
+  import { PageHeader, Card, Badge, EmptyState, Button, ErrorBoundary } from "$lib/components/ui";
   import { relativeTime } from "$lib/utils/time";
+  import { safeFetch } from "$lib/utils/error-handling";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
   import { AlertCircle, RefreshCw, Search, Users, UsersRound as UsersIcon } from "lucide-svelte";
 
   function openUser(id: string) {
@@ -68,12 +70,23 @@
     loadingUsers = true;
     errorUsers = null;
     try {
-      const res = await fetch("/api/v1/directory/users");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = await res.json();
-      users = result?.data?.items ?? [];
+      const res = await safeFetch("/api/v1/directory/users", {
+        context: "load directory users",
+        retry: true,
+      });
+      if (res.ok) {
+        const result = res.data as any;
+        users = result?.data?.items ?? [];
+      } else {
+        errorUsers = res.error.actionable;
+        pushToast({
+          variant: "error",
+          title: "Failed to load users",
+          message: res.error.actionable,
+        });
+      }
     } catch (e) {
-      errorUsers = (e as Error).message;
+      errorUsers = "Failed to load users. Please try again.";
     } finally {
       loadingUsers = false;
     }
@@ -83,12 +96,23 @@
     loadingGroups = true;
     errorGroups = null;
     try {
-      const res = await fetch("/api/v1/directory/groups");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = await res.json();
-      groups = result?.data?.items ?? [];
+      const res = await safeFetch("/api/v1/directory/groups", {
+        context: "load directory groups",
+        retry: true,
+      });
+      if (res.ok) {
+        const result = res.data as any;
+        groups = result?.data?.items ?? [];
+      } else {
+        errorGroups = res.error.actionable;
+        pushToast({
+          variant: "error",
+          title: "Failed to load groups",
+          message: res.error.actionable,
+        });
+      }
     } catch (e) {
-      errorGroups = (e as Error).message;
+      errorGroups = "Failed to load groups. Please try again.";
     } finally {
       loadingGroups = false;
     }
@@ -97,20 +121,23 @@
   async function loadSyncStatus() {
     loadingStatus = true;
     try {
-      const res = await fetch("/api/v1/directory/sync/status");
-      if (!res.ok) return;
-      const result = await res.json();
-      const d = result?.data;
-      if (d) {
-        syncStatus = {
-          userCount: Number(d.userCount ?? d.user_count ?? 0),
-          groupCount: Number(d.groupCount ?? d.group_count ?? 0),
-          connections: Array.isArray(d.connections)
-            ? d.connections.map((c: Record<string, unknown>) => ({
-                lastSyncAt: String(c.lastSyncAt ?? c.last_sync_at ?? ""),
-              }))
-            : [],
-        };
+      const res = await safeFetch("/api/v1/directory/sync/status", {
+        context: "load sync status",
+      });
+      if (res.ok) {
+        const result = res.data as any;
+        const d = result?.data;
+        if (d) {
+          syncStatus = {
+            userCount: Number(d.userCount ?? d.user_count ?? 0),
+            groupCount: Number(d.groupCount ?? d.group_count ?? 0),
+            connections: Array.isArray(d.connections)
+              ? d.connections.map((c: Record<string, unknown>) => ({
+                  lastSyncAt: String(c.lastSyncAt ?? c.last_sync_at ?? ""),
+                }))
+              : [],
+          };
+        }
       }
     } catch {
       // non-critical
@@ -158,6 +185,7 @@
   <title>Directory · AtlasIT</title>
 </svelte:head>
 
+<ErrorBoundary onRetry={refresh}>
 <div class="animate-fade-in" data-tour="directory-users">
   <PageHeader
     title="Directory"
@@ -350,3 +378,4 @@
     {/if}
   {/if}
 </div>
+</ErrorBoundary>
