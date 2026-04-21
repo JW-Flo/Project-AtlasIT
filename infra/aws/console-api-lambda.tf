@@ -5,7 +5,7 @@
 resource "aws_lambda_function" "console_api" {
   function_name = "atlasit-console-api-${var.env}"
   role          = aws_iam_role.console_api_lambda.arn
-  handler       = "index.handler"
+  handler       = "lambda-handler.handler"
   runtime       = "nodejs20.x"
   timeout       = 30
   memory_size   = 512
