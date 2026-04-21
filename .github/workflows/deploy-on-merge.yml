@@ -240,8 +240,8 @@ jobs:
 
           cd console-app/build-lambda
 
-          # Add pg dependency
-          echo '{"dependencies":{"pg":"^8.12.0"}}' > package.json
+          # Add pg dependency (ES module mode for adapter-node output)
+          echo '{"type":"module","dependencies":{"pg":"^8.12.0"}}' > package.json
           npm install --production --silent
 
           # Package
