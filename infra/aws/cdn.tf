@@ -21,10 +21,23 @@ resource "aws_cloudfront_distribution" "main" {
     origin_access_control_id = aws_cloudfront_origin_access_control.console.id
   }
 
-  # Origin: API Gateway for all API/dynamic traffic
+  # Origin: API Gateway for Lambda API functions
   origin {
     domain_name = replace(aws_apigatewayv2_api.main.api_endpoint, "https://", "")
     origin_id   = "apigw"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # Origin: Console SSR Lambda (SvelteKit)
+  origin {
+    domain_name = replace(replace(aws_lambda_function_url.console_api.function_url, "https://", ""), "/", "")
+    origin_id   = "console-lambda"
 
     custom_origin_config {
       http_port              = 80
@@ -64,10 +77,10 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # /api/* → API Gateway (no caching)
+  # /console/* → Console Lambda (SvelteKit SSR)
   ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    target_origin_id       = "apigw"
+    path_pattern           = "/console/*"
+    target_origin_id       = "console-lambda"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods         = ["GET", "HEAD"]
@@ -75,7 +88,29 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "x-tenant-id", "Origin", "Host"]
+      headers      = ["Authorization", "Origin", "Host"]
+      cookies {
+        forward = "all"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # /api/* → Console Lambda (SvelteKit API routes)
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "console-lambda"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "x-tenant-id", "Origin", "Host", "Content-Type"]
       cookies {
         forward = "all"
       }

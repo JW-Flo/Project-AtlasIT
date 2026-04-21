@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@sveltejs/adapter-cloudflare": "^7.2.3",
+    "@sveltejs/adapter-node": "^5.3.8",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@types/qrcode": "^1.5.6",

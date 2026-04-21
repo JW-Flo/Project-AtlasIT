@@ -201,11 +201,11 @@ jobs:
             fi
           fi
 
-  # ── AWS Console (S3 + CloudFront) ────────────────────────────────────────
+  # ── AWS Console (Lambda SSR with adapter-node) ───────────────────────────
   deploy-aws-console:
     needs: [changes]
     if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
-    name: Deploy Console to S3
+    name: Deploy Console Lambda (SSR)
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -220,32 +220,48 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build shared package
         run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
-      - name: Build console (static adapter)
+      - name: Build console (adapter-node for Lambda)
         working-directory: console-app
         run: |
-          cp svelte.config.js svelte.config.cf-backup.js
-          cp svelte.config.aws.js svelte.config.js
+          cp svelte.config.js svelte.config.backup.js
+          cp svelte.config.lambda.js svelte.config.js
           npx svelte-kit sync && pnpm run build
-          mv svelte.config.cf-backup.js svelte.config.js
+          mv svelte.config.backup.js svelte.config.js
         env:
           VITE_API_URL: https://ahjoepuw96.execute-api.us-east-1.amazonaws.com
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
-      - name: Sync to S3
+      - name: Package and deploy console Lambda
         run: |
-          BUCKET=$(aws ssm get-parameter --name "/atlasit/dev/console-bucket" --query "Parameter.Value" --output text 2>/dev/null || echo "atlasit-console-dev-457335975503")
-          aws s3 sync console-app/build "s3://$BUCKET" \
-            --delete \
-            --cache-control "public, max-age=31536000, immutable" \
-            --exclude "*.html" --exclude "service-worker.js"
-          aws s3 sync console-app/build "s3://$BUCKET" \
-            --cache-control "public, max-age=0, must-revalidate" \
-            --include "*.html" --include "service-worker.js"
-      - name: Invalidate CloudFront
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          FUNCTION_NAME="atlasit-console-api-${ENV}"
+
+          cd console-app/build-lambda
+
+          # Add pg dependency
+          echo '{"dependencies":{"pg":"^8.12.0"}}' > package.json
+          npm install --production --silent
+
+          # Package
+          zip -r /tmp/console-api.zip .
+
+          # Deploy
+          aws lambda update-function-code \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file "fileb:///tmp/console-api.zip" \
+            --publish
+
+          echo "Console Lambda deployed: $FUNCTION_NAME"
+      - name: Health check
         run: |
-          DIST_ID=$(aws ssm get-parameter --name "/atlasit/dev/cloudfront-distribution-id" --query "Parameter.Value" --output text 2>/dev/null || echo "")
-          if [ -n "$DIST_ID" ]; then
-            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
+          FUNCTION_URL=$(aws lambda get-function-url-config --function-name "atlasit-console-api-${ENV}" --query 'FunctionUrl' --output text 2>/dev/null || echo "")
+          if [ -n "$FUNCTION_URL" ]; then
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FUNCTION_URL}api/health" --max-time 10 || echo "000")
+            echo "Health: ${FUNCTION_URL}api/health → HTTP $STATUS"
+            if [ "$STATUS" != "200" ]; then
+              echo "::warning::Console health check returned $STATUS"
+            fi
           fi

@@ -21,18 +21,19 @@ resource "aws_sns_topic_policy" "alerts" {
 # Webhook URL stored in SSM SecureString /atlasit/${env}/secrets/slack-webhook-url
 # Set via: aws ssm put-parameter --name /atlasit/staging/secrets/slack-webhook-url \
 #   --type SecureString --value "https://hooks.slack.com/services/..." --overwrite
+# COMMENTED OUT: Parameter not created yet for dev env
 
-data "aws_ssm_parameter" "slack_webhook_url" {
-  name            = "/atlasit/${var.env}/secrets/slack-webhook-url"
-  with_decryption = true
-}
-
-resource "aws_sns_topic_subscription" "alerts_to_slack" {
-  topic_arn              = aws_sns_topic.alerts.arn
-  protocol               = "https"
-  endpoint               = data.aws_ssm_parameter.slack_webhook_url.value
-  endpoint_auto_confirms = true
-}
+# data "aws_ssm_parameter" "slack_webhook_url" {
+#   name            = "/atlasit/${var.env}/secrets/slack-webhook-url"
+#   with_decryption = true
+# }
+#
+# resource "aws_sns_topic_subscription" "alerts_to_slack" {
+#   topic_arn              = aws_sns_topic.alerts.arn
+#   protocol               = "https"
+#   endpoint               = data.aws_ssm_parameter.slack_webhook_url.value
+#   endpoint_auto_confirms = true
+# }
 
 # Wire existing alarms to SNS
 resource "aws_cloudwatch_metric_alarm" "api_5xx_notify" {
