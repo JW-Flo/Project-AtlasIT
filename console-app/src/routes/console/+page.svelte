@@ -91,6 +91,20 @@
   let loading = true;
   let error: string | null = null;
 
+  // Per-widget loading states
+  let loadingDashboard = true;
+  let loadingPacks = true;
+  let loadingEvidence = true;
+  let loadingIntegrations = true;
+  let loadingTrend = true;
+
+  // Per-widget error states
+  let errorDashboard: string | null = null;
+  let errorPacks: string | null = null;
+  let errorEvidence: string | null = null;
+  let errorIntegrations: string | null = null;
+  let errorTrend: string | null = null;
+
   const sparklineWidth = 220;
   const sparklineHeight = 56;
   $: sparklinePath = (() => {
@@ -176,66 +190,117 @@
     { href: "/console/incidents", label: "Incidents", hint: "Investigate + resolve", icon: Activity },
   ];
 
-  async function loadAll() {
-    loading = true;
-    error = null;
+  async function loadDashboard() {
+    loadingDashboard = true;
+    errorDashboard = null;
     try {
-      const [dRes, pRes, eRes, iRes, tRes] = await Promise.all([
-        safeFetch("/api/v1/dashboard", { context: "load dashboard" }),
-        safeFetch("/api/compliance/api/v1/compliance-packs", { context: "load compliance packs" }),
-        safeFetch("/api/compliance/api/v1/evidence?limit=10", { context: "load evidence" }),
-        safeFetch("/api/v1/apps/integrations", { context: "load integrations" }),
-        safeFetch("/api/compliance/api/v1/compliance-packs/history/aggregate?days=30", { context: "load trend data" }),
-      ]);
-
-      // Handle dashboard response
-      if (dRes.ok) {
-        dashboard = (dRes.data as any).data ?? null;
+      const res = await safeFetch("/api/v1/dashboard", { retry: true, context: "load dashboard" });
+      if (res.ok) {
+        dashboard = (res.data as any).data ?? null;
       } else {
-        pushToast({
-          variant: "error",
-          title: "Dashboard load failed",
-          message: dRes.error.actionable,
-        });
+        errorDashboard = res.error.actionable;
+        if (res.error.type !== "auth") {
+          pushToast({
+            variant: "error",
+            title: "Dashboard load failed",
+            message: res.error.actionable,
+          });
+        }
       }
-
-      // Handle packs response
-      if (pRes.ok) {
-        packs = (pRes.data as any).data?.items ?? [];
-      } else if (pRes.error.type !== "auth") {
-        // Don't show toast for auth errors - ErrorBoundary will handle them
-        pushToast({
-          variant: "warning",
-          title: "Compliance packs unavailable",
-          message: pRes.error.actionable,
-        });
-      }
-
-      // Handle evidence response
-      if (eRes.ok) {
-        evidence = (eRes.data as any).data?.items ?? [];
-      }
-
-      // Handle integrations response
-      if (iRes.ok) {
-        integrations = (iRes.data as any).data?.items ?? [];
-      }
-
-      // Handle trend response
-      if (tRes.ok) {
-        trend = (tRes.data as any).data?.series ?? [];
-      }
-
     } catch (e) {
-      error = "Failed to load dashboard. Please try again.";
-      pushToast({
-        variant: "error",
-        title: "Load failed",
-        message: "Unable to load dashboard data. Check your connection and try again.",
-      });
+      errorDashboard = "Failed to load dashboard data.";
     } finally {
-      loading = false;
+      loadingDashboard = false;
     }
+  }
+
+  async function loadPacks() {
+    loadingPacks = true;
+    errorPacks = null;
+    try {
+      const res = await safeFetch("/api/compliance/api/v1/compliance-packs", { retry: true, context: "load compliance packs" });
+      if (res.ok) {
+        packs = (res.data as any).data?.items ?? [];
+      } else {
+        errorPacks = res.error.actionable;
+        if (res.error.type !== "auth") {
+          pushToast({
+            variant: "warning",
+            title: "Compliance packs unavailable",
+            message: res.error.actionable,
+          });
+        }
+      }
+    } catch (e) {
+      errorPacks = "Failed to load compliance packs.";
+    } finally {
+      loadingPacks = false;
+    }
+  }
+
+  async function loadEvidence() {
+    loadingEvidence = true;
+    errorEvidence = null;
+    try {
+      const res = await safeFetch("/api/compliance/api/v1/evidence?limit=10", { retry: true, context: "load evidence" });
+      if (res.ok) {
+        evidence = (res.data as any).data?.items ?? [];
+      } else {
+        errorEvidence = res.error.actionable;
+      }
+    } catch (e) {
+      errorEvidence = "Failed to load evidence.";
+    } finally {
+      loadingEvidence = false;
+    }
+  }
+
+  async function loadIntegrations() {
+    loadingIntegrations = true;
+    errorIntegrations = null;
+    try {
+      const res = await safeFetch("/api/v1/apps/integrations", { retry: true, context: "load integrations" });
+      if (res.ok) {
+        integrations = (res.data as any).data?.items ?? [];
+      } else {
+        errorIntegrations = res.error.actionable;
+      }
+    } catch (e) {
+      errorIntegrations = "Failed to load integrations.";
+    } finally {
+      loadingIntegrations = false;
+    }
+  }
+
+  async function loadTrend() {
+    loadingTrend = true;
+    errorTrend = null;
+    try {
+      const res = await safeFetch("/api/compliance/api/v1/compliance-packs/history/aggregate?days=30", { retry: true, context: "load trend data" });
+      if (res.ok) {
+        trend = (res.data as any).data?.series ?? [];
+      } else {
+        errorTrend = res.error.actionable;
+      }
+    } catch (e) {
+      errorTrend = "Failed to load trend data.";
+    } finally {
+      loadingTrend = false;
+    }
+  }
+
+  async function loadAll() {
+    // Load all widgets in parallel - each tracks its own state
+    await Promise.all([
+      loadDashboard(),
+      loadPacks(),
+      loadEvidence(),
+      loadIntegrations(),
+      loadTrend(),
+    ]);
+
+    // Global loading complete (for backward compatibility)
+    loading = false;
   }
 
   onMount(() => {
@@ -341,7 +406,22 @@
     {/if}
 
     <!-- Hero compliance score card -->
-    {#if installedPacks.length > 0}
+    {#if loadingPacks || loadingTrend}
+      <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden" data-tour="hero-score">
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <div class="h-3 w-32 skeleton rounded"></div>
+            <div class="h-16 w-40 skeleton rounded"></div>
+          </div>
+          <div class="flex gap-3">
+            <div class="h-4 w-20 skeleton rounded"></div>
+            <div class="h-4 w-20 skeleton rounded"></div>
+            <div class="h-4 w-20 skeleton rounded"></div>
+          </div>
+          <div class="h-2 w-full skeleton rounded-full"></div>
+        </div>
+      </Card>
+    {:else if installedPacks.length > 0}
       <Card padding="lg" variant="elevated" class="mb-6 relative overflow-hidden" data-tour="hero-score">
         <div class="absolute top-0 right-0 w-72 h-72 rounded-full bg-primary/5 blur-2xl pointer-events-none"></div>
 
@@ -458,35 +538,87 @@
 
     <!-- Stats row -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-      <StatCard
-        label="Evidence collected"
-        value={dashboard?.stats?.evidenceCount?.toLocaleString() ?? "0"}
-        hint="Operational records"
-        icon={Database}
-      />
-      <StatCard
-        label="Active automations"
-        value="{dashboard?.stats?.automationRulesEnabled ?? 0} / {dashboard?.stats?.automationRulesTotal ?? 0}"
-        hint="Rules enabled / total"
-        icon={Zap}
-      />
-      <StatCard
-        label="Open incidents"
-        value={dashboard?.stats?.openIncidents ?? 0}
-        hint="Awaiting resolution"
-        icon={AlertTriangle}
-        intent={(dashboard?.stats?.openIncidents ?? 0) > 0 ? "warning" : "default"}
-      />
-      <StatCard
-        label="Connected apps"
-        value="{activeIntegrations} / {integrations.length}"
-        hint="Active live-data sources"
-        icon={Plug}
-      />
+      {#if loadingDashboard}
+        <Card padding="md">
+          <div class="space-y-2">
+            <div class="h-3 w-24 skeleton rounded"></div>
+            <div class="h-8 w-16 skeleton rounded"></div>
+            <div class="h-3 w-32 skeleton rounded"></div>
+          </div>
+        </Card>
+        <Card padding="md">
+          <div class="space-y-2">
+            <div class="h-3 w-24 skeleton rounded"></div>
+            <div class="h-8 w-20 skeleton rounded"></div>
+            <div class="h-3 w-28 skeleton rounded"></div>
+          </div>
+        </Card>
+        <Card padding="md">
+          <div class="space-y-2">
+            <div class="h-3 w-20 skeleton rounded"></div>
+            <div class="h-8 w-12 skeleton rounded"></div>
+            <div class="h-3 w-32 skeleton rounded"></div>
+          </div>
+        </Card>
+      {:else}
+        <StatCard
+          label="Evidence collected"
+          value={dashboard?.stats?.evidenceCount?.toLocaleString() ?? "0"}
+          hint="Operational records"
+          icon={Database}
+        />
+        <StatCard
+          label="Active automations"
+          value="{dashboard?.stats?.automationRulesEnabled ?? 0} / {dashboard?.stats?.automationRulesTotal ?? 0}"
+          hint="Rules enabled / total"
+          icon={Zap}
+        />
+        <StatCard
+          label="Open incidents"
+          value={dashboard?.stats?.openIncidents ?? 0}
+          hint="Awaiting resolution"
+          icon={AlertTriangle}
+          intent={(dashboard?.stats?.openIncidents ?? 0) > 0 ? "warning" : "default"}
+        />
+      {/if}
+      {#if loadingIntegrations}
+        <Card padding="md">
+          <div class="space-y-2">
+            <div class="h-3 w-24 skeleton rounded"></div>
+            <div class="h-8 w-16 skeleton rounded"></div>
+            <div class="h-3 w-32 skeleton rounded"></div>
+          </div>
+        </Card>
+      {:else}
+        <StatCard
+          label="Connected apps"
+          value="{activeIntegrations} / {integrations.length}"
+          hint="Active live-data sources"
+          icon={Plug}
+        />
+      {/if}
     </div>
 
     <!-- Per-pack scores -->
-    {#if installedPacks.length > 0}
+    {#if loadingPacks}
+      <section class="mb-6">
+        <div class="flex items-baseline justify-between mb-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Frameworks</h2>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          {#each Array(4) as _}
+            <Card padding="md">
+              <div class="space-y-3">
+                <div class="h-5 w-20 skeleton rounded"></div>
+                <div class="h-3 w-32 skeleton rounded"></div>
+                <div class="h-8 w-16 skeleton rounded"></div>
+                <div class="h-1 w-full skeleton rounded-full"></div>
+              </div>
+            </Card>
+          {/each}
+        </div>
+      </section>
+    {:else if installedPacks.length > 0}
       <section class="mb-6">
         <div class="flex items-baseline justify-between mb-3">
           <h2 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Frameworks</h2>
@@ -532,14 +664,36 @@
       <Card padding="none" class="overflow-hidden" data-tour="connected-apps">
         <div class="px-4 py-3 border-b border-border flex items-center justify-between">
           <h2 class="text-sm font-semibold text-foreground">Connected Apps</h2>
-          <a
-            href="/console/apps"
-            class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
-          >
-            All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
-          </a>
+          {#if !loadingIntegrations}
+            <a
+              href="/console/apps"
+              class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+            >
+              All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
+            </a>
+          {/if}
         </div>
-        {#if integrations.length === 0}
+        {#if loadingIntegrations}
+          <div class="px-4 py-4">
+            <ul class="space-y-3">
+              {#each Array(3) as _}
+                <li class="flex items-center justify-between">
+                  <div class="space-y-2 flex-1">
+                    <div class="h-4 w-32 skeleton rounded"></div>
+                    <div class="h-3 w-24 skeleton rounded"></div>
+                  </div>
+                  <div class="h-5 w-16 skeleton rounded"></div>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {:else if errorIntegrations}
+          <div class="px-4 py-6 text-center">
+            <AlertTriangle class="h-5 w-5 text-destructive mx-auto mb-2" />
+            <p class="text-sm text-destructive">{errorIntegrations}</p>
+            <Button variant="outline" size="sm" class="mt-2" on:click={loadIntegrations}>Retry</Button>
+          </div>
+        {:else if integrations.length === 0}
           <EmptyState
             title="No apps connected"
             description="Connect your first integration to start collecting evidence."
@@ -580,14 +734,37 @@
             <h2 class="text-sm font-semibold text-foreground">Recent Evidence</h2>
             <p class="text-2xs text-muted-foreground">Latest operational records scored against controls</p>
           </div>
-          <a
-            href="/console/compliance/evidence"
-            class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
-          >
-            All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
-          </a>
+          {#if !loadingEvidence}
+            <a
+              href="/console/compliance/evidence"
+              class="text-2xs text-primary hover:underline font-medium inline-flex items-center gap-0.5"
+            >
+              All <ChevronRight class="h-3 w-3" strokeWidth={2.25} />
+            </a>
+          {/if}
         </div>
-        {#if evidence.length === 0}
+        {#if loadingEvidence}
+          <div class="px-4 py-4">
+            <ul class="space-y-3">
+              {#each Array(5) as _}
+                <li class="flex items-start gap-3">
+                  <div class="h-5 w-16 skeleton rounded mt-0.5"></div>
+                  <div class="flex-1 space-y-2">
+                    <div class="h-4 w-3/4 skeleton rounded"></div>
+                    <div class="h-3 w-1/2 skeleton rounded"></div>
+                  </div>
+                  <div class="h-3 w-12 skeleton rounded"></div>
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {:else if errorEvidence}
+          <div class="px-4 py-6 text-center">
+            <AlertTriangle class="h-5 w-5 text-destructive mx-auto mb-2" />
+            <p class="text-sm text-destructive">{errorEvidence}</p>
+            <Button variant="outline" size="sm" class="mt-2" on:click={loadEvidence}>Retry</Button>
+          </div>
+        {:else if evidence.length === 0}
           <EmptyState
             title="No evidence yet"
             description="Connect an app and the compliance engine will start scoring its events."

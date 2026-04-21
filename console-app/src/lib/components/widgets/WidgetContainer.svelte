@@ -57,11 +57,13 @@
 
   <CardContent class={headerless ? "p-0" : ""}>
     {#if state === "loading"}
-      <div class="space-y-3" aria-busy="true">
-        <Skeleton class="h-4 w-3/4" />
-        <Skeleton class="h-8 w-1/2" />
-        <Skeleton class="h-4 w-2/3" />
-      </div>
+      <slot name="loading">
+        <div class="space-y-3" aria-busy="true">
+          <Skeleton class="h-4 w-3/4" />
+          <Skeleton class="h-8 w-1/2" />
+          <Skeleton class="h-4 w-2/3" />
+        </div>
+      </slot>
     {:else if state === "error"}
       <div class="flex flex-col items-center gap-2 py-4 text-sm text-destructive">
         <AlertTriangle class="h-5 w-5" />

@@ -3,6 +3,12 @@
 // Base container
 export { default as WidgetContainer } from "./WidgetContainer.svelte";
 
+// Loading skeletons
+export { default as SkeletonCard } from "./SkeletonCard.svelte";
+export { default as SkeletonStat } from "./SkeletonStat.svelte";
+export { default as SkeletonChart } from "./SkeletonChart.svelte";
+export { default as SkeletonTable } from "./SkeletonTable.svelte";
+
 // Compliance
 export { default as ComplianceScoresWidget } from "./ComplianceScoresWidget.svelte";
 export { default as ComplianceTrendWidget } from "./ComplianceTrendWidget.svelte";
