@@ -23,3 +23,4 @@ export { default as Avatar } from "./avatar.svelte";
 export { default as PageHeader } from "./page-header.svelte";
 export { default as EmptyState } from "./empty-state.svelte";
 export { default as StatCard } from "./stat-card.svelte";
+export { default as ErrorBoundary } from "../ErrorBoundary.svelte";

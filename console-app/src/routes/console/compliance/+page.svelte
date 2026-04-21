@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { PageHeader, Card, Badge, EmptyState, Button } from "$lib/components/ui";
+  import { PageHeader, Card, Badge, EmptyState, Button, ErrorBoundary } from "$lib/components/ui";
   import { relativeTime } from "$lib/utils/time";
+  import { safeFetch } from "$lib/utils/error-handling";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
   import {
     AlertCircle,
     ArrowRight,
@@ -70,32 +72,46 @@
     summaryLoading = true;
     summaryError = null;
     try {
-      const res = await fetch("/api/compliance/api/v1/compliance/summary");
-      if (!res.ok) {
-        summaryError = `Failed to load compliance summary (HTTP ${res.status})`;
-        return;
-      }
-      const result = await res.json();
-      if (result.data) {
-        const d = result.data;
-        const rawFw: Record<string, unknown>[] = d.frameworks ?? [];
-        summary = {
-          frameworks: rawFw.map((f) => ({
-            framework: String(f.framework ?? ""),
-            controlsTotal: Number(f.controlsTotal ?? f.controls_total ?? 0),
-            controlsPassing: Number(f.controlsPassing ?? f.controls_passing ?? 0),
-            evidenceCount: Number(f.evidenceCount ?? f.evidence_count ?? 0),
-            score: Number(f.score ?? 0),
-          })),
-          totalEvidence: Number(d.totalEvidence ?? d.total_evidence ?? 0),
-          lastUpdated: String(d.lastUpdated ?? d.last_updated ?? ""),
-          hasSyntheticEvidence: Boolean(d.hasSyntheticEvidence ?? d.has_synthetic_evidence ?? false),
-        };
+      const res = await safeFetch("/api/compliance/api/v1/compliance/summary", {
+        context: "load compliance summary",
+        retry: true,
+      });
+
+      if (res.ok) {
+        const result = res.data as any;
+        if (result.data) {
+          const d = result.data;
+          const rawFw: Record<string, unknown>[] = d.frameworks ?? [];
+          summary = {
+            frameworks: rawFw.map((f) => ({
+              framework: String(f.framework ?? ""),
+              controlsTotal: Number(f.controlsTotal ?? f.controls_total ?? 0),
+              controlsPassing: Number(f.controlsPassing ?? f.controls_passing ?? 0),
+              evidenceCount: Number(f.evidenceCount ?? f.evidence_count ?? 0),
+              score: Number(f.score ?? 0),
+            })),
+            totalEvidence: Number(d.totalEvidence ?? d.total_evidence ?? 0),
+            lastUpdated: String(d.lastUpdated ?? d.last_updated ?? ""),
+            hasSyntheticEvidence: Boolean(d.hasSyntheticEvidence ?? d.has_synthetic_evidence ?? false),
+          };
+        } else {
+          summaryError = "No summary data returned";
+        }
       } else {
-        summaryError = "No summary data returned";
+        summaryError = res.error.actionable;
+        pushToast({
+          variant: "error",
+          title: "Failed to load compliance summary",
+          message: res.error.actionable,
+        });
       }
     } catch (e) {
-      summaryError = (e as Error).message;
+      summaryError = "Failed to load compliance summary. Please try again.";
+      pushToast({
+        variant: "error",
+        title: "Load failed",
+        message: "Unable to load compliance data. Check your connection and try again.",
+      });
     } finally {
       summaryLoading = false;
     }
@@ -112,33 +128,50 @@
       const url = cursor
         ? `/api/compliance/api/v1/evidence?limit=25&cursor=${encodeURIComponent(cursor)}`
         : "/api/compliance/api/v1/evidence?limit=25";
-      const res = await fetch(url);
-      if (!res.ok) {
-        evidenceError = `Failed to load evidence (HTTP ${res.status})`;
-        return;
-      }
-      const result = await res.json();
-      if (result.data) {
-        const raw: Record<string, unknown>[] = result.data.items ?? [];
-        const mapped: EvidenceItem[] = raw.map((r) => ({
-          id: String(r.id ?? ""),
-          framework: String(r.framework ?? ""),
-          controlId: String(r.controlId ?? r.control_id ?? ""),
-          controlName: String(r.controlName ?? r.control_name ?? ""),
-          source: String(r.source ?? ""),
-          createdAt: String(r.createdAt ?? r.created_at ?? ""),
-        }));
-        if (cursor) {
-          evidenceItems = [...evidenceItems, ...mapped];
-        } else {
+
+      const res = await safeFetch(url, {
+        context: "load evidence",
+        retry: true,
+      });
+
+      if (res.ok) {
+        const result = res.data as any;
+        if (result.data) {
+          const raw: Record<string, unknown>[] = result.data.items ?? [];
+          const mapped: EvidenceItem[] = raw.map((r) => ({
+            id: String(r.id ?? ""),
+            framework: String(r.framework ?? ""),
+            controlId: String(r.controlId ?? r.control_id ?? ""),
+            controlName: String(r.controlName ?? r.control_name ?? ""),
+            source: String(r.source ?? ""),
+            createdAt: String(r.createdAt ?? r.created_at ?? ""),
+          }));
+          if (cursor) {
+            evidenceItems = [...evidenceItems, ...mapped];
+          } else {
           evidenceItems = mapped;
         }
         evidenceNextCursor = result.data.nextCursor ?? result.data.next_cursor ?? null;
       } else {
         evidenceError = "No evidence data returned";
       }
+      } else {
+        evidenceError = res.error.actionable;
+        if (!cursor) {
+          pushToast({
+            variant: "error",
+            title: "Failed to load evidence",
+            message: res.error.actionable,
+          });
+        }
+      }
     } catch (e) {
-      evidenceError = (e as Error).message;
+      evidenceError = "Failed to load evidence. Please try again.";
+      pushToast({
+        variant: "error",
+        title: "Load failed",
+        message: "Unable to load evidence. Check your connection and try again.",
+      });
     } finally {
       evidenceLoading = false;
       evidenceLoadingMore = false;
@@ -164,6 +197,7 @@
   <title>Compliance · AtlasIT</title>
 </svelte:head>
 
+<ErrorBoundary onRetry={refresh}>
 <div class="animate-fade-in">
   <PageHeader title="Compliance" description="Live framework scoring grounded in operational evidence">
     <svelte:fragment slot="actions">
@@ -351,3 +385,4 @@
     {/if}
   </Card>
 </div>
+</ErrorBoundary>

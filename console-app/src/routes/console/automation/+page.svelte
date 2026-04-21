@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { relativeTime } from "$lib/utils/time";
+  import { safeFetch } from "$lib/utils/error-handling";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
   import HelpIcon from "$lib/components/ui/help-icon.svelte";
   import { helpContent } from "$lib/data/help-content";
+  import { ErrorBoundary } from "$lib/components/ui";
 
   interface AutomationRule {
     id: string;
@@ -65,18 +68,38 @@
     rulesError = null;
     try {
       const [rulesRes, statsRes] = await Promise.all([
-        fetch(`${API_BASE}/automation/rules`),
-        fetch(`${API_BASE}/automation/stats`),
+        safeFetch(`${API_BASE}/automation/rules`, {
+          context: "load automation rules",
+          retry: true,
+        }),
+        safeFetch(`${API_BASE}/automation/stats`, {
+          context: "load automation stats",
+        }),
       ]);
-      if (!rulesRes.ok) throw new Error(`Rules fetch failed (HTTP ${rulesRes.status})`);
-      const rulesJson = await rulesRes.json();
-      rules = rulesJson.data ?? [];
+
+      if (rulesRes.ok) {
+        const rulesJson = rulesRes.data as any;
+        rules = rulesJson.data ?? [];
+      } else {
+        rulesError = rulesRes.error.actionable;
+        pushToast({
+          variant: "error",
+          title: "Failed to load rules",
+          message: rulesRes.error.actionable,
+        });
+      }
+
       if (statsRes.ok) {
-        const statsJson = await statsRes.json();
+        const statsJson = statsRes.data as any;
         stats = statsJson.data?.summary ?? null;
       }
     } catch (e) {
-      rulesError = (e as Error).message;
+      rulesError = "Failed to load automation rules. Please try again.";
+      pushToast({
+        variant: "error",
+        title: "Load failed",
+        message: "Unable to load automation data. Check your connection and try again.",
+      });
     } finally {
       rulesLoading = false;
     }
@@ -188,6 +211,7 @@
   const actionsPlaceholder = '[{"type":"notify","config":{"channel":"slack"}}]';
 </script>
 
+<ErrorBoundary onRetry={loadRules}>
 <div class="animate-fade-in" data-tour="automation-rules">
   <!-- Header -->
   <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -399,3 +423,4 @@
     {/if}
   {/if}
 </div>
+</ErrorBoundary>

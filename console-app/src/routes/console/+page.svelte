@@ -8,8 +8,11 @@
     Badge,
     EmptyState,
     Button,
+    ErrorBoundary,
   } from "$lib/components/ui";
   import { relativeTime } from "$lib/utils/time";
+  import { safeFetch, type ClassifiedError } from "$lib/utils/error-handling";
+  import { push as pushToast } from "$lib/components/feedback/toastStore";
   import {
     Activity,
     AlertTriangle,
@@ -178,19 +181,58 @@
     error = null;
     try {
       const [dRes, pRes, eRes, iRes, tRes] = await Promise.all([
-        fetch("/api/v1/dashboard"),
-        fetch("/api/compliance/api/v1/compliance-packs"),
-        fetch("/api/compliance/api/v1/evidence?limit=10"),
-        fetch("/api/v1/apps/integrations"),
-        fetch("/api/compliance/api/v1/compliance-packs/history/aggregate?days=30"),
+        safeFetch("/api/v1/dashboard", { context: "load dashboard" }),
+        safeFetch("/api/compliance/api/v1/compliance-packs", { context: "load compliance packs" }),
+        safeFetch("/api/compliance/api/v1/evidence?limit=10", { context: "load evidence" }),
+        safeFetch("/api/v1/apps/integrations", { context: "load integrations" }),
+        safeFetch("/api/compliance/api/v1/compliance-packs/history/aggregate?days=30", { context: "load trend data" }),
       ]);
-      if (dRes.ok) dashboard = (await dRes.json()).data ?? null;
-      if (pRes.ok) packs = (await pRes.json()).data?.items ?? [];
-      if (eRes.ok) evidence = (await eRes.json()).data?.items ?? [];
-      if (iRes.ok) integrations = (await iRes.json()).data?.items ?? [];
-      if (tRes.ok) trend = (await tRes.json()).data?.series ?? [];
+
+      // Handle dashboard response
+      if (dRes.ok) {
+        dashboard = (dRes.data as any).data ?? null;
+      } else {
+        pushToast({
+          variant: "error",
+          title: "Dashboard load failed",
+          message: dRes.error.actionable,
+        });
+      }
+
+      // Handle packs response
+      if (pRes.ok) {
+        packs = (pRes.data as any).data?.items ?? [];
+      } else if (pRes.error.type !== "auth") {
+        // Don't show toast for auth errors - ErrorBoundary will handle them
+        pushToast({
+          variant: "warning",
+          title: "Compliance packs unavailable",
+          message: pRes.error.actionable,
+        });
+      }
+
+      // Handle evidence response
+      if (eRes.ok) {
+        evidence = (eRes.data as any).data?.items ?? [];
+      }
+
+      // Handle integrations response
+      if (iRes.ok) {
+        integrations = (iRes.data as any).data?.items ?? [];
+      }
+
+      // Handle trend response
+      if (tRes.ok) {
+        trend = (tRes.data as any).data?.series ?? [];
+      }
+
     } catch (e) {
-      error = (e as Error).message;
+      error = "Failed to load dashboard. Please try again.";
+      pushToast({
+        variant: "error",
+        title: "Load failed",
+        message: "Unable to load dashboard data. Check your connection and try again.",
+      });
     } finally {
       loading = false;
     }
@@ -234,6 +276,7 @@
   <title>Dashboard · AtlasIT</title>
 </svelte:head>
 
+<ErrorBoundary onRetry={loadAll}>
 <div class="animate-fade-in">
   <PageHeader
     title="Dashboard"
@@ -603,3 +646,4 @@
     </section>
   {/if}
 </div>
+</ErrorBoundary>
