@@ -36,7 +36,7 @@ resource "aws_cloudfront_distribution" "main" {
 
   # Origin: Console SSR Lambda (SvelteKit)
   origin {
-    domain_name = replace(aws_lambda_function_url.console_api.function_url, "https://", "")
+    domain_name = replace(replace(aws_lambda_function_url.console_api.function_url, "https://", ""), "/", "")
     origin_id   = "console-lambda"
 
     custom_origin_config {
@@ -88,7 +88,7 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "Cookie", "Origin", "Host"]
+      headers      = ["Authorization", "Origin", "Host"]
       cookies {
         forward = "all"
       }
@@ -110,7 +110,7 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "Cookie", "x-tenant-id", "Origin", "Host", "Content-Type"]
+      headers      = ["Authorization", "x-tenant-id", "Origin", "Host", "Content-Type"]
       cookies {
         forward = "all"
       }

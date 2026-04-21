@@ -16,14 +16,14 @@ resource "aws_lambda_function" "console_api" {
 
   # VPC config for RDS access
   vpc_config {
-    subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
-    security_group_ids = [aws_security_group.lambda_rds.id]
+    subnet_ids         = aws_subnet.private[*].id
+    security_group_ids = [aws_security_group.lambda.id]
   }
 
   environment {
     variables = {
-      NODE_ENV     = var.env
-      DATABASE_URL = "postgresql://${aws_db_instance.atlasit.username}:${random_password.db_password.result}@${aws_db_instance.atlasit.endpoint}/${aws_db_instance.atlasit.db_name}"
+      NODE_ENV = var.env
+      # DATABASE_URL managed via ignore_changes - set manually via CLI
     }
   }
 
@@ -31,13 +31,9 @@ resource "aws_lambda_function" "console_api" {
     mode = "Active"
   }
 
-  tags = merge(var.common_tags, {
-    Name = "atlasit-console-api-${var.env}"
-  })
-
   lifecycle {
     ignore_changes = [
-      environment[0].variables["DATABASE_URL"],
+      environment,
       filename,
       source_code_hash,
     ]
@@ -75,7 +71,6 @@ resource "aws_iam_role" "console_api_lambda" {
     }]
   })
 
-  tags = var.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "console_api_vpc" {
@@ -95,7 +90,7 @@ resource "aws_iam_role_policy" "console_api_ssm" {
         "ssm:GetParameter",
         "ssm:GetParameters",
       ]
-      Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/atlasit/${var.env}/*"
+      Resource = "arn:aws:ssm:${var.region}:${var.account_id}:parameter/atlasit/${var.env}/*"
     }]
   })
 }
@@ -106,12 +101,12 @@ resource "aws_lambda_function_url" "console_api" {
   authorization_type = "NONE"
 
   cors {
-    allow_origins     = ["https://*.${var.domain}", "https://${var.domain}"]
-    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    allow_origins     = ["*"]
+    allow_methods     = ["*"]
     allow_headers     = ["*"]
     expose_headers    = ["*"]
     max_age           = 86400
-    allow_credentials = true
+    allow_credentials = false
   }
 }
 
@@ -120,7 +115,6 @@ resource "aws_cloudwatch_log_group" "console_api" {
   name              = "/aws/lambda/atlasit-console-api-${var.env}"
   retention_in_days = 30
 
-  tags = var.common_tags
 }
 
 output "console_api_function_name" {
