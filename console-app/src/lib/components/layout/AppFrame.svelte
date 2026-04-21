@@ -322,9 +322,35 @@
   let sidebarCollapsed = false;
   let copilotOpen = false;
 
+  // Track which sections are expanded (default: all expanded)
+  let expandedSections: Record<string, boolean> = {};
+
   // Persist sidebar state in localStorage
   if (typeof window !== "undefined") {
     sidebarCollapsed = localStorage.getItem("sidebar-collapsed") === "true";
+    try {
+      const saved = localStorage.getItem("expanded-sections");
+      expandedSections = saved ? JSON.parse(saved) : {};
+    } catch {
+      expandedSections = {};
+    }
+  }
+
+  function toggleSection(sectionTitle: string) {
+    expandedSections[sectionTitle] = !expandedSections[sectionTitle];
+    expandedSections = { ...expandedSections };
+    if (typeof window !== "undefined") {
+      localStorage.setItem("expanded-sections", JSON.stringify(expandedSections));
+    }
+  }
+
+  // Initialize all sections as expanded if not set
+  $: if (computedSections) {
+    computedSections.forEach(section => {
+      if (expandedSections[section.title] === undefined) {
+        expandedSections[section.title] = true;
+      }
+    });
   }
 
   function toggleSidebar() {
@@ -422,12 +448,17 @@
       {#each computedSections as section}
         <div>
           {#if !sidebarCollapsed}
-            <div class="px-2 mb-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground/80">
-              {section.title}
-            </div>
+            <button
+              on:click={() => toggleSection(section.title)}
+              class="w-full flex items-center justify-between px-2 mb-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground transition-colors group"
+            >
+              <span>{section.title}</span>
+              <ChevronDown class="h-3 w-3 transition-transform {expandedSections[section.title] ? '' : '-rotate-90'}" />
+            </button>
           {/if}
-          <div class="space-y-0.5">
-            {#each section.items as item}
+          {#if expandedSections[section.title] || sidebarCollapsed}
+            <div class="space-y-0.5">
+              {#each section.items as item}
               {@const active = isActive(item.href, current)}
               <a
                 href={item.href}
@@ -458,7 +489,8 @@
                 {/if}
               </a>
             {/each}
-          </div>
+            </div>
+          {/if}
         </div>
       {/each}
     </nav>
