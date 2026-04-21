@@ -46,6 +46,7 @@
     Lightbulb,
     BarChart3,
     Sparkles,
+    FileBarChart,
   } from "lucide-svelte";
 
   interface NavSection {
@@ -119,6 +120,14 @@
         { href: "/console/apps", label: "Connected Apps", icon: AppWindow },
         { href: "/console/marketplace", label: "Marketplace", icon: Store },
         { href: "/console/discovery", label: "Discovery", icon: Search },
+      ],
+    },
+    {
+      title: "Analytics",
+      items: [
+        { href: "/console/analytics", label: "Analytics", icon: BarChart3 },
+        { href: "/console/reports", label: "Reports", icon: FileBarChart },
+        { href: "/console/insights", label: "Insights", icon: Lightbulb },
       ],
     },
     {
