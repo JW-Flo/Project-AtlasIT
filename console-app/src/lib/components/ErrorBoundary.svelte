@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { page } from "$app/stores";
+  import { goto } from "$app/navigation";
   import { Button, Card } from "$lib/components/ui";
   import { AlertTriangle, RefreshCcw, Home } from "lucide-svelte";
   import { classifyError, logError, type ClassifiedError } from "$lib/utils/error-handling";
@@ -12,16 +14,21 @@
   let error: ClassifiedError | null = null;
   let errorCount = 0;
 
+  // Reset error state on route change (F-11 fix)
+  $: if ($page.url.pathname) {
+    error = null;
+    errorCount = 0;
+  }
+
   function handleError(event: ErrorEvent) {
     event.preventDefault();
     const classified = classifyError(event.error, "page load");
     error = classified;
     errorCount++;
 
-    // Log to CloudWatch
+    // Log to CloudWatch (without stack traces - security risk)
     logError(classified, {
       errorCount,
-      componentStack: event.error?.stack,
     });
   }
 
@@ -44,12 +51,13 @@
     if (onRetry) {
       onRetry();
     } else {
-      window.location.reload();
+      // Use goto() instead of window.location.reload() to preserve SvelteKit state (F-06 fix)
+      goto($page.url.pathname, { invalidateAll: true });
     }
   }
 
   function goHome() {
-    window.location.href = "/console";
+    goto("/console");
   }
 
   onMount(() => {

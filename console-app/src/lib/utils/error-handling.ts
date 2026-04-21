@@ -11,7 +11,6 @@ export interface ClassifiedError {
   actionable: string;
   retryable: boolean;
   httpStatus?: number;
-  originalError?: unknown;
 }
 
 /**
@@ -26,7 +25,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
       message: "Connection failed",
       actionable: "Check your network connection and try again.",
       retryable: true,
-      originalError: error,
     };
   }
 
@@ -35,13 +33,19 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
     const status = (error as { status: number }).status;
 
     if (status === 401) {
+      // Auto-redirect to login (F-09 fix)
+      // Check if not already on login page to avoid redirect loop
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        const returnUrl = encodeURIComponent(window.location.href);
+        window.location.href = `/login?return=${returnUrl}`;
+      }
+
       return {
         type: "auth",
-        message: "Authentication required",
-        actionable: "Your session has expired. Please sign in again.",
+        message: "Redirecting to login",
+        actionable: "Your session has expired. Redirecting to login...",
         retryable: false,
         httpStatus: 401,
-        originalError: error,
       };
     }
 
@@ -52,7 +56,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
         actionable: "You don't have permission to perform this action. Contact your administrator.",
         retryable: false,
         httpStatus: 403,
-        originalError: error,
       };
     }
 
@@ -65,7 +68,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
           : "The requested resource was not found.",
         retryable: false,
         httpStatus: 404,
-        originalError: error,
       };
     }
 
@@ -76,7 +78,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
         actionable: "Please check your input and try again.",
         retryable: false,
         httpStatus: 422,
-        originalError: error,
       };
     }
 
@@ -87,18 +88,20 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
         actionable: "Too many requests. Please wait a moment and try again.",
         retryable: true,
         httpStatus: 429,
-        originalError: error,
       };
     }
 
     if (status >= 500) {
+      // Distinguish retriable vs non-retriable 5xx errors
+      const retriable = [502, 503, 504].includes(status);
       return {
         type: "server",
-        message: "Server error",
-        actionable: "Something went wrong on our end. Please try again in a moment.",
-        retryable: true,
+        message: retriable ? "Service temporarily unavailable" : "Server error",
+        actionable: retriable
+          ? "Our servers are temporarily unavailable. Please try again in a moment."
+          : "Something went wrong on our end. Please contact support if this persists.",
+        retryable: retriable,
         httpStatus: status,
-        originalError: error,
       };
     }
 
@@ -109,7 +112,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
         actionable: "Invalid request. Please check your input.",
         retryable: false,
         httpStatus: status,
-        originalError: error,
       };
     }
   }
@@ -123,7 +125,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
       message: "Request timeout",
       actionable: "The request took too long. Please try again.",
       retryable: true,
-      originalError: error,
     };
   }
 
@@ -136,7 +137,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
       message: "Authentication required",
       actionable: "Your session has expired. Please sign in again.",
       retryable: false,
-      originalError: error,
     };
   }
 
@@ -149,7 +149,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
       message: "Access denied",
       actionable: "You don't have permission to perform this action. Contact your administrator.",
       retryable: false,
-      originalError: error,
     };
   }
 
@@ -161,7 +160,6 @@ export function classifyError(error: unknown, context?: string): ClassifiedError
       ? `Failed to ${context}. Please try again or contact support if the problem persists.`
       : "Something went wrong. Please try again or contact support if the problem persists.",
     retryable: true,
-    originalError: error,
   };
 }
 
@@ -291,7 +289,7 @@ export async function logError(
         message: error.message,
         httpStatus: error.httpStatus,
         timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
+        // URL sanitized on server - only send full URL, backend strips query params
         url: window.location.href,
         metadata,
       }),
