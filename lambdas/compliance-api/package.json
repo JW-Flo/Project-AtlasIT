@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/handler.js",
   "scripts": {
-    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --format=esm --outdir=dist --sourcemap --external:@aws-sdk/* --external:@atlasit/*",
+    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --format=esm --outdir=dist --sourcemap --external:@aws-sdk/* --external:@atlasit/* --external:pdf-lib",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
