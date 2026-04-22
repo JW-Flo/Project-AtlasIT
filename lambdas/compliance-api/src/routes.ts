@@ -1133,6 +1133,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
   // GET /api/v1/compliance/summary — per-framework control passing rates + evidence counts
   if (path === "/api/v1/compliance/summary" && method === "GET") {
     try {
+      // Fetch tenant's selected frameworks from preferences
+      const prefsResult = await pool.query(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'frameworks'`,
+        [tenantId],
+      );
+      let selectedFrameworks: string[] = [];
+      if (prefsResult.rows.length > 0) {
+        try {
+          const parsed = JSON.parse(prefsResult.rows[0].value);
+          selectedFrameworks = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          // Ignore parse errors, fall back to all frameworks
+        }
+      }
+
+      // Build WHERE clause for framework filtering
+      let frameworkFilter = "";
+      let queryParams: any[] = [tenantId];
+      if (selectedFrameworks.length > 0) {
+        const placeholders = selectedFrameworks.map((_, idx) => `$${idx + 2}`).join(", ");
+        frameworkFilter = ` AND framework IN (${placeholders})`;
+        queryParams = [tenantId, ...selectedFrameworks];
+      }
+
       const rows = await pool.query(
         `SELECT framework,
                 COUNT(DISTINCT control_id) as controls_total,
@@ -1141,11 +1165,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
          FROM (
            SELECT framework, control_id, COUNT(*) as cnt
            FROM compliance_evidence
-           WHERE tenant_id = $1 AND framework IS NOT NULL
+           WHERE tenant_id = $1 AND framework IS NOT NULL${frameworkFilter}
            GROUP BY framework, control_id
          ) t
          GROUP BY framework ORDER BY framework`,
-        [tenantId],
+        queryParams,
       );
       const frameworks = rows.rows.map((r: Record<string, string>) => ({
         framework: r.framework,
@@ -1157,9 +1181,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
             ? Math.round((parseInt(r.controls_passing, 10) * 100) / parseInt(r.controls_total, 10))
             : 0,
       }));
+
+      // Total evidence count also filtered by selected frameworks
       const totalRow = await pool.query(
-        `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1`,
-        [tenantId],
+        `SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = $1${frameworkFilter}`,
+        queryParams,
       );
 
       // Check if tenant has any synthetic evidence (F-28 quick-start feature)
