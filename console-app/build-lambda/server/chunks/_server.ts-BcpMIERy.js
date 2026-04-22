@@ -1,0 +1,60 @@
+import { json } from '@sveltejs/kit';
+
+const GET = async ({ url, locals, platform }) => {
+  const user = locals.user;
+  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+  const env = platform?.env || {};
+  const db = env.ATLAS_SHARED_DB;
+  if (!db) return json({ entries: [], total: 0 });
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
+  const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
+  const actionFilter = url.searchParams.get("action") ?? null;
+  const from = url.searchParams.get("from") ?? null;
+  const to = url.searchParams.get("to") ?? null;
+  const filters = [];
+  const bindArgs = [];
+  if (!user.superAdmin) {
+    filters.push("tenant_id = ?");
+    bindArgs.push(user.tenantId);
+  }
+  if (actionFilter) {
+    filters.push("action = ?");
+    bindArgs.push(actionFilter);
+  }
+  if (from) {
+    filters.push("created_at >= ?");
+    bindArgs.push(from);
+  }
+  if (to) {
+    filters.push("created_at <= ?");
+    bindArgs.push(to + "T23:59:59.999Z");
+  }
+  const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+  const countResult = await db.prepare(`SELECT COUNT(*) as total FROM audit_log ${whereClause}`).bind(...bindArgs).first().catch(() => ({ total: 0 }));
+  const result = await db.prepare(
+    `SELECT id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at
+       FROM audit_log ${whereClause}
+       ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(...bindArgs, limit, offset).all().catch(() => ({ results: [] }));
+  const entries = (result.results ?? []).map((row) => {
+    let actorEmail = row.actor_id ?? "";
+    let detail = "";
+    try {
+      const parsed = JSON.parse(row.details ?? "{}");
+      if (parsed.actorEmail) actorEmail = parsed.actorEmail;
+      if (parsed.detail) detail = parsed.detail;
+    } catch {
+    }
+    return {
+      date: row.created_at,
+      actor: actorEmail,
+      action: row.action,
+      target: (row.resource_type ?? "") + (row.resource_id ? `:${row.resource_id}` : ""),
+      details: detail
+    };
+  });
+  return json({ entries, total: countResult?.total ?? 0 });
+};
+
+export { GET };
+//# sourceMappingURL=_server.ts-BcpMIERy.js.map

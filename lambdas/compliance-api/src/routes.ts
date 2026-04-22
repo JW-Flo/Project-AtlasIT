@@ -47,6 +47,49 @@ function getPool(): pg.Pool {
 // Trigger pool init at module load (Lambda reuses across warm invocations)
 getPool();
 
+// Cache for tenant selected frameworks (cleared on Lambda cold start)
+const tenantFrameworksCache = new Map<string, { frameworks: string[]; expiresAt: number }>();
+const FRAMEWORK_CACHE_TTL = 300_000; // 5 minutes
+
+async function getTenantSelectedFrameworks(tenantId: string): Promise<string[]> {
+  const now = Date.now();
+  const cached = tenantFrameworksCache.get(tenantId);
+  if (cached && cached.expiresAt > now) {
+    return cached.frameworks;
+  }
+
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'frameworks'`,
+      [tenantId],
+    );
+    let frameworks: string[] = [];
+    if (result.rows.length > 0) {
+      try {
+        const parsed = JSON.parse(result.rows[0].value);
+        frameworks = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        // Ignore parse errors
+      }
+    }
+    tenantFrameworksCache.set(tenantId, { frameworks, expiresAt: now + FRAMEWORK_CACHE_TTL });
+    return frameworks;
+  } catch (err) {
+    console.warn("[compliance-api] getTenantSelectedFrameworks.error", {
+      tenantId,
+      error: (err as Error).message,
+    });
+    return []; // Fail open: if we can't read prefs, don't block evidence storage
+  }
+}
+
+function shouldStoreEvidenceForFramework(framework: string | null, selectedFrameworks: string[]): boolean {
+  if (!framework) return true; // Allow framework-agnostic evidence
+  if (selectedFrameworks.length === 0) return true; // No filter configured = store all
+  return selectedFrameworks.includes(framework);
+}
+
 // Best-effort event publisher — writes events row + enqueues SQS for orchestrator.
 async function publishEvent(
   tenantId: string,
@@ -1678,6 +1721,11 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       // Record in PostgreSQL. ON CONFLICT DO NOTHING implements
       // idempotent ingest: re-submitting the same content hash is a no-op,
       // which is the desired behaviour for evidence deduplication.
+      const selectedFrameworks = await getTenantSelectedFrameworks(tenantId);
+      if (!shouldStoreEvidenceForFramework(b.framework ?? null, selectedFrameworks)) {
+        return fail(400, `Framework ${b.framework} not selected in tenant preferences`, "FRAMEWORK_NOT_SELECTED");
+      }
+
       const id = crypto.randomUUID();
       await pool.query(
         `INSERT INTO compliance_evidence
@@ -2183,8 +2231,13 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
                 details: item.details ?? {},
               });
               // Store each item as compliance_evidence per control ref
+              const selectedFrameworks = await getTenantSelectedFrameworks(tenantId);
               for (const controlRef of item.controlRefs ?? []) {
                 const { framework, controlId } = parseControlRef(controlRef);
+                // Skip if framework not selected by tenant
+                if (!shouldStoreEvidenceForFramework(framework, selectedFrameworks)) {
+                  continue;
+                }
                 try {
                   await pool.query(
                     `INSERT INTO compliance_evidence
@@ -3623,25 +3676,29 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
           eventType: "policy.acknowledged",
           reasoning: `User ${auth.email ?? auth.userId} acknowledged policy "${policy.name}" v${policy.version}`,
         };
-        await pool.query(
-          `INSERT INTO compliance_evidence
-             (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
-           ON CONFLICT DO NOTHING`,
-          [
-            evidenceId,
-            tenantId,
-            "SOC2",
-            "CC1.1",
-            "Policies and Procedures",
-            "manual",
-            "policy",
-            policyId,
-            auth.email ?? auth.userId,
-            policy.name,
-            JSON.stringify(evidenceMeta),
-          ],
-        );
+
+        const selectedFrameworks = await getTenantSelectedFrameworks(tenantId);
+        if (shouldStoreEvidenceForFramework("SOC2", selectedFrameworks)) {
+          await pool.query(
+            `INSERT INTO compliance_evidence
+               (id, tenant_id, framework, control_id, control_name, evidence_type, source, source_id, actor, subject, metadata, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+             ON CONFLICT DO NOTHING`,
+            [
+              evidenceId,
+              tenantId,
+              "SOC2",
+              "CC1.1",
+              "Policies and Procedures",
+              "manual",
+              "policy",
+              policyId,
+              auth.email ?? auth.userId,
+              policy.name,
+              JSON.stringify(evidenceMeta),
+            ],
+          );
+        }
 
         return ok(
           {
@@ -3953,28 +4010,31 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
       );
 
       // Emit positive compliance evidence — attestation is strong proof the control is working.
+      const selectedFrameworks = await getTenantSelectedFrameworks(auth.tenantId);
       const evId = crypto.randomUUID();
-      await pool.query(
-        `INSERT INTO compliance_evidence
-           (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
-         VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
-        [
-          evId,
-          auth.tenantId,
-          body.framework,
-          body.controlId,
-          id,
-          email ?? auth.userId,
-          JSON.stringify({
-            impact: "positive",
-            eventType: "attestation.signed",
-            reasoning: `${name} attested: ${body.statement.slice(0, 200)}`,
-            confidence: 1,
-            auditAction: "attestation.signed",
-            attestationKey: body.attestationKey,
-          }),
-        ],
-      );
+      if (shouldStoreEvidenceForFramework(body.framework, selectedFrameworks)) {
+        await pool.query(
+          `INSERT INTO compliance_evidence
+             (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
+           VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
+          [
+            evId,
+            auth.tenantId,
+            body.framework,
+            body.controlId,
+            id,
+            email ?? auth.userId,
+            JSON.stringify({
+              impact: "positive",
+              eventType: "attestation.signed",
+              reasoning: `${name} attested: ${body.statement.slice(0, 200)}`,
+              confidence: 1,
+              auditAction: "attestation.signed",
+              attestationKey: body.attestationKey,
+            }),
+          ],
+        );
+      }
       return ok(
         { status: "success", data: { id, evidenceId: evId }, timestamp: new Date().toISOString() },
         201,
@@ -4041,27 +4101,30 @@ export async function route(event: APIGatewayProxyEventV2): Promise<APIGatewayPr
         );
 
         // Emit negative compliance evidence — revoked attestation weakens the control.
+        const selectedFrameworks = await getTenantSelectedFrameworks(auth.tenantId);
         const evId = crypto.randomUUID();
-        await pool.query(
-          `INSERT INTO compliance_evidence
-             (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
-           VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
-          [
-            evId,
-            auth.tenantId,
-            a.framework,
-            a.control_id,
-            id,
-            auth.userId,
-            JSON.stringify({
-              impact: "negative",
-              eventType: "attestation.revoked",
-              reasoning: `Attestation revoked${body.reason ? ": " + body.reason : ""}`,
-              confidence: 1,
-              auditAction: "attestation.revoked",
-            }),
-          ],
-        );
+        if (shouldStoreEvidenceForFramework(a.framework, selectedFrameworks)) {
+          await pool.query(
+            `INSERT INTO compliance_evidence
+               (id, tenant_id, framework, control_id, evidence_type, source, source_id, actor, metadata, created_at)
+             VALUES ($1, $2, $3, $4, 'attestation', 'attestation', $5, $6, $7::jsonb, NOW())`,
+            [
+              evId,
+              auth.tenantId,
+              a.framework,
+              a.control_id,
+              id,
+              auth.userId,
+              JSON.stringify({
+                impact: "negative",
+                eventType: "attestation.revoked",
+                reasoning: `Attestation revoked${body.reason ? ": " + body.reason : ""}`,
+                confidence: 1,
+                auditAction: "attestation.revoked",
+              }),
+            ],
+          );
+        }
         return ok({
           status: "success",
           data: { id, revoked: true },
