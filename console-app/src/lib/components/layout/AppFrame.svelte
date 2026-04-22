@@ -140,15 +140,18 @@
     },
   ];
 
+  const platformAdminSection: NavSection = {
+    title: "Platform Admin",
+    items: [
+      { href: "/console/admin", label: "Tenant Management", icon: Shield },
+      { href: "/console/admin/operations", label: "Operations", icon: Activity },
+      { href: "/console/admin/users", label: "All Users", icon: Users },
+      { href: "/console/admin/impersonate", label: "Impersonate", icon: User },
+    ],
+  };
+
   $: computedSections = isSuperAdmin || userRoles.includes("super-admin")
-    ? [...navSections.slice(0, -1), {
-        ...navSections[navSections.length - 1],
-        items: [
-          ...navSections[navSections.length - 1].items,
-          { href: "/console/admin", label: "Admin", icon: Shield },
-          { href: "/console/admin/operations", label: "Operations", icon: Activity },
-        ],
-      }]
+    ? [...navSections, platformAdminSection]
     : navSections;
 
   async function exitImpersonation() {
@@ -360,6 +363,29 @@
     }
   }
 
+  function collapseAllSections() {
+    Object.keys(expandedSections).forEach(key => {
+      expandedSections[key] = false;
+    });
+    expandedSections = { ...expandedSections }; // trigger reactivity
+    if (typeof window !== "undefined") {
+      localStorage.setItem("expanded-sections", JSON.stringify(expandedSections));
+    }
+  }
+
+  function expandAllSections() {
+    Object.keys(expandedSections).forEach(key => {
+      expandedSections[key] = true;
+    });
+    expandedSections = { ...expandedSections }; // trigger reactivity
+    if (typeof window !== "undefined") {
+      localStorage.setItem("expanded-sections", JSON.stringify(expandedSections));
+    }
+  }
+
+  $: allCollapsed = Object.keys(expandedSections).length > 0 && Object.values(expandedSections).every(v => v === false);
+  $: allExpanded = Object.keys(expandedSections).length > 0 && Object.values(expandedSections).every(v => v === true);
+
   function closeMobileMenu() {
     mobileMenuOpen = false;
   }
@@ -445,6 +471,18 @@
 
     <!-- Navigation -->
     <nav class="flex-1 overflow-y-auto py-4 {sidebarCollapsed ? 'px-2' : 'px-3'} space-y-5">
+      {#if !sidebarCollapsed}
+        <div class="px-2 mb-3 flex items-center justify-between">
+          <span class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/60">Navigation</span>
+          <button
+            on:click={allExpanded ? collapseAllSections : expandAllSections}
+            class="text-2xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-accent"
+            title={allExpanded ? 'Collapse all sections' : 'Expand all sections'}
+          >
+            {allExpanded ? 'Collapse All' : 'Expand All'}
+          </button>
+        </div>
+      {/if}
       {#each computedSections as section}
         <div>
           {#if !sidebarCollapsed}
