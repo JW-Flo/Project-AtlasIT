@@ -1,1 +1,0 @@
-import{n as e}from"../chunks/ByyiFnrn.js";import{t}from"../chunks/DvJaGI2x.js";var n=e({load:()=>r}),r=()=>{throw t(302,`/demo`)};export{n as universal};
