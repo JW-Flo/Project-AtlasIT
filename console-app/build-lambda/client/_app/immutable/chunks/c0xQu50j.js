@@ -1,0 +1,1 @@
+import{B as e,Dt as t,E as n,H as r,J as i,Ot as a,Q as o,T as s,it as c,l,o as u}from"./DYSRzf4F.js";import"./ClsUfVDQ.js";import"./nsdYOAOH.js";import{t as d}from"./BMeIYSur.js";var f=r(`<div></div>`);function p(r,p){a(p,!1);let m=u(p,`class`,8,``);l();var h=f();c(e=>s(h,1,e),[()=>n((i(d),i(m()),o(()=>d(`animate-pulse rounded-md bg-muted`,m()))))]),e(r,h),t()}export{p as t};

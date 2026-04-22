@@ -438,7 +438,7 @@
     <!-- Logo -->
     <a
       href="/console"
-      class="flex items-center gap-2.5 h-16 border-b border-border hover:bg-accent/40 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-5'}"
+      class="flex items-center gap-2.5 h-14 border-b border-border hover:bg-accent/40 transition-colors {sidebarCollapsed ? 'px-4 justify-center' : 'px-5'}"
       title={sidebarCollapsed ? (orgName || 'AtlasIT') : ''}
     >
       {#if logoUrl}
