@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg } from "$lib/server/pg";
 
 const ALLOWED_KEYS = new Set([
   "theme",
@@ -12,34 +13,26 @@ const ALLOWED_KEYS = new Set([
 
 // Table created via migration 0016_user_preferences.sql
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const { results } = (await db
-    .prepare("SELECT key, value FROM user_preferences WHERE user_id = ?")
-    .bind(user.userId)
-    .all()) as { results: { key: string; value: string }[] };
+  const rows = await queryPg<{ key: string; value: string }>(
+    "SELECT key, value FROM user_preferences WHERE user_id = $1",
+    [user.userId],
+  );
 
   const prefs: Record<string, string> = {};
-  for (const row of results || []) {
+  for (const row of rows) {
     prefs[row.key] = row.value;
   }
 
   return json(prefs);
 };
 
-export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
+export const PATCH: RequestHandler = async ({ request, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
   const body = await request.json().catch(() => ({}));
   const entries = Object.entries(body as Record<string, unknown>);
@@ -50,10 +43,10 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
 
   for (const [key, value] of entries) {
     if (!ALLOWED_KEYS.has(key)) continue;
-    await db
-      .prepare("INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)")
-      .bind(user.userId, key, String(value))
-      .run();
+    await queryPg(
+      "INSERT INTO user_preferences (user_id, key, value) VALUES ($1, $2, $3) ON CONFLICT (user_id, key) DO UPDATE SET value = $3",
+      [user.userId, key, String(value)],
+    );
   }
 
   return json({ success: true });

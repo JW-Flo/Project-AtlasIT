@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { buildCopilotContext } from "@atlasit/shared";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 interface AuditChecklistItem {
   id: string;
@@ -35,6 +36,7 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
 
   const framework = url.searchParams.get("framework") || "SOC2";
 
+  // buildCopilotContext still uses D1 - will be migrated in shared package
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
@@ -43,12 +45,10 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   // Load control statuses for this framework
   let controls: Array<{ id: string; name: string; framework: string; status: string }> = [];
   try {
-    const row = await db
-      .prepare(
-        "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'",
-      )
-      .bind(tenantId)
-      .first<{ value: string }>();
+    const row = await queryPgOne<{ value: string }>(
+      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
+      [tenantId, "compliance_controls"],
+    );
     if (row?.value) {
       const all = JSON.parse(row.value) as Array<Record<string, string>>;
       controls = all
@@ -71,15 +71,13 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   // Load evidence counts per control for this framework
   let evidenceCounts: Record<string, number> = {};
   try {
-    const { results } = await db
-      .prepare(
-        `SELECT control_id, COUNT(*) as cnt FROM compliance_evidence
-         WHERE tenant_id = ? AND framework = ?
-         GROUP BY control_id`,
-      )
-      .bind(tenantId, framework)
-      .all<{ control_id: string; cnt: number }>();
-    for (const r of results ?? []) {
+    const results = await queryPg<{ control_id: string; cnt: number }>(
+      `SELECT control_id, COUNT(*) as cnt FROM compliance_evidence
+       WHERE tenant_id = $1 AND framework = $2
+       GROUP BY control_id`,
+      [tenantId, framework],
+    );
+    for (const r of results) {
       evidenceCounts[r.control_id] = r.cnt;
     }
   } catch {
@@ -89,10 +87,10 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   // Load approved policies
   let policyCount = 0;
   try {
-    const row = await db
-      .prepare("SELECT COUNT(*) as cnt FROM policies WHERE tenant_id = ? AND status = 'approved'")
-      .bind(tenantId)
-      .first<{ cnt: number }>();
+    const row = await queryPgOne<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM policies WHERE tenant_id = $1 AND status = $2",
+      [tenantId, "approved"],
+    );
     policyCount = row?.cnt ?? 0;
   } catch {
     /* continue */
@@ -101,13 +99,11 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   // Load access review status
   let lastAccessReview: string | null = null;
   try {
-    const row = await db
-      .prepare(
-        `SELECT MAX(created_at) as last_review FROM access_review_campaigns
-         WHERE tenant_id = ? AND status = 'completed'`,
-      )
-      .bind(tenantId)
-      .first<{ last_review: string | null }>();
+    const row = await queryPgOne<{ last_review: string | null }>(
+      `SELECT MAX(created_at) as last_review FROM access_review_campaigns
+       WHERE tenant_id = $1 AND status = $2`,
+      [tenantId, "completed"],
+    );
     lastAccessReview = row?.last_review ?? null;
   } catch {
     /* continue */

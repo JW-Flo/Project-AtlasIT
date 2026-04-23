@@ -1,202 +1,124 @@
-/**
- * AWS Lambda handler wrapper for SvelteKit adapter-node
- * Converts API Gateway/Lambda Function URL events to Node.js HTTP request/response
- * and back to Lambda response format.
- */
-import { handler as skHandler } from "./build-lambda/handler.js";
+import http from "node:http";
+import { Readable } from "node:stream";
+import { handler as svelteHandler } from "./handler.js";
 
-/**
- * Convert Lambda event to Node.js IncomingMessage-like object
- */
-function createRequest(event) {
+let _server;
+
+function getServer() {
+  if (!_server) {
+    _server = http.createServer(svelteHandler);
+  }
+  return _server;
+}
+
+export async function handler(event, context) {
+  context.callbackWaitsForEmptyEventLoop = false;
+
   const {
     rawPath = event.path || "/",
-    rawQueryString = event.queryStringParameters
-      ? new URLSearchParams(event.queryStringParameters).toString()
-      : "",
+    rawQueryString = "",
     headers = {},
-    body = "",
+    body: rawBody,
     isBase64Encoded = false,
     requestContext = {},
   } = event;
 
-  const method = event.httpMethod || event.requestContext?.http?.method || "GET";
-  const path = rawPath + (rawQueryString ? `?${rawQueryString}` : "");
+  const method = event.httpMethod || requestContext?.http?.method || "GET";
+  const urlPath = rawPath + (rawQueryString ? `?${rawQueryString}` : "");
 
-  // Create a minimal IncomingMessage-compatible object
-  const req = {
-    method,
-    url: path,
-    headers: normalizeHeaders(headers),
-    rawHeaders: Object.entries(headers).flat(),
-    httpVersion: "1.1",
-    connection: {},
-    socket: {
-      remoteAddress:
-        requestContext.identity?.sourceIp || requestContext.http?.sourceIp || "127.0.0.1",
-      remotePort: 443,
-    },
-  };
+  const bodyBuffer = rawBody
+    ? isBase64Encoded
+      ? Buffer.from(rawBody, "base64")
+      : Buffer.from(rawBody)
+    : null;
 
-  // Add body handling
-  if (body) {
-    const buffer = isBase64Encoded ? Buffer.from(body, "base64") : Buffer.from(body);
-    req.body = buffer;
-    req.on = (event, handler) => {
-      if (event === "data") handler(buffer);
-      if (event === "end") handler();
-      return req;
-    };
-  } else {
-    req.on = (event, handler) => {
-      if (event === "end") handler();
-      return req;
-    };
+  const normalizedHeaders = {};
+  for (const [k, v] of Object.entries(headers)) {
+    normalizedHeaders[k.toLowerCase()] = v;
+  }
+  if (bodyBuffer) {
+    normalizedHeaders["content-length"] = String(bodyBuffer.length);
   }
 
-  req.once = req.on;
-  req.removeListener = () => req;
-  req.removeAllListeners = () => req;
+  return new Promise((resolve) => {
+    const bodyStream = bodyBuffer ? Readable.from([bodyBuffer]) : Readable.from([]);
 
-  return req;
-}
+    const req = Object.assign(bodyStream, {
+      method,
+      url: urlPath,
+      headers: normalizedHeaders,
+      rawHeaders: Object.entries(normalizedHeaders).flat(),
+      httpVersion: "1.1",
+      httpVersionMajor: 1,
+      httpVersionMinor: 1,
+      connection: {
+        remoteAddress: requestContext?.http?.sourceIp || "127.0.0.1",
+        encrypted: true,
+      },
+      socket: {
+        remoteAddress: requestContext?.http?.sourceIp || "127.0.0.1",
+        encrypted: true,
+        destroy() {},
+      },
+    });
 
-/**
- * Create a ServerResponse-compatible object that collects response data
- */
-function createResponse() {
-  const chunks = [];
-  let statusCode = 200;
-  const headers = {};
+    const res = new http.ServerResponse(req);
+    const chunks = [];
 
-  const res = {
-    statusCode,
-    headers,
-    chunks,
-    finished: false,
-
-    writeHead(code, headersOrReason, maybeHeaders) {
-      statusCode = code;
-      const responseHeaders =
-        typeof headersOrReason === "object" ? headersOrReason : maybeHeaders || {};
-      Object.assign(headers, normalizeHeaders(responseHeaders));
-      return res;
-    },
-
-    setHeader(name, value) {
-      headers[name.toLowerCase()] = String(value);
-      return res;
-    },
-
-    getHeader(name) {
-      return headers[name.toLowerCase()];
-    },
-
-    removeHeader(name) {
-      delete headers[name.toLowerCase()];
-      return res;
-    },
-
-    write(chunk) {
-      if (chunk) chunks.push(Buffer.from(chunk));
+    res.write = function (chunk, encoding, cb) {
+      if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (typeof encoding === "function") {
+        encoding();
+        return true;
+      }
+      if (typeof cb === "function") cb();
       return true;
-    },
-
-    end(data) {
-      if (data) chunks.push(Buffer.from(data));
-      res.finished = true;
-      return res;
-    },
-
-    // EventEmitter stubs
-    on: () => res,
-    once: () => res,
-    emit: () => true,
-    removeListener: () => res,
-  };
-
-  return res;
-}
-
-/**
- * Normalize headers to lowercase keys
- */
-function normalizeHeaders(headers) {
-  const normalized = {};
-  for (const [key, value] of Object.entries(headers || {})) {
-    normalized[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : String(value);
-  }
-  return normalized;
-}
-
-/**
- * Convert response chunks to Lambda response format
- */
-function formatResponse(res) {
-  const body = Buffer.concat(res.chunks);
-  const contentType = res.getHeader("content-type") || "";
-  const isBinary =
-    !contentType.startsWith("text/") &&
-    !contentType.includes("json") &&
-    !contentType.includes("javascript") &&
-    !contentType.includes("xml");
-
-  return {
-    statusCode: res.statusCode || 200,
-    headers: res.headers,
-    body: isBinary ? body.toString("base64") : body.toString("utf8"),
-    isBase64Encoded: isBinary,
-  };
-}
-
-/**
- * Main Lambda handler
- */
-export async function handler(event, context) {
-  // Enable response streaming if context.awsRequestId exists (not local testing)
-  if (context.awsRequestId) {
-    context.callbackWaitsForEmptyEventLoop = false;
-  }
-
-  const req = createRequest(event);
-  const res = createResponse();
-
-  return new Promise((resolve, reject) => {
-    // Set a timeout to prevent hanging
-    const timeout = setTimeout(() => {
-      if (!res.finished) {
-        console.error("Handler timeout - no response after 29s");
-        resolve({
-          statusCode: 504,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ error: "Gateway timeout" }),
-        });
-      }
-    }, 29000); // 1s buffer before Lambda's 30s timeout
-
-    // Override res.end to capture completion
-    const originalEnd = res.end.bind(res);
-    res.end = function (data) {
-      originalEnd(data);
-      clearTimeout(timeout);
-
-      try {
-        const response = formatResponse(res);
-        resolve(response);
-      } catch (err) {
-        console.error("Error formatting response:", err);
-        reject(err);
-      }
-
-      return res;
     };
 
-    // Call the SvelteKit handler
+    const originalEnd = res.end;
+    res.end = function (data, encoding, cb) {
+      if (data && data.length) chunks.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      if (typeof encoding === "function") cb = encoding;
+
+      const responseBody = Buffer.concat(chunks);
+      const contentType = String(res.getHeader("content-type") || "");
+      const isBinary =
+        contentType &&
+        !contentType.startsWith("text/") &&
+        !contentType.includes("json") &&
+        !contentType.includes("javascript") &&
+        !contentType.includes("xml") &&
+        !contentType.includes("svg");
+
+      const responseHeaders = {};
+      for (const [k, v] of Object.entries(res.getHeaders())) {
+        responseHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
+      }
+
+      clearTimeout(timeout);
+      resolve({
+        statusCode: res.statusCode || 200,
+        headers: responseHeaders,
+        body: isBinary ? responseBody.toString("base64") : responseBody.toString("utf8"),
+        isBase64Encoded: !!isBinary,
+      });
+
+      if (typeof cb === "function") cb();
+    };
+
+    const timeout = setTimeout(() => {
+      resolve({
+        statusCode: 504,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "Gateway timeout" }),
+      });
+    }, 29000);
+
     try {
-      skHandler(req, res, (err) => {
+      svelteHandler(req, res, (err) => {
         if (err) {
-          console.error("Handler error:", err);
           clearTimeout(timeout);
+          console.error("Handler error:", err);
           resolve({
             statusCode: 500,
             headers: { "content-type": "application/json" },
@@ -205,9 +127,13 @@ export async function handler(event, context) {
         }
       });
     } catch (err) {
-      console.error("Handler threw:", err);
       clearTimeout(timeout);
-      reject(err);
+      console.error("Handler threw:", err);
+      resolve({
+        statusCode: 500,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "Internal server error" }),
+      });
     }
   });
 }

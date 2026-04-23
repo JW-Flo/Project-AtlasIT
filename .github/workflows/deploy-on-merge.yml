@@ -228,13 +228,8 @@ jobs:
       - name: Build console (adapter-node for Lambda)
         working-directory: console-app
         run: |
-          cp svelte.config.js svelte.config.backup.js
-          cp svelte.config.lambda.js svelte.config.js
           npx svelte-kit sync && pnpm run build
           cp lambda-handler.js build-lambda/
-          mv svelte.config.backup.js svelte.config.js
-        env:
-          VITE_API_URL: https://ahjoepuw96.execute-api.us-east-1.amazonaws.com
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy

@@ -4,6 +4,7 @@ import type { SSOConfigRow } from "@atlasit/shared/sso/types";
 import { rowToConfig } from "@atlasit/shared/sso/types";
 import { buildAuthnRequestUrl } from "@atlasit/shared/sso/saml";
 import { buildAuthorizationUrl, generatePKCE } from "@atlasit/shared/sso/oidc";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const SSO_STATE_TTL_SECONDS = 600; // 10 minutes
 
@@ -12,22 +13,19 @@ const SSO_STATE_TTL_SECONDS = 600; // 10 minutes
  * Initiates SSO login by redirecting to the IdP.
  * No session required — this is the entry point for SSO.
  */
-export const GET: RequestHandler = async ({ url, platform }) => {
+export const GET: RequestHandler = async ({ url }) => {
   const tenantId = url.searchParams.get("tenant");
   if (!tenantId) {
     return json({ error: "tenant parameter required" }, { status: 400 });
   }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
   // Load SSO config for tenant
   let config;
   try {
-    const row = await db
-      .prepare("SELECT * FROM sso_configurations WHERE tenant_id = ? AND enabled = 1 LIMIT 1")
-      .bind(tenantId)
-      .first<SSOConfigRow>();
+    const row = await queryPgOne<SSOConfigRow>(
+      "SELECT * FROM sso_configurations WHERE tenant_id = $1 AND enabled = true LIMIT 1",
+      [tenantId],
+    );
 
     if (!row) {
       return json({ error: "SSO not configured for this tenant" }, { status: 404 });
@@ -49,13 +47,11 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 
     // Store state for CSRF verification
     try {
-      await db
-        .prepare(
-          `INSERT INTO sso_auth_state (id, tenant_id, protocol, state, redirect_url, created_at, expires_at)
-           VALUES (?, ?, 'saml', ?, ?, ?, ?)`,
-        )
-        .bind(crypto.randomUUID(), tenantId, state, "/console", now.toISOString(), expiresAt)
-        .run();
+      await queryPg(
+        `INSERT INTO sso_auth_state (id, tenant_id, protocol, state, redirect_url, created_at, expires_at)
+         VALUES ($1, $2, 'saml', $3, $4, $5, $6)`,
+        [crypto.randomUUID(), tenantId, state, "/console", now.toISOString(), expiresAt],
+      );
     } catch (e) {
       console.error("Failed to store SSO state:", e);
     }
@@ -75,12 +71,10 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 
     // Store state + code_verifier
     try {
-      await db
-        .prepare(
-          `INSERT INTO sso_auth_state (id, tenant_id, protocol, state, code_verifier, redirect_url, created_at, expires_at)
-           VALUES (?, ?, 'oidc', ?, ?, ?, ?, ?)`,
-        )
-        .bind(
+      await queryPg(
+        `INSERT INTO sso_auth_state (id, tenant_id, protocol, state, code_verifier, redirect_url, created_at, expires_at)
+         VALUES ($1, $2, 'oidc', $3, $4, $5, $6, $7)`,
+        [
           crypto.randomUUID(),
           tenantId,
           state,
@@ -88,8 +82,8 @@ export const GET: RequestHandler = async ({ url, platform }) => {
           "/console",
           now.toISOString(),
           expiresAt,
-        )
-        .run();
+        ],
+      );
     } catch (e) {
       console.error("Failed to store SSO state:", e);
     }

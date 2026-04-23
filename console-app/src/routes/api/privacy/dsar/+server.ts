@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
 import { sendEmail } from "$lib/server/email";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PRIVACY_INBOX = "privacy@atlasit.pro";
@@ -68,23 +69,27 @@ export const POST: RequestHandler = async ({ request, platform }) => {
   const refId = `DSAR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   // Persist to audit log
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (db) {
-    await writeAudit(db, {
-      tenantId: "public",
-      actorUserId: "anonymous",
-      actorEmail: safeEmail,
-      action: "privacy.dsar_request",
-      targetType: "dsar",
-      detail: JSON.stringify({
-        refId,
-        name: safeName,
-        requestType: safeType,
-        organization: safeOrg,
-        details: safeDetails,
+  await queryPg(
+    `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, details, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      crypto.randomUUID(),
+      "public",
+      "anonymous",
+      "privacy.dsar_request",
+      "dsar",
+      JSON.stringify({
+        actorEmail: safeEmail,
+        detail: JSON.stringify({
+          refId,
+          name: safeName,
+          requestType: safeType,
+          organization: safeOrg,
+          details: safeDetails,
+        }),
       }),
-    });
-  }
+    ],
+  );
 
   // Notify privacy team
   sendEmail(platform, {

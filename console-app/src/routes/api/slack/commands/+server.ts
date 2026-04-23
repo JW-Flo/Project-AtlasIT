@@ -29,18 +29,17 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     }),
   );
 
-  const db = (env.ATLAS_SHARED_DB as D1Database) ?? null;
-  const tenantId = db && teamId ? await resolveSlackTenant(db, teamId) : null;
+  const tenantId = teamId ? await resolveSlackTenant(teamId) : null;
 
   if (command === "/atlas") {
-    const response = await handleAtlasCommand(text, userId, db, tenantId);
+    const response = await handleAtlasCommand(text, userId, tenantId);
     return new Response(JSON.stringify(response), {
       headers: { "content-type": "application/json" },
     });
   }
 
   if (command === "/evidence") {
-    const response = await handleEvidenceCommand(text.trim(), db, tenantId);
+    const response = await handleEvidenceCommand(text.trim(), tenantId);
     return new Response(JSON.stringify(response), {
       headers: { "content-type": "application/json" },
     });

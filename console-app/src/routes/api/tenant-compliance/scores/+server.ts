@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { getWorkerBase, safeProxyFetch } from "../../_proxy-helpers";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 type ScoreSource = "evidence" | "self-assessed" | "self-assessed-fallback" | "no-data";
 
@@ -110,14 +111,16 @@ async function fetchEvidenceGroundedScores(
           ).length;
           const verified = controls.filter((c) => c.status === "verified").length;
 
-          return [{
-            framework: fw,
-            score,
-            grade: computeGrade(score),
-            controlsTotal: total,
-            controlsImplemented: implemented,
-            controlsVerified: verified,
-          }];
+          return [
+            {
+              framework: fw,
+              score,
+              grade: computeGrade(score),
+              controlsTotal: total,
+              controlsImplemented: implemented,
+              controlsVerified: verified,
+            },
+          ];
         }
       } catch {
         // JSON parse failed — skip this framework
@@ -133,70 +136,55 @@ async function fetchEvidenceGroundedScores(
   return allScores.length > 0 ? allScores : null;
 }
 
-// ── Persist scores to D1 ─────────────────────────────────────────────────────
+// ── Persist scores to PG ─────────────────────────────────────────────────────
 
-async function persistScores(db: any, tenantId: string, scores: FrameworkScore[]): Promise<void> {
-  const upsertStmts: any[] = [];
-  const historyStmts: any[] = [];
-
+async function persistScores(_db: any, tenantId: string, scores: FrameworkScore[]): Promise<void> {
   for (const fw of scores) {
-    upsertStmts.push(
-      db
-        .prepare(
-          `INSERT INTO compliance_scores (id, tenant_id, framework, score, grade, controls_total, controls_implemented, controls_verified, calculated_at)
-           VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(tenant_id, framework) DO UPDATE SET
-             score = excluded.score,
-             grade = excluded.grade,
-             controls_total = excluded.controls_total,
-             controls_implemented = excluded.controls_implemented,
-             controls_verified = excluded.controls_verified,
-             calculated_at = excluded.calculated_at`,
-        )
-        .bind(
-          tenantId,
-          fw.framework,
-          fw.score,
-          fw.grade,
-          fw.controlsTotal,
-          fw.controlsImplemented,
-          fw.controlsVerified,
-        ),
+    await queryPg(
+      `INSERT INTO compliance_scores (id, tenant_id, framework, score, grade, controls_total, controls_implemented, controls_verified, calculated_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT(tenant_id, framework) DO UPDATE SET
+         score = EXCLUDED.score,
+         grade = EXCLUDED.grade,
+         controls_total = EXCLUDED.controls_total,
+         controls_implemented = EXCLUDED.controls_implemented,
+         controls_verified = EXCLUDED.controls_verified,
+         calculated_at = EXCLUDED.calculated_at`,
+      [
+        tenantId,
+        fw.framework,
+        fw.score,
+        fw.grade,
+        fw.controlsTotal,
+        fw.controlsImplemented,
+        fw.controlsVerified,
+      ],
     );
 
-    historyStmts.push(
-      db
-        .prepare(
-          `INSERT INTO compliance_history (id, tenant_id, framework, score, grade, recorded_at)
-           VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, datetime('now'))`,
-        )
-        .bind(tenantId, fw.framework, fw.score, fw.grade),
+    await queryPg(
+      `INSERT INTO compliance_history (id, tenant_id, framework, score, grade, recorded_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+      [tenantId, fw.framework, fw.score, fw.grade],
     );
-  }
-
-  if (upsertStmts.length > 0) {
-    await db.batch([...upsertStmts, ...historyStmts]);
   }
 }
 
 // ── Self-assessed scoring from tenant control statuses ──────────────────────
 
 async function computeSelfAssessedScores(
-  db: any,
+  _db: any,
   tenantId: string,
   frameworks: string[],
 ): Promise<FrameworkScore[]> {
   try {
-    const row = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
-      )
-      .bind(tenantId)
-      .first();
+    const row = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2`,
+      [tenantId, "compliance_controls"],
+    );
     if (!row?.value) return [];
 
     const controls: Array<{ id: string; framework: string; status: string }> = JSON.parse(
-      row.value as string,
+      row.value,
     );
     if (!Array.isArray(controls) || controls.length === 0) return [];
 
@@ -259,12 +247,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   let frameworks: string[] = [];
   let frameworksConfigured = true;
   try {
-    const row = await db
-      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
-      .bind(user.tenantId)
-      .first();
+    const row = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2`,
+      [user.tenantId, "frameworks"],
+    );
     if (row?.value) {
-      frameworks = JSON.parse(row.value as string);
+      frameworks = JSON.parse(row.value);
     }
   } catch {
     // no frameworks set
@@ -330,9 +318,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     }
 
     await persistScores(db, user.tenantId, blended);
-    return json({ scores: blended, source: "evidence", frameworksConfigured }, {
-      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
-    });
+    return json(
+      { scores: blended, source: "evidence", frameworksConfigured },
+      {
+        headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+      },
+    );
   }
 
   // Use self-assessed scores from controls (primary path when compliance-worker unavailable)
@@ -342,9 +333,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       source: (s.score > 0 ? "self-assessed" : "no-data") as ScoreSource,
     }));
     await persistScores(db, user.tenantId, tagged);
-    return json({ scores: tagged, source: "self-assessed", frameworksConfigured }, {
-      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
-    });
+    return json(
+      { scores: tagged, source: "self-assessed", frameworksConfigured },
+      {
+        headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+      },
+    );
   }
 
   // No scores available at all — return empty
@@ -357,9 +351,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     controlsVerified: 0,
     source: "no-data" as ScoreSource,
   }));
-  return json({ scores: emptyScores, source: "empty", frameworksConfigured }, {
-    headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
-  });
+  return json(
+    { scores: emptyScores, source: "empty", frameworksConfigured },
+    {
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+    },
+  );
 };
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
@@ -373,12 +370,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   // Read tenant frameworks
   let frameworks: string[] = [];
   try {
-    const row = await db
-      .prepare(`SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'`)
-      .bind(user.tenantId)
-      .first();
+    const row = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2`,
+      [user.tenantId, "frameworks"],
+    );
     if (row?.value) {
-      frameworks = JSON.parse(row.value as string);
+      frameworks = JSON.parse(row.value);
     }
   } catch {
     // no frameworks set
@@ -388,12 +385,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   }
 
   // Read previous scores before recalculation to detect changes
-  const { results: prevRows } = await db
-    .prepare("SELECT framework, score FROM compliance_scores WHERE tenant_id = ?")
-    .bind(user.tenantId)
-    .all();
+  const prevRows = await queryPg<{ framework: string; score: number }>(
+    "SELECT framework, score FROM compliance_scores WHERE tenant_id = $1",
+    [user.tenantId],
+  );
   const previousScores: Record<string, number> = {};
-  for (const row of (prevRows ?? []) as any[]) {
+  for (const row of prevRows) {
     previousScores[row.framework] = row.score;
   }
 

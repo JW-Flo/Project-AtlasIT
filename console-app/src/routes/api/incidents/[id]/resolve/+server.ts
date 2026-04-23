@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 import { writeAudit } from "$lib/server/audit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ params, platform, locals }) => {
   const user = locals.user;
@@ -40,35 +41,37 @@ export const POST: RequestHandler = async ({ params, platform, locals }) => {
 
     // Log audit event for successful incident resolution
     if (res.ok) {
-      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-      if (db) {
-        try {
-          await writeAudit(db, {
+      try {
+        await queryPg(
+          `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            crypto.randomUUID(),
             tenantId,
-            actorUserId: user.userId ?? "unknown",
-            actorEmail: user.email ?? "unknown",
-            action: "incident.resolved",
-            targetType: "incident",
-            targetId: id,
-          });
-        } catch {
-          // Non-blocking
-        }
-        try {
-          const { notify } = await import("$lib/server/notifications");
-          await notify(db, platform, {
-            tenantId,
-            type: "incident_resolved",
-            title: `Incident resolved`,
-            body: `Incident ${id} was resolved by ${user.email}`,
-            severity: "info",
-            sourceType: "incident",
-            sourceId: id!,
-            actionUrl: `/console/incidents`,
-          });
-        } catch {
-          // Non-blocking
-        }
+            user.userId ?? "unknown",
+            "incident.resolved",
+            "incident",
+            id,
+            JSON.stringify({ actorEmail: user.email ?? "unknown" }),
+          ],
+        );
+      } catch {
+        // Non-blocking
+      }
+      try {
+        const { notify } = await import("$lib/server/notifications");
+        await notify(platform, {
+          tenantId,
+          type: "incident_resolved",
+          title: `Incident resolved`,
+          body: `Incident ${id} was resolved by ${user.email}`,
+          severity: "info",
+          sourceType: "incident",
+          sourceId: id!,
+          actionUrl: `/console/incidents`,
+        });
+      } catch {
+        // Non-blocking
       }
     }
 

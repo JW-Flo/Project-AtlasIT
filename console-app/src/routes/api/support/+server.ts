@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
 import { sendEmail } from "$lib/server/email";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SUPPORT_INBOX = "support@atlasit.pro";
@@ -36,21 +37,25 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     typeof category === "string" && category.trim() ? category.trim() : "general";
 
   // Persist to audit log (durable record)
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (db) {
-    await writeAudit(db, {
-      tenantId: "public",
-      actorUserId: "anonymous",
-      actorEmail: safeEmail,
-      action: "support.request",
-      targetType: "support",
-      detail: JSON.stringify({
-        name: safeName,
-        category: safeCategory,
-        message: safeMessage,
+  await queryPg(
+    `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, details, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [
+      crypto.randomUUID(),
+      "public",
+      "anonymous",
+      "support.request",
+      "support",
+      JSON.stringify({
+        actorEmail: safeEmail,
+        detail: JSON.stringify({
+          name: safeName,
+          category: safeCategory,
+          message: safeMessage,
+        }),
       }),
-    });
-  }
+    ],
+  );
 
   // Notify support team via email (non-blocking — audit log is the source of truth)
   sendEmail(platform, {

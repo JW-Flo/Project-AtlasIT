@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const ALLOWED_EVENTS = new Set([
   "viewed_demo",
@@ -56,28 +57,20 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     await kv.put(rateKey, String(current + 1), { expirationTtl: RATE_LIMIT_WINDOW_SECONDS });
   }
 
-  const db = env.ATLAS_SHARED_DB as D1Database | undefined;
-
-  if (!db) return json({ ok: true, stored: false });
-
   try {
-    await db
-      .prepare(
-        `INSERT INTO growth_events (id, event_name, module, created_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .bind(crypto.randomUUID(), event, moduleName, new Date().toISOString())
-      .run();
+    await queryPg(
+      `INSERT INTO growth_events (id, event_name, module, created_at)
+       VALUES ($1, $2, $3, NOW())`,
+      [crypto.randomUUID(), event, moduleName],
+    );
     return json({ ok: true, stored: true });
   } catch {
     try {
-      await db
-        .prepare(
-          `INSERT INTO growth_events (id, event_name, invite_id, created_at)
-           VALUES (?, ?, ?, ?)`,
-        )
-        .bind(crypto.randomUUID(), event, null, new Date().toISOString())
-        .run();
+      await queryPg(
+        `INSERT INTO growth_events (id, event_name, invite_id, created_at)
+         VALUES ($1, $2, $3, NOW())`,
+        [crypto.randomUUID(), event, null],
+      );
       return json({ ok: true, stored: true });
     } catch {
       return json({ ok: true, stored: false });

@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { buildCopilotContext, type CopilotTenantContext } from "@atlasit/shared";
+import { queryPgOne } from "$lib/server/pg";
 
 interface PrioritizedAction {
   id: string;
@@ -23,8 +24,13 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required. Please log out and log back in." }, { status: 403 });
+  if (!tenantId)
+    return json(
+      { error: "Tenant context required. Please log out and log back in." },
+      { status: 403 },
+    );
 
+  // buildCopilotContext still uses D1 - will be migrated in shared package
   const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   if (!db) return json({ actions: [] });
 

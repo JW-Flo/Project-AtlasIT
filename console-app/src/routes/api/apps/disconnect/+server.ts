@@ -3,6 +3,7 @@ import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
 import { deleteCredentials } from "$lib/server/credentials";
 import { writeAudit } from "$lib/server/audit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
@@ -36,40 +37,40 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   await deleteCredentials(platform, appId, tenantId);
 
   // Log audit event for successful app disconnection
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (db) {
-    try {
-      await writeAudit(db, {
+  try {
+    await queryPg(
+      `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        crypto.randomUUID(),
         tenantId,
-        actorUserId: user.userId ?? "unknown",
-        actorEmail: user.email ?? "unknown",
-        action: "app.disconnected",
-        targetType: "app",
-        targetId: appId,
-      });
-    } catch {
-      // Non-blocking: audit write failure shouldn't break app disconnection
-    }
+        user.userId ?? "unknown",
+        "app.disconnected",
+        "app",
+        appId,
+        JSON.stringify({ actorEmail: user.email ?? "unknown" }),
+      ],
+    );
+  } catch {
+    // Non-blocking: audit write failure shouldn't break app disconnection
   }
 
   // Notify about app disconnection
-  if (db) {
-    try {
-      const { notify } = await import("$lib/server/notifications");
-      await notify(db, platform, {
-        tenantId,
-        type: "app_disconnected",
-        title: `App disconnected: ${appId}`,
-        body: `${appId} was disconnected by ${user.email}`,
-        severity: "warning",
-        sourceType: "app",
-        sourceId: appId,
-        sourceLabel: appId,
-        actionUrl: `/console/directory`,
-      });
-    } catch {
-      // Non-blocking
-    }
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(platform, {
+      tenantId,
+      type: "app_disconnected",
+      title: `App disconnected: ${appId}`,
+      body: `${appId} was disconnected by ${user.email}`,
+      severity: "warning",
+      sourceType: "app",
+      sourceId: appId,
+      sourceLabel: appId,
+      actionUrl: `/console/directory`,
+    });
+  } catch {
+    // Non-blocking
   }
 
   return new Response(JSON.stringify({ success: true, connected: false, id: appId }), {

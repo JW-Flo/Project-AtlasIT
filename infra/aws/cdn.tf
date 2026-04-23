@@ -47,61 +47,8 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # Default: S3 static assets (console SPA)
+  # Default: Console Lambda (SvelteKit SSR — handles all pages + API routes)
   default_cache_behavior {
-    target_origin_id       = "s3-console"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 86400
-    max_ttl     = 31536000
-
-    function_association {
-      event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.apex_redirect.arn
-    }
-
-    function_association {
-      event_type   = "viewer-response"
-      function_arn = aws_cloudfront_function.security_headers.arn
-    }
-  }
-
-  # /console/* → Console Lambda (SvelteKit SSR)
-  ordered_cache_behavior {
-    path_pattern           = "/console/*"
-    target_origin_id       = "console-lambda"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization", "Origin", "Host"]
-      cookies {
-        forward = "all"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
-  }
-
-  # /api/* → Console Lambda (SvelteKit API routes)
-  ordered_cache_behavior {
-    path_pattern           = "/api/*"
     target_origin_id       = "console-lambda"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
@@ -119,9 +66,40 @@ resource "aws_cloudfront_distribution" "main" {
     min_ttl     = 0
     default_ttl = 0
     max_ttl     = 0
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.apex_redirect.arn
+    }
+
+    function_association {
+      event_type   = "viewer-response"
+      function_arn = aws_cloudfront_function.security_headers.arn
+    }
   }
 
-  # /health → API Gateway (no caching)
+  # /_app/* → S3 (immutable SvelteKit assets — JS, CSS, fonts)
+  ordered_cache_behavior {
+    path_pattern           = "/_app/*"
+    target_origin_id       = "s3-console"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 31536000
+    max_ttl     = 31536000
+  }
+
+  # /health → API Gateway (core-api health)
   ordered_cache_behavior {
     path_pattern           = "/health"
     target_origin_id       = "apigw"
@@ -147,20 +125,6 @@ resource "aws_cloudfront_distribution" "main" {
     minimum_protocol_version = "TLSv1.2_2021"
   }
 
-  # SPA routing: serve index.html for 403/404 so client-side router handles all paths
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 10
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 10
-  }
 
   restrictions {
     geo_restriction {

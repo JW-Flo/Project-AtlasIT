@@ -34,12 +34,11 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     }),
   );
 
-  const db = (env.ATLAS_SHARED_DB as D1Database) ?? null;
   const teamId = payload.team?.id;
-  const tenantId = db && teamId ? await resolveSlackTenant(db, teamId) : null;
+  const tenantId = teamId ? await resolveSlackTenant(teamId) : null;
 
   if (type === "block_actions") {
-    await handleBlockActions(payload, db, tenantId);
+    await handleBlockActions(payload, tenantId);
   }
 
   if (type === "view_submission") {
