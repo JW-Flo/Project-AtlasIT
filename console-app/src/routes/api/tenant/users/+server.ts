@@ -1,45 +1,40 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
-  const denied = requireTenantRole(user, ["owner", "admin"]);
-  if (denied) return denied;
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const result = await db
-    .prepare(
-      `SELECT id, email, display_name, roles, created_at, last_login
-       FROM console_users WHERE tenant_id = ?`,
-    )
-    .bind(user!.tenantId)
-    .all();
-
-  // Map snake_case D1 rows to camelCase and parse roles JSON
-  const users = (result.results ?? []).map((row: any) => {
-    let parsedRoles: string[] = [];
-    try {
-      parsedRoles =
-        typeof row.roles === "string"
-          ? JSON.parse(row.roles)
-          : (row.roles ?? []);
-    } catch {
-      parsedRoles = [];
-    }
-    return {
-      id: row.id,
-      email: row.email,
-      displayName: row.display_name ?? row.displayName,
-      role: parsedRoles[0] ?? "viewer",
-      roles: parsedRoles,
-      createdAt: row.created_at ?? row.createdAt,
-      lastLogin: row.last_login ?? row.lastLogin ?? null,
-    };
-  });
-
-  return json(users);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const upstream = `${base}/api/v1/tenant/users${url.search}`;
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

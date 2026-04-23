@@ -1,112 +1,82 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const row = (await db
-    .prepare(
-      "SELECT id, email, display_name, roles, tenant_id, created_at FROM console_users WHERE id = ? LIMIT 1",
-    )
-    .bind(user.userId)
-    .first()) as {
-    id: string;
-    email: string;
-    display_name: string | null;
-    roles: string;
-    tenant_id: string;
-    created_at: string;
-  } | null;
-
-  if (!row) {
-    return json({
-      email: user.email,
-      displayName: user.displayName || user.email,
-      roles: user.roles || [],
-      tenantId: user.tenantId,
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
     });
   }
-
-  let roles: string[];
-  try {
-    roles = JSON.parse(row.roles || '["admin"]');
-  } catch {
-    roles = ["admin"];
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  return json({
-    email: row.email,
-    displayName: row.display_name || row.email,
-    roles,
-    tenantId: row.tenant_id,
-    createdAt: row.created_at,
-  });
+  const upstream = `${base}/api/v1/user/profile${url.search}`;
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const PATCH: RequestHandler = async ({
-  request,
-  locals,
-  platform,
-  cookies,
-}) => {
+export const PATCH: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  const kv = env.KV_SESSIONS;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const body = await request.json().catch(() => ({}));
-  const { displayName } = body as { displayName?: string };
-
-  if (!displayName || !displayName.trim()) {
-    return json({ error: "Display name is required" }, { status: 400 });
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (displayName.length > 100) {
-    return json(
-      { error: "Display name must be 100 characters or less" },
-      { status: 400 },
-    );
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  await db
-    .prepare("UPDATE console_users SET display_name = ? WHERE id = ?")
-    .bind(displayName.trim(), user.userId)
-    .run();
-
-  // Update KV session so sidebar reflects new name immediately
-  if (kv) {
-    const sid = cookies.get("atlas_session");
-    if (sid) {
-      try {
-        const raw = await kv.get(sid);
-        if (raw) {
-          const sessionData = JSON.parse(raw);
-          sessionData.displayName = displayName.trim();
-          await kv.put(sid, JSON.stringify(sessionData), {
-            expirationTtl: 604800,
-          });
-        }
-      } catch {}
-    }
+  const body = await request.text();
+  const upstream = `${base}/api/v1/user/profile`;
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  await writeAudit(db, {
-    tenantId: user.tenantId!,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "user.profile_updated",
-    targetType: "user",
-    targetId: user.userId,
-    detail: JSON.stringify({ displayName: displayName.trim() }),
-  });
-
-  return json({ success: true });
 };

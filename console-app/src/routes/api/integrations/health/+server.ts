@@ -1,34 +1,43 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/apps/test`;
 
   try {
-    const { results } = await db
-      .prepare(
-        `SELECT adapter_slug, collected_at, items_count, error
-         FROM adapter_collection_health
-         WHERE tenant_id = ?
-         ORDER BY collected_at DESC`,
-      )
-      .bind(user.tenantId)
-      .all();
-
-    const adapters = (results ?? []).map((r: any) => ({
-      slug: r.adapter_slug,
-      collectedAt: r.collected_at,
-      itemsCount: r.items_count,
-      error: r.error,
-    }));
-
-    return json({ adapters });
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ adapters: [] });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };

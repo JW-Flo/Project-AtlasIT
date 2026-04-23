@@ -1,90 +1,89 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+export const GET: RequestHandler = async ({ platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ provider: null }, { status: 200 });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/directory/connection`;
 
-  const row = await db
-    .prepare(`SELECT provider, status FROM directory_connections WHERE tenant_id = ? LIMIT 1`)
-    .bind(tenantId)
-    .first();
-
-  return json({ provider: row?.provider ?? null, status: row?.status ?? null });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const guard = requireTenantRole(user, ["owner", "admin"]);
-  if (guard) return guard;
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/directory/connection`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const { provider, domain } = body;
-  const validProviders = ["okta", "google_workspace", "microsoft_365"];
-  if (!provider || !validProviders.includes(provider)) {
-    return json({ error: "invalid provider" }, { status: 400 });
-  }
-
-  const connectionId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  await db
-    .prepare(
-      `INSERT INTO directory_connections (id, tenant_id, provider, status, created_at, updated_at)
-       VALUES (?, ?, ?, 'pending', ?, ?)
-       ON CONFLICT(tenant_id) DO UPDATE SET provider = excluded.provider, status = 'pending', updated_at = excluded.updated_at`,
-    )
-    .bind(connectionId, tenantId, provider, now, now)
-    .run();
-
-  if (provider === "okta" && domain) {
-    const credId = crypto.randomUUID();
-    await db
-      .prepare(
-        `INSERT INTO app_credentials (id, tenant_id, app_id, credentials, created_at, updated_at)
-         VALUES (?, ?, 'okta', ?, ?, ?)
-         ON CONFLICT(tenant_id, app_id) DO UPDATE SET credentials = excluded.credentials, updated_at = excluded.updated_at`,
-      )
-      .bind(credId, tenantId, JSON.stringify({ domain }), now, now)
-      .run();
-  }
-
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "directory.connect",
-    targetType: "directory_connection",
-    targetId: connectionId,
-    detail: JSON.stringify({ provider, domain }),
-  });
-
-  const row = await db
-    .prepare(`SELECT id FROM directory_connections WHERE tenant_id = ?`)
-    .bind(tenantId)
-    .first();
-
-  return json({ success: true, connectionId: row?.id ?? connectionId });
 };

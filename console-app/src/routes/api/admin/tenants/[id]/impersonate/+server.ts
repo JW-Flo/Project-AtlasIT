@@ -1,82 +1,61 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireSuperAdmin } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../../../_proxy-helpers";
 
-export const POST: RequestHandler = async ({
-  params,
-  cookies,
-  locals,
-  platform,
-}) => {
-  const denied = requireSuperAdmin(locals.user);
-  if (denied) return denied;
-
-  const user = locals.user!;
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  const kv = env.KV_SESSIONS as KVNamespace | undefined;
-  if (!db || !kv)
-    return json({ error: "Service unavailable" }, { status: 500 });
-
-  const owner = await db
-    .prepare(
-      `SELECT * FROM console_users WHERE tenant_id = ? AND roles LIKE '%owner%' LIMIT 1`,
-    )
-    .bind(params.id)
-    .first();
-
-  if (!owner) {
-    return json({ error: "Tenant owner not found" }, { status: 404 });
+export const POST: RequestHandler = async ({ params, cookies, platform, locals }) => {
+  const user = locals.user;
+  if (!user?.superAdmin) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const { id } = params;
   const currentSessionId = cookies.get("atlas_session") ?? "";
-  const roles: string[] = JSON.parse(owner.roles as string);
-  const sessionData = {
-    userId: owner.id,
-    email: owner.email,
-    roles,
-    superAdmin: false,
-    provider: "impersonation",
-    tenantId: params.id,
-    displayName: owner.display_name ?? owner.email,
-    createdAt: owner.created_at,
-    lastSeenAt: new Date().toISOString(),
-    impersonating: true,
-    impersonatedBy: user.email,
-    originalSessionId: currentSessionId,
-  };
+  const upstream = `${base}/api/v1/tenants/${id}/impersonate`;
 
-  const newSessionId = crypto.randomUUID();
-  await kv.put(newSessionId, JSON.stringify(sessionData), {
-    expirationTtl: 900,
-  });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-user-id": user.userId,
+        "x-original-session-id": currentSessionId,
+        "Content-Type": "application/json",
+      },
+    });
+    const data = await res.json();
 
-  cookies.set("atlas_session", newSessionId, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 900,
-  });
+    // If successful, the Lambda should return a new session ID
+    if (res.ok && data.sessionId) {
+      cookies.set("atlas_session", data.sessionId, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 900,
+      });
 
-  // Clear session cache so the impersonated session is read from KV
-  cookies.set("atlas_session_cache", "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 0,
-  });
+      // Clear session cache
+      cookies.set("atlas_session_cache", "", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 0,
+      });
+    }
 
-  await writeAudit(db, {
-    tenantId: params.id!,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "tenant.impersonate",
-    targetType: "user",
-    targetId: owner.id as string,
-  });
-
-  return json({ success: true });
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

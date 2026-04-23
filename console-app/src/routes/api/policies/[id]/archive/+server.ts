@@ -1,68 +1,38 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
+import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-function getDb(platform: any): D1Database | null {
-  const env = (platform?.env as any) || {};
-  return env.ATLAS_SHARED_DB ?? env.DB ?? null;
-}
-
-export const POST: RequestHandler = async ({ params, platform, locals }) => {
+export const POST: RequestHandler = async ({ params, request, url, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const guard = requireTenantRole(user, ["owner", "admin"]);
-  if (guard) return guard;
-
-  const db = getDb(platform);
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403, headers: { "Content-Type": "application/json" },
+    });
+  }
   const { id } = params;
-
+  const body = await request.text();
+  const upstream = `${base}/api/v1/policies/${id}/archive`;
   try {
-    const policy = await db
-      .prepare(`SELECT id, status FROM policies WHERE id = ? AND tenant_id = ?`)
-      .bind(id, tenantId)
-      .first<any>();
-
-    if (!policy) return json({ error: "Policy not found" }, { status: 404 });
-
-    if (policy.status !== "approved") {
-      return json(
-        { error: "Policy can only be archived when in approved status" },
-        { status: 422 },
-      );
-    }
-
-    const now = new Date().toISOString();
-
-    await db
-      .prepare(
-        `UPDATE policies SET status = 'archived', updated_at = ? WHERE id = ? AND tenant_id = ?`,
-      )
-      .bind(now, id, tenantId)
-      .run();
-
-    try {
-      await writeAudit(db, {
-        tenantId,
-        actorUserId: user.userId ?? "unknown",
-        actorEmail: user.email ?? "unknown",
-        action: "policy.archived",
-        targetType: "policy",
-        targetId: id,
-      });
-    } catch {
-      // Non-blocking
-    }
-
-    return json({ id, status: "archived" });
-  } catch (e: any) {
-    console.error("Failed to archive policy:", e);
-    return json({ error: "Failed to archive policy" }, { status: 500 });
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": env.COMPLIANCE_API_KEY, "x-tenant-id": tenantId },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status, headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Service unavailable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
   }
 };

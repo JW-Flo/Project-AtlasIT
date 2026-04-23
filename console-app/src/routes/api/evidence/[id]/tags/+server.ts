@@ -1,154 +1,138 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
+import { getWorkerBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-interface Tag {
-  id: string;
-  tenant_id: string;
-  evidence_id: string;
-  tag: string;
-  tag_type: string;
-  color: string | null;
-  created_by: string;
-  created_at: string;
-}
-
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const GET: RequestHandler = async ({ params, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const { id } = params;
+  const upstream = `${base}/api/v1/evidence/${id}/tags`;
 
-  const evidenceId = params.id!;
-
-  const result = await db
-    .prepare(
-      `SELECT * FROM evidence_tags WHERE tenant_id = ? AND evidence_id = ? ORDER BY created_at DESC`,
-    )
-    .bind(tenantId, evidenceId)
-    .all();
-
-  return json({ tags: result.results ?? [] });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const POST: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const POST: RequestHandler = async ({ params, request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const { id } = params;
+  const upstream = `${base}/api/v1/evidence/${id}/tags`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const { tag, tagType = "label", color } = body ?? {};
-  if (!tag || typeof tag !== "string" || tag.trim() === "") {
-    return json({ error: "tag is required" }, { status: 400 });
-  }
-
-  const evidenceId = params.id!;
-  const id = crypto.randomUUID();
-  const createdBy = user.email ?? user.userId ?? "unknown";
-  const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-
-  try {
-    await db
-      .prepare(
-        `INSERT INTO evidence_tags (id, tenant_id, evidence_id, tag, tag_type, color, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        id,
-        tenantId,
-        evidenceId,
-        tag.trim(),
-        tagType,
-        color ?? null,
-        createdBy,
-        now,
-      )
-      .run();
-  } catch (err: any) {
-    if (err?.message?.includes("UNIQUE constraint failed")) {
-      return json(
-        { error: "Tag already exists on this evidence item" },
-        { status: 409 },
-      );
-    }
-    throw err;
-  }
-
-  const created: Tag = {
-    id,
-    tenant_id: tenantId,
-    evidence_id: evidenceId,
-    tag: tag.trim(),
-    tag_type: tagType,
-    color: color ?? null,
-    created_by: createdBy,
-    created_at: now,
-  };
-
-  return json({ tag: created }, { status: 201 });
 };
 
-export const DELETE: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const DELETE: RequestHandler = async ({ params, request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId)
-    return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const { id } = params;
+  const upstream = `${base}/api/v1/evidence/${id}/tags`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "DELETE",
+      headers: {
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const { tagId } = body ?? {};
-  if (!tagId || typeof tagId !== "string") {
-    return json({ error: "tagId is required" }, { status: 400 });
-  }
-
-  const evidenceId = params.id!;
-
-  const result = await db
-    .prepare(
-      `DELETE FROM evidence_tags WHERE id = ? AND tenant_id = ? AND evidence_id = ?`,
-    )
-    .bind(tagId, tenantId, evidenceId)
-    .run();
-
-  if (result.meta?.changes === 0) {
-    return json({ error: "Tag not found" }, { status: 404 });
-  }
-
-  return json({ ok: true });
 };
