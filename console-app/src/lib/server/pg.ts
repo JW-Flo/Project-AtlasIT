@@ -94,8 +94,21 @@ export async function queryPg<T = Record<string, unknown>>(
   params: unknown[] = [],
 ): Promise<T[]> {
   const pool = getPgPool();
-  const result = await pool.query(sql, params);
-  return result.rows as T[];
+  try {
+    const result = await pool.query(sql, params);
+    return result.rows as T[];
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        message: "PG query failed",
+        sql: sql.substring(0, 200),
+        paramCount: params.length,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    throw err;
+  }
 }
 
 export async function queryPgOne<T = Record<string, unknown>>(

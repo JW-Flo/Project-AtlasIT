@@ -32,9 +32,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
   if (code) {
     // TOTP verification
+    const tenantId = claims.tenantId as string;
     const totpRow = await queryPgOne<{ secret_encrypted: string }>(
-      "SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = $1 AND verified = true",
-      [userId],
+      "SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = $1 AND tenant_id = $2 AND verified = true",
+      [userId, tenantId],
     );
 
     if (!totpRow) {
@@ -73,7 +74,6 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
   }
 
   // Load tenant security policy for session TTL
-  const tenantId = claims.tenantId as string;
   const secPolicy = await loadTenantSecurityPolicy(tenantId);
   const sessionTtl = getSessionTtl(secPolicy, true); // MFA-verified session
 
