@@ -18,31 +18,9 @@ import { CONTROL_REGISTRY, listControls } from "./cdt/registry.js";
 import type { CdtEvent } from "./cdt/models.js";
 import crypto from "crypto";
 import pg from "pg";
-
-const { Pool } = pg;
+import { getPool } from "@atlasit/shared/platform/aws/repos/pg-pool.js";
 
 const svc = bootstrap();
-
-let _pool: pg.Pool | null = null;
-function getPool(): pg.Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
-      ssl: { rejectUnauthorized: false },
-    });
-    // Eagerly connect on module init to avoid cold-start PG latency on first request
-    _pool
-      .connect()
-      .then((c) => {
-        c.release();
-      })
-      .catch(() => {});
-  }
-  return _pool;
-}
 
 // Trigger pool init at module load (Lambda reuses across warm invocations)
 getPool();

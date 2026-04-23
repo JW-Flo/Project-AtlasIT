@@ -19,23 +19,9 @@ import {
 import crypto from "crypto";
 import pg from "pg";
 import bcrypt from "bcryptjs";
-
-const { Pool } = pg;
+import { getPool } from "@atlasit/shared/platform/aws/repos/pg-pool.js";
 
 const svc = bootstrap();
-
-let _pool: pg.Pool | null = null;
-function getPool(): pg.Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    });
-  }
-  return _pool;
-}
 
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 

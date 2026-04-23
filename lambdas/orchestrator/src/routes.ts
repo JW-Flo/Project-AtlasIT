@@ -17,30 +17,10 @@ import { extractAuth, AuthError } from "@atlasit/shared/auth/lambda-auth.js";
 import { buildAutomationFromNL } from "@atlasit/shared/automation/nl-builder.js";
 import crypto from "crypto";
 import pg from "pg";
-
-const { Pool } = pg;
+import { getPool } from "@atlasit/shared/platform/aws/repos/pg-pool.js";
 
 const svc = bootstrap();
 
-let _pool: pg.Pool | null = null;
-function getPool(): pg.Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
-      ssl: { rejectUnauthorized: false },
-    });
-    _pool
-      .connect()
-      .then((c) => {
-        c.release();
-      })
-      .catch(() => {});
-  }
-  return _pool;
-}
 getPool();
 
 const JSON_HEADERS = {

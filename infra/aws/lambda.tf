@@ -21,16 +21,10 @@ locals {
     FLAGS_TABLE        = aws_dynamodb_table.feature_flags.name
     EVENT_BUS_NAME     = aws_cloudwatch_event_bus.atlasit.name
     SQS_STEP_TASKS_URL     = aws_sqs_queue.step_tasks.url
-    # DATABASE_URL set manually via CLI (includes password + SSL params from SSM /atlasit/dev/secrets/database-url)
-    # Do NOT manage via Terraform — it strips the password on every apply.
-    #
-    # RDS managed-secret rotation is intentionally DISABLED on dev to prevent
-    # Lambda env drift (rotation changes the master password in Secrets Manager
-    # but does not update the 8 Lambdas' DATABASE_URL envs, causing auth 500s).
-    # To re-enable rotation, first wire the Lambdas to fetch the password at
-    # runtime via the pg `password` async callback against
-    # `rds!db-8b55494d-...-Z3uwLd` and grant `secretsmanager:GetSecretValue`.
-    # Runbook: scripts/sync-db-password.sh (to be written) resyncs after manual rotation.
+    # DATABASE_URL set manually via CLI (host/port/dbname/user + SSL params).
+    # Password is fetched at runtime from Secrets Manager via RDS_SECRET_ARN
+    # env var, so rotation no longer breaks Lambda connections.
+    # RDS_SECRET_ARN also set via CLI — points to the RDS-managed secret.
     SSM_PREFIX             = "/atlasit/${var.env}"
   }
 
@@ -129,6 +123,12 @@ resource "aws_iam_policy" "lambda_app" {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter", "ssm:GetParameters"]
         Resource = ["arn:aws:ssm:${var.region}:${var.account_id}:parameter/atlasit/${var.env}/*"]
+      },
+      {
+        Sid      = "SecretsManagerRds"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_db_instance.main.master_user_secret[0].secret_arn]
       }
     ]
   })
