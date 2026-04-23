@@ -6,126 +6,92 @@
  */
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { writeAudit } from "$lib/server/audit";
+import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-const ACCESS_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-export const GET: RequestHandler = async ({ url, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const GET: RequestHandler = async ({ url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/trust/access-requests${url.search}`;
 
-  const status = url.searchParams.get("status") ?? "pending";
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
 
-  const { results } = await db
-    .prepare(
-      `SELECT id, requester_name, requester_email, requester_company, reason, status, created_at, reviewed_at, expires_at
-       FROM trust_access_requests
-       WHERE tenant_id = ? AND status = ?
-       ORDER BY created_at DESC
-       LIMIT 50`,
-    )
-    .bind(tenantId, status)
-    .all<{
-      id: string;
-      requester_name: string;
-      requester_email: string;
-      requester_company: string | null;
-      reason: string | null;
-      status: string;
-      created_at: string;
-      reviewed_at: string | null;
-      expires_at: string | null;
-    }>();
-
-  return json({ requests: results ?? [] });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const PATCH: RequestHandler = async ({ request, url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/trust/access-requests`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+      body,
+    });
+
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const requestId = typeof body.requestId === "string" ? body.requestId : "";
-  const action = typeof body.action === "string" ? body.action : "";
-
-  if (!requestId || !["approve", "deny"].includes(action)) {
-    return json({ error: "requestId and action (approve|deny) are required" }, { status: 400 });
-  }
-
-  // Verify request belongs to tenant
-  const existing = await db
-    .prepare(`SELECT id, status FROM trust_access_requests WHERE id = ? AND tenant_id = ? LIMIT 1`)
-    .bind(requestId, tenantId)
-    .first<{ id: string; status: string }>();
-
-  if (!existing) return json({ error: "Request not found" }, { status: 404 });
-  if (existing.status !== "pending") {
-    return json({ error: "Request already processed" }, { status: 409 });
-  }
-
-  const now = new Date().toISOString();
-
-  if (action === "approve") {
-    const accessToken = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS).toISOString();
-
-    await db
-      .prepare(
-        `UPDATE trust_access_requests
-         SET status = 'approved', access_token = ?, expires_at = ?, reviewed_at = ?, reviewed_by = ?
-         WHERE id = ?`,
-      )
-      .bind(accessToken, expiresAt, now, user.email ?? "unknown", requestId)
-      .run();
-
-    await writeAudit(db, {
-      tenantId,
-      actorUserId: user.userId ?? "unknown",
-      actorEmail: user.email ?? "unknown",
-      action: "trust_access_request.approved",
-      targetType: "trust_access_request",
-      targetId: requestId,
-      detail: JSON.stringify({ expiresAt }),
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
     });
-
-    return json({ status: "approved", accessToken, expiresAt });
-  } else {
-    await db
-      .prepare(
-        `UPDATE trust_access_requests
-         SET status = 'denied', reviewed_at = ?, reviewed_by = ?
-         WHERE id = ?`,
-      )
-      .bind(now, user.email ?? "unknown", requestId)
-      .run();
-
-    await writeAudit(db, {
-      tenantId,
-      actorUserId: user.userId ?? "unknown",
-      actorEmail: user.email ?? "unknown",
-      action: "trust_access_request.denied",
-      targetType: "trust_access_request",
-      targetId: requestId,
-    });
-
-    return json({ status: "denied" });
   }
 };

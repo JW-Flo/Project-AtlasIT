@@ -6,174 +6,92 @@
  */
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { writeAudit } from "$lib/server/audit";
+import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-interface TrustSettings {
-  isPublic: boolean;
-  visibleFrameworks: string[];
-}
-
-interface ControlVisibility {
-  [controlId: string]: "public" | "nda" | "private";
-}
-
-interface ExtendedTrustSettings extends TrustSettings {
-  controlVisibility: ControlVisibility;
-}
-
-async function readSettings(db: any, tenantId: string): Promise<ExtendedTrustSettings> {
-  const rows = await db
-    .prepare(
-      `SELECT key, value FROM tenant_preferences
-       WHERE tenant_id = ? AND key IN ('trust_center_public', 'trust_center_visible_frameworks', 'trust_center_control_visibility')`,
-    )
-    .bind(tenantId)
-    .all<{ key: string; value: string }>();
-
-  const map: Record<string, string> = {};
-  for (const r of rows.results ?? []) map[r.key] = r.value;
-
-  let visibleFrameworks: string[] = [];
-  try {
-    if (map["trust_center_visible_frameworks"]) {
-      visibleFrameworks = JSON.parse(map["trust_center_visible_frameworks"]);
-    }
-  } catch {
-    // use empty default
+export const GET: RequestHandler = async ({ url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  let controlVisibility: ControlVisibility = {};
-  try {
-    if (map["trust_center_control_visibility"]) {
-      controlVisibility = JSON.parse(map["trust_center_control_visibility"]);
-    }
-  } catch {
-    // use empty default
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  return {
-    isPublic: map["trust_center_public"] === "true",
-    visibleFrameworks,
-    controlVisibility,
-  };
-}
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/trust/settings${url.search}`;
 
-async function upsertPref(db: any, tenantId: string, key: string, value: string): Promise<void> {
-  await db
-    .prepare(
-      `INSERT INTO tenant_preferences (tenant_id, key, value)
-       VALUES (?, ?, ?)
-       ON CONFLICT(tenant_id, key) DO UPDATE SET value = excluded.value`,
-    )
-    .bind(tenantId, key, value)
-    .run();
-}
-
-async function resolveTenantId(db: any, user: any): Promise<string | null> {
-  if (user.tenantId) return user.tenantId;
-  // Fallback: look up tenant from console_users or console_user_roles
   try {
-    const row = await db
-      .prepare(
-        "SELECT tenant_id FROM console_user_roles WHERE email = ? LIMIT 1",
-      )
-      .bind(user.email)
-      .first<{ tenant_id: string }>();
-    if (row?.tenant_id) return row.tenant_id;
-  } catch { /* ignore */ }
-  try {
-    const row = await db
-      .prepare(
-        "SELECT tenant_id FROM console_users WHERE email = ? LIMIT 1",
-      )
-      .bind(user.email)
-      .first<{ tenant_id: string }>();
-    if (row?.tenant_id) return row.tenant_id;
-  } catch { /* ignore */ }
-  // Last resort: single-tenant fallback
-  try {
-    const row = await db
-      .prepare("SELECT id FROM tenants LIMIT 1")
-      .first<{ id: string }>();
-    if (row?.id) return row.id;
-  } catch { /* ignore */ }
-  return null;
-}
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  const tenantId = await resolveTenantId(db, user);
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const settings = await readSettings(db, tenantId);
-  return json({ settings });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const PATCH: RequestHandler = async ({ request, url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const tenantId = await resolveTenantId(db, user);
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/trust/settings`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+      body,
+    });
+
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const updates: string[] = [];
-
-  if (typeof body.isPublic === "boolean") {
-    await upsertPref(db, tenantId, "trust_center_public", String(body.isPublic));
-    updates.push("isPublic");
-  }
-
-  if (Array.isArray(body.visibleFrameworks)) {
-    await upsertPref(
-      db,
-      tenantId,
-      "trust_center_visible_frameworks",
-      JSON.stringify(body.visibleFrameworks),
-    );
-    updates.push("visibleFrameworks");
-  }
-
-  if (body.controlVisibility && typeof body.controlVisibility === "object") {
-    // Validate: only allow "public" | "nda" | "private" values
-    const validValues = new Set(["public", "nda", "private"]);
-    const cleaned: Record<string, string> = {};
-    for (const [key, val] of Object.entries(body.controlVisibility)) {
-      if (typeof val === "string" && validValues.has(val)) {
-        cleaned[key] = val;
-      }
-    }
-    await upsertPref(db, tenantId, "trust_center_control_visibility", JSON.stringify(cleaned));
-    updates.push("controlVisibility");
-  }
-
-  if (updates.length === 0) {
-    return json({ error: "No valid fields provided" }, { status: 400 });
-  }
-
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId ?? "unknown",
-    actorEmail: user.email ?? "unknown",
-    action: "trust_center_settings.updated",
-    targetType: "trust_settings",
-    detail: JSON.stringify({ updated: updates }),
-  });
-
-  const settings = await readSettings(db, tenantId);
-  return json({ settings });
 };
