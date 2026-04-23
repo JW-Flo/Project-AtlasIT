@@ -8,6 +8,7 @@ import {
   getSessionTtl,
 } from "@atlasit/shared/security/policies";
 import { resolveDemoTenantConfig, resetDemoTenant } from "$lib/server/demoTenant";
+import { queryPgOne } from "$lib/server/pg";
 
 const MFA_CHALLENGE_TTL = 300; // 5 minutes
 
@@ -20,9 +21,6 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Email and password required" }, { status: 400 });
   }
 
-  const db = env.ATLAS_SHARED_DB;
-  const demoMode = String(env.DEMO_MODE ?? "false").toLowerCase() === "true";
-  const demoConfig = resolveDemoTenantConfig(env);
   const kv = env.KV_SESSIONS;
   const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET;
   if (!jwtSecret) {
@@ -37,69 +35,21 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     return json({ error: "Authentication service misconfigured" }, { status: 503 });
   }
 
-  if (
-    demoMode &&
-    demoConfig &&
-    email.toLowerCase() === demoConfig.email &&
-    password === demoConfig.password &&
-    db
-  ) {
-    try {
-      await resetDemoTenant(db as D1Database, demoConfig);
-    } catch {
-      // keep login path resilient; normal auth below still applies
-    }
+  if (!kv) {
+    return json({ error: "Session store unavailable" }, { status: 503 });
   }
 
-  if (!db) {
-    // Fallback: allow super admin login only when ADMIN_PASSWORD is explicitly configured
-    const superEmail = (env.SUPER_ADMIN_EMAIL || "").toLowerCase();
-    const superPass = env.ADMIN_PASSWORD;
-    if (!superPass) {
-      return json({ error: "Authentication service unavailable" }, { status: 503 });
-    }
-    if (email.toLowerCase() === superEmail && password === superPass) {
-      if (!kv) {
-        return json({ error: "Session store unavailable" }, { status: 503 });
-      }
-      const sid = crypto.randomUUID();
-      const user = {
-        userId: email.toLowerCase(),
-        email: email.toLowerCase(),
-        roles: ["super-admin"],
-        superAdmin: true,
-        provider: "password",
-        tenantId: env.DEFAULT_TENANT_ID || "default",
-        createdAt: new Date().toISOString(),
-        lastSeenAt: new Date().toISOString(),
-      };
-      await kv.put(sid, JSON.stringify(user), { expirationTtl: 604800 });
-      cookies.set("atlas_session", sid, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 604800,
-      });
-      return json({ success: true, email: user.email });
-    }
-    return json({ error: "Invalid credentials" }, { status: 401 });
-  }
-
-  // D1-backed auth — table created via migration 0048_console_users.sql
+  // PostgreSQL-backed auth — table created via migration 0048_console_users.sql
   try {
-    const row = await db
-      .prepare("SELECT * FROM console_users WHERE email = ? COLLATE NOCASE LIMIT 1")
-      .bind(email.toLowerCase())
-      .first<{
-        id: string;
-        email: string;
-        password_hash: string;
-        salt: string;
-        display_name: string | null;
-        roles: string;
-        tenant_id: string;
-      }>();
+    const row = await queryPgOne<{
+      id: string;
+      email: string;
+      password_hash: string;
+      salt: string;
+      display_name: string | null;
+      roles: string;
+      tenant_id: string;
+    }>("SELECT * FROM console_users WHERE LOWER(email) = $1 LIMIT 1", [email.toLowerCase()]);
 
     if (!row) {
       return json({ error: "Invalid credentials" }, { status: 401 });
@@ -113,17 +63,11 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     // If the stored hash is a legacy SHA-256, re-hash with PBKDF2 transparently
     if (!row.password_hash.startsWith("pbkdf2$")) {
       const newHash = await hashPasswordPBKDF2(password, row.salt);
-      await db
-        .prepare("UPDATE console_users SET password_hash = ? WHERE id = ?")
-        .bind(newHash, row.id)
-        .run();
+      await queryPgOne("UPDATE console_users SET password_hash = $1 WHERE id = $2", [newHash, row.id]);
     }
 
     // Update last login
-    await db
-      .prepare("UPDATE console_users SET last_login = ? WHERE id = ?")
-      .bind(new Date().toISOString(), row.id)
-      .run();
+    await queryPgOne("UPDATE console_users SET last_login = $1 WHERE id = $2", [new Date().toISOString(), row.id]);
 
     let roles: string[];
     try {
@@ -143,13 +87,13 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     }
 
     // Load tenant security policy
-    const secPolicy = await loadTenantSecurityPolicy(db, row.tenant_id);
+    const secPolicy = await loadTenantSecurityPolicy(row.tenant_id);
 
     // Check if user has MFA enrolled
-    const mfaRow = await db
-      .prepare("SELECT verified FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
-      .bind(row.id)
-      .first();
+    const mfaRow = await queryPgOne<{ verified: number }>(
+      "SELECT verified FROM mfa_totp_secrets WHERE user_id = $1 AND verified = 1",
+      [row.id]
+    );
 
     const hasMfaEnrolled = !!mfaRow;
     const mfaRequiredByPolicy = isMfaRequiredForUser(secPolicy, roles);
@@ -179,8 +123,6 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     if (mfaRequiredByPolicy && !hasMfaEnrolled) {
       // Tenant policy requires MFA but user hasn't enrolled — force setup
       // Create a temporary session that can only access MFA setup
-      if (!kv) return json({ error: "Session store unavailable" }, { status: 503 });
-
       const sessionTtl = 900; // 15 min for MFA setup
       const sid = crypto.randomUUID();
       const user = {
@@ -209,10 +151,6 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     }
 
     // No MFA needed — create full session with policy-based TTL
-    if (!kv) {
-      return json({ error: "Session store unavailable" }, { status: 503 });
-    }
-
     const sessionTtl = getSessionTtl(secPolicy, false);
     const sid = crypto.randomUUID();
     const user = {
@@ -245,12 +183,12 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   }
 };
 
-async function loadTenantSecurityPolicy(db: any, tenantId: string) {
+async function loadTenantSecurityPolicy(tenantId: string) {
   try {
-    const row = await db
-      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-      .bind(tenantId, "security_policy")
-      .first<{ value: string }>();
+    const row = await queryPgOne<{ value: string }>(
+      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
+      [tenantId, "security_policy"]
+    );
     return resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
   } catch {
     return resolveSecurityPolicy(null);
