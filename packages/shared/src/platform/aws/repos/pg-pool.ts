@@ -31,18 +31,14 @@ interface RdsSecret {
   dbname: string;
 }
 
-async function fetchRdsSecret(secretArn: string): Promise<RdsSecret> {
+async function fetchRdsPassword(secretArn: string): Promise<string> {
   const now = Date.now();
   if (_cachedSecret && now - _cachedSecret.fetchedAt < SECRET_CACHE_TTL) {
-    // Return cached — still need full secret for host/port on first call,
-    // but after pool init we only need the password for refresh.
-    // Fall through to full fetch on first call.
+    return _cachedSecret.password;
   }
 
-  // Dynamic import to avoid bundling AWS SDK when not needed
-  const { SecretsManagerClient, GetSecretValueCommand } = await import(
-    "@aws-sdk/client-secrets-manager"
-  );
+  const { SecretsManagerClient, GetSecretValueCommand } =
+    await import("@aws-sdk/client-secrets-manager");
   const client = new SecretsManagerClient({ region: process.env.AWS_REGION || "us-east-1" });
   const resp = await client.send(new GetSecretValueCommand({ SecretId: secretArn }));
 
@@ -52,18 +48,7 @@ async function fetchRdsSecret(secretArn: string): Promise<RdsSecret> {
 
   const secret: RdsSecret = JSON.parse(resp.SecretString);
   _cachedSecret = { password: secret.password, fetchedAt: now };
-  return secret;
-}
-
-/**
- * Build a connection string from Secrets Manager secret values.
- * Preserves SSL params from DATABASE_URL if present.
- */
-function buildConnectionString(secret: RdsSecret): string {
-  const existing = process.env.DATABASE_URL || "";
-  // Extract SSL query params from existing DATABASE_URL if any
-  const sslParams = existing.includes("?") ? existing.substring(existing.indexOf("?")) : "?sslmode=require";
-  return `postgresql://${secret.username}:${encodeURIComponent(secret.password)}@${secret.host}:${secret.port}/${secret.dbname}${sslParams}`;
+  return secret.password;
 }
 
 export function getPool(): pg.Pool {
@@ -81,10 +66,7 @@ export function getPool(): pg.Pool {
         port: parsed.port,
         database: parsed.database,
         user: parsed.user,
-        password: async () => {
-          const secret = await fetchRdsSecret(secretArn);
-          return secret.password;
-        },
+        password: () => fetchRdsPassword(secretArn),
         max: 10,
         idleTimeoutMillis: 30_000,
         connectionTimeoutMillis: 10_000,
