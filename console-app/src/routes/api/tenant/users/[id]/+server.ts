@@ -1,126 +1,93 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-export const PATCH: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
+export const PATCH: RequestHandler = async ({ params, request, platform, locals }) => {
   const user = locals.user;
-  const denied = requireTenantRole(user, ["owner"]);
-  if (denied) return denied;
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const body = await request.json().catch(() => ({}));
-  const { roles } = body as { roles?: string[] };
-
-  if (!roles || !Array.isArray(roles)) {
-    return json({ error: "roles array required" }, { status: 400 });
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // Prevent removing last owner
-  if (!roles.includes("owner")) {
-    const target = await db
-      .prepare(`SELECT roles FROM console_users WHERE id = ? AND tenant_id = ?`)
-      .bind(params.id, user!.tenantId)
-      .first();
-
-    if (target) {
-      const targetRoles: string[] = JSON.parse(target.roles as string);
-      if (targetRoles.includes("owner")) {
-        const ownerCount = await db
-          .prepare(
-            `SELECT COUNT(*) as cnt FROM console_users WHERE tenant_id = ? AND roles LIKE '%owner%'`,
-          )
-          .bind(user!.tenantId)
-          .first();
-
-        if (ownerCount && (ownerCount.cnt as number) <= 1) {
-          return json(
-            { error: "Cannot remove the last owner" },
-            { status: 400 },
-          );
-        }
-      }
-    }
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  await db
-    .prepare(
-      `UPDATE console_users SET roles = ? WHERE id = ? AND tenant_id = ?`,
-    )
-    .bind(JSON.stringify(roles), params.id, user!.tenantId)
-    .run();
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const { id } = params;
+  const upstream = `${base}/api/v1/tenant/users/${id}`;
 
-  await writeAudit(db, {
-    tenantId: user!.tenantId!,
-    actorUserId: user!.userId,
-    actorEmail: user!.email,
-    action: "user.roles_updated",
-    targetType: "user",
-    targetId: params.id,
-    detail: JSON.stringify({ roles }),
-  });
-
-  return json({ success: true });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
+export const DELETE: RequestHandler = async ({ params, platform, locals }) => {
   const user = locals.user;
-  const denied = requireTenantRole(user, ["owner"]);
-  if (denied) return denied;
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  if (params.id === user!.userId) {
-    return json({ error: "Cannot delete yourself" }, { status: 400 });
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  // Prevent removing last owner
-  const target = await db
-    .prepare(`SELECT roles FROM console_users WHERE id = ? AND tenant_id = ?`)
-    .bind(params.id, user!.tenantId)
-    .first();
-
-  if (!target) {
-    return json({ error: "User not found" }, { status: 404 });
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const targetRoles: string[] = JSON.parse(target.roles as string);
-  if (targetRoles.includes("owner")) {
-    const ownerCount = await db
-      .prepare(
-        `SELECT COUNT(*) as cnt FROM console_users WHERE tenant_id = ? AND roles LIKE '%owner%'`,
-      )
-      .bind(user!.tenantId)
-      .first();
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const { id } = params;
+  const upstream = `${base}/api/v1/tenant/users/${id}`;
 
-    if (ownerCount && (ownerCount.cnt as number) <= 1) {
-      return json({ error: "Cannot remove the last owner" }, { status: 400 });
-    }
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "DELETE",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  await db
-    .prepare(`DELETE FROM console_users WHERE id = ? AND tenant_id = ?`)
-    .bind(params.id, user!.tenantId)
-    .run();
-
-  await writeAudit(db, {
-    tenantId: user!.tenantId!,
-    actorUserId: user!.userId,
-    actorEmail: user!.email,
-    action: "user.deleted",
-    targetType: "user",
-    targetId: params.id,
-  });
-
-  return json({ success: true });
 };

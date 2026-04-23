@@ -1,52 +1,44 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { toCamel } from "$lib/utils/dto";
+import { getOrchestratorBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
 /** GET — list JML workflow runs for tenant */
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, 401);
-
-  const db = getSharedDb(platform);
-  if (!db) return json({ error: "Database unavailable" }, 503);
-
-  const limit = Math.min(
-    parseInt(url.searchParams.get("limit") ?? "50", 10),
-    200,
-  );
-  const status = url.searchParams.get("status");
-  const type = url.searchParams.get("type");
-
-  let query = "SELECT * FROM workflow_runs WHERE tenant_id = ?";
-  const params: unknown[] = [user.tenantId];
-
-  if (status) {
-    query += " AND status = ?";
-    params.push(status);
-  }
-  if (type) {
-    query += " AND type = ?";
-    params.push(type);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  query += " ORDER BY started_at DESC LIMIT ?";
-  params.push(limit);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const { results } = await db
-    .prepare(query)
-    .bind(...params)
-    .all();
+  const base = getOrchestratorBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/jml/runs${url.search}`;
 
-  return json({ runs: toCamel(results ?? []) });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
-
-function getSharedDb(platform: any): D1Database | null {
-  const env = (platform?.env as any) || {};
-  return env.DB ?? env.ATLAS_SHARED_DB ?? null;
-}
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}

@@ -1,126 +1,93 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
-import { toCamel } from "$lib/utils/dto";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-export const PATCH: RequestHandler = async ({
-  params,
-  request,
-  locals,
-  platform,
-}) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const guard = requireTenantRole(user, ["owner", "admin"]);
-  if (guard) return guard;
+export const PATCH: RequestHandler = async ({ params, request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
-
-  const mappingId = params.id;
-
-  const existing = await db
-    .prepare(`SELECT * FROM group_app_mappings WHERE id = ? AND tenant_id = ?`)
-    .bind(mappingId, tenantId)
-    .first();
-
-  if (!existing) {
-    return json({ error: "mapping not found" }, { status: 404 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  let body: any;
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const { id } = params;
+  const upstream = `${base}/api/v1/directory/mappings/${id}`;
+
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const now = new Date().toISOString();
-  const updates: string[] = ["updated_at = ?"];
-  const binds: any[] = [now];
-
-  if (body.role !== undefined) {
-    updates.push("role = ?");
-    binds.push(body.role);
-  }
-
-  if (body.confirmed === true) {
-    updates.push("suggested = 0");
-  }
-
-  binds.push(mappingId, tenantId);
-
-  await db
-    .prepare(
-      `UPDATE group_app_mappings SET ${updates.join(", ")} WHERE id = ? AND tenant_id = ?`,
-    )
-    .bind(...binds)
-    .run();
-
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "mapping.update",
-    targetType: "group_app_mapping",
-    targetId: mappingId!,
-    detail: JSON.stringify(body),
-  });
-
-  const updated = await db
-    .prepare(`SELECT * FROM group_app_mappings WHERE id = ?`)
-    .bind(mappingId)
-    .first();
-
-  return json({ mapping: toCamel(updated) });
 };
 
-export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const guard = requireTenantRole(user, ["owner", "admin"]);
-  if (guard) return guard;
-
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
-
-  const mappingId = params.id;
-
-  const existing = await db
-    .prepare(`SELECT * FROM group_app_mappings WHERE id = ? AND tenant_id = ?`)
-    .bind(mappingId, tenantId)
-    .first();
-
-  if (!existing) {
-    return json({ error: "mapping not found" }, { status: 404 });
+export const DELETE: RequestHandler = async ({ params, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  await db
-    .prepare(`DELETE FROM group_app_mappings WHERE id = ? AND tenant_id = ?`)
-    .bind(mappingId, tenantId)
-    .run();
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "mapping.delete",
-    targetType: "group_app_mapping",
-    targetId: mappingId!,
-    detail: JSON.stringify({
-      groupId: existing.group_id,
-      appId: existing.app_id,
-    }),
-  });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const { id } = params;
+  const upstream = `${base}/api/v1/directory/mappings/${id}`;
 
-  return json({ success: true });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "DELETE",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

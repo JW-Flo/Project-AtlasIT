@@ -1,49 +1,41 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { verifyTotp, decryptTotpSecret, isEncryptedSecret } from "@atlasit/shared/crypto/totp";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
 /** Disable TOTP MFA — requires a valid TOTP code from the active authenticator. */
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  const encryptionKey: string | undefined = env.CRED_ENCRYPTION_KEY;
-  if (!db) return json({ error: "Service unavailable" }, { status: 503 });
-
-  const body = await request.json().catch(() => ({}));
-  const { code } = body as { code?: string };
-
-  if (!code) return json({ error: "TOTP code required to disable MFA" }, { status: 400 });
-
-  const totpRow = await db
-    .prepare("SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
-    .bind(user.userId)
-    .first<{ secret_encrypted: string }>();
-
-  if (!totpRow) return json({ error: "MFA is not enrolled" }, { status: 400 });
-
-  let totpSecret = totpRow.secret_encrypted;
-  if (encryptionKey && isEncryptedSecret(totpSecret)) {
-    totpSecret = await decryptTotpSecret(totpSecret, encryptionKey);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
-  const result = await verifyTotp(totpSecret, code);
-  if (!result.valid) return json({ error: "Invalid code" }, { status: 401 });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/auth/mfa/disable`;
 
-  await db.prepare("DELETE FROM mfa_totp_secrets WHERE user_id = ?").bind(user.userId).run();
-  await db.prepare("DELETE FROM mfa_recovery_codes WHERE user_id = ?").bind(user.userId).run();
-
-  await writeAudit(db, {
-    tenantId: user.tenantId!,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "mfa.totp_disabled",
-    targetType: "user",
-    targetId: user.userId,
-  });
-
-  return json({ success: true });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-user-id": user.userId,
+        "x-tenant-id": user.tenantId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

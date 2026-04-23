@@ -1,11 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-
-interface JourneyStep {
-  name: string;
-  completed: boolean;
-  evidence: string;
-}
+import { getOrchestratorBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
 /**
  * GET /api/platform/journey-metrics
@@ -14,90 +8,43 @@ interface JourneyStep {
  *
  * Returns per-tenant progress through the key activation funnel.
  */
-export const GET: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+export const GET: RequestHandler = async ({ platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+  const base = getOrchestratorBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/platform/journey-metrics`;
 
-  const steps: JourneyStep[] = [];
-
-  // Step 1: Login (always true if we got here)
-  steps.push({ name: "login", completed: true, evidence: "authenticated session" });
-
-  // Step 2: Dashboard visited (tenant exists)
-  const tenant = await db
-    .prepare("SELECT id FROM tenants WHERE id = ? LIMIT 1")
-    .bind(tenantId)
-    .first();
-  steps.push({
-    name: "dashboard",
-    completed: !!tenant,
-    evidence: tenant ? "tenant provisioned" : "no tenant record",
-  });
-
-  // Step 3: Connect at least one app
-  const connectedApp = await db
-    .prepare(
-      "SELECT COUNT(*) as cnt FROM group_app_mappings WHERE tenant_id = ?",
-    )
-    .bind(tenantId)
-    .first<{ cnt: number }>();
-  const hasConnectedApp = (connectedApp?.cnt ?? 0) > 0;
-  steps.push({
-    name: "connect_app",
-    completed: hasConnectedApp,
-    evidence: hasConnectedApp
-      ? `${connectedApp!.cnt} app mapping(s)`
-      : "no app mappings configured",
-  });
-
-  // Step 4: Create at least one automation rule or workflow
-  const ruleCount = await db
-    .prepare(
-      "SELECT COUNT(*) as cnt FROM automation_rules WHERE tenant_id = ?",
-    )
-    .bind(tenantId)
-    .first<{ cnt: number }>();
-  const hasRule = (ruleCount?.cnt ?? 0) > 0;
-  steps.push({
-    name: "create_automation",
-    completed: hasRule,
-    evidence: hasRule
-      ? `${ruleCount!.cnt} automation rule(s)`
-      : "no automation rules",
-  });
-
-  // Step 5: Evidence generated
-  const evidenceCount = await db
-    .prepare(
-      "SELECT COUNT(*) as cnt FROM compliance_evidence WHERE tenant_id = ?",
-    )
-    .bind(tenantId)
-    .first<{ cnt: number }>();
-  const hasEvidence = (evidenceCount?.cnt ?? 0) > 0;
-  steps.push({
-    name: "see_evidence",
-    completed: hasEvidence,
-    evidence: hasEvidence
-      ? `${evidenceCount!.cnt} evidence item(s)`
-      : "no evidence collected",
-  });
-
-  const completedSteps = steps.filter((s) => s.completed).length;
-  const completionRate = Math.round((completedSteps / steps.length) * 100);
-
-  return json({
-    tenantId,
-    steps,
-    completedSteps,
-    totalSteps: steps.length,
-    completionRate,
-    fullyActivated: completedSteps === steps.length,
-    checkedAt: new Date().toISOString(),
-  });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

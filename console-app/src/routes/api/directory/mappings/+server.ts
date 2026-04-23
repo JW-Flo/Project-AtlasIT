@@ -1,142 +1,178 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { requireTenantRole } from "$lib/server/guards";
-import { writeAudit } from "$lib/server/audit";
-import { toCamel } from "$lib/utils/dto";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ mappings: [] });
-
-  const rows = await db
-    .prepare(
-      `SELECT m.*, g.name as group_name
-       FROM group_app_mappings m
-       LEFT JOIN directory_groups g ON g.id = m.group_id
-       WHERE m.tenant_id = ?
-       ORDER BY g.name ASC, m.app_id ASC`,
-    )
-    .bind(tenantId)
-    .all()
-    .then((r: any) => r.results || []);
-
-  return json({ mappings: toCamel(rows) });
-};
-
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const guard = requireTenantRole(user, ["owner", "admin"]);
-  if (guard) return guard;
+export const GET: RequestHandler = async ({ platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/directory/mappings`;
 
-  let body: any;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "invalid JSON" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  const { groupId, appId, role } = body;
-  if (!groupId || !appId) {
-    return json({ error: "groupId and appId are required" }, { status: 400 });
-  }
-
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  await db
-    .prepare(
-      `INSERT INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-    )
-    .bind(id, tenantId, groupId, appId, role || "member", now, now)
-    .run();
-
-  await writeAudit(db, {
-    tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "mapping.create",
-    targetType: "group_app_mapping",
-    targetId: id,
-    detail: JSON.stringify({ groupId, appId, role: role || "member" }),
-  });
-
-  const row = await db
-    .prepare(`SELECT * FROM group_app_mappings WHERE id = ?`)
-    .bind(id)
-    .first();
-
-  return json({ mapping: toCamel(row) });
 };
 
-export const DELETE: RequestHandler = async ({ url, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  const mappingId = url.searchParams.get("id");
-  if (!mappingId) return json({ error: "mapping id required" }, { status: 400 });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/directory/mappings`;
 
-  await db
-    .prepare("DELETE FROM group_app_mappings WHERE id = ? AND tenant_id = ?")
-    .bind(mappingId, tenantId)
-    .run();
-
-  return json({ success: true });
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
 
-export const PATCH: RequestHandler = async ({ request, url, locals, platform }) => {
-  const user = locals.user as any;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
+export const DELETE: RequestHandler = async ({ url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
-
-  const mappingId = url.searchParams.get("id");
-  if (!mappingId) return json({ error: "mapping id required" }, { status: 400 });
-
-  const body = await request.json().catch(() => ({}));
-  const { confirmed, role } = body as { confirmed?: boolean; role?: string };
-
-  const updates: string[] = [];
-  const params: unknown[] = [];
-
-  if (confirmed !== undefined) {
-    updates.push("suggested = ?");
-    params.push(confirmed ? 0 : 1);
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (role) {
-    updates.push("role = ?");
-    params.push(role);
+
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const upstream = `${base}/api/v1/directory/mappings${url.search}`;
+
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "DELETE",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (updates.length === 0) return json({ error: "nothing to update" }, { status: 400 });
+};
 
-  updates.push("updated_at = ?");
-  params.push(new Date().toISOString());
-  params.push(mappingId, tenantId);
+export const PATCH: RequestHandler = async ({ url, request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  await db
-    .prepare(`UPDATE group_app_mappings SET ${updates.join(", ")} WHERE id = ? AND tenant_id = ?`)
-    .bind(...params)
-    .run();
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  return json({ success: true });
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const body = await request.text();
+  const upstream = `${base}/api/v1/directory/mappings${url.search}`;
+
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "PATCH",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "x-user-id": user.userId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };
