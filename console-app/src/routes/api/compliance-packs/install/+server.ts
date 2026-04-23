@@ -1,107 +1,76 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
-import { writeAudit } from "$lib/server/audit";
-import { gateFrameworkAdd } from "$lib/server/tier-gate";
+import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const user = (locals as any).user;
-  if (!user?.tenantId) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  const tierGate = await gateFrameworkAdd(db, user.tenantId, !!user.superAdmin);
-  if (tierGate) return tierGate;
-
-  let body: any;
+export const POST: RequestHandler = async ({ request, url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const body = await request.text();
+  const parsedBody = JSON.parse(body);
+  const packId = parsedBody.packId;
+  const upstream = `${base}/api/v1/compliance-packs/${packId}/install`;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": env.COMPLIANCE_API_KEY, "x-tenant-id": tenantId },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status, headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Service unavailable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
   }
-
-  const { packId, config } = body;
-  if (!packId) return json({ error: "packId is required" }, { status: 400 });
-
-  const pack = await db
-    .prepare("SELECT * FROM compliance_packs WHERE id = ? AND status = 'published'")
-    .bind(packId)
-    .first();
-  if (!pack) return json({ error: "Pack not found or not published" }, { status: 404 });
-
-  const existing = await db
-    .prepare("SELECT id FROM tenant_compliance_packs WHERE tenant_id = ? AND pack_id = ?")
-    .bind(user.tenantId, packId)
-    .first();
-  if (existing) {
-    return json({ error: "Pack already installed" }, { status: 409 });
-  }
-
-  const installId = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  await db
-    .prepare(
-      `INSERT INTO tenant_compliance_packs (id, tenant_id, pack_id, installed_at, config)
-       VALUES (?, ?, ?, ?, ?)`,
-    )
-    .bind(installId, user.tenantId, packId, now, config ? JSON.stringify(config) : null)
-    .run();
-
-  await writeAudit(db, {
-    tenantId: user.tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "compliance_pack.install",
-    targetType: "compliance_pack",
-    targetId: packId,
-    detail: JSON.stringify({ packName: pack.name, packSlug: pack.slug }),
-  });
-
-  return json({ ok: true, installId }, { status: 201 });
 };
 
-export const DELETE: RequestHandler = async ({ request, locals, platform }) => {
-  const user = (locals as any).user;
-  if (!user?.tenantId) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
-
-  let body: any;
+export const DELETE: RequestHandler = async ({ request, url, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const base = getWorkerBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403, headers: { "Content-Type": "application/json" },
+    });
+  }
+  const body = await request.text();
+  const parsedBody = JSON.parse(body);
+  const packId = parsedBody.packId;
+  const upstream = `${base}/api/v1/compliance-packs/${packId}/install`;
   try {
-    body = await request.json();
+    const res = await proxyFetch(platform, upstream, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", "x-api-key": env.COMPLIANCE_API_KEY, "x-tenant-id": tenantId },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status, headers: { "Content-Type": "application/json" },
+    });
   } catch {
-    return json({ error: "Invalid JSON" }, { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Service unavailable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
   }
-
-  const { packId } = body;
-  if (!packId) return json({ error: "packId is required" }, { status: 400 });
-
-  const installation = await db
-    .prepare(
-      "SELECT tcp.id, cp.name, cp.slug FROM tenant_compliance_packs tcp JOIN compliance_packs cp ON cp.id = tcp.pack_id WHERE tcp.tenant_id = ? AND tcp.pack_id = ?",
-    )
-    .bind(user.tenantId, packId)
-    .first();
-  if (!installation) {
-    return json({ error: "Pack not installed" }, { status: 404 });
-  }
-
-  await db
-    .prepare("DELETE FROM tenant_compliance_packs WHERE tenant_id = ? AND pack_id = ?")
-    .bind(user.tenantId, packId)
-    .run();
-
-  await writeAudit(db, {
-    tenantId: user.tenantId,
-    actorUserId: user.userId,
-    actorEmail: user.email,
-    action: "compliance_pack.uninstall",
-    targetType: "compliance_pack",
-    targetId: packId,
-    detail: JSON.stringify({ packName: installation.name, packSlug: installation.slug }),
-  });
-
-  return json({ ok: true });
 };

@@ -1,53 +1,44 @@
-import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "@sveltejs/kit";
-import { requireSuperAdmin } from "$lib/server/guards";
-import { hashPasswordPBKDF2 } from "$lib/server/password";
-import { writeAudit } from "$lib/server/audit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
 
-function generateTempPassword(length = 16): string {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes)
-    .map((b) => chars[b % chars.length])
-    .join("");
-}
-
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
-  const denied = requireSuperAdmin(locals.user);
-  if (denied) return denied;
-
-  const actor = locals.user!;
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
-  const body = await request.json().catch(() => ({}));
-  const email = (body.email as string | undefined)?.trim().toLowerCase();
-  if (!email) return json({ error: "email required" }, { status: 400 });
-
-  const row = await db
-    .prepare("SELECT id, salt, tenant_id FROM console_users WHERE lower(email) = ?")
-    .bind(email)
-    .first<{ id: string; salt: string; tenant_id: string }>();
-
-  if (!row) return json({ error: "User not found" }, { status: 404 });
-
-  const tempPassword = generateTempPassword();
-  const newHash = await hashPasswordPBKDF2(tempPassword, row.salt);
-
-  await db
-    .prepare("UPDATE console_users SET password_hash = ? WHERE id = ?")
-    .bind(newHash, row.id)
-    .run();
-
-  await writeAudit(db, {
-    tenantId: row.tenant_id,
-    actorUserId: actor.userId,
-    actorEmail: actor.email,
-    action: "user.password_reset",
-    targetType: "user",
-    targetId: row.id,
-  });
-
-  return json({ success: true, tempPassword });
+export const POST: RequestHandler = async ({ request, platform, locals }) => {
+  const user = locals.user;
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const body = await request.text();
+  const upstream = `${base}/api/v1/admin/users/reset-password`;
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      method: "POST",
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 };

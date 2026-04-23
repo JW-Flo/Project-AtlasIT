@@ -1,74 +1,40 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { json } from "@sveltejs/kit";
+import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ url, locals, platform }) => {
+export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
-  if (!user) return json({ error: "unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ entries: [], total: 0 });
-
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 200);
-  const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
-  const actionFilter = url.searchParams.get("action") ?? null;
-  const from = url.searchParams.get("from") ?? null;
-  const to = url.searchParams.get("to") ?? null;
-
-  const filters: string[] = [];
-  const bindArgs: (string | number)[] = [];
-
-  if (!user.superAdmin) {
-    filters.push("tenant_id = ?");
-    bindArgs.push(user.tenantId);
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (actionFilter) {
-    filters.push("action = ?");
-    bindArgs.push(actionFilter);
+  const base = getCoreApiBase(platform);
+  const env = getEnv(platform);
+  const tenantId = user.tenantId;
+  if (!tenantId) {
+    return new Response(JSON.stringify({ error: "Tenant context required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (from) {
-    filters.push("created_at >= ?");
-    bindArgs.push(from);
+  const upstream = `${base}/api/v1/audit-log${url.search}`;
+  try {
+    const res = await proxyFetch(platform, upstream, {
+      headers: {
+        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+        "x-tenant-id": tenantId,
+      },
+    });
+    const data = await res.json();
+    return new Response(JSON.stringify(data), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ error: "Service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  if (to) {
-    filters.push("created_at <= ?");
-    bindArgs.push(to + "T23:59:59.999Z");
-  }
-
-  const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-
-  const countResult = await db
-    .prepare(`SELECT COUNT(*) as total FROM audit_log ${whereClause}`)
-    .bind(...bindArgs)
-    .first()
-    .catch(() => ({ total: 0 }));
-
-  const result = await db
-    .prepare(
-      `SELECT id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at
-       FROM audit_log ${whereClause}
-       ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    )
-    .bind(...bindArgs, limit, offset)
-    .all()
-    .catch(() => ({ results: [] }));
-
-  const entries = (result.results ?? []).map((row: any) => {
-    let actorEmail = row.actor_id ?? "";
-    let detail = "";
-    try {
-      const parsed = JSON.parse(row.details ?? "{}");
-      if (parsed.actorEmail) actorEmail = parsed.actorEmail;
-      if (parsed.detail) detail = parsed.detail;
-    } catch {}
-    return {
-      date: row.created_at,
-      actor: actorEmail,
-      action: row.action,
-      target: (row.resource_type ?? "") + (row.resource_id ? `:${row.resource_id}` : ""),
-      details: detail,
-    };
-  });
-
-  return json({ entries, total: (countResult as any)?.total ?? 0 });
 };

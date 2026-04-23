@@ -4,6 +4,16 @@ export function getWorkerBase(platform: any): string {
   return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
 }
 
+export function getCoreApiBase(platform: any): string {
+  const env = (platform?.env as any) || {};
+  return (env.CORE_API_BASE || "https://core-api.atlasit.pro").replace(/\/$/, "");
+}
+
+export function getOrchestratorBase(platform: any): string {
+  const env = (platform?.env as any) || {};
+  return (env.ORCHESTRATOR_BASE || "https://orchestrator.atlasit.pro").replace(/\/$/, "");
+}
+
 export function getEnv(platform: any): Record<string, any> {
   return (platform?.env as any) || {};
 }
