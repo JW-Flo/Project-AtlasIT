@@ -11,23 +11,9 @@
 import type { SQSEvent, SQSBatchResponse } from "aws-lambda";
 import { bootstrap } from "@atlasit/shared/platform/aws/bootstrap.js";
 import pg from "pg";
-
-const { Pool } = pg;
+import { getPool } from "@atlasit/shared/platform/aws/repos/pg-pool.js";
 
 const svc = bootstrap();
-
-let _pool: pg.Pool | null = null;
-function getPool(): pg.Pool {
-  if (!_pool) {
-    _pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    });
-  }
-  return _pool;
-}
 
 interface FailedStepTask {
   tenantId: string;
