@@ -4,6 +4,7 @@ import { requireTenantRole } from "$lib/server/guards";
 import { saveCredentials } from "$lib/server/credentials";
 import { writeAudit } from "$lib/server/audit";
 import { gateAdapterInstall } from "$lib/server/tier-gate";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
@@ -17,11 +18,8 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     return json({ error: "Tenant context required" }, { status: 403 });
   }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (db) {
-    const tierGate = await gateAdapterInstall(db, tenantId, !!user.superAdmin);
-    if (tierGate) return tierGate;
-  }
+  const tierGate = await gateAdapterInstall(tenantId, !!user.superAdmin);
+  if (tierGate) return tierGate;
 
   let body: any;
   try {
@@ -53,39 +51,40 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   }
 
   // Fire automation event for app_connected trigger
-  if (db) {
-    try {
-      await writeAudit(db, {
+  try {
+    await queryPg(
+      `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        crypto.randomUUID(),
         tenantId,
-        actorUserId: user.userId ?? "unknown",
-        actorEmail: user.email ?? "unknown",
-        action: "app.connected",
-        targetType: "app",
-        targetId: appId,
-      });
-    } catch {
-      // Non-blocking: audit write failure shouldn't break connection
-    }
+        user.userId ?? "unknown",
+        "app.connected",
+        "app",
+        appId,
+        JSON.stringify({ actorEmail: user.email ?? "unknown" }),
+      ],
+    );
+  } catch {
+    // Non-blocking: audit write failure shouldn't break connection
   }
 
   // Notify about app connection
-  if (db) {
-    try {
-      const { notify } = await import("$lib/server/notifications");
-      await notify(db, platform, {
-        tenantId,
-        type: "app_connected",
-        title: `App connected: ${appId}`,
-        body: `${appId} was connected by ${user.email}`,
-        severity: "info",
-        sourceType: "app",
-        sourceId: appId,
-        sourceLabel: appId,
-        actionUrl: `/console/directory`,
-      });
-    } catch {
-      // Non-blocking
-    }
+  try {
+    const { notify } = await import("$lib/server/notifications");
+    await notify(platform, {
+      tenantId,
+      type: "app_connected",
+      title: `App connected: ${appId}`,
+      body: `${appId} was connected by ${user.email}`,
+      severity: "info",
+      sourceType: "app",
+      sourceId: appId,
+      sourceLabel: appId,
+      actionUrl: `/console/directory`,
+    });
+  } catch {
+    // Non-blocking
   }
 
   return new Response(JSON.stringify({ success: true, connected: true, id: appId }), {

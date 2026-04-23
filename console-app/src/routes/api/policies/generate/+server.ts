@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { getWorkerBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 import { generateSecurityPolicy } from "@atlasit/shared";
 import type { PolicyType } from "@atlasit/shared";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const POLICY_TYPE_FALLBACKS: Record<string, PolicyType> = {
   "soc2.demo": "access_control",
@@ -18,36 +19,33 @@ const POLICY_TYPE_FALLBACKS: Record<string, PolicyType> = {
 };
 
 async function writeGeneratedPoliciesPreference(
-  db: any,
   tenantId: string,
   policyKey: string,
 ): Promise<void> {
   try {
-    const existing = await db
-      .prepare(
-        "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'generated_policies'",
-      )
-      .bind(tenantId)
-      .first<{ value: string }>();
+    const existing = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'generated_policies'`,
+      [tenantId],
+    );
     const current: string[] = existing?.value ? JSON.parse(existing.value) : [];
     if (!current.includes(policyKey)) current.push(policyKey);
     const newValue = JSON.stringify(current);
-    await db.batch([
-      db
-        .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-        .bind(tenantId, "generated_policies"),
-      db
-        .prepare("INSERT INTO tenant_preferences (tenant_id, key, value) VALUES (?, ?, ?)")
-        .bind(tenantId, "generated_policies", newValue),
+    await queryPg(
+      `DELETE FROM tenant_preferences WHERE tenant_id = $1 AND key = 'generated_policies'`,
+      [tenantId],
+    );
+    await queryPg(`INSERT INTO tenant_preferences (tenant_id, key, value) VALUES ($1, $2, $3)`, [
+      tenantId,
+      "generated_policies",
+      newValue,
     ]);
   } catch {
     // Non-fatal
   }
 }
 
-/** Query D1 for real tenant data to populate the policy context. */
+/** Query PostgreSQL for real tenant data to populate the policy context. */
 async function buildTenantContext(
-  db: any,
   tenantId: string,
   user: any,
 ): Promise<{
@@ -69,59 +67,37 @@ async function buildTenantContext(
   let complianceScores: Record<string, number> = {};
   let userCount = 0;
 
-  if (!db) {
-    return {
-      tenantName,
-      connectedApps,
-      selectedFrameworks: ["SOC2"],
-      automationRuleCount: 0,
-      complianceScores: {},
-      evidenceSummary: "No evidence data available.",
-      userCount: 0,
-      industry: "",
-      contactEmail: user.email || "",
-    };
-  }
-
   try {
     // Parallel queries for all tenant data
-    const [tenantRow, appsResult, fwResult, rulesResult, scoresResult, usersResult] =
+    const [tenantRow, appsRows, fwResult, rulesResult, scoresResult, usersResult] =
       await Promise.all([
-        db
-          .prepare("SELECT name, industry FROM tenants WHERE id = ?")
-          .bind(tenantId)
-          .first<{ name: string; industry: string }>(),
-        db.prepare("SELECT app_id FROM app_credentials WHERE tenant_id = ?").bind(tenantId).all(),
-        db
-          .prepare(
-            "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'",
-          )
-          .bind(tenantId)
-          .first<{ value: string }>(),
-        db
-          .prepare(
-            "SELECT COUNT(*) as cnt FROM tenant_preferences WHERE tenant_id = ? AND key = 'automation_rules'",
-          )
-          .bind(tenantId)
-          .first<{ cnt: number }>()
-          .catch(() => null),
-        db
-          .prepare(
-            "SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_scores'",
-          )
-          .bind(tenantId)
-          .first<{ value: string }>()
-          .catch(() => null),
-        db
-          .prepare("SELECT COUNT(*) as cnt FROM users WHERE tenant_id = ?")
-          .bind(tenantId)
-          .first<{ cnt: number }>()
-          .catch(() => null),
+        queryPgOne<{ name: string; industry: string }>(
+          `SELECT name, industry FROM tenants WHERE id = $1`,
+          [tenantId],
+        ),
+        queryPg<{ app_id: string }>(`SELECT app_id FROM app_credentials WHERE tenant_id = $1`, [
+          tenantId,
+        ]),
+        queryPgOne<{ value: string }>(
+          `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'frameworks'`,
+          [tenantId],
+        ),
+        queryPgOne<{ cnt: number }>(
+          `SELECT COUNT(*) as cnt FROM tenant_preferences WHERE tenant_id = $1 AND key = 'automation_rules'`,
+          [tenantId],
+        ).catch(() => null),
+        queryPgOne<{ value: string }>(
+          `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'compliance_scores'`,
+          [tenantId],
+        ).catch(() => null),
+        queryPgOne<{ cnt: number }>(`SELECT COUNT(*) as cnt FROM users WHERE tenant_id = $1`, [
+          tenantId,
+        ]).catch(() => null),
       ]);
 
     if (tenantRow?.name) tenantName = tenantRow.name;
     if (tenantRow?.industry) industry = tenantRow.industry;
-    connectedApps = (appsResult?.results || []).map((r: any) => r.app_id);
+    connectedApps = appsRows.map((r) => r.app_id);
     if (fwResult?.value) {
       try {
         frameworks = JSON.parse(fwResult.value);
@@ -199,8 +175,6 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
     });
   }
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-
   // Try compliance-worker first
   try {
     const upstream = `${base}/api/v1/policies/generate`;
@@ -227,7 +201,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
           .join("\n\n");
         policy.sizeBytes = new TextEncoder().encode(policy.content).byteLength;
       }
-      if (db) await writeGeneratedPoliciesPreference(db, tenantId, templateKey);
+      await writeGeneratedPoliciesPreference(tenantId, templateKey);
       return new Response(JSON.stringify(data), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -241,7 +215,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
   // Fallback: use local policy generator with enriched tenant context
   const policyType = POLICY_TYPE_FALLBACKS[templateKey] || "access_control";
   try {
-    const ctx = await buildTenantContext(db, tenantId, user);
+    const ctx = await buildTenantContext(tenantId, user);
 
     const tenantContext = {
       tenantId,
@@ -255,7 +229,7 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
     const policy = await generateSecurityPolicy(env, tenantContext, policyType);
 
-    if (db) await writeGeneratedPoliciesPreference(db, tenantId, templateKey);
+    await writeGeneratedPoliciesPreference(tenantId, templateKey);
 
     // Flatten sections into a single content string for the frontend
     const content = policy.sections.map((s) => `## ${s.title}\n\n${s.content}`).join("\n\n");

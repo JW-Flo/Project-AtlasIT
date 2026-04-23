@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 /**
  * POST /api/tenant/dashboard/dismiss-review-suggestion
@@ -9,21 +10,16 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = (locals as any).user;
   if (!user?.tenantId) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
   const body = await request.json().catch(() => ({}));
   const { type } = body as { type?: string };
   if (!type) return json({ error: "type is required" }, { status: 400 });
 
   try {
     // Load existing dismissed list
-    const existing = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'dismissed_review_suggestions'`,
-      )
-      .bind(user.tenantId)
-      .first<{ value: string }>();
+    const existing = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'dismissed_review_suggestions'`,
+      [user.tenantId],
+    );
 
     let dismissed: string[] = [];
     try {
@@ -36,13 +32,14 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       dismissed.push(type);
     }
 
-    await db.batch([
-      db
-        .prepare("DELETE FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-        .bind(user.tenantId, "dismissed_review_suggestions"),
-      db
-        .prepare("INSERT INTO tenant_preferences (tenant_id, key, value) VALUES (?, ?, ?)")
-        .bind(user.tenantId, "dismissed_review_suggestions", JSON.stringify(dismissed)),
+    await queryPg(
+      `DELETE FROM tenant_preferences WHERE tenant_id = $1 AND key = 'dismissed_review_suggestions'`,
+      [user.tenantId],
+    );
+    await queryPg(`INSERT INTO tenant_preferences (tenant_id, key, value) VALUES ($1, $2, $3)`, [
+      user.tenantId,
+      "dismissed_review_suggestions",
+      JSON.stringify(dismissed),
     ]);
 
     return json({ success: true });

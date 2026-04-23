@@ -1,11 +1,8 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import {
-  getCredentials,
-  saveOAuthTokens,
-  saveCredentials,
-} from "$lib/server/credentials";
+import { getCredentials, saveOAuthTokens, saveCredentials } from "$lib/server/credentials";
 import { oauthProviders, getOAuthClientCreds } from "$lib/server/oauth-configs";
 import { writeAudit } from "$lib/server/audit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 /**
  * OAuth callback handler.
@@ -65,8 +62,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   let tokenUrl = provider.tokenUrl;
   if (provider.model === "tenant_domain") {
     const tenantCreds = await getCredentials(platform, appId, tenantId);
-    if (tenantCreds?.domain)
-      tokenUrl = tokenUrl.replace("{domain}", tenantCreds.domain);
+    if (tenantCreds?.domain) tokenUrl = tokenUrl.replace("{domain}", tenantCreds.domain);
     if (tenantCreds?.tenant_url)
       tokenUrl = tokenUrl.replace("{tenant_url}", tenantCreds.tenant_url);
   }
@@ -112,8 +108,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   }
 
   // Standard OAuth: check for access_token
-  const accessToken =
-    tokenData.access_token || tokenData.authed_user?.access_token;
+  const accessToken = tokenData.access_token || tokenData.authed_user?.access_token;
 
   if (!accessToken) {
     return redirectToMarketplace(
@@ -141,20 +136,22 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
   await saveCredentials(platform, appId, existingCreds, tenantId);
 
   // Log audit event for successful OAuth connection
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (db) {
-    try {
-      await writeAudit(db, {
+  try {
+    await queryPg(
+      `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        crypto.randomUUID(),
         tenantId,
-        actorUserId: "oauth_system",
-        actorEmail: "oauth_system",
-        action: "app.oauth_connected",
-        targetType: "app",
-        targetId: appId,
-      });
-    } catch {
-      // Non-blocking: audit write failure shouldn't break OAuth connection
-    }
+        "oauth_system",
+        "app.oauth_connected",
+        "app",
+        appId,
+        JSON.stringify({ actorEmail: "oauth_system" }),
+      ],
+    );
+  } catch {
+    // Non-blocking: audit write failure shouldn't break OAuth connection
   }
 
   return new Response(null, {

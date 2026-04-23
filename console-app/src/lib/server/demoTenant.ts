@@ -1,4 +1,5 @@
 import { hashPasswordPBKDF2 } from "$lib/server/password";
+import { queryPg } from "$lib/server/pg";
 
 export interface DemoTenantConfig {
   email: string;
@@ -37,7 +38,7 @@ export function resolveDemoTenantConfig(
   };
 }
 
-export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Promise<void> {
+export async function resetDemoTenant(cfg: DemoTenantConfig): Promise<void> {
   const now = new Date().toISOString();
   const salt = crypto.randomUUID();
   const passwordHash = await hashPasswordPBKDF2(cfg.password, salt);
@@ -50,33 +51,30 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
   const demoAccessCampaignId = `${cfg.tenantId}-access-q2`;
   const tenantSlug = `${cfg.tenantId}-demo`;
 
-  await db
-    .prepare(
-      `INSERT INTO tenants (id, name, slug, status, tier, created_at, updated_at)
-       VALUES (?, ?, ?, 'active', 'professional', ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name=excluded.name, slug=excluded.slug, status='active', updated_at=excluded.updated_at`,
-    )
-    .bind(cfg.tenantId, cfg.tenantName, tenantSlug, now, now)
-    .run();
+  await queryPg(
+    `INSERT INTO tenants (id, name, slug, status, tier, created_at, updated_at)
+     VALUES ($1, $2, $3, 'active', 'professional', $4, $5)
+     ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name, slug=EXCLUDED.slug, status='active', updated_at=EXCLUDED.updated_at`,
+    [cfg.tenantId, cfg.tenantName, tenantSlug, now, now],
+  );
 
-  await db
-    .prepare("DELETE FROM console_users WHERE tenant_id = ? OR id = ?")
-    .bind(cfg.tenantId, DEMO_USER_ID)
-    .run();
-  await db
-    .prepare(
-      `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(email) DO UPDATE SET
-         id=excluded.id,
-         password_hash=excluded.password_hash,
-         salt=excluded.salt,
-         display_name=excluded.display_name,
-         roles=excluded.roles,
-         tenant_id=excluded.tenant_id,
-         created_at=excluded.created_at`,
-    )
-    .bind(
+  await queryPg(`DELETE FROM console_users WHERE tenant_id = $1 OR id = $2`, [
+    cfg.tenantId,
+    DEMO_USER_ID,
+  ]);
+
+  await queryPg(
+    `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT(email) DO UPDATE SET
+       id=EXCLUDED.id,
+       password_hash=EXCLUDED.password_hash,
+       salt=EXCLUDED.salt,
+       display_name=EXCLUDED.display_name,
+       roles=EXCLUDED.roles,
+       tenant_id=EXCLUDED.tenant_id,
+       created_at=EXCLUDED.created_at`,
+    [
       DEMO_USER_ID,
       cfg.email,
       passwordHash,
@@ -85,8 +83,8 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
       '["super-admin","owner","admin"]',
       cfg.tenantId,
       now,
-    )
-    .run();
+    ],
+  );
 
   const wipeTables = [
     "automation_executions",
@@ -100,23 +98,20 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
   ];
   for (const table of wipeTables) {
     try {
-      await db.prepare(`DELETE FROM ${table} WHERE tenant_id = ?`).bind(cfg.tenantId).run();
+      await queryPg(`DELETE FROM ${table} WHERE tenant_id = $1`, [cfg.tenantId]);
     } catch {
       // table may be unavailable in older environments
     }
   }
 
-  await db
-    .prepare(
-      `INSERT INTO automation_rules
+  await queryPg(
+    `INSERT INTO automation_rules
       (id, tenant_id, name, description, enabled, trigger_type, trigger_config, conditions, actions, created_at, updated_at, created_by)
       VALUES
-      (?, ?, 'Onboard Dentist workflow', 'Provision baseline access for new dentist hires', 1, 'user_created', '{}', '[]', '[{"type":"assign_apps","apps":["okta","slack","google-workspace"]}]', ?, ?, ?),
-      (?, ?, 'Offboard Contractor workflow', 'Revoke all app access and archive data', 1, 'user_deactivated', '{}', '[]', '[{"type":"revoke_access","scope":"all"}]', ?, ?, ?),
-      (?, ?, 'Device quarantine flow', 'Contain risky endpoint automatically', 1, 'app_health_changed', '{}', '[]', '[{"type":"create_incident","severity":"high"}]', ?, ?, ?)
-      `,
-    )
-    .bind(
+      ($1, $2, 'Onboard Dentist workflow', 'Provision baseline access for new dentist hires', true, 'user_created', '{}', '[]', '[{"type":"assign_apps","apps":["okta","slack","google-workspace"]}]', $3, $4, $5),
+      ($6, $7, 'Offboard Contractor workflow', 'Revoke all app access and archive data', true, 'user_deactivated', '{}', '[]', '[{"type":"revoke_access","scope":"all"}]', $8, $9, $10),
+      ($11, $12, 'Device quarantine flow', 'Contain risky endpoint automatically', true, 'app_health_changed', '{}', '[]', '[{"type":"create_incident","severity":"high"}]', $13, $14, $15)`,
+    [
       demoRuleOnboardId,
       cfg.tenantId,
       now,
@@ -132,19 +127,16 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
       now,
       now,
       DEMO_USER_ID,
-    )
-    .run();
+    ],
+  );
 
-  await db
-    .prepare(
-      `INSERT INTO incidents (id, tenant_id, title, severity, status, source, description, created_at)
-       VALUES
-       (?, ?, 'Suspicious login blocked', 'high', 'resolved', 'automation', 'Impossible-travel login blocked and account challenged.', ?),
-       (?, ?, 'MFA bypass attempt', 'critical', 'investigating', 'identity', 'Legacy protocol access attempt detected for privileged user.', ?),
-       (?, ?, 'Terminated employee access removed', 'medium', 'resolved', 'automation', 'Offboarding flow revoked access across connected SaaS apps.', ?)
-      `,
-    )
-    .bind(
+  await queryPg(
+    `INSERT INTO incidents (id, tenant_id, title, severity, status, source, description, created_at)
+     VALUES
+     ($1, $2, 'Suspicious login blocked', 'high', 'resolved', 'automation', 'Impossible-travel login blocked and account challenged.', $3),
+     ($4, $5, 'MFA bypass attempt', 'critical', 'investigating', 'identity', 'Legacy protocol access attempt detected for privileged user.', $6),
+     ($7, $8, 'Terminated employee access removed', 'medium', 'resolved', 'automation', 'Offboarding flow revoked access across connected SaaS apps.', $9)`,
+    [
       demoIncident1Id,
       cfg.tenantId,
       now,
@@ -154,16 +146,14 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
       demoIncident3Id,
       cfg.tenantId,
       now,
-    )
-    .run();
+    ],
+  );
 
-  await db
-    .prepare(
-      `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, created_by, created_at)
-      VALUES (?, ?, 'Q2 Privileged Access Review', 'all', 'active', 'owner', datetime('now', '+10 day'), ?, ?)`,
-    )
-    .bind(demoAccessCampaignId, cfg.tenantId, DEMO_USER_ID, now)
-    .run();
+  await queryPg(
+    `INSERT INTO access_review_campaigns (id, tenant_id, name, scope, status, reviewer_policy, due_date, created_by, created_at)
+     VALUES ($1, $2, 'Q2 Privileged Access Review', 'all', 'active', 'owner', NOW() + INTERVAL '10 days', $3, $4)`,
+    [demoAccessCampaignId, cfg.tenantId, DEMO_USER_ID, now],
+  );
 
   const prefs: Array<[string, unknown]> = [
     ["frameworks", ["HIPAA", "SOC2"]],
@@ -183,11 +173,11 @@ export async function resetDemoTenant(db: D1Database, cfg: DemoTenantConfig): Pr
     ],
   ];
   for (const [key, value] of prefs) {
-    await db
-      .prepare(
-        `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value, updated_at) VALUES (?, ?, ?, ?)`,
-      )
-      .bind(cfg.tenantId, key, JSON.stringify(value), now)
-      .run();
+    await queryPg(
+      `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+      [cfg.tenantId, key, JSON.stringify(value), now],
+    );
   }
 }

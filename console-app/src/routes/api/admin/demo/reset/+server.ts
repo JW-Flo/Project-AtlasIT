@@ -8,14 +8,12 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   if (denied) return denied;
 
   const env = (platform?.env as Record<string, unknown>) || {};
-  const demoMode = String(env.DEMO_MODE ?? "false").toLowerCase() === "true";
+  const demoMode =
+    String(env.DEMO_MODE ?? process.env.DEMO_MODE ?? "false").toLowerCase() === "true";
   if (!demoMode) return json({ error: "demo_mode_disabled" }, { status: 403 });
   const demoConfig = resolveDemoTenantConfig(env);
   if (!demoConfig) return json({ error: "demo_config_invalid" }, { status: 400 });
 
-  const db = env.ATLAS_SHARED_DB as D1Database | undefined;
-  if (!db) return json({ error: "db_unavailable" }, { status: 503 });
-
-  await resetDemoTenant(db, demoConfig);
+  await resetDemoTenant(demoConfig);
   return json({ ok: true, reset: true });
 };

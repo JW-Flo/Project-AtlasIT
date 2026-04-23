@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { getWorkerBase, getEnv, proxyFetch } from "../_proxy-helpers";
 import { writeAudit } from "$lib/server/audit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 export const GET: RequestHandler = async ({ url, platform, locals }) => {
   const user = locals.user;
@@ -50,10 +51,10 @@ export const GET: RequestHandler = async ({ url, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Access requests service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: "Access requests service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };
 
@@ -119,23 +120,27 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
 
     // Log audit event for successful access request creation
     if (res.ok) {
-      const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-      if (db) {
-        try {
-          await writeAudit(db, {
+      try {
+        await queryPg(
+          `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            crypto.randomUUID(),
             tenantId,
-            actorUserId: user.userId ?? "unknown",
-            actorEmail: user.email ?? "unknown",
-            action: "access_request.created",
-            targetType: "access_request",
-            targetId: data?.request?.id ?? data?.id,
-            detail: data?.request?.resource
-              ? JSON.stringify({ resource: data.request.resource })
-              : undefined,
-          });
-        } catch {
-          // Non-blocking: audit write failure shouldn't break access request creation
-        }
+            user.userId ?? "unknown",
+            "access_request.created",
+            "access_request",
+            data?.request?.id ?? data?.id,
+            JSON.stringify({
+              actorEmail: user.email ?? "unknown",
+              detail: data?.request?.resource
+                ? JSON.stringify({ resource: data.request.resource })
+                : undefined,
+            }),
+          ],
+        );
+      } catch {
+        // Non-blocking: audit write failure shouldn't break access request creation
       }
     }
 
@@ -144,9 +149,9 @@ export const POST: RequestHandler = async ({ request, platform, locals }) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Access requests service unavailable" }),
-      { status: 503, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: "Access requests service unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };

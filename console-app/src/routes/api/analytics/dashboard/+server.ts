@@ -1,5 +1,6 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 const STATUS_WEIGHTS: Record<string, number> = {
   not_started: 0,
@@ -34,12 +35,9 @@ function syntheticTrend(
   return result;
 }
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = (locals as any).user;
   if (!user?.tenantId) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB ?? (platform?.env as any)?.DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   const tenantId = user.tenantId as string;
 
@@ -56,22 +54,20 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   }> = [];
 
   try {
-    const { results: scoreRows } = await db
-      .prepare(
-        `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified
-         FROM compliance_scores WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .all<{
-        framework: string;
-        score: number;
-        grade: string;
-        controls_total: number;
-        controls_implemented: number;
-        controls_verified: number;
-      }>();
+    const scoreRows = await queryPg<{
+      framework: string;
+      score: number;
+      grade: string;
+      controls_total: number;
+      controls_implemented: number;
+      controls_verified: number;
+    }>(
+      `SELECT framework, score, grade, controls_total, controls_implemented, controls_verified
+       FROM compliance_scores WHERE tenant_id = $1`,
+      [tenantId],
+    );
 
-    frameworkBreakdown = (scoreRows ?? []).map((r) => ({
+    frameworkBreakdown = scoreRows.map((r) => ({
       framework: r.framework,
       score: r.score,
       grade: r.grade,
@@ -88,12 +84,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   // Fallback: compute from tenant_preferences controls if no rows
   if (frameworkBreakdown.length === 0) {
     try {
-      const row = await db
-        .prepare(
-          `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
-        )
-        .bind(tenantId)
-        .first<{ value: string }>();
+      const row = await queryPgOne<{ value: string }>(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'compliance_controls'`,
+        [tenantId],
+      );
       if (row?.value) {
         const controls: Array<{ framework: string; status: string }> = JSON.parse(row.value);
         const byFw = new Map<string, typeof controls>();
@@ -143,17 +137,15 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   // ── 3. Compliance trend from compliance_history ──────────────────────────────
   let complianceTrend: Array<{ week: string; score: number }> = [];
   try {
-    const { results: histRows } = await db
-      .prepare(
-        `SELECT strftime('%Y-%W', recorded_at) AS week, AVG(score) AS avg_score
-         FROM compliance_history
-         WHERE tenant_id = ? AND recorded_at >= datetime('now', '-84 days')
-         GROUP BY week
-         ORDER BY week ASC
-         LIMIT 12`,
-      )
-      .bind(tenantId)
-      .all<{ week: string; avg_score: number }>();
+    const histRows = await queryPg<{ week: string; avg_score: number }>(
+      `SELECT TO_CHAR(recorded_at, 'IYYY-IW') AS week, AVG(score) AS avg_score
+       FROM compliance_history
+       WHERE tenant_id = $1 AND recorded_at >= NOW() - INTERVAL '84 days'
+       GROUP BY week
+       ORDER BY week ASC
+       LIMIT 12`,
+      [tenantId],
+    );
 
     if (histRows && histRows.length > 0) {
       complianceTrend = histRows.map((r) => ({
@@ -173,17 +165,15 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   // ── 4. Evidence volume per week ──────────────────────────────────────────────
   let evidenceVolume: Array<{ week: string; count: number }> = [];
   try {
-    const { results: evRows } = await db
-      .prepare(
-        `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS cnt
-         FROM compliance_evidence
-         WHERE tenant_id = ? AND created_at >= datetime('now', '-84 days')
-         GROUP BY week
-         ORDER BY week ASC
-         LIMIT 12`,
-      )
-      .bind(tenantId)
-      .all<{ week: string; cnt: number }>();
+    const evRows = await queryPg<{ week: string; cnt: number }>(
+      `SELECT TO_CHAR(created_at, 'IYYY-IW') AS week, COUNT(*) AS cnt
+       FROM compliance_evidence
+       WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '84 days'
+       GROUP BY week
+       ORDER BY week ASC
+       LIMIT 12`,
+      [tenantId],
+    );
 
     if (evRows && evRows.length > 0) {
       evidenceVolume = evRows.map((r) => ({ week: r.week, count: r.cnt }));
@@ -191,17 +181,15 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   } catch {
     // table may not exist — try alternate table name
     try {
-      const { results: evRows2 } = await db
-        .prepare(
-          `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS cnt
-           FROM evidence
-           WHERE tenant_id = ? AND created_at >= datetime('now', '-84 days')
-           GROUP BY week
-           ORDER BY week ASC
-           LIMIT 12`,
-        )
-        .bind(tenantId)
-        .all<{ week: string; cnt: number }>();
+      const evRows2 = await queryPg<{ week: string; cnt: number }>(
+        `SELECT TO_CHAR(created_at, 'IYYY-IW') AS week, COUNT(*) AS cnt
+         FROM evidence
+         WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '84 days'
+         GROUP BY week
+         ORDER BY week ASC
+         LIMIT 12`,
+        [tenantId],
+      );
 
       if (evRows2 && evRows2.length > 0) {
         evidenceVolume = evRows2.map((r) => ({ week: r.week, count: r.cnt }));
@@ -240,17 +228,17 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   let totalEvidence = evidenceVolume.reduce((s, e) => s + e.count, 0);
   if (totalEvidence === 0) {
     try {
-      const r = await db
-        .prepare(`SELECT COUNT(*) AS cnt FROM compliance_evidence WHERE tenant_id = ?`)
-        .bind(tenantId)
-        .first<{ cnt: number }>();
+      const r = await queryPgOne<{ cnt: number }>(
+        `SELECT COUNT(*) AS cnt FROM compliance_evidence WHERE tenant_id = $1`,
+        [tenantId],
+      );
       totalEvidence = r?.cnt ?? 0;
     } catch {
       try {
-        const r2 = await db
-          .prepare(`SELECT COUNT(*) AS cnt FROM evidence WHERE tenant_id = ?`)
-          .bind(tenantId)
-          .first<{ cnt: number }>();
+        const r2 = await queryPgOne<{ cnt: number }>(
+          `SELECT COUNT(*) AS cnt FROM evidence WHERE tenant_id = $1`,
+          [tenantId],
+        );
         totalEvidence = r2?.cnt ?? 0;
       } catch {
         // ignore
@@ -269,22 +257,18 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   };
 
   try {
-    const ruleRow = await db
-      .prepare(
-        `SELECT COUNT(*) AS total, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) AS active FROM automation_rules WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{ total: number; active: number }>();
+    const ruleRow = await queryPgOne<{ total: number; active: number }>(
+      `SELECT COUNT(*) AS total, SUM(CASE WHEN enabled = true THEN 1 ELSE 0 END) AS active FROM automation_rules WHERE tenant_id = $1`,
+      [tenantId],
+    );
 
-    const execRow = await db
-      .prepare(
-        `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS success,
-                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
-         FROM automation_executions WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{ total: number; success: number; failures: number }>();
+    const execRow = await queryPgOne<{ total: number; success: number; failures: number }>(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS success,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failures
+       FROM automation_executions WHERE tenant_id = $1`,
+      [tenantId],
+    );
 
     const totalExec = execRow?.total ?? 0;
     const successExec = execRow?.success ?? 0;
@@ -303,10 +287,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     // automation tables may not exist
     try {
       // Try alternate table names
-      const ruleRow2 = await db
-        .prepare(`SELECT COUNT(*) AS total FROM automation_rules WHERE tenant_id = ?`)
-        .bind(tenantId)
-        .first<{ total: number }>();
+      const ruleRow2 = await queryPgOne<{ total: number }>(
+        `SELECT COUNT(*) AS total FROM automation_rules WHERE tenant_id = $1`,
+        [tenantId],
+      );
       automationMetrics.totalRules = ruleRow2?.total ?? 0;
     } catch {
       // ignore
@@ -324,16 +308,18 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   };
 
   try {
-    const incidentRow = await db
-      .prepare(
-        `SELECT
-           SUM(CASE WHEN status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS open_count,
-           SUM(CASE WHEN status IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS resolved_count,
-           SUM(CASE WHEN severity = 'critical' AND status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS critical_count
-         FROM incidents WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{ open_count: number; resolved_count: number; critical_count: number }>();
+    const incidentRow = await queryPgOne<{
+      open_count: number;
+      resolved_count: number;
+      critical_count: number;
+    }>(
+      `SELECT
+         SUM(CASE WHEN status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS open_count,
+         SUM(CASE WHEN status IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS resolved_count,
+         SUM(CASE WHEN severity = 'critical' AND status NOT IN ('resolved', 'closed') THEN 1 ELSE 0 END) AS critical_count
+       FROM incidents WHERE tenant_id = $1`,
+      [tenantId],
+    );
 
     securityPosture.openIncidents = incidentRow?.open_count ?? 0;
     securityPosture.resolvedIncidents = incidentRow?.resolved_count ?? 0;
@@ -343,15 +329,13 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   }
 
   try {
-    const arRow = await db
-      .prepare(
-        `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
-         FROM access_reviews WHERE tenant_id = ?`,
-      )
-      .bind(tenantId)
-      .first<{ total: number; completed: number }>();
+    const arRow = await queryPgOne<{ total: number; completed: number }>(
+      `SELECT
+         COUNT(*) AS total,
+         SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed
+       FROM access_reviews WHERE tenant_id = $1`,
+      [tenantId],
+    );
 
     const arTotal = arRow?.total ?? 0;
     const arCompleted = arRow?.completed ?? 0;
@@ -375,12 +359,10 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   let topRisks: TopRiskControl[] = [];
 
   try {
-    const controlsRow = await db
-      .prepare(
-        `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'compliance_controls'`,
-      )
-      .bind(tenantId)
-      .first<{ value: string }>();
+    const controlsRow = await queryPgOne<{ value: string }>(
+      `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'compliance_controls'`,
+      [tenantId],
+    );
 
     if (controlsRow?.value) {
       const controls: Array<{ id: string; framework: string; name: string; status: string }> =

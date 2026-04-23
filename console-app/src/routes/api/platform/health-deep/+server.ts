@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { proxyFetch, getWorkerBase } from "../../_proxy-helpers";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 interface ServiceDeepCheck {
   name: string;
@@ -102,18 +103,13 @@ export const GET: RequestHandler = async ({ platform }) => {
     })(),
   ]);
 
-  // Console-app self-check: D1
-  const db = env.ATLAS_SHARED_DB;
+  // Console-app self-check: PostgreSQL
   const selfChecks: Record<string, "pass" | "fail" | "unknown"> = {};
-  if (db) {
-    try {
-      await db.prepare("SELECT 1").first();
-      selfChecks.d1 = "pass";
-    } catch {
-      selfChecks.d1 = "fail";
-    }
-  } else {
-    selfChecks.d1 = "unknown";
+  try {
+    await queryPgOne("SELECT 1 AS ok", []);
+    selfChecks.pg = "pass";
+  } catch {
+    selfChecks.pg = "fail";
   }
 
   results.unshift({

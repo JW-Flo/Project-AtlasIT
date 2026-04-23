@@ -1,21 +1,22 @@
 export function getWorkerBase(platform: any): string {
-  const env = (platform?.env as any) || {};
+  const env = getEnv(platform);
   const complianceBase: string = env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
   return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
 }
 
 export function getCoreApiBase(platform: any): string {
-  const env = (platform?.env as any) || {};
+  const env = getEnv(platform);
   return (env.CORE_API_BASE || "https://core-api.atlasit.pro").replace(/\/$/, "");
 }
 
 export function getOrchestratorBase(platform: any): string {
-  const env = (platform?.env as any) || {};
+  const env = getEnv(platform);
   return (env.ORCHESTRATOR_BASE || "https://orchestrator.atlasit.pro").replace(/\/$/, "");
 }
 
 export function getEnv(platform: any): Record<string, any> {
-  return (platform?.env as any) || {};
+  const cfEnv = (platform?.env as any) || {};
+  return { ...process.env, ...cfEnv };
 }
 
 export async function proxyFetch(
@@ -24,7 +25,6 @@ export async function proxyFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const env = getEnv(platform);
-  // Inject API key for authenticated inter-service calls
   const apiKey = env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY || "";
   if (apiKey && init?.headers) {
     const headers = new Headers(init.headers);
@@ -34,9 +34,6 @@ export async function proxyFetch(
     init = { ...init, headers };
   } else if (apiKey && !init?.headers) {
     init = { ...init, headers: { "x-api-key": apiKey } };
-  }
-  if (env.COMPLIANCE_WORKER) {
-    return env.COMPLIANCE_WORKER.fetch(new Request(url, init));
   }
   return fetch(url, init);
 }

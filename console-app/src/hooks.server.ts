@@ -4,6 +4,11 @@ import type { UserPrincipal } from "./lib/auth/provider";
 import { matchRoutePermission } from "$lib/server/permissions";
 import { validateEncryptionConfig } from "$lib/server/credentials";
 import { checkBodySizeLimit, parseBodySizeLimit, BODY_METHODS } from "$lib/server/body-size-limit";
+import {
+  getSession as pgGetSession,
+  putSession as pgPutSession,
+  getTenantStatus,
+} from "$lib/server/session-store";
 
 /**
  * Default maximum request body size (512 KB).
@@ -39,13 +44,6 @@ let encryptionValidated = false;
 
 /** How often (ms) to refresh session in KV. Reduces writes from every-request to ~1 per 5 min. */
 const SESSION_REFRESH_INTERVAL_MS = 300_000;
-
-/**
- * KV cacheTtl (seconds) — Cloudflare KV caches reads at the edge for this
- * duration, eliminating repeated KV fetches without trusting an unsigned cookie.
- * Minimum is 60s; we use 60s for a tight revalidation window.
- */
-const KV_CACHE_TTL = 60;
 
 /**
  * Returns true only when running in a real local dev environment.
@@ -85,7 +83,8 @@ export const handle: Handle = async ({ event, resolve }) => {
   const envRaw = event.platform?.env as unknown as Record<string, string | undefined>;
   const envAny = event.platform?.env as Record<string, unknown> | undefined;
 
-  const devBypass = isDevAuthBypass(envRaw ?? {});
+  const envForAuth = { ...process.env, ...(envRaw ?? {}) };
+  const devBypass = isDevAuthBypass(envForAuth);
 
   // ------------------------------------------------------------------
   // 0. Body size enforcement (BODY_SIZE_LIMIT bypass mitigation)
@@ -111,18 +110,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   // ------------------------------------------------------------------
 
   // ------------------------------------------------------------------
-  // 2. Session lookup — use cache cookie to avoid KV reads
+  // 2. Session lookup — PG-backed sessions (replaces Cloudflare KV)
   // ------------------------------------------------------------------
   if (!user && !devBypass && sessionId) {
-    // Always validate session against KV (source of truth).
-    // cacheTtl reduces KV read cost at the edge without trusting unsigned cookies.
     try {
-      const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-      if (kv) {
-        const sessionData = await kv.get(sessionId, { cacheTtl: KV_CACHE_TTL });
-        if (sessionData) {
-          user = JSON.parse(sessionData) as UserPrincipal;
-        }
+      const sessionData = await pgGetSession(sessionId);
+      if (sessionData) {
+        user = sessionData as unknown as UserPrincipal;
       }
     } catch (e) {
       console.error(
@@ -134,30 +128,26 @@ export const handle: Handle = async ({ event, resolve }) => {
       );
     }
 
-    // Clear any stale session cache cookies from before this hardening
     if (event.cookies.get("atlas_session_cache")) {
       event.cookies.delete("atlas_session_cache", { path: "/" });
     }
 
-    // Ensure superAdmin flag is always derived authoritatively on every request.
-    // SUPER_ADMIN_EMAIL grants super-admin regardless of stored session value,
-    // so a role change or email match takes effect without requiring re-login.
     if (user) {
-      const superAdminEmail = (envRaw?.["SUPER_ADMIN_EMAIL"] || "").toLowerCase();
+      const superAdminEmail = (
+        process.env.SUPER_ADMIN_EMAIL ||
+        envRaw?.["SUPER_ADMIN_EMAIL"] ||
+        ""
+      ).toLowerCase();
       const isSuperByEmail = Boolean(
         superAdminEmail && user.email?.toLowerCase() === superAdminEmail,
       );
       const isSuperByRole = (user.roles ?? []).includes("super-admin");
       user.superAdmin = isSuperByEmail || isSuperByRole;
-      // Ensure roles array includes "super-admin" so UI nav guards work
       if (user.superAdmin && !(user.roles ?? []).includes("super-admin")) {
         user.roles = [...(user.roles ?? []), "super-admin"];
       }
     }
 
-    // Sessions missing tenantId are invalid — invalidate and force re-login.
-    // Inferring tenant from DB (especially falling back to "first tenant") is a
-    // tenant-isolation risk and is not permitted.
     if (user && !user.tenantId) {
       console.error(
         JSON.stringify({
@@ -179,21 +169,15 @@ export const handle: Handle = async ({ event, resolve }) => {
       throw redirect(302, "/console/login?error=session_invalid");
     }
 
-    // Throttle lastSeenAt refresh — only write to KV every 5 minutes
     if (user) {
       const lastSeen = new Date(user.lastSeenAt).getTime();
       const now = Date.now();
       if (now - lastSeen > SESSION_REFRESH_INTERVAL_MS) {
         user.lastSeenAt = new Date().toISOString();
         try {
-          const kv = envAny?.["KV_SESSIONS"] as KVNamespace | undefined;
-          if (kv) {
-            await kv.put(sessionId, JSON.stringify(user), {
-              expirationTtl: 604800,
-            });
-          }
+          await pgPutSession(sessionId, user as unknown as Record<string, unknown>, 604800);
         } catch {
-          // Non-blocking — session is still valid
+          // Non-blocking
         }
       }
     }
@@ -223,28 +207,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   // ------------------------------------------------------------------
   if (user && user.tenantId && !user.superAdmin) {
     try {
-      const db = envAny?.["ATLAS_SHARED_DB"] as D1Database | undefined;
-      if (db) {
-        const tenantRow = await db
-          .prepare("SELECT status FROM tenants WHERE id = ? LIMIT 1")
-          .bind(user.tenantId)
-          .first<{ status: string }>();
-        if (tenantRow?.status === "disabled") {
-          const isApiRoute = event.url.pathname.startsWith("/api/");
-          if (isApiRoute) {
-            return new Response(
-              JSON.stringify({ error: "Tenant account is disabled", code: "tenant_disabled" }),
-              { status: 403, headers: { "content-type": "application/json" } },
-            );
-          }
-          // Clear session cookies so the user is not stuck in a redirect loop
-          event.cookies.delete("atlas_session", { path: "/" });
-          event.cookies.delete("atlas_session_cache", { path: "/" });
-          throw redirect(302, "/console/login?error=tenant_disabled");
+      const tenantStatus = await getTenantStatus(user.tenantId);
+      if (tenantStatus === "disabled") {
+        const isApiRoute = event.url.pathname.startsWith("/api/");
+        if (isApiRoute) {
+          return new Response(
+            JSON.stringify({ error: "Tenant account is disabled", code: "tenant_disabled" }),
+            { status: 403, headers: { "content-type": "application/json" } },
+          );
         }
+        event.cookies.delete("atlas_session", { path: "/" });
+        event.cookies.delete("atlas_session_cache", { path: "/" });
+        throw redirect(302, "/console/login?error=tenant_disabled");
       }
     } catch (e) {
-      // Re-throw SvelteKit redirects and HTTP errors; only swallow DB errors
       if (isRedirect(e) || isHttpError(e)) throw e;
       console.error(
         JSON.stringify({

@@ -79,19 +79,30 @@ resource "aws_iam_role_policy_attachment" "console_api_vpc" {
 }
 
 resource "aws_iam_role_policy" "console_api_ssm" {
-  name = "ssm-read"
+  name = "ssm-and-secrets"
   role = aws_iam_role.console_api_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "ssm:GetParameter",
-        "ssm:GetParameters",
-      ]
-      Resource = "arn:aws:ssm:${var.region}:${var.account_id}:parameter/atlasit/${var.env}/*"
-    }]
+    Statement = [
+      {
+        Sid    = "SSMRead"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+        ]
+        Resource = "arn:aws:ssm:${var.region}:${var.account_id}:parameter/atlasit/${var.env}/*"
+      },
+      {
+        Sid    = "SecretsManagerRds"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+        ]
+        Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:rds!*"
+      },
+    ]
   })
 }
 

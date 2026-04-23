@@ -3,16 +3,13 @@ import { json } from "@sveltejs/kit";
 import { verifyTotp, decryptTotpSecret, isEncryptedSecret } from "@atlasit/shared/crypto/totp";
 import { verifyJwt } from "@atlasit/shared/crypto/jwt";
 import { resolveSecurityPolicy, getSessionTtl } from "@atlasit/shared/security/policies";
+import { queryPgOne } from "$lib/server/pg";
+import { putSession } from "$lib/server/session-store";
 
-export const POST: RequestHandler = async ({ request, platform, cookies }) => {
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  const kv = env.KV_SESSIONS;
-  const encryptionKey: string | undefined = env.CRED_ENCRYPTION_KEY;
-  const jwtSecret = env.JWT_SECRET || env.SESSION_SECRET || "atlasit-dev-jwt-secret";
-
-  if (!db) return json({ error: "Service unavailable" }, { status: 503 });
-  if (!kv) return json({ error: "Session store unavailable" }, { status: 503 });
+export const POST: RequestHandler = async ({ request, cookies }) => {
+  const encryptionKey = process.env.CRED_ENCRYPTION_KEY;
+  const jwtSecret =
+    process.env.JWT_SECRET || process.env.SESSION_SECRET || "atlasit-dev-jwt-secret";
 
   const body = await request.json().catch(() => ({}));
   const { mfaToken, code, recoveryCode } = body as {
@@ -35,10 +32,11 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
 
   if (code) {
     // TOTP verification
-    const totpRow = await db
-      .prepare("SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
-      .bind(userId)
-      .first<{ secret_encrypted: string }>();
+    const tenantId = claims.tenantId as string;
+    const totpRow = await queryPgOne<{ secret_encrypted: string }>(
+      "SELECT secret_encrypted FROM mfa_totp_secrets WHERE user_id = $1 AND tenant_id = $2 AND verified = true",
+      [userId, tenantId],
+    );
 
     if (!totpRow) {
       return json({ error: "TOTP not configured" }, { status: 400 });
@@ -57,18 +55,16 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     const normalizedCode = recoveryCode.toLowerCase().trim();
     const codeHash = await hashRecoveryCode(normalizedCode);
 
-    const rcRow = await db
-      .prepare(
-        "SELECT id FROM mfa_recovery_codes WHERE user_id = ? AND code_hash = ? AND used_at IS NULL",
-      )
-      .bind(userId, codeHash)
-      .first<{ id: string }>();
+    const rcRow = await queryPgOne<{ id: string }>(
+      "SELECT id FROM mfa_recovery_codes WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL",
+      [userId, codeHash],
+    );
 
     if (rcRow) {
-      await db
-        .prepare("UPDATE mfa_recovery_codes SET used_at = ? WHERE id = ?")
-        .bind(new Date().toISOString(), rcRow.id)
-        .run();
+      await queryPgOne("UPDATE mfa_recovery_codes SET used_at = $1 WHERE id = $2", [
+        new Date().toISOString(),
+        rcRow.id,
+      ]);
       verified = true;
     }
   }
@@ -78,8 +74,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
   }
 
   // Load tenant security policy for session TTL
-  const tenantId = claims.tenantId as string;
-  const secPolicy = await loadTenantSecurityPolicy(db, tenantId);
+  const secPolicy = await loadTenantSecurityPolicy(tenantId);
   const sessionTtl = getSessionTtl(secPolicy, true); // MFA-verified session
 
   // Create session with MFA-verified flag
@@ -97,7 +92,7 @@ export const POST: RequestHandler = async ({ request, platform, cookies }) => {
     mfaVerified: true,
   };
 
-  await kv.put(sid, JSON.stringify(user), { expirationTtl: sessionTtl });
+  await putSession(sid, user, sessionTtl);
 
   cookies.set("atlas_session", sid, {
     httpOnly: true,
@@ -118,12 +113,12 @@ async function hashRecoveryCode(code: string): Promise<string> {
     .join("");
 }
 
-async function loadTenantSecurityPolicy(db: any, tenantId: string) {
+async function loadTenantSecurityPolicy(tenantId: string) {
   try {
-    const row = await db
-      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
-      .bind(tenantId, "security_policy")
-      .first<{ value: string }>();
+    const row = await queryPgOne<{ value: string }>(
+      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
+      [tenantId, "security_policy"],
+    );
     return resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
   } catch {
     return resolveSecurityPolicy(null);

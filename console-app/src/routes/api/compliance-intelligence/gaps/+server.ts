@@ -1,6 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { analyzeComplianceGaps } from "@atlasit/shared";
+import { queryPgOne } from "$lib/server/pg";
 
 /**
  * GET /api/compliance-intelligence/gaps
@@ -16,14 +17,11 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
   // Get tenant's selected frameworks
-  const prefRow = await db
-    .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'frameworks'")
-    .bind(tenantId)
-    .first<{ value: string }>();
+  const prefRow = await queryPgOne<{ value: string }>(
+    "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
+    [tenantId, "frameworks"],
+  );
 
   let frameworks: string[];
   try {
@@ -31,6 +29,9 @@ export const GET: RequestHandler = async ({ locals, platform, url }) => {
   } catch {
     frameworks = ["SOC2"];
   }
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   // Apply framework filter if provided
   const frameworkFilter = url.searchParams.get("framework");

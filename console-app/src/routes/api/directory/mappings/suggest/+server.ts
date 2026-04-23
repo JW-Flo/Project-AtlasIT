@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { writeAudit } from "$lib/server/audit";
 import { requireTenantRole } from "$lib/server/guards";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 /**
  * Group name → app mapping patterns.
@@ -63,39 +64,30 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "no tenant" }, { status: 400 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "database unavailable" }, { status: 500 });
-
   // Get connected apps, groups, existing mappings, and tenant ecosystem in parallel
   const [groupsResult, connectedAppsResult, existingMappingsResult, selectedAppsResult] =
     await Promise.allSettled([
-      db
-        .prepare(`SELECT id, name FROM directory_groups WHERE tenant_id = ?`)
-        .bind(tenantId)
-        .all()
-        .then((r: any) => r.results || []),
-      db
-        .prepare(`SELECT app_id FROM app_credentials WHERE tenant_id = ?`)
-        .bind(tenantId)
-        .all()
-        .then((r: any) => (r.results || []).map((row: any) => row.app_id as string)),
-      db
-        .prepare(`SELECT group_id, app_id FROM group_app_mappings WHERE tenant_id = ?`)
-        .bind(tenantId)
-        .all()
-        .then((r: any) => {
-          const set = new Set<string>();
-          for (const row of r.results || []) {
-            set.add(`${row.group_id}:${row.app_id}`);
-          }
-          return set;
-        }),
-      db
-        .prepare(
-          `SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = 'selected_apps'`,
-        )
-        .bind(tenantId)
-        .first<{ value: string }>(),
+      queryPg<{ id: string; name: string }>(
+        `SELECT id, name FROM directory_groups WHERE tenant_id = $1`,
+        [tenantId],
+      ),
+      queryPg<{ app_id: string }>(`SELECT app_id FROM app_credentials WHERE tenant_id = $1`, [
+        tenantId,
+      ]).then((rows) => rows.map((row) => row.app_id)),
+      queryPg<{ group_id: string; app_id: string }>(
+        `SELECT group_id, app_id FROM group_app_mappings WHERE tenant_id = $1`,
+        [tenantId],
+      ).then((rows) => {
+        const set = new Set<string>();
+        for (const row of rows) {
+          set.add(`${row.group_id}:${row.app_id}`);
+        }
+        return set;
+      }),
+      queryPgOne<{ value: string }>(
+        `SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = 'selected_apps'`,
+        [tenantId],
+      ),
     ]);
 
   const groups: any[] = groupsResult.status === "fulfilled" ? groupsResult.value : [];
@@ -140,9 +132,8 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const connectedSet = new Set(connectedApps);
   const now = new Date().toISOString();
 
-  // Collect all candidate suggestions and their prepared statements for batching
+  // Collect all candidate suggestions
   const candidates: { id: string; groupId: string; groupName: string; appId: string }[] = [];
-  const statements: any[] = [];
 
   for (const group of groups) {
     for (const [pattern, appIds] of GROUP_APP_PATTERNS) {
@@ -155,50 +146,55 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
         const id = crypto.randomUUID();
         candidates.push({ id, groupId: group.id, groupName: group.name, appId });
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
-               VALUES (?, ?, ?, ?, 'member', 1, ?, ?)
-               ON CONFLICT(tenant_id, group_id, app_id) DO NOTHING`,
-            )
-            .bind(id, tenantId, group.id, appId, now, now),
-        );
       }
     }
   }
 
-  // Batch-execute all inserts in a single D1 round-trip
+  // Insert all candidates
   const suggestions: any[] = [];
-  if (statements.length > 0) {
-    const results = await db.batch(statements);
-    for (let i = 0; i < candidates.length; i++) {
-      if (results[i]?.meta?.changes > 0) {
+  if (candidates.length > 0) {
+    for (const candidate of candidates) {
+      try {
+        await queryPg(
+          `INSERT INTO group_app_mappings (id, tenant_id, group_id, app_id, role, suggested, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, 'member', true, NOW(), NOW())
+           ON CONFLICT(tenant_id, group_id, app_id) DO NOTHING`,
+          [candidate.id, tenantId, candidate.groupId, candidate.appId],
+        );
         suggestions.push({
-          id: candidates[i].id,
-          groupId: candidates[i].groupId,
-          groupName: candidates[i].groupName,
-          appId: candidates[i].appId,
+          id: candidate.id,
+          groupId: candidate.groupId,
+          groupName: candidate.groupName,
+          appId: candidate.appId,
           role: "member",
           suggested: 1,
         });
+      } catch {
+        // Skip on conflict
       }
     }
   }
 
   if (suggestions.length > 0) {
     try {
-      await writeAudit(db, {
-        tenantId,
-        actorUserId: user.userId,
-        actorEmail: user.email,
-        action: "mapping.auto_suggest",
-        targetType: "group_app_mapping",
-        detail: JSON.stringify({
-          count: suggestions.length,
-          apps: [...new Set(suggestions.map((s: any) => s.appId))],
-        }),
-      });
+      await queryPg(
+        `INSERT INTO audit_log (id, tenant_id, actor_id, action, resource_type, details, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [
+          crypto.randomUUID(),
+          tenantId,
+          user.userId,
+          "mapping.auto_suggest",
+          "group_app_mapping",
+          JSON.stringify({
+            actorEmail: user.email,
+            detail: JSON.stringify({
+              count: suggestions.length,
+              apps: [...new Set(suggestions.map((s: any) => s.appId))],
+            }),
+          }),
+        ],
+      );
     } catch {
       // Audit write failure should not break the response
     }
