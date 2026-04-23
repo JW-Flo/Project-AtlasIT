@@ -34,19 +34,19 @@ jobs:
           BASE_TOTAL=$(jq '.totalBytes' ops/perf/bundle-baseline.json)
           echo "Current largest asset bytes: $CURRENT_LARGEST"
           echo "Current total bundle bytes: $CURRENT_TOTAL"
-          python - <<'PY'
-import os, sys
-current_largest = float(os.environ["CURRENT_LARGEST"])
-current_total = float(os.environ["CURRENT_TOTAL"])
-base_largest = float(os.environ["BASE_LARGEST"])
-base_total = float(os.environ["BASE_TOTAL"])
-threshold = float(os.environ.get("THRESHOLD", "1.0"))
-failed = False
-if current_largest > base_largest * threshold:
-    print(f"Largest asset {current_largest} exceeds baseline {base_largest} * {threshold}", file=sys.stderr)
-    failed = True
-if current_total > base_total * threshold:
-    print(f"Total bundle {current_total} exceeds baseline {base_total} * {threshold}", file=sys.stderr)
-    failed = True
-sys.exit(1 if failed else 0)
-PY
+          python3 -c "
+          import os, sys
+          current_largest = float(os.environ['CURRENT_LARGEST'])
+          current_total = float(os.environ['CURRENT_TOTAL'])
+          base_largest = float(os.environ['BASE_LARGEST'])
+          base_total = float(os.environ['BASE_TOTAL'])
+          threshold = float(os.environ.get('THRESHOLD', '1.0'))
+          failed = False
+          if current_largest > base_largest * threshold:
+              print(f'Largest asset {current_largest} exceeds baseline {base_largest} * {threshold}', file=sys.stderr)
+              failed = True
+          if current_total > base_total * threshold:
+              print(f'Total bundle {current_total} exceeds baseline {base_total} * {threshold}', file=sys.stderr)
+              failed = True
+          sys.exit(1 if failed else 0)
+          "
