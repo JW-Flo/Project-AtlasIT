@@ -1,27 +1,28 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { requireTenantRole } from "$lib/server/guards";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
-export const GET: RequestHandler = async ({ params, locals, platform }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
-
-  const { results } = await db
-    .prepare(
-      `SELECT id, target_type, target_id, created_at FROM role_assignments
-       WHERE role_id = ? AND tenant_id = ?`,
-    )
-    .bind(params.id!, tenantId)
-    .all();
+  const results = await queryPg<{
+    id: string;
+    target_type: string;
+    target_id: string;
+    created_at: string;
+  }>(
+    `SELECT id, target_type, target_id, created_at FROM role_assignments
+     WHERE role_id = $1 AND tenant_id = $2`,
+    [params.id!, tenantId],
+  );
 
   return json({
-    assignments: (results ?? []).map((a: any) => ({
+    assignments: results.map((a) => ({
       id: a.id,
       targetType: a.target_type,
       targetId: a.target_id,
@@ -30,16 +31,13 @@ export const GET: RequestHandler = async ({ params, locals, platform }) => {
   });
 };
 
-export const POST: RequestHandler = async ({ params, request, locals, platform }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
   const guard = requireTenantRole(locals.user, ["owner", "admin"]);
   if (guard) return guard;
   const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   let body: any;
   try {
@@ -56,23 +54,21 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
     return json({ error: "targetType must be 'user' or 'group'" }, { status: 400 });
   }
 
-  const role = await db
-    .prepare(`SELECT id FROM roles WHERE id = ? AND tenant_id = ?`)
-    .bind(params.id!, tenantId)
-    .first();
+  const role = await queryPgOne<{ id: string }>(
+    `SELECT id FROM roles WHERE id = $1 AND tenant_id = $2`,
+    [params.id!, tenantId],
+  );
 
   if (!role) return json({ error: "Role not found" }, { status: 404 });
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db
-    .prepare(
-      `INSERT INTO role_assignments (id, tenant_id, role_id, target_type, target_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(id, tenantId, params.id!, targetType, targetId, now)
-    .run();
+  await queryPg(
+    `INSERT INTO role_assignments (id, tenant_id, role_id, target_type, target_id, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, tenantId, params.id!, targetType, targetId, now],
+  );
 
   return json(
     {
@@ -87,16 +83,13 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
   );
 };
 
-export const DELETE: RequestHandler = async ({ params, url, locals, platform }) => {
+export const DELETE: RequestHandler = async ({ params, url, locals }) => {
   const guard = requireTenantRole(locals.user, ["owner", "admin"]);
   if (guard) return guard;
   const user = locals.user!;
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   const targetType = url.searchParams.get("targetType");
   const targetId = url.searchParams.get("targetId");
@@ -107,23 +100,19 @@ export const DELETE: RequestHandler = async ({ params, url, locals, platform }) 
     );
   }
 
-  const existing = await db
-    .prepare(
-      `SELECT id FROM role_assignments
-       WHERE role_id = ? AND tenant_id = ? AND target_type = ? AND target_id = ?`,
-    )
-    .bind(params.id!, tenantId, targetType, targetId)
-    .first();
+  const existing = await queryPgOne<{ id: string }>(
+    `SELECT id FROM role_assignments
+     WHERE role_id = $1 AND tenant_id = $2 AND target_type = $3 AND target_id = $4`,
+    [params.id!, tenantId, targetType, targetId],
+  );
 
   if (!existing) return json({ error: "Assignment not found" }, { status: 404 });
 
-  await db
-    .prepare(
-      `DELETE FROM role_assignments
-       WHERE role_id = ? AND tenant_id = ? AND target_type = ? AND target_id = ?`,
-    )
-    .bind(params.id!, tenantId, targetType, targetId)
-    .run();
+  await queryPg(
+    `DELETE FROM role_assignments
+     WHERE role_id = $1 AND tenant_id = $2 AND target_type = $3 AND target_id = $4`,
+    [params.id!, tenantId, targetType, targetId],
+  );
 
   return json({ ok: true });
 };

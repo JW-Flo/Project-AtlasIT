@@ -1,15 +1,12 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { hashPasswordPBKDF2, verifyPassword } from "$lib/server/password";
-import { writeAudit } from "$lib/server/audit";
+import { writeAuditPg } from "$lib/server/audit";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
-export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
+export const PATCH: RequestHandler = async ({ request, locals }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
-
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
 
   const body = await request.json().catch(() => ({}));
   const { currentPassword, newPassword } = body as {
@@ -30,12 +27,10 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
     );
   }
 
-  const row = (await db
-    .prepare(
-      "SELECT id, password_hash, salt FROM console_users WHERE id = ? LIMIT 1",
-    )
-    .bind(user.userId)
-    .first()) as { id: string; password_hash: string; salt: string } | null;
+  const row = await queryPgOne<{ id: string; password_hash: string; salt: string }>(
+    "SELECT id, password_hash, salt FROM console_users WHERE id = $1 LIMIT 1",
+    [user.userId]
+  );
 
   if (!row) {
     return json(
@@ -54,12 +49,12 @@ export const PATCH: RequestHandler = async ({ request, locals, platform }) => {
   }
 
   const newHash = await hashPasswordPBKDF2(newPassword, row.salt);
-  await db
-    .prepare("UPDATE console_users SET password_hash = ? WHERE id = ?")
-    .bind(newHash, row.id)
-    .run();
+  await queryPg(
+    "UPDATE console_users SET password_hash = $1 WHERE id = $2",
+    [newHash, row.id]
+  );
 
-  await writeAudit(db, {
+  await writeAuditPg({
     tenantId: user.tenantId!,
     actorUserId: user.userId,
     actorEmail: user.email,

@@ -2,6 +2,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
 import { buildDefaultControls } from "$lib/compliance/framework-controls";
 import { hashPasswordPBKDF2 as hashPassword } from "$lib/server/password";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
 interface RegisterBody {
   orgName: string;
@@ -44,14 +45,6 @@ export const POST: RequestHandler = async ({ request, platform }) => {
     );
   }
 
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) {
-    return json(
-      { error: "Registration unavailable (no database)" },
-      { status: 503 },
-    );
-  }
-
   const email = ownerEmail.toLowerCase().trim();
   const tenantId = orgName
     .toLowerCase()
@@ -61,10 +54,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 
   try {
     // Check for existing org or user
-    const existingTenant = await db
-      .prepare("SELECT id FROM tenants WHERE id = ? LIMIT 1")
-      .bind(tenantId)
-      .first();
+    const existingTenant = await queryPgOne<{ id: string }>(
+      "SELECT id FROM tenants WHERE id = $1 LIMIT 1",
+      [tenantId]
+    );
     if (existingTenant) {
       return json(
         { error: "An organization with this name already exists" },
@@ -72,10 +65,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       );
     }
 
-    const existingUser = await db
-      .prepare("SELECT id FROM console_users WHERE email = ? LIMIT 1")
-      .bind(email)
-      .first();
+    const existingUser = await queryPgOne<{ id: string }>(
+      "SELECT id FROM console_users WHERE email = $1 LIMIT 1",
+      [email]
+    );
     if (existingUser) {
       return json(
         { error: "This email is already registered" },
@@ -94,94 +87,57 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       : '["owner","admin"]';
 
     // Create tenant with all onboarding data
-    await db
-      .prepare(
-        `INSERT INTO tenants (id, name, owner_email, industry, size, created_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-      )
-      .bind(
-        tenantId,
-        orgName.trim(),
-        email,
-        industry || null,
-        companySize || null,
-        now,
-      )
-      .run();
+    await queryPg(
+      `INSERT INTO tenants (id, name, owner_email, industry, size, created_at, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+      [tenantId, orgName.trim(), email, industry || null, companySize || null, now]
+    );
 
     // Create owner account
-    await db
-      .prepare(
-        `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        userId,
-        email,
-        passwordHash,
-        salt,
-        ownerName || null,
-        roles,
-        tenantId,
-        now,
-      )
-      .run();
+    await queryPg(
+      `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [userId, email, passwordHash, salt, ownerName || null, roles, tenantId, now]
+    );
 
     // Create linked directory user for the owner
     const directoryUserId = crypto.randomUUID();
-    await db
-      .prepare(
-        `INSERT INTO directory_users (id, tenant_id, external_id, email, display_name, title, status, source, console_user_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        directoryUserId,
-        tenantId,
-        "local:" + userId,
-        email,
-        ownerName || email,
-        "Owner",
-        "active",
-        "local",
-        userId,
-        now,
-        now,
-      )
-      .run();
+    await queryPg(
+      `INSERT INTO directory_users (id, tenant_id, external_id, email, display_name, title, status, source, console_user_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [directoryUserId, tenantId, "local:" + userId, email, ownerName || email, "Owner", "active", "local", userId, now, now]
+    );
 
     // Table created via migration 0026_tenant_preferences.sql
     // Store framework preferences
     if (frameworks && frameworks.length > 0) {
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
-           VALUES (?, 'frameworks', ?)`,
-        )
-        .bind(tenantId, JSON.stringify(frameworks))
-        .run();
+      await queryPg(
+        `INSERT INTO tenant_preferences (tenant_id, key, value)
+         VALUES ($1, 'frameworks', $2)
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value`,
+        [tenantId, JSON.stringify(frameworks)]
+      );
     }
 
     // Auto-seed compliance controls for selected frameworks
     if (frameworks && frameworks.length > 0) {
       const controls = buildDefaultControls(frameworks);
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
-           VALUES (?, 'compliance_controls', ?)`,
-        )
-        .bind(tenantId, JSON.stringify(controls))
-        .run();
+      await queryPg(
+        `INSERT INTO tenant_preferences (tenant_id, key, value)
+         VALUES ($1, 'compliance_controls', $2)
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value`,
+        [tenantId, JSON.stringify(controls)]
+      );
     }
 
     // Store selected apps
     if (selectedApps && selectedApps.length > 0) {
-      await db
-        .prepare(
-          `INSERT OR REPLACE INTO tenant_preferences (tenant_id, key, value)
-           VALUES (?, 'selected_apps', ?)`,
-        )
-        .bind(tenantId, JSON.stringify(selectedApps))
-        .run();
+      await queryPg(
+        `INSERT INTO tenant_preferences (tenant_id, key, value)
+         VALUES ($1, 'selected_apps', $2)
+         ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value`,
+        [tenantId, JSON.stringify(selectedApps)]
+      );
     }
 
     // Create directory connection if IdP was selected
@@ -191,29 +147,21 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       selectedIdp &&
       ["okta", "google_workspace", "microsoft_365"].includes(selectedIdp)
     ) {
-      await db
-        .prepare(
-          `INSERT OR IGNORE INTO directory_connections (tenant_id, provider, status)
-           VALUES (?, ?, 'pending')`,
-        )
-        .bind(tenantId, selectedIdp)
-        .run();
+      await queryPg(
+        `INSERT INTO directory_connections (tenant_id, provider, status)
+         VALUES ($1, $2, 'pending')
+         ON CONFLICT DO NOTHING`,
+        [tenantId, selectedIdp]
+      );
 
       // Store Okta domain in app_credentials for the OAuth flow
       if (selectedIdp === "okta" && selectedIdpDomain?.trim()) {
-        await db
-          .prepare(
-            `INSERT INTO app_credentials (tenant_id, app_id, credentials, connected_at, updated_at)
-             VALUES (?, 'okta', ?, ?, ?)
-             ON CONFLICT(tenant_id, app_id) DO UPDATE SET credentials = excluded.credentials, updated_at = excluded.updated_at`,
-          )
-          .bind(
-            tenantId,
-            JSON.stringify({ domain: selectedIdpDomain.trim() }),
-            now,
-            now,
-          )
-          .run();
+        await queryPg(
+          `INSERT INTO app_credentials (tenant_id, app_id, credentials, connected_at, updated_at)
+           VALUES ($1, 'okta', $2, $3, $4)
+           ON CONFLICT(tenant_id, app_id) DO UPDATE SET credentials = EXCLUDED.credentials, updated_at = EXCLUDED.updated_at`,
+          [tenantId, JSON.stringify({ domain: selectedIdpDomain.trim() }), now, now]
+        );
       }
     }
 

@@ -1,32 +1,37 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { queryPg } from "$lib/server/pg";
 
-export const GET: RequestHandler = async ({ locals, platform }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
 
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+  const results = await queryPg<{
+    id: string;
+    name: string;
+    description: string;
+    parent_id: string | null;
+    level: number;
+    created_at: string;
+    entitlement_count: number;
+    assignment_count: number;
+  }>(
+    `SELECT r.id, r.name, r.description, r.parent_id, r.level, r.created_at,
+            COUNT(DISTINCT e.id) AS entitlement_count,
+            COUNT(DISTINCT a.id) AS assignment_count
+     FROM roles r
+     LEFT JOIN role_app_entitlements e ON e.role_id = r.id AND e.tenant_id = r.tenant_id
+     LEFT JOIN role_assignments a ON a.role_id = r.id AND a.tenant_id = r.tenant_id
+     WHERE r.tenant_id = $1
+     GROUP BY r.id
+     ORDER BY r.level ASC, r.name ASC`,
+    [tenantId],
+  );
 
-  const { results } = await db
-    .prepare(
-      `SELECT r.id, r.name, r.description, r.parent_id, r.level, r.created_at,
-              COUNT(DISTINCT e.id) AS entitlement_count,
-              COUNT(DISTINCT a.id) AS assignment_count
-       FROM roles r
-       LEFT JOIN role_app_entitlements e ON e.role_id = r.id AND e.tenant_id = r.tenant_id
-       LEFT JOIN role_assignments a ON a.role_id = r.id AND a.tenant_id = r.tenant_id
-       WHERE r.tenant_id = ?
-       GROUP BY r.id
-       ORDER BY r.level ASC, r.name ASC`,
-    )
-    .bind(tenantId)
-    .all();
-
-  const roles = (results ?? []).map((r: any) => ({
+  const roles = results.map((r) => ({
     id: r.id,
     name: r.name,
     description: r.description,
@@ -40,15 +45,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   return json({ roles });
 };
 
-export const POST: RequestHandler = async ({ request, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
   if (!tenantId) return json({ error: "Tenant context required" }, { status: 403 });
-
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
   let body: any;
   try {
@@ -65,12 +67,10 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db
-    .prepare(
-      `INSERT INTO roles (id, tenant_id, name, description, parent_id, level, metadata, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
+  await queryPg(
+    `INSERT INTO roles (id, tenant_id, name, description, parent_id, level, metadata, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
       id,
       tenantId,
       name,
@@ -80,8 +80,8 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
       metadata ? JSON.stringify(metadata) : null,
       now,
       now,
-    )
-    .run();
+    ],
+  );
 
   return json(
     {

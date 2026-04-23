@@ -1,14 +1,10 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { queryPg } from "$lib/server/pg";
 
 /** POST /api/billing/webhook — Stripe webhook handler */
 export const POST: RequestHandler = async ({ request, platform }) => {
-  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   const env = (platform?.env as any) || {};
-  if (!db) {
-    return json({ error: "Database unavailable" }, { status: 503 });
-  }
-
   const stripeWebhookSecret = env.STRIPE_WEBHOOK_SECRET;
   const payload = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -35,22 +31,20 @@ export const POST: RequestHandler = async ({ request, platform }) => {
         const tenantId = data.subscription_metadata?.tenant_id || data.metadata?.tenant_id;
         const plan = data.subscription_metadata?.plan || data.metadata?.plan;
         if (tenantId && plan) {
-          await db
-            .prepare(
-              `UPDATE tenant_billing SET
-                stripe_subscription_id = ?,
-                plan = ?,
-                status = 'active',
-                updated_at = datetime('now')
-              WHERE tenant_id = ?`,
-            )
-            .bind(data.subscription, plan, tenantId)
-            .run();
+          await queryPg(
+            `UPDATE tenant_billing SET
+              stripe_subscription_id = $1,
+              plan = $2,
+              status = 'active',
+              updated_at = NOW()
+            WHERE tenant_id = $3`,
+            [data.subscription, plan, tenantId]
+          );
 
-          await db
-            .prepare("UPDATE tenants SET tier = ?, updated_at = datetime('now') WHERE id = ?")
-            .bind(plan, tenantId)
-            .run();
+          await queryPg(
+            "UPDATE tenants SET tier = $1, updated_at = NOW() WHERE id = $2",
+            [plan, tenantId]
+          );
         }
         break;
       }
@@ -67,24 +61,22 @@ export const POST: RequestHandler = async ({ request, platform }) => {
                   ? "trialing"
                   : "active";
 
-          await db
-            .prepare(
-              `UPDATE tenant_billing SET
-                status = ?,
-                current_period_start = ?,
-                current_period_end = ?,
-                canceled_at = ?,
-                updated_at = datetime('now')
-              WHERE tenant_id = ?`,
-            )
-            .bind(
+          await queryPg(
+            `UPDATE tenant_billing SET
+              status = $1,
+              current_period_start = $2,
+              current_period_end = $3,
+              canceled_at = $4,
+              updated_at = NOW()
+            WHERE tenant_id = $5`,
+            [
               status,
               new Date(data.current_period_start * 1000).toISOString(),
               new Date(data.current_period_end * 1000).toISOString(),
               data.canceled_at ? new Date(data.canceled_at * 1000).toISOString() : null,
               tenantId,
-            )
-            .run();
+            ]
+          );
         }
         break;
       }
@@ -92,17 +84,15 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       case "customer.subscription.deleted": {
         const tenantId = data.metadata?.tenant_id;
         if (tenantId) {
-          await db
-            .prepare(
-              `UPDATE tenant_billing SET status = 'canceled', canceled_at = datetime('now'), updated_at = datetime('now') WHERE tenant_id = ?`,
-            )
-            .bind(tenantId)
-            .run();
+          await queryPg(
+            `UPDATE tenant_billing SET status = 'canceled', canceled_at = NOW(), updated_at = NOW() WHERE tenant_id = $1`,
+            [tenantId]
+          );
 
-          await db
-            .prepare("UPDATE tenants SET tier = 'free', updated_at = datetime('now') WHERE id = ?")
-            .bind(tenantId)
-            .run();
+          await queryPg(
+            "UPDATE tenants SET tier = 'free', updated_at = NOW() WHERE id = $1",
+            [tenantId]
+          );
         }
         break;
       }
@@ -110,12 +100,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       case "invoice.paid": {
         const tenantId = data.subscription_details?.metadata?.tenant_id || data.metadata?.tenant_id;
         if (tenantId) {
-          await db
-            .prepare(
-              `INSERT INTO invoices (id, tenant_id, stripe_invoice_id, amount_cents, currency, status, period_start, period_end, paid_at, pdf_url, created_at)
-               VALUES (?, ?, ?, ?, ?, 'paid', ?, ?, datetime('now'), ?, datetime('now'))`,
-            )
-            .bind(
+          await queryPg(
+            `INSERT INTO invoices (id, tenant_id, stripe_invoice_id, amount_cents, currency, status, period_start, period_end, paid_at, pdf_url, created_at)
+             VALUES ($1, $2, $3, $4, $5, 'paid', $6, $7, NOW(), $8, NOW())`,
+            [
               crypto.randomUUID(),
               tenantId,
               data.id,
@@ -124,8 +112,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
               new Date(data.period_start * 1000).toISOString(),
               new Date(data.period_end * 1000).toISOString(),
               data.invoice_pdf,
-            )
-            .run();
+            ]
+          );
         }
         break;
       }
@@ -133,12 +121,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       case "invoice.payment_failed": {
         const tenantId = data.subscription_details?.metadata?.tenant_id;
         if (tenantId) {
-          await db
-            .prepare(
-              "UPDATE tenant_billing SET status = 'past_due', updated_at = datetime('now') WHERE tenant_id = ?",
-            )
-            .bind(tenantId)
-            .run();
+          await queryPg(
+            "UPDATE tenant_billing SET status = 'past_due', updated_at = NOW() WHERE tenant_id = $1",
+            [tenantId]
+          );
         }
         break;
       }
