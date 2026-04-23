@@ -1,28 +1,32 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { queryPg, queryPgOne } from "$lib/server/pg";
 
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
   if (!user) return json({ authenticated: false });
+
+  const env = (platform?.env as any) || {};
+  const db = env.ATLAS_SHARED_DB;
 
   let orgName: string | undefined;
   let branding: { logoUrl?: string; accentColor?: string } = {};
 
-  if (user.tenantId) {
+  if (db && user.tenantId) {
     try {
-      const tenant = await queryPgOne<{ name: string }>(
-        `SELECT name FROM tenants WHERE id = $1`,
-        [user.tenantId]
-      );
+      const tenant = await db
+        .prepare(`SELECT name FROM tenants WHERE id = ?`)
+        .bind(user.tenantId)
+        .first<{ name: string }>();
       orgName = tenant?.name;
     } catch {}
 
     try {
-      const rows = await queryPg<{ key: string; value: string }>(
-        `SELECT key, value FROM tenant_preferences WHERE tenant_id = $1 AND key IN ('logo_url', 'accent_color')`,
-        [user.tenantId]
-      );
+      const { results: rows } = await db
+        .prepare(
+          `SELECT key, value FROM tenant_preferences WHERE tenant_id = ? AND key IN ('logo_url', 'accent_color')`,
+        )
+        .bind(user.tenantId)
+        .all<{ key: string; value: string }>();
       for (const row of rows ?? []) {
         if (row.key === "logo_url") branding.logoUrl = row.value;
         if (row.key === "accent_color") branding.accentColor = row.value;

@@ -10,7 +10,6 @@ import {
   getSessionTtl,
 } from "@atlasit/shared/security/policies";
 import type { SSOIdentity } from "@atlasit/shared/sso/types";
-import { queryPg, queryPgOne } from "$lib/server/pg";
 
 /**
  * POST /api/auth/sso/callback — SAML HTTP-POST binding
@@ -31,9 +30,10 @@ async function handleCallback(
   platform: any,
   cookies: any,
 ): Promise<Response> {
+  const db = platform?.env?.ATLAS_SHARED_DB;
   const kv = platform?.env?.KV_SESSIONS;
 
-  if (!kv) {
+  if (!db || !kv) {
     return json({ error: "Service unavailable" }, { status: 503 });
   }
 
@@ -60,15 +60,22 @@ async function handleCallback(
   }
 
   // Look up stored state
-  let stateRow: { tenant_id: string; protocol: string; code_verifier: string | null; redirect_url: string | null } | null;
+  let stateRow: {
+    tenant_id: string;
+    protocol: string;
+    code_verifier: string | null;
+    redirect_url: string | null;
+  } | null;
   try {
-    stateRow = await queryPgOne<{ tenant_id: string; protocol: string; code_verifier: string | null; redirect_url: string | null }>(
-      "SELECT tenant_id, protocol, code_verifier, redirect_url FROM sso_auth_state WHERE state = $1 AND expires_at > NOW()",
-      [state]
-    );
+    stateRow = await db
+      .prepare(
+        "SELECT tenant_id, protocol, code_verifier, redirect_url FROM sso_auth_state WHERE state = ? AND expires_at > datetime('now')",
+      )
+      .bind(state)
+      .first();
 
     // Delete used state (one-time use)
-    await queryPg("DELETE FROM sso_auth_state WHERE state = $1", [state]);
+    await db.prepare("DELETE FROM sso_auth_state WHERE state = ?").bind(state).run();
   } catch {
     throw redirect(302, "/console/login?error=sso_state_error");
   }
@@ -87,10 +94,10 @@ async function handleCallback(
   // Load SSO config
   let config;
   try {
-    const row = await queryPgOne<SSOConfigRow>(
-      "SELECT * FROM sso_configurations WHERE tenant_id = $1 AND enabled = true LIMIT 1",
-      [tenantId]
-    );
+    const row = await db
+      .prepare("SELECT * FROM sso_configurations WHERE tenant_id = ? AND enabled = 1 LIMIT 1")
+      .bind(tenantId)
+      .first<SSOConfigRow>();
     if (!row) throw new Error("No SSO config");
     config = rowToConfig(row);
   } catch {
@@ -144,14 +151,20 @@ async function handleCallback(
 
   // Always scope user lookup by tenant_id to prevent cross-tenant auth
   try {
-    const userRow = await queryPgOne<{ id: string; roles: string }>(
-      "SELECT id, roles FROM console_users WHERE LOWER(email) = $1 AND tenant_id = $2 LIMIT 1",
-      [email.toLowerCase(), tenantId]
-    );
+    const userRow = await db
+      .prepare(
+        "SELECT id, roles FROM console_users WHERE email = ? COLLATE NOCASE AND tenant_id = ? LIMIT 1",
+      )
+      .bind(email, tenantId)
+      .first<{ id: string; roles: string }>();
 
     if (userRow) {
       userId = userRow.id;
-      try { roles = JSON.parse(userRow.roles); } catch { roles = ["member"]; }
+      try {
+        roles = JSON.parse(userRow.roles);
+      } catch {
+        roles = ["member"];
+      }
     }
   } catch {
     // console_users table may not exist yet — JIT will create
@@ -164,17 +177,21 @@ async function handleCallback(
     const now = new Date().toISOString();
 
     try {
-      await queryPg(
-        `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
-         VALUES ($1, $2, 'sso-no-password', 'sso', $3, $4, $5, $6)`,
-        [userId, email, displayName, JSON.stringify(roles), tenantId, now]
-      );
+      await db
+        .prepare(
+          `INSERT INTO console_users (id, email, password_hash, salt, display_name, roles, tenant_id, created_at)
+           VALUES (?, ?, 'sso-no-password', 'sso', ?, ?, ?, ?)`,
+        )
+        .bind(userId, email, displayName, JSON.stringify(roles), tenantId, now)
+        .run();
 
       // Also add to console_user_roles for RBAC
-      await queryPg(
-        `INSERT INTO console_user_roles (email, roles, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-        [email, JSON.stringify(roles), tenantId]
-      );
+      await db
+        .prepare(
+          `INSERT OR IGNORE INTO console_user_roles (email, roles, tenant_id) VALUES (?, ?, ?)`,
+        )
+        .bind(email, JSON.stringify(roles), tenantId)
+        .run();
     } catch (e) {
       console.error("JIT provisioning failed:", e);
       // Non-fatal: user can still log in if they exist in some form
@@ -193,7 +210,7 @@ async function handleCallback(
   isSuperAdmin = email.toLowerCase() === superAdminEmail || roles.includes("super-admin");
 
   // Load tenant security policy to determine session TTL
-  const secPolicy = await loadTenantSecurityPolicy(tenantId);
+  const secPolicy = await loadTenantSecurityPolicy(db, tenantId);
   const mfaRequired = isMfaRequiredForUser(secPolicy, roles);
   const bypassMfa = config.ssoBypassMfa;
 
@@ -234,10 +251,10 @@ async function handleCallback(
   if (mfaRequired && !bypassMfa) {
     // Check if user has MFA enrolled
     try {
-      const mfaRow = await queryPgOne<{ verified: number }>(
-        "SELECT verified FROM mfa_totp_secrets WHERE user_id = $1 AND verified = 1",
-        [userId]
-      );
+      const mfaRow = await db
+        .prepare("SELECT verified FROM mfa_totp_secrets WHERE user_id = ? AND verified = 1")
+        .bind(userId)
+        .first();
 
       if (!mfaRow) {
         // Need MFA enrollment
@@ -255,12 +272,12 @@ async function handleCallback(
   throw redirect(302, redirectUrl);
 }
 
-async function loadTenantSecurityPolicy(tenantId: string) {
+async function loadTenantSecurityPolicy(db: any, tenantId: string) {
   try {
-    const row = await queryPgOne<{ value: string }>(
-      "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
-      [tenantId, "security_policy"]
-    );
+    const row = await db
+      .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+      .bind(tenantId, "security_policy")
+      .first<{ value: string }>();
     return resolveSecurityPolicy(row ? JSON.parse(row.value) : null);
   } catch {
     return resolveSecurityPolicy(null);

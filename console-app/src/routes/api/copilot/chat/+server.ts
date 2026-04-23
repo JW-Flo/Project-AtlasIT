@@ -10,16 +10,22 @@ import {
   type CopilotChatRequest,
   type CopilotAction,
 } from "@atlasit/shared";
-import { queryPg, queryPgOne } from "$lib/server/pg";
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ error: "Tenant context required. Please log out and log back in." }, { status: 403 });
+  if (!tenantId)
+    return json(
+      { error: "Tenant context required. Please log out and log back in." },
+      { status: 403 },
+    );
 
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
   const env = (platform?.env ?? {}) as Record<string, any>;
+
+  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   let body: CopilotChatRequest;
   try {
@@ -44,36 +50,18 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     await kv.put(rateKey, String(current + 1), { expirationTtl: 3600 });
   }
 
-  // Build tenant context for the system prompt (buildCopilotContext accepts a DB-like object)
-  // Note: buildCopilotContext needs to be updated to support PG queries or we pass a wrapper
-  const tenantContext = await buildCopilotContext(
-    {
-      prepare: (sql: string) => ({
-        bind: (...params: any[]) => ({
-          first: async () => {
-            const pgSql = sql.replace(/\?/g, (_, i) => `$${i + 1}`);
-            return await queryPgOne(pgSql, params);
-          },
-          all: async () => {
-            const pgSql = sql.replace(/\?/g, (_, i) => `$${i + 1}`);
-            const results = await queryPg(pgSql, params);
-            return { results };
-          },
-        }),
-      }),
-    } as any,
-    tenantId,
-  );
+  // Build tenant context for the system prompt
+  const tenantContext = await buildCopilotContext(db, tenantId);
 
   // Load conversation history if continuing
   let history: CopilotMessage[] = [];
   const convId = conversationId ?? crypto.randomUUID();
   if (conversationId) {
     try {
-      const row = await queryPgOne<{ value: string }>(
-        "SELECT value FROM tenant_preferences WHERE tenant_id = $1 AND key = $2",
-        [tenantId, `copilot_conv:${conversationId}`],
-      );
+      const row = await db
+        .prepare("SELECT value FROM tenant_preferences WHERE tenant_id = ? AND key = ?")
+        .bind(tenantId, `copilot_conv:${conversationId}`)
+        .first<{ value: string }>();
       if (row?.value) {
         history = JSON.parse(row.value);
       }
@@ -106,20 +94,22 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     try {
       // Fetch connected apps and existing rules for context
       const [appsResult, rulesResult] = await Promise.all([
-        queryPg<{ app_id: string }>(
-          "SELECT app_id FROM connected_apps WHERE tenant_id = $1 AND status = $2",
-          [tenantId, "active"],
-        ),
-        queryPg<{ name: string; trigger_type: string }>(
-          "SELECT name, trigger_type FROM automation_rules WHERE tenant_id = $1 LIMIT 20",
-          [tenantId],
-        ),
+        db
+          .prepare("SELECT app_id FROM connected_apps WHERE tenant_id = ? AND status = 'active'")
+          .bind(tenantId)
+          .all<{ app_id: string }>(),
+        db
+          .prepare("SELECT name, trigger_type FROM automation_rules WHERE tenant_id = ? LIMIT 20")
+          .bind(tenantId)
+          .all<{ name: string; trigger_type: string }>(),
       ]);
 
       nlRuleResult = await buildAutomationFromNL(env, {
         prompt: message,
-        connectedApps: appsResult.map((r) => r.app_id),
-        existingRulesSummary: rulesResult.map((r) => `${r.name} (${r.trigger_type})`),
+        connectedApps: (appsResult.results ?? []).map((r) => r.app_id),
+        existingRulesSummary: (rulesResult.results ?? []).map(
+          (r) => `${r.name} (${r.trigger_type})`,
+        ),
       });
     } catch {
       // Fall through to normal AI response if NL builder fails
@@ -189,12 +179,19 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   // Persist conversation (keep last 50 messages)
   const updatedHistory = [...history, userMsg, assistantMsg].slice(-50);
   try {
-    await queryPg(
-      `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT(tenant_id, key) DO UPDATE SET value = $3, updated_at = NOW()`,
-      [tenantId, `copilot_conv:${convId}`, JSON.stringify(updatedHistory)],
-    );
+    await db
+      .prepare(
+        `INSERT INTO tenant_preferences (tenant_id, key, value, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(tenant_id, key) DO UPDATE SET value = ?, updated_at = datetime('now')`,
+      )
+      .bind(
+        tenantId,
+        `copilot_conv:${convId}`,
+        JSON.stringify(updatedHistory),
+        JSON.stringify(updatedHistory),
+      )
+      .run();
   } catch {
     /* best-effort persistence */
   }
@@ -206,21 +203,24 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 };
 
 /** GET conversations list for the current user */
-export const GET: RequestHandler = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals, platform, url }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
   const tenantId = user.tenantId;
-  if (!tenantId) return json({ conversations: [] });
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db || !tenantId) return json({ conversations: [] });
 
-  const results = await queryPg<{ key: string; updated_at: string }>(
-    `SELECT key, updated_at FROM tenant_preferences
-     WHERE tenant_id = $1 AND key LIKE $2
-     ORDER BY updated_at DESC LIMIT 20`,
-    [tenantId, "copilot_conv:%"],
-  );
+  const { results } = await db
+    .prepare(
+      `SELECT key, updated_at FROM tenant_preferences
+       WHERE tenant_id = ? AND key LIKE 'copilot_conv:%'
+       ORDER BY updated_at DESC LIMIT 20`,
+    )
+    .bind(tenantId)
+    .all<{ key: string; updated_at: string }>();
 
-  const conversations = results.map((r) => ({
+  const conversations = (results ?? []).map((r) => ({
     id: r.key.replace("copilot_conv:", ""),
     updatedAt: r.updated_at,
   }));

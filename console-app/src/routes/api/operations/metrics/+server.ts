@@ -1,5 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { getOrchestratorBase, getEnv, proxyFetch } from "../_proxy-helpers";
+import { getOrchestratorBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
 /**
  * GET /api/operations/metrics

@@ -1,6 +1,5 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
-import { queryPg, queryPgOne } from "$lib/server/pg";
 
 function escapeCSV(value: string | number | null | undefined): string {
   if (value == null) return "";
@@ -12,9 +11,12 @@ function escapeCSV(value: string | number | null | undefined): string {
   return safe;
 }
 
-export const GET: RequestHandler = async ({ url, locals }) => {
+export const GET: RequestHandler = async ({ url, locals, platform }) => {
   const user = locals.user as any;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 500 });
 
   const format = url.searchParams.get("format") === "csv" ? "csv" : "json";
   const from = url.searchParams.get("from") ?? null;
@@ -27,41 +29,44 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 
   const filters: string[] = [];
   const binds: (string | number)[] = [];
-  let paramIndex = 1;
 
   if (!user.superAdmin) {
-    filters.push(`tenant_id = $${paramIndex++}`);
+    filters.push("tenant_id = ?");
     binds.push(user.tenantId);
   }
   if (from) {
-    filters.push(`created_at >= $${paramIndex++}`);
+    filters.push("created_at >= ?");
     binds.push(from);
   }
   if (to) {
-    filters.push(`created_at <= $${paramIndex++}`);
+    filters.push("created_at <= ?");
     binds.push(to);
   }
   if (actionFilter) {
-    filters.push(`action = $${paramIndex++}`);
+    filters.push("action = ?");
     binds.push(actionFilter);
   }
 
   const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
 
-  const [countResult, rows] = await Promise.all([
-    queryPgOne<{ total: number }>(
-      `SELECT COUNT(*) as total FROM audit_log ${where}`,
-      binds
-    ).catch(() => ({ total: 0 })),
-    queryPg<any>(
-      `SELECT id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at
-       FROM audit_log ${where}
-       ORDER BY created_at DESC LIMIT $${paramIndex}`,
-      [...binds, limit]
-    ).catch(() => []),
+  const [countResult, rowsResult] = await Promise.all([
+    db
+      .prepare(`SELECT COUNT(*) as total FROM audit_log ${where}`)
+      .bind(...binds)
+      .first()
+      .catch(() => ({ total: 0 })),
+    db
+      .prepare(
+        `SELECT id, tenant_id, actor_id, action, resource_type, resource_id, details, created_at
+         FROM audit_log ${where}
+         ORDER BY created_at DESC LIMIT ?`,
+      )
+      .bind(...binds, limit)
+      .all()
+      .catch(() => ({ results: [] })),
   ]);
 
-  const entries = (rows ?? []).map((row: any) => {
+  const entries = (rowsResult.results ?? []).map((row: any) => {
     let actorEmail = row.actor_id ?? "";
     let detail = "";
     try {
@@ -78,7 +83,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
     };
   });
 
-  const total = countResult?.total ?? 0;
+  const total = (countResult as any)?.total ?? 0;
 
   if (format === "csv") {
     const header = "Date,Actor,Action,Target,Details";

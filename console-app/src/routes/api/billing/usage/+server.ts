@@ -1,12 +1,16 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { queryPg } from "$lib/server/pg";
 
 /** POST /api/billing/usage — record a usage metric event */
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const user = (locals as any).user;
   if (!user?.tenantId) {
     return json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const db = (platform?.env as any)?.ATLAS_SHARED_DB;
+  if (!db) {
+    return json({ error: "Database unavailable" }, { status: 503 });
   }
 
   const body = await request.json();
@@ -30,11 +34,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
 
   try {
-    await queryPg(
-      `INSERT INTO usage_records (id, tenant_id, metric, quantity, recorded_at, period_start, period_end)
-       VALUES ($1, $2, $3, $4, NOW(), $5, $6)`,
-      [crypto.randomUUID(), user.tenantId, metric, quantity || 1, periodStart, periodEnd]
-    );
+    await db
+      .prepare(
+        `INSERT INTO usage_records (id, tenant_id, metric, quantity, recorded_at, period_start, period_end)
+         VALUES (?, ?, ?, ?, datetime('now'), ?, ?)`,
+      )
+      .bind(crypto.randomUUID(), user.tenantId, metric, quantity || 1, periodStart, periodEnd)
+      .run();
 
     return json({ recorded: true });
   } catch (err: any) {
