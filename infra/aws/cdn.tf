@@ -47,7 +47,9 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # Default: Console Lambda (SvelteKit SSR — handles all pages + API routes)
+  # Default: Console Lambda (SvelteKit SSR — serves /login, /signup, /_app/*, etc.)
+  # S3 origin is retained for ad-hoc static uploads but is no longer the default;
+  # the Lambda serves both HTML pages and immutable static assets via adapter-node.
   default_cache_behavior {
     target_origin_id       = "console-lambda"
     viewer_protocol_policy = "redirect-to-https"
@@ -57,7 +59,7 @@ resource "aws_cloudfront_distribution" "main" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "x-tenant-id", "Origin", "Host", "Content-Type"]
+      headers      = ["Authorization", "Origin", "Host"]
       cookies {
         forward = "all"
       }
@@ -78,28 +80,51 @@ resource "aws_cloudfront_distribution" "main" {
     }
   }
 
-  # /_app/* → S3 (immutable SvelteKit assets — JS, CSS, fonts)
+  # /console/* → Console Lambda (SvelteKit SSR)
   ordered_cache_behavior {
-    path_pattern           = "/_app/*"
-    target_origin_id       = "s3-console"
+    path_pattern           = "/console/*"
+    target_origin_id       = "console-lambda"
     viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods         = ["GET", "HEAD"]
     compress               = true
 
     forwarded_values {
-      query_string = false
+      query_string = true
+      headers      = ["Authorization", "Origin", "Host"]
       cookies {
-        forward = "none"
+        forward = "all"
       }
     }
 
     min_ttl     = 0
-    default_ttl = 31536000
-    max_ttl     = 31536000
+    default_ttl = 0
+    max_ttl     = 0
   }
 
-  # /health → API Gateway (core-api health)
+  # /api/* → Console Lambda (SvelteKit API routes)
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    target_origin_id       = "console-lambda"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "x-tenant-id", "Origin", "Host", "Content-Type"]
+      cookies {
+        forward = "all"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
+  # /health → API Gateway (no caching)
   ordered_cache_behavior {
     path_pattern           = "/health"
     target_origin_id       = "apigw"
@@ -125,6 +150,20 @@ resource "aws_cloudfront_distribution" "main" {
     minimum_protocol_version = "TLSv1.2_2021"
   }
 
+  # SPA routing: serve index.html for 403/404 so client-side router handles all paths
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 10
+  }
+
+  custom_error_response {
+    error_code            = 404
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 10
+  }
 
   restrictions {
     geo_restriction {

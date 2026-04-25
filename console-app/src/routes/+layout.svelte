@@ -111,16 +111,6 @@
     window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
 
-      // Intercept SvelteKit's __data.json fetches (static mode has no server data)
-      if (url.includes("__data.json")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({ type: "data", nodes: [null, null, null] }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
-        );
-      }
-
       // Demo mode: intercept all API calls with mock data (check dynamically)
       if (isDemoMode() && (url.startsWith("/api/") || url.startsWith("/orchestrator/") || url.startsWith("/adapters/"))) {
         const method = init?.method?.toUpperCase() ?? "GET";

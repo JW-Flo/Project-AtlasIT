@@ -86,6 +86,10 @@ export const handle: Handle = async ({ event, resolve }) => {
   const envForAuth = { ...process.env, ...(envRaw ?? {}) };
   const devBypass = isDevAuthBypass(envForAuth);
 
+  // True in CF Workers (platform.env is the Cloudflare bindings object).
+  // False in Lambda/Node.js (platform is undefined, auth lives in browser sessionStorage).
+  const isCfWorkersMode = !!event.platform?.env;
+
   // ------------------------------------------------------------------
   // 0. Body size enforcement (BODY_SIZE_LIMIT bypass mitigation)
   //    Rejects oversized bodies before any auth or DB work is done.
@@ -268,6 +272,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   // ------------------------------------------------------------------
   // 5. Route protection: /console/* requires authentication
+  //
+  // In Lambda/SPA mode (isCfWorkersMode=false), auth lives in browser
+  // sessionStorage and the client-side guard in +layout.svelte handles
+  // unauthenticated page access. Server-side page redirects only fire
+  // in CF Workers mode where session cookies are validated server-side.
+  // API routes are always protected regardless of deployment mode.
   // ------------------------------------------------------------------
   if (
     event.url.pathname.startsWith("/console") &&
@@ -275,14 +285,16 @@ export const handle: Handle = async ({ event, resolve }) => {
     !event.url.pathname.startsWith("/console/onboarding")
   ) {
     if (!user) {
-      // API routes return 401; page routes redirect to login
       if (event.url.pathname.startsWith("/api/")) {
         return new Response(JSON.stringify({ error: "unauthorized", code: "auth_required" }), {
           status: 401,
           headers: { "content-type": "application/json" },
         });
       }
-      throw redirect(302, "/console/login");
+      // Only server-redirect in CF Workers; Lambda lets the client guard run.
+      if (isCfWorkersMode) {
+        throw redirect(302, "/console/login");
+      }
     }
   }
 
