@@ -22,17 +22,30 @@
         else payload.recoveryCode = trimmed;
       }
 
-      const res = await fetch(`${API_BASE}/api/v1/auth/token`, {
+      const res = await fetch(API_BASE ? `${API_BASE}/api/v1/auth/token` : "/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: API_BASE ? "omit" : "same-origin",
         body: JSON.stringify(payload),
       });
 
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        status?: string;
+        token?: string;
+        userId?: string;
+        tenantId?: string;
+        tenantName?: string;
+        role?: string;
+        error?: string;
+        message?: string;
+        code?: string;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mfaSetupRequired?: boolean;
+      };
+
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as {
-          message?: string;
-          code?: string;
-        };
         if (data.code === "MFA_REQUIRED") {
           mfaRequired = true;
           error = mfaCode ? "Invalid MFA code" : "";
@@ -40,20 +53,19 @@
         }
         if (data.code === "MFA_INVALID") {
           mfaRequired = true;
-          error = data.message ?? "Invalid MFA code";
+          error = data.message ?? data.error ?? "Invalid MFA code";
           mfaCode = "";
           return;
         }
-        error = data.message ?? `Login failed (${res.status})`;
+        error = data.message ?? data.error ?? `Login failed (${res.status})`;
         return;
       }
 
-      const data = (await res.json()) as {
-        token?: string;
-        userId?: string;
-        tenantId?: string;
-        role?: string;
-      };
+      if (data.mfaRequired) {
+        mfaRequired = true;
+        error = mfaCode ? "Invalid MFA code" : "";
+        return;
+      }
 
       if (data.token) {
         sessionStorage.setItem("atlasit_token", data.token);
@@ -63,12 +75,15 @@
             userId: data.userId,
             email,
             tenantId: data.tenantId,
+            tenantName: data.tenantName,
             role: data.role,
           }),
         );
         await goto("/console");
+      } else if (data.success || data.status === "success") {
+        await goto("/console");
       } else {
-        error = "No token received";
+        error = "Login failed";
       }
     } catch (e) {
       error = (e as Error).message;
