@@ -50,21 +50,19 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
       - name: Apply new PG migrations via migration-runner Lambda
         run: |
-          # Find .sql files in migrations/ changed in this push
           CHANGED=$(git diff --name-only --diff-filter=AM HEAD^ HEAD -- 'migrations/*.sql' | sort)
           if [ -z "$CHANGED" ]; then
-            echo "No migration files changed in this push — skipping"
+            echo "No migration files changed in this push -- skipping"
             exit 0
           fi
           echo "New/changed migrations:"
           echo "$CHANGED"
-          echo ""
           FAILED=0
           for SQL_FILE in $CHANGED; do
             echo "=== Applying $SQL_FILE ==="
@@ -82,7 +80,7 @@ jobs:
               /tmp/mig-result.json 2>&1)
             echo "$RESULT"
             if grep -q '"ok":false' /tmp/mig-result.json; then
-              echo "::error file=$SQL_FILE::migration failed — see preview below"
+              echo "::error file=$SQL_FILE::migration failed"
               cat /tmp/mig-result.json
               FAILED=$((FAILED + 1))
             else
@@ -94,16 +92,6 @@ jobs:
             exit 1
           fi
 
-
-  # ── All Cloudflare deploy jobs removed 2026-04-13 ──────────────────────
-  # (deploy-root-worker, deploy-core-api, deploy-orchestrator, deploy-compliance,
-  # deploy-onboarding, deploy-slack-agent, deploy-dispatch, deploy-adapter-*,
-  # deploy-docs, deploy-apex-redirect, deploy-email, deploy-slack-approval,
-  # deploy-scheduler, deploy-marketplace). The CF stack has been replaced by
-  # AWS Lambda + S3+CloudFront. Legacy source dirs (core-api/, ai-orchestrator/,
-  # compliance-worker/, etc.) are retained for reference but not redeployed.
-
-  # ── AWS Lambda Functions ─────────────────────────────────────────────────
   deploy-aws-lambdas:
     needs: [changes]
     if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
@@ -121,7 +109,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build all Lambda functions
         run: node scripts/build-lambdas.mjs
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
@@ -132,7 +120,6 @@ jobs:
             FUNC=$(basename "$dir")
             FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
             echo "Packaging ${FUNC}..."
-            # Use dist/ if exists, otherwise root
             if [ -d "${dir}dist" ]; then
               cd "${dir}dist"
             else
@@ -173,7 +160,6 @@ jobs:
           for dir in lambdas/*/; do
             FUNC=$(basename "$dir")
             FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
-            # List versions except $LATEST, sorted numerically descending, skip top 5, delete rest
             aws lambda list-versions-by-function \
               --function-name "$FUNCTION_NAME" \
               --query 'Versions[?Version!=`$LATEST`].Version' \
@@ -189,19 +175,17 @@ jobs:
                     --qualifier "$VER" 2>/dev/null || true
                 done
           done
-
       - name: Health check
         run: |
           API_URL=$(aws ssm get-parameter --name "/atlasit/dev/api-gateway-url" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
           if [ -n "$API_URL" ]; then
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" --max-time 10 || echo "000")
-            echo "Health: $API_URL/health → HTTP $STATUS"
+            echo "Health: $API_URL/health -> HTTP $STATUS"
             if [ "$STATUS" != "200" ]; then
               echo "::warning::Health check returned $STATUS"
             fi
           fi
 
-  # ── AWS Console (Lambda SSR with adapter-node) ───────────────────────────
   deploy-aws-console:
     needs: [changes]
     if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
@@ -222,7 +206,7 @@ jobs:
         run: |
           npx svelte-kit sync && pnpm run build
           cp lambda-handler.js build-lambda/
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
@@ -233,14 +217,11 @@ jobs:
 
           cd console-app/build-lambda
 
-          # Add pg dependency (ES module mode for adapter-node output)
           echo '{"type":"module","dependencies":{"pg":"^8.12.0"}}' > package.json
           npm install --production --silent
 
-          # Package
           zip -r /tmp/console-api.zip .
 
-          # Deploy
           aws lambda update-function-code \
             --function-name "$FUNCTION_NAME" \
             --zip-file "fileb:///tmp/console-api.zip" \
@@ -253,7 +234,7 @@ jobs:
           FUNCTION_URL=$(aws lambda get-function-url-config --function-name "atlasit-console-api-${ENV}" --query 'FunctionUrl' --output text 2>/dev/null || echo "")
           if [ -n "$FUNCTION_URL" ]; then
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FUNCTION_URL}api/health" --max-time 10 || echo "000")
-            echo "Health: ${FUNCTION_URL}api/health → HTTP $STATUS"
+            echo "Health: ${FUNCTION_URL}api/health -> HTTP $STATUS"
             if [ "$STATUS" != "200" ]; then
               echo "::warning::Console health check returned $STATUS"
             fi
