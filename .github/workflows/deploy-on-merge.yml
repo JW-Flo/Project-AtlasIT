@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: deploy-on-merge-${{ github.ref }}
@@ -42,9 +43,6 @@ jobs:
     if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
     name: Apply PG migrations (Aurora)
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -111,9 +109,6 @@ jobs:
     if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy AWS Lambdas
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -212,9 +207,6 @@ jobs:
     if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy Console Lambda (SSR)
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
