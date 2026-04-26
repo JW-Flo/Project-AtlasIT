@@ -145,8 +145,6 @@
     items: [
       { href: "/console/admin", label: "Tenant Management", icon: Shield },
       { href: "/console/admin/operations", label: "Operations", icon: Activity },
-      { href: "/console/admin/users", label: "All Users", icon: Users },
-      { href: "/console/admin/impersonate", label: "Impersonate", icon: User },
     ],
   };
 
