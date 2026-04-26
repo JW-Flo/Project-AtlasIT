@@ -10,8 +10,6 @@
   let fieldErrors = $state<Record<string, string>>({});
   let globalError = $state("");
 
-  const API_BASE = import.meta.env?.VITE_API_URL ?? "";
-
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   function validate(): boolean {
@@ -44,7 +42,7 @@
     loading = true;
     try {
       // Step 1: Create tenant + admin user
-      const signupRes = await fetch(`${API_BASE}/api/onboarding/signup`, {
+      const signupRes = await fetch("/api/onboarding/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -78,37 +76,19 @@
         return;
       }
 
-      // Step 2: Auto-login with the new credentials
-      const tokenRes = await fetch(`${API_BASE}/api/v1/auth/token`, {
+      // Step 2: Auto-login with the new credentials via cookie session
+      const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
       });
 
-      const tokenData = (await tokenRes.json()) as {
-        token?: string;
-        userId?: string;
-        tenantId?: string;
-        role?: string;
-        message?: string;
-      };
-
-      if (!tokenRes.ok || !tokenData.token) {
-        // Signup worked but auto-login failed — redirect to login page
+      if (!loginRes.ok) {
         window.location.href = "/login";
         return;
       }
 
-      sessionStorage.setItem("atlasit_token", tokenData.token);
-      sessionStorage.setItem(
-        "atlasit_user",
-        JSON.stringify({
-          userId: tokenData.userId ?? signupData.data?.userId,
-          email: email.trim().toLowerCase(),
-          tenantId: tokenData.tenantId ?? signupData.data?.tenantId,
-          role: tokenData.role ?? "admin",
-        }),
-      );
       window.location.href = "/console/onboarding";
     } catch (e) {
       globalError = (e as Error).message ?? "An unexpected error occurred";

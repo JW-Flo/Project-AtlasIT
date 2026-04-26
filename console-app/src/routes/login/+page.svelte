@@ -9,8 +9,6 @@
   let error = $state("");
   let loading = $state(false);
 
-  const API_BASE = import.meta.env?.VITE_API_URL ?? "";
-
   async function handleLogin() {
     error = "";
     loading = true;
@@ -22,10 +20,10 @@
         else payload.recoveryCode = trimmed;
       }
 
-      const res = await fetch(API_BASE ? `${API_BASE}/api/v1/auth/token` : "/api/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: API_BASE ? "omit" : "same-origin",
+        credentials: "same-origin",
         body: JSON.stringify(payload),
       });
 
