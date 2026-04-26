@@ -1,45 +1,28 @@
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
+import { queryPgOne } from "$lib/server/pg";
+import { getStripe } from "$lib/server/stripe";
 
-/** POST /api/billing/portal — create a Stripe billing portal session */
-export const POST: RequestHandler = async ({ request, platform, locals }) => {
+export const POST: RequestHandler = async ({ locals, url }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!user?.tenantId) {
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
+
+  const billing = await queryPgOne<{ stripe_customer_id: string | null }>(
+    `SELECT stripe_customer_id FROM tenant_billing WHERE tenant_id = $1`,
+    [user.tenantId],
+  );
+
+  if (!billing?.stripe_customer_id) {
+    return json({ error: "No billing account found. Subscribe to a plan first." }, { status: 404 });
   }
-  const body = await request.text();
-  const upstream = `${base}/api/v1/billing/portal`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      method: "POST",
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+
+  const stripe = getStripe();
+  const session = await stripe.billingPortal.sessions.create({
+    customer: billing.stripe_customer_id,
+    return_url: `${url.origin}/console/settings/billing`,
+  });
+
+  return json({ url: session.url });
 };

@@ -1,89 +1,74 @@
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
+import { queryPg, queryPgOne } from "$lib/server/pg";
+import { getStripe } from "$lib/server/stripe";
 
-/**
- * GET /api/billing/seats — returns current seat count and subscription info
- */
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!user?.tenantId) {
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const upstream = `${base}/api/v1/billing/seats${url.search}`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-      },
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+
+  const billing = await queryPgOne<{ plan: string; seats: number }>(
+    `SELECT plan, COALESCE(seats, 1) as seats FROM tenant_billing WHERE tenant_id = $1`,
+    [user.tenantId],
+  );
+
+  const activeUsers = await queryPgOne<{ count: string }>(
+    `SELECT COUNT(*)::text as count FROM console_users WHERE tenant_id = $1`,
+    [user.tenantId],
+  );
+
+  return json({
+    status: "success",
+    data: {
+      seats: billing?.seats ?? 1,
+      activeUsers: parseInt(activeUsers?.count ?? "0", 10),
+      plan: billing?.plan ?? "free",
+    },
+  });
 };
 
-/**
- * POST /api/billing/seats — update seat count on an active subscription.
- * Stripe prorates the change automatically.
- */
-export const POST: RequestHandler = async ({ request, platform, locals }) => {
+export const POST: RequestHandler = async ({ request, locals }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!user?.tenantId) {
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
+
+  const body = await request.json().catch(() => null);
+  if (!body) return json({ error: "Invalid JSON" }, { status: 400 });
+
+  const seats = typeof body.seats === "number" ? Math.max(1, Math.floor(body.seats)) : null;
+  if (!seats) {
+    return json({ error: "seats must be a positive integer" }, { status: 400 });
   }
-  const body = await request.text();
-  const upstream = `${base}/api/v1/billing/seats`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      method: "POST",
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+
+  const billing = await queryPgOne<{
+    stripe_subscription_id: string | null;
+    plan: string;
+  }>(`SELECT stripe_subscription_id, plan FROM tenant_billing WHERE tenant_id = $1`, [
+    user.tenantId,
+  ]);
+
+  if (billing?.stripe_subscription_id) {
+    const stripe = getStripe();
+    const sub = await stripe.subscriptions.retrieve(billing.stripe_subscription_id);
+    const item = sub.items.data[0];
+    if (item) {
+      await stripe.subscriptions.update(billing.stripe_subscription_id, {
+        items: [{ id: item.id, quantity: seats }],
+        proration_behavior: "create_prorations",
+      });
+    }
   }
+
+  await queryPg(`UPDATE tenant_billing SET seats = $1, updated_at = NOW() WHERE tenant_id = $2`, [
+    seats,
+    user.tenantId,
+  ]);
+
+  return json({
+    status: "success",
+    data: { seats, plan: billing?.plan ?? "free" },
+  });
 };

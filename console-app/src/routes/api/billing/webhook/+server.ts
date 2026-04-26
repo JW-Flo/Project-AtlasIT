@@ -1,35 +1,43 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { queryPg } from "$lib/server/pg";
+import { getStripe } from "$lib/server/stripe";
+import type Stripe from "stripe";
 
-/** POST /api/billing/webhook — Stripe webhook handler */
-export const POST: RequestHandler = async ({ request, platform }) => {
-  const env = (platform?.env as any) || {};
-  const stripeWebhookSecret = env.STRIPE_WEBHOOK_SECRET || process.env.STRIPE_WEBHOOK_SECRET;
+export const POST: RequestHandler = async ({ request }) => {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const payload = await request.text();
   const signature = request.headers.get("stripe-signature");
 
-  // In production, verify webhook signature
-  if (stripeWebhookSecret && signature) {
-    // Stripe signature verification would go here
-    // For CF Workers, use the Stripe SDK or manual HMAC verification
+  let event: Stripe.Event;
+
+  if (webhookSecret && signature) {
+    try {
+      const stripe = getStripe();
+      event = stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+    } catch (err) {
+      console.error("Webhook signature verification failed:", (err as Error).message);
+      return json({ error: "Invalid signature" }, { status: 400 });
+    }
+  } else {
+    try {
+      event = JSON.parse(payload) as Stripe.Event;
+    } catch {
+      return json({ error: "Invalid payload" }, { status: 400 });
+    }
   }
 
-  let event: any;
-  try {
-    event = JSON.parse(payload);
-  } catch {
-    return json({ error: "Invalid payload" }, { status: 400 });
-  }
-
-  const eventType = event.type as string;
-  const data = event.data?.object;
+  const data = (event.data?.object ?? {}) as Record<string, unknown>;
 
   try {
-    switch (eventType) {
+    switch (event.type) {
       case "checkout.session.completed": {
-        const tenantId = data.subscription_metadata?.tenant_id || data.metadata?.tenant_id;
-        const plan = data.subscription_metadata?.plan || data.metadata?.plan;
+        const metadata = (data.subscription_metadata ?? data.metadata ?? {}) as Record<
+          string,
+          string
+        >;
+        const tenantId = metadata.tenant_id;
+        const plan = metadata.plan;
         if (tenantId && plan) {
           await queryPg(
             `UPDATE tenant_billing SET
@@ -38,9 +46,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
               status = 'active',
               updated_at = NOW()
             WHERE tenant_id = $3`,
-            [data.subscription, plan, tenantId],
+            [data.subscription as string, plan, tenantId],
           );
-
           await queryPg(`UPDATE tenants SET tier = $1, updated_at = NOW() WHERE id = $2`, [
             plan,
             tenantId,
@@ -50,15 +57,17 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       }
 
       case "customer.subscription.updated": {
-        const tenantId = data.metadata?.tenant_id;
+        const metadata = (data.metadata ?? {}) as Record<string, string>;
+        const tenantId = metadata.tenant_id;
         if (tenantId) {
+          const rawStatus = data.status as string;
           const status =
-            data.status === "active"
-              ? "active"
-              : data.status === "past_due"
-                ? "past_due"
-                : data.status === "trialing"
-                  ? "trialing"
+            rawStatus === "past_due"
+              ? "past_due"
+              : rawStatus === "trialing"
+                ? "trialing"
+                : rawStatus === "canceled"
+                  ? "canceled"
                   : "active";
 
           await queryPg(
@@ -71,9 +80,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
             WHERE tenant_id = $5`,
             [
               status,
-              new Date(data.current_period_start * 1000).toISOString(),
-              new Date(data.current_period_end * 1000).toISOString(),
-              data.canceled_at ? new Date(data.canceled_at * 1000).toISOString() : null,
+              new Date((data.current_period_start as number) * 1000).toISOString(),
+              new Date((data.current_period_end as number) * 1000).toISOString(),
+              data.canceled_at ? new Date((data.canceled_at as number) * 1000).toISOString() : null,
               tenantId,
             ],
           );
@@ -82,13 +91,13 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       }
 
       case "customer.subscription.deleted": {
-        const tenantId = data.metadata?.tenant_id;
+        const metadata = (data.metadata ?? {}) as Record<string, string>;
+        const tenantId = metadata.tenant_id;
         if (tenantId) {
           await queryPg(
             `UPDATE tenant_billing SET status = 'canceled', canceled_at = NOW(), updated_at = NOW() WHERE tenant_id = $1`,
             [tenantId],
           );
-
           await queryPg(`UPDATE tenants SET tier = 'free', updated_at = NOW() WHERE id = $1`, [
             tenantId,
           ]);
@@ -97,20 +106,24 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       }
 
       case "invoice.paid": {
-        const tenantId = data.subscription_details?.metadata?.tenant_id || data.metadata?.tenant_id;
+        const subDetails = (data.subscription_details ?? {}) as Record<string, unknown>;
+        const subMetadata = (subDetails.metadata ?? {}) as Record<string, string>;
+        const tenantId =
+          subMetadata.tenant_id || ((data.metadata ?? {}) as Record<string, string>).tenant_id;
         if (tenantId) {
           await queryPg(
             `INSERT INTO invoices (id, tenant_id, stripe_invoice_id, amount_cents, currency, status, period_start, period_end, paid_at, pdf_url, created_at)
-             VALUES ($1, $2, $3, $4, $5, 'paid', $6, $7, NOW(), $8, NOW())`,
+             VALUES ($1, $2, $3, $4, $5, 'paid', $6, $7, NOW(), $8, NOW())
+             ON CONFLICT (stripe_invoice_id) DO NOTHING`,
             [
               crypto.randomUUID(),
               tenantId,
-              data.id,
-              data.amount_paid,
-              data.currency,
-              new Date(data.period_start * 1000).toISOString(),
-              new Date(data.period_end * 1000).toISOString(),
-              data.invoice_pdf,
+              data.id as string,
+              data.amount_paid as number,
+              data.currency as string,
+              new Date((data.period_start as number) * 1000).toISOString(),
+              new Date((data.period_end as number) * 1000).toISOString(),
+              data.invoice_pdf as string | null,
             ],
           );
         }
@@ -118,7 +131,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       }
 
       case "invoice.payment_failed": {
-        const tenantId = data.subscription_details?.metadata?.tenant_id;
+        const subDetails = (data.subscription_details ?? {}) as Record<string, unknown>;
+        const subMetadata = (subDetails.metadata ?? {}) as Record<string, string>;
+        const tenantId = subMetadata.tenant_id;
         if (tenantId) {
           await queryPg(
             `UPDATE tenant_billing SET status = 'past_due', updated_at = NOW() WHERE tenant_id = $1`,
@@ -129,13 +144,12 @@ export const POST: RequestHandler = async ({ request, platform }) => {
       }
 
       default:
-        // Unhandled event type — acknowledge receipt
         break;
     }
 
     return json({ received: true });
-  } catch (err: any) {
-    console.error("Webhook processing error:", err?.message);
+  } catch (err) {
+    console.error("Webhook processing error:", (err as Error).message);
     return json({ error: "Webhook processing failed" }, { status: 500 });
   }
 };

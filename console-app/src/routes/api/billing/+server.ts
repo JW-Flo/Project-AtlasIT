@@ -1,41 +1,103 @@
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import { getCoreApiBase, getEnv, proxyFetch } from "../_proxy-helpers";
+import { queryPg } from "$lib/server/pg";
 
-/** GET /api/billing — returns current tenant billing info, usage, and invoices */
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!user?.tenantId) {
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const upstream = `${base}/api/v1/billing${url.search}`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
+
+  const billing = await queryPg<{
+    tenant_id: string;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    billing_email: string | null;
+    plan: string;
+    billing_cycle: string;
+    status: string;
+    seats: number;
+    trial_ends_at: string | null;
+    current_period_start: string | null;
+    current_period_end: string | null;
+    canceled_at: string | null;
+  }>(`SELECT * FROM tenant_billing WHERE tenant_id = $1`, [user.tenantId]);
+
+  const row = billing[0] ?? {
+    tenant_id: user.tenantId,
+    plan: "free",
+    billing_cycle: "monthly",
+    status: "active",
+    seats: 1,
+    stripe_customer_id: null,
+    stripe_subscription_id: null,
+    billing_email: null,
+    trial_ends_at: null,
+    current_period_start: null,
+    current_period_end: null,
+    canceled_at: null,
+  };
+
+  const invoices = await queryPg<{
+    id: string;
+    stripe_invoice_id: string | null;
+    amount_cents: number;
+    currency: string;
+    status: string;
+    period_start: string;
+    period_end: string;
+    paid_at: string | null;
+    pdf_url: string | null;
+    created_at: string;
+  }>(`SELECT * FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 24`, [
+    user.tenantId,
+  ]);
+
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+  const usage = await queryPg<{ metric: string; quantity: number }>(
+    `SELECT metric, SUM(quantity)::int as quantity FROM usage_records
+     WHERE tenant_id = $1 AND period_start >= $2 AND period_start < $3
+     GROUP BY metric`,
+    [user.tenantId, periodStart, periodEnd],
+  );
+
+  return json({
+    status: "success",
+    data: {
+      billing: {
+        tenantId: row.tenant_id,
+        stripeCustomerId: row.stripe_customer_id,
+        stripeSubscriptionId: row.stripe_subscription_id,
+        billingEmail: row.billing_email,
+        plan: row.plan,
+        billingCycle: row.billing_cycle,
+        status: row.status,
+        seats: row.seats ?? 1,
+        trialEndsAt: row.trial_ends_at,
+        currentPeriodStart: row.current_period_start,
+        currentPeriodEnd: row.current_period_end,
+        canceledAt: row.canceled_at,
       },
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+      invoices: invoices.map((i) => ({
+        id: i.id,
+        stripeInvoiceId: i.stripe_invoice_id,
+        amountCents: i.amount_cents,
+        currency: i.currency,
+        status: i.status,
+        periodStart: i.period_start,
+        periodEnd: i.period_end,
+        paidAt: i.paid_at,
+        pdfUrl: i.pdf_url,
+        createdAt: i.created_at,
+      })),
+      usage: usage.map((u) => ({
+        metric: u.metric,
+        current: u.quantity,
+      })),
+    },
+    timestamp: new Date().toISOString(),
+  });
 };

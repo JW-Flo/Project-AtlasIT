@@ -12,6 +12,7 @@ export interface PlanDefinition {
   limits: PlanLimits;
   highlighted?: boolean;
   cta: string;
+  stripePriceIds?: { monthly?: string; annual?: string };
 }
 
 export interface PlanLimits {
@@ -63,6 +64,10 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     annualPriceCents: 3600,
     minimumMonthlyCents: 2000,
     cta: "Start 30-day free trial",
+    stripePriceIds: {
+      monthly: "price_1TQTguRoFmL9aFJXXiP0RFSG",
+      annual: "price_1TQTguRoFmL9aFJXDbXQFGTR",
+    },
     features: [
       "Everything in Free",
       "Up to 50 users",
@@ -93,6 +98,10 @@ export const PLANS: Record<BillingPlan, PlanDefinition> = {
     minimumMonthlyCents: 3000,
     highlighted: true,
     cta: "Start 14-day free trial",
+    stripePriceIds: {
+      monthly: "price_1TQTguRoFmL9aFJXqEnJJGtD",
+      annual: "price_1TQTguRoFmL9aFJXDM1StFT2",
+    },
     features: [
       "Everything in Starter",
       "Up to 500 users",
