@@ -97,19 +97,19 @@ test.describe("AWS Live Console Smoke", () => {
     await page.locator('input[type="password"]').fill(TEST_PASSWORD);
     await page.screenshot({ path: "test-results/03-login-filled.png" });
 
-    const tokenReqPromise = page.waitForResponse(
-      (r) => r.url().includes("/api/v1/auth/token") && r.request().method() === "POST",
+    const loginReqPromise = page.waitForResponse(
+      (r) => r.url().includes("/api/auth/login") && r.request().method() === "POST",
       { timeout: 30_000 },
     );
 
     await page.locator('button[type="submit"]').click();
 
-    const tokenRes = await tokenReqPromise;
-    console.log("Auth response status:", tokenRes.status());
-    const tokenBody = await tokenRes.json().catch(() => null);
-    console.log("Auth response body:", JSON.stringify(tokenBody).substring(0, 200));
+    const loginRes = await loginReqPromise;
+    console.log("Auth response status:", loginRes.status());
+    const loginBody = await loginRes.json().catch(() => null);
+    console.log("Auth response body:", JSON.stringify(loginBody).substring(0, 200));
 
-    await page.waitForTimeout(3000);
+    await page.waitForURL(/\/console/, { timeout: 15_000 }).catch(() => {});
     await page.screenshot({ path: "test-results/04-post-login.png", fullPage: true });
 
     const finalUrl = page.url();
@@ -119,7 +119,8 @@ test.describe("AWS Live Console Smoke", () => {
     console.log("Post-login failed requests:");
     cap.failedRequests.forEach((r) => console.log(`  ${r.status} ${r.method} ${r.url}`));
 
-    expect(tokenRes.status()).toBe(200);
+    expect(loginRes.status()).toBe(200);
+    expect(finalUrl).toContain("/console");
   });
 
   test("Post-login: /console page loads with data", async ({ page }) => {
@@ -137,7 +138,10 @@ test.describe("AWS Live Console Smoke", () => {
     console.log("Navigated to:", currentUrl);
 
     // Capture what the page actually shows
-    const bodyText = await page.locator("body").innerText().catch(() => "");
+    const bodyText = await page
+      .locator("body")
+      .innerText()
+      .catch(() => "");
     console.log("Page body text (first 500 chars):");
     console.log(bodyText.substring(0, 500));
 
@@ -172,7 +176,10 @@ test.describe("AWS Live Console Smoke", () => {
       cap.failedRequests.length = 0;
       await page.goto(BASE_URL + path, { waitUntil: "networkidle" }).catch(() => {});
       await page.waitForTimeout(2000);
-      const bodyText = await page.locator("body").innerText().catch(() => "");
+      const bodyText = await page
+        .locator("body")
+        .innerText()
+        .catch(() => "");
       const hasContent = bodyText.length > 100;
       console.log(`\n=== ${path} ===`);
       console.log(`  URL: ${page.url()}`);
@@ -181,8 +188,13 @@ test.describe("AWS Live Console Smoke", () => {
       console.log(`  Console errors: ${cap.consoleErrors.length}`);
       cap.consoleErrors.slice(0, 3).forEach((e) => console.log(`    ${e.substring(0, 150)}`));
       console.log(`  Failed requests: ${cap.failedRequests.length}`);
-      cap.failedRequests.slice(0, 3).forEach((r) => console.log(`    ${r.status} ${r.url.substring(0, 100)}`));
-      await page.screenshot({ path: `test-results/nav-${path.replace(/\//g, "_")}.png`, fullPage: true });
+      cap.failedRequests
+        .slice(0, 3)
+        .forEach((r) => console.log(`    ${r.status} ${r.url.substring(0, 100)}`));
+      await page.screenshot({
+        path: `test-results/nav-${path.replace(/\//g, "_")}.png`,
+        fullPage: true,
+      });
     }
   });
 });

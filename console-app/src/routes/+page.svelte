@@ -2,10 +2,21 @@
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
 
-  onMount(() => {
-    // Client-side redirect: unauthenticated → /login, authenticated → /console
+  onMount(async () => {
+    // Client-side redirect: unauthenticated -> /login, authenticated -> /console.
     const token = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("atlasit_token") : null;
-    goto(token ? "/console" : "/login", { replaceState: true });
+    if (token) {
+      await goto("/console", { replaceState: true });
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+      const data = (await res.json().catch(() => ({}))) as { authenticated?: boolean };
+      await goto(data.authenticated ? "/console" : "/login", { replaceState: true });
+    } catch {
+      await goto("/login", { replaceState: true });
+    }
   });
 </script>
 

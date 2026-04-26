@@ -1,17 +1,25 @@
 export function getWorkerBase(platform: any): string {
   const env = getEnv(platform);
+  if (env.COMPLIANCE_API_BASE) return String(env.COMPLIANCE_API_BASE).replace(/\/$/, "");
+  if (env.API_GATEWAY_URL)
+    return `${String(env.API_GATEWAY_URL).replace(/\/$/, "")}/api/compliance`;
   const complianceBase: string = env.COMPLIANCE_BASE || "https://compliance.atlasit.pro";
-  return complianceBase.replace(/\/api\/compliance\/?$/, "").replace(/\/$/, "");
+  return complianceBase.replace(/\/$/, "");
 }
 
 export function getCoreApiBase(platform: any): string {
   const env = getEnv(platform);
-  return (env.CORE_API_BASE || "https://core-api.atlasit.pro").replace(/\/$/, "");
+  return (env.CORE_API_BASE || env.API_GATEWAY_URL || "https://core-api.atlasit.pro").replace(
+    /\/$/,
+    "",
+  );
 }
 
 export function getOrchestratorBase(platform: any): string {
   const env = getEnv(platform);
-  return (env.ORCHESTRATOR_BASE || "https://orchestrator.atlasit.pro").replace(/\/$/, "");
+  if (env.ORCHESTRATOR_BASE) return String(env.ORCHESTRATOR_BASE).replace(/\/$/, "");
+  if (env.API_GATEWAY_URL) return `${String(env.API_GATEWAY_URL).replace(/\/$/, "")}/orchestrator`;
+  return "https://orchestrator.atlasit.pro";
 }
 
 export function getEnv(platform: any): Record<string, any> {
@@ -28,12 +36,15 @@ export async function proxyFetch(
   const apiKey = env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY || "";
   if (apiKey && init?.headers) {
     const headers = new Headers(init.headers);
+    if (!headers.has("x-internal-api-key")) {
+      headers.set("x-internal-api-key", apiKey);
+    }
     if (!headers.has("x-api-key")) {
       headers.set("x-api-key", apiKey);
     }
     init = { ...init, headers };
   } else if (apiKey && !init?.headers) {
-    init = { ...init, headers: { "x-api-key": apiKey } };
+    init = { ...init, headers: { "x-api-key": apiKey, "x-internal-api-key": apiKey } };
   }
   return fetch(url, init);
 }

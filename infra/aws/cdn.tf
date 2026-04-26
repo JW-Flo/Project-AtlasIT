@@ -7,7 +7,6 @@ resource "aws_cloudfront_distribution" "main" {
   http_version        = "http2and3"
   price_class         = "PriceClass_100"
   comment             = "AtlasIT ${var.env} distribution"
-  default_root_object = "index.html"
 
   aliases = [
     var.domain,

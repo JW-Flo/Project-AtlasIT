@@ -1,40 +1,15 @@
 import type { RequestHandler } from "@sveltejs/kit";
-import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
+import { json } from "@sveltejs/kit";
+import { dashboardData } from "$lib/server/dashboard-compat";
 
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user;
   if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
   const tenantId = user.tenantId;
   if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Tenant context required" }, { status: 403 });
   }
-  const upstream = `${base}/api/v1/dashboard${url.search}`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-      },
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  return json(await dashboardData(user));
 };
