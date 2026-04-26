@@ -239,10 +239,6 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
-
   // Read tenant frameworks
   let frameworks: string[] = [];
   let frameworksConfigured = true;
@@ -262,10 +258,12 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
     frameworksConfigured = false;
   }
 
-  // Fetch evidence-grounded and self-assessed scores in parallel
+  // The AWS console Lambda has direct PG access. Avoid routing dashboard score
+  // reads through the legacy compliance proxy; that path can hang if an upstream
+  // service is unhealthy and should not break login/dashboard rendering.
   const [evidenceScores, selfScores] = await Promise.all([
-    fetchEvidenceGroundedScores(platform, user.tenantId, frameworks),
-    computeSelfAssessedScores(db, user.tenantId, frameworks),
+    Promise.resolve(null as FrameworkScore[] | null),
+    computeSelfAssessedScores(null, user.tenantId, frameworks),
   ]);
 
   if (evidenceScores && evidenceScores.length > 0) {
@@ -317,7 +315,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       }
     }
 
-    await persistScores(db, user.tenantId, blended);
+    await persistScores(null, user.tenantId, blended);
     return json(
       { scores: blended, source: "evidence", frameworksConfigured },
       {
@@ -332,7 +330,7 @@ export const GET: RequestHandler = async ({ locals, platform }) => {
       ...s,
       source: (s.score > 0 ? "self-assessed" : "no-data") as ScoreSource,
     }));
-    await persistScores(db, user.tenantId, tagged);
+    await persistScores(null, user.tenantId, tagged);
     return json(
       { scores: tagged, source: "self-assessed", frameworksConfigured },
       {
@@ -363,9 +361,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   const user = locals.user;
   if (!user) return json({ error: "Unauthorized" }, { status: 401 });
 
-  const env = (platform?.env as any) || {};
-  const db = env.ATLAS_SHARED_DB;
-  if (!db) return json({ error: "DB unavailable" }, { status: 500 });
+  const env = (platform?.env as any) || process.env;
 
   // Read tenant frameworks
   let frameworks: string[] = [];
@@ -395,10 +391,11 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
   }
 
   // Always compute self-assessed scores from controls as the primary source
-  const selfScores = await computeSelfAssessedScores(db, user.tenantId, frameworks);
+  const selfScores = await computeSelfAssessedScores(null, user.tenantId, frameworks);
 
-  // Recalculate from evidence via compliance-worker
-  const scores = await fetchEvidenceGroundedScores(platform, user.tenantId, frameworks);
+  // Recalculate locally in the console Lambda; do not block this route on an
+  // upstream service hop that may still be migrating away from legacy routing.
+  const scores: FrameworkScore[] | null = null;
 
   let finalScores: FrameworkScore[];
   let source: string;
@@ -467,7 +464,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
     source = "empty";
   }
 
-  await persistScores(db, user.tenantId, finalScores);
+  await persistScores(null, user.tenantId, finalScores);
 
   // H-5 FIX: Emit compliance.score_changed with proper service auth headers
   const orchestratorUrl = env.ORCHESTRATOR_URL as string | undefined;

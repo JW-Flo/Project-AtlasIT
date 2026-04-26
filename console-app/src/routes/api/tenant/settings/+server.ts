@@ -1,82 +1,33 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { json } from "@sveltejs/kit";
+import { tenantSettingsData } from "$lib/server/dashboard-compat";
 import { getCoreApiBase, getEnv, proxyFetch } from "../../_proxy-helpers";
 
-export const GET: RequestHandler = async ({ url, platform, locals }) => {
+export const GET: RequestHandler = async ({ locals }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const upstream = `${base}/api/v1/tenant/settings${url.search}`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-      },
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  if (!user.tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+
+  const settings = await tenantSettingsData(user.tenantId);
+  return settings ? json(settings) : json({ error: "Tenant not found" }, { status: 404 });
 };
 
 export const PATCH: RequestHandler = async ({ request, platform, locals }) => {
   const user = locals.user;
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  if (!user) return json({ error: "Unauthorized" }, { status: 401 });
+  if (!user.tenantId) return json({ error: "Tenant context required" }, { status: 403 });
+
   const base = getCoreApiBase(platform);
   const env = getEnv(platform);
-  const tenantId = user.tenantId;
-  if (!tenantId) {
-    return new Response(JSON.stringify({ error: "Tenant context required" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-  const body = await request.text();
-  const upstream = `${base}/api/v1/tenant/settings`;
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      method: "PATCH",
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-tenant-id": tenantId,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const res = await proxyFetch(platform, `${base}/api/v1/tenant/settings`, {
+    method: "PATCH",
+    headers: {
+      "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
+      "x-tenant-id": user.tenantId,
+      "Content-Type": "application/json",
+    },
+    body: await request.text(),
+  });
+  const data = await res.json().catch(() => ({}));
+  return json(data, { status: res.status });
 };
