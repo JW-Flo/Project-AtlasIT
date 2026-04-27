@@ -66,6 +66,26 @@ resource "aws_scheduler_schedule" "orchestrator_dispatch" {
   }
 }
 
+# Evidence collection: every 5 minutes — triggers console-app /api/cron/evidence
+resource "aws_cloudwatch_event_rule" "evidence_collection" {
+  name                = "atlasit-evidence-collection-${var.env}"
+  description         = "Trigger evidence collection from adapters every 5 minutes"
+  schedule_expression = "rate(5 minutes)"
+}
+
+resource "aws_cloudwatch_event_target" "evidence_collection" {
+  rule = aws_cloudwatch_event_rule.evidence_collection.name
+  arn  = aws_lambda_function.scheduler.arn
+}
+
+resource "aws_lambda_permission" "evidence_collection_invoke" {
+  statement_id  = "AllowEventBridgeEvidenceCollection"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.evidence_collection.arn
+}
+
 # Lambda warmup to prevent cold starts on critical paths (F-14)
 # Invokes each Lambda every 5 minutes with noop payload to keep instances warm
 resource "aws_scheduler_schedule" "lambda_warmup_core" {
