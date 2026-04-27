@@ -1,75 +1,71 @@
+import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "@sveltejs/kit";
-import { getCoreApiBase, getEnv, proxyFetch } from "../../../_proxy-helpers";
+import { queryPg, queryPgOne } from "$lib/server/pg";
 
-export const PATCH: RequestHandler = async ({ params, request, platform, locals }) => {
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
   const user = locals.user;
   if (!user?.superAdmin) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
-  const body = await request.text();
   const { id } = params;
-  const upstream = `${base}/api/v1/tenants/${id}`;
-
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      method: "PATCH",
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-user-id": user.userId,
-        "Content-Type": "application/json",
-      },
-      body,
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+  const body = await request.json().catch(() => null);
+  if (!body || !id) {
+    return json({ error: "Invalid request" }, { status: 400 });
   }
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  const allowed = ["name", "slug", "tier", "status"] as const;
+  for (const key of allowed) {
+    if (body[key] !== undefined) {
+      fields.push(`${key} = $${idx++}`);
+      values.push(body[key]);
+    }
+  }
+
+  if (fields.length === 0) {
+    return json({ error: "No valid fields to update" }, { status: 400 });
+  }
+
+  fields.push(`updated_at = NOW()`);
+  values.push(id);
+
+  const row = await queryPgOne<{ id: string; name: string; status: string; tier: string }>(
+    `UPDATE tenants SET ${fields.join(", ")} WHERE id = $${idx} RETURNING id, name, status, tier`,
+    values,
+  );
+
+  if (!row) {
+    return json({ error: "Tenant not found" }, { status: 404 });
+  }
+
+  return json(row);
 };
 
-export const DELETE: RequestHandler = async ({ params, platform, locals }) => {
+export const DELETE: RequestHandler = async ({ params, locals }) => {
   const user = locals.user;
   if (!user?.superAdmin) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const base = getCoreApiBase(platform);
-  const env = getEnv(platform);
   const { id } = params;
-  const upstream = `${base}/api/v1/tenants/${id}`;
-
-  try {
-    const res = await proxyFetch(platform, upstream, {
-      method: "DELETE",
-      headers: {
-        "x-api-key": env.INTERNAL_API_KEY || env.COMPLIANCE_API_KEY,
-        "x-user-id": user.userId,
-      },
-    });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), {
-      status: res.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Service unavailable" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (!id) {
+    return json({ error: "Tenant ID required" }, { status: 400 });
   }
+
+  const existing = await queryPgOne<{ id: string }>(`SELECT id FROM tenants WHERE id = $1`, [id]);
+
+  if (!existing) {
+    return json({ error: "Tenant not found" }, { status: 404 });
+  }
+
+  await queryPg(`DELETE FROM sessions WHERE data::text LIKE $1`, [`%"tenantId":"${id}"%`]);
+  await queryPg(`DELETE FROM console_users WHERE tenant_id = $1`, [id]);
+  await queryPg(`DELETE FROM tenant_billing WHERE tenant_id = $1`, [id]);
+  await queryPg(`DELETE FROM tenants WHERE id = $1`, [id]);
+
+  return json({ success: true, id });
 };

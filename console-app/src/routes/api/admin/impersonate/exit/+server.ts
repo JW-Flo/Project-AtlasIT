@@ -1,29 +1,25 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { json } from "@sveltejs/kit";
+import { getSession, deleteSession } from "$lib/server/session-store";
 
-export const POST: RequestHandler = async ({ cookies, platform }) => {
-  const env = (platform?.env as any) || {};
-  const kv = env.KV_SESSIONS as KVNamespace | undefined;
-  if (!kv) return json({ error: "Service unavailable" }, { status: 500 });
-
+export const POST: RequestHandler = async ({ cookies }) => {
   const currentSessionId = cookies.get("atlas_session");
   if (!currentSessionId) {
     return json({ error: "No active session" }, { status: 400 });
   }
 
-  const raw = await kv.get(currentSessionId);
-  if (!raw) {
+  const session = await getSession(currentSessionId);
+  if (!session) {
     return json({ error: "Session not found" }, { status: 404 });
   }
 
-  const session = JSON.parse(raw);
-  if (!session.impersonating) {
+  if (!session.impersonatedBy) {
     return json({ error: "Not impersonating" }, { status: 400 });
   }
 
-  const originalSessionId = session.originalSessionId;
+  const originalSessionId = session.originalSessionId as string;
 
-  await kv.delete(currentSessionId);
+  await deleteSession(currentSessionId);
 
   cookies.set("atlas_session", originalSessionId, {
     httpOnly: true,
@@ -33,7 +29,6 @@ export const POST: RequestHandler = async ({ cookies, platform }) => {
     maxAge: 604800,
   });
 
-  // Clear session cache so the original session is read fresh from KV
   cookies.set("atlas_session_cache", "", {
     httpOnly: true,
     secure: true,
