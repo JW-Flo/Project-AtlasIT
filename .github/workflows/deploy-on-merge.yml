@@ -42,6 +42,9 @@ jobs:
     if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
     name: Apply PG migrations (Aurora)
     runs-on: [self-hosted, linux, arm64]
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -89,6 +92,9 @@ jobs:
     if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy AWS Lambdas
     runs-on: [self-hosted, linux, arm64]
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -174,6 +180,9 @@ jobs:
     if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy Console Lambda (SSR)
     runs-on: [self-hosted, linux, arm64]
+    env:
+      AWS_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - run: pnpm install --frozen-lockfile
