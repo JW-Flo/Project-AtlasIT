@@ -66,24 +66,44 @@ resource "aws_scheduler_schedule" "orchestrator_dispatch" {
   }
 }
 
-# Evidence collection: every 5 minutes — triggers console-app /api/cron/evidence
-resource "aws_cloudwatch_event_rule" "evidence_collection" {
-  name                = "atlasit-evidence-collection-${var.env}"
-  description         = "Trigger evidence collection from adapters every 5 minutes"
+# Consolidated 5-min cron: evidence, scoring, incidents (replaces CF orchestrator */5 * * * *)
+resource "aws_cloudwatch_event_rule" "cron_5min" {
+  name                = "atlasit-cron-5min-${var.env}"
+  description         = "Every 5 min: evidence collection, scoring promotion, incident SLA"
   schedule_expression = "rate(5 minutes)"
 }
 
-resource "aws_cloudwatch_event_target" "evidence_collection" {
-  rule = aws_cloudwatch_event_rule.evidence_collection.name
+resource "aws_cloudwatch_event_target" "cron_5min" {
+  rule = aws_cloudwatch_event_rule.cron_5min.name
   arn  = aws_lambda_function.scheduler.arn
 }
 
-resource "aws_lambda_permission" "evidence_collection_invoke" {
-  statement_id  = "AllowEventBridgeEvidenceCollection"
+resource "aws_lambda_permission" "cron_5min_invoke" {
+  statement_id  = "AllowEventBridgeCron5Min"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.scheduler.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.evidence_collection.arn
+  source_arn    = aws_cloudwatch_event_rule.cron_5min.arn
+}
+
+# Daily cron at 02:00 UTC: all duties + intelligence scan (replaces CF 0 2 * * *)
+resource "aws_cloudwatch_event_rule" "cron_daily" {
+  name                = "atlasit-cron-daily-${var.env}"
+  description         = "Daily 02:00 UTC: full evidence, scoring, incidents, intelligence"
+  schedule_expression = "cron(0 2 * * ? *)"
+}
+
+resource "aws_cloudwatch_event_target" "cron_daily" {
+  rule = aws_cloudwatch_event_rule.cron_daily.name
+  arn  = aws_lambda_function.scheduler.arn
+}
+
+resource "aws_lambda_permission" "cron_daily_invoke" {
+  statement_id  = "AllowEventBridgeCronDaily"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.cron_daily.arn
 }
 
 # Lambda warmup to prevent cold starts on critical paths (F-14)

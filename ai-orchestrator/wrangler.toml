@@ -85,7 +85,8 @@ ADAPTER_URLS = '{"github":"https://atlasit-adapter-github.kd8jc7v8cd.workers.dev
 COMPLIANCE_WORKER_URL = "https://compliance.atlasit.pro"
 
 [triggers]
-crons = ["*/5 * * * *", "0 2 * * *", "0 8 * * 0", "0 */6 * * *"]
+# Disabled — duties migrated to AWS EventBridge + scheduler Lambda (PR #532+)
+crons = []
 
 [observability.logs]
 enabled = true
