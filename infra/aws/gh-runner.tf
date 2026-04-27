@@ -9,9 +9,16 @@ resource "aws_instance" "gh_runner" {
   vpc_security_group_ids      = [aws_security_group.gh_runner.id]
   iam_instance_profile        = aws_iam_instance_profile.gh_runner.name
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
   root_block_device {
     volume_size = 30
     volume_type = "gp3"
+    encrypted   = true
   }
 
   user_data = base64encode(templatefile("${path.module}/gh-runner-init.sh", {
@@ -85,8 +92,7 @@ resource "aws_iam_role_policy" "gh_runner" {
           "lambda:GetFunctionUrlConfig",
           "lambda:InvokeFunction",
           "lambda:PublishVersion",
-          "lambda:ListAliases",
-          "lambda:WaitFunctionUpdated"
+          "lambda:ListAliases"
         ]
         Resource = "arn:aws:lambda:${var.region}:${var.account_id}:function:atlasit-*"
       },
@@ -107,6 +113,7 @@ resource "aws_iam_role_policy" "gh_runner" {
         Effect = "Allow"
         Action = [
           "cloudfront:CreateInvalidation",
+          "cloudfront:GetInvalidation",
           "cloudfront:ListDistributions"
         ]
         Resource = "*"
