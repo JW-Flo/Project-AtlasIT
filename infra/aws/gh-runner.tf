@@ -56,6 +56,11 @@ resource "aws_iam_instance_profile" "gh_runner" {
   role = aws_iam_role.gh_runner.name
 }
 
+resource "aws_iam_role_policy_attachment" "gh_runner_ssm" {
+  role       = aws_iam_role.gh_runner.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
 resource "aws_iam_role_policy" "gh_runner" {
   name = "atlasit-gh-runner-${var.env}"
   role = aws_iam_role.gh_runner.id
