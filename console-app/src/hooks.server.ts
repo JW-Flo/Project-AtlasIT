@@ -34,6 +34,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/support", // public support form submissions
   "/api/privacy/dsar", // public data subject access requests
   "/api/demo/", // public interactive demo analytics
+  "/api/cron/", // scheduled jobs (authenticated by Bearer token, not session)
 ];
 
 function isPublicApiRoute(pathname: string): boolean {
