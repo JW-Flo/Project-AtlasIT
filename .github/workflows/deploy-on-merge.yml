@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: deploy-on-merge-${{ github.ref }}
@@ -16,7 +15,7 @@ concurrency:
 jobs:
   changes:
     name: Detect changed paths
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     outputs:
       migrations: ${{ steps.filter.outputs.migrations }}
       aws-lambdas: ${{ steps.filter.outputs.aws-lambdas }}
@@ -42,18 +41,11 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
     name: Apply PG migrations (Aurora)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 2
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
-          aws-region: us-east-1
       - name: Apply new PG migrations via migration-runner Lambda
         run: |
           CHANGED=$(git diff --name-only --diff-filter=AM HEAD^ HEAD -- 'migrations/*.sql' | sort)
@@ -96,23 +88,14 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy AWS Lambdas
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 2
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build all Lambda functions
         run: node scripts/build-lambdas.mjs
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
-          aws-region: us-east-1
       - name: Deploy changed Lambdas
         run: |
           ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
@@ -190,14 +173,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
     name: Deploy Console Lambda (SSR)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build shared package
         run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
@@ -206,10 +184,6 @@ jobs:
         run: |
           npx svelte-kit sync && pnpm run build
           cp lambda-handler.js build-lambda/
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
-          aws-region: us-east-1
       - name: Package and deploy console Lambda
         run: |
           ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
