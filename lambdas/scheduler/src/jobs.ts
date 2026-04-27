@@ -44,7 +44,7 @@ async function fetchWithRetry(
 const RULE_TO_JOB: Record<string, string[]> = {
   "atlasit-quarter-hour": ["quarter_hour_monitor"],
   "atlasit-compliance-packs-daily-dev": ["compliance_packs_evaluate"],
-  // Default (generic 15-min tick): just a health ping
+  "atlasit-evidence-collection-dev": ["evidence_collection"],
   default: ["quarter_hour_monitor"],
 };
 
@@ -88,6 +88,41 @@ async function executeJob(name: string): Promise<{ ok: boolean; error?: string; 
       body: JSON.stringify({ provider: "all" }),
     },
   };
+
+  // Evidence collection: call console-app's /api/cron/evidence endpoint
+  if (name === "evidence_collection") {
+    const started = Date.now();
+    const consoleUrl = (process.env.CONSOLE_API_URL ?? "").replace(/\/$/, "");
+    if (!consoleUrl) {
+      return { ok: false, error: "CONSOLE_API_URL not configured", ms: 0 };
+    }
+    try {
+      const res = await fetch(`${consoleUrl}/api/cron/evidence`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${internalKey}`,
+        },
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return {
+          ok: false,
+          error: `console-app returned ${res.status}: ${body.slice(0, 200)}`,
+          ms: Date.now() - started,
+        };
+      }
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      log("info", "evidence_collection.result", {
+        collected: data.collected,
+        tenants: data.tenants,
+        errors: (data.errors as unknown[])?.length ?? 0,
+      });
+      return { ok: true, ms: Date.now() - started };
+    } catch (err) {
+      return { ok: false, error: (err as Error).message, ms: Date.now() - started };
+    }
+  }
 
   // Lambda-direct invocations for jobs that call private VPC lambdas (no NAT available)
   if (name === "compliance_packs_evaluate") {

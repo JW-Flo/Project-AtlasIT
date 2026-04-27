@@ -58,6 +58,9 @@ function buildJobs(): Record<string, () => Promise<Response>> {
     "x-api-key": process.env.ORCHESTRATOR_API_KEY ?? "",
   };
 
+  const consoleBase = (process.env.CONSOLE_API_URL ?? "").replace(/\/$/, "");
+  const internalKey = process.env.INTERNAL_API_KEY ?? "";
+
   return {
     daily_etl: async () => {
       const url = `${orchestratorBase}/internal/etl/run`;
@@ -77,6 +80,13 @@ function buildJobs(): Record<string, () => Promise<Response>> {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ provider: "all" }),
+      });
+    },
+    evidence_collection: async () => {
+      const url = `${consoleBase}/api/cron/evidence`;
+      return fetchWithRetry(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
       });
     },
   };
@@ -101,8 +111,17 @@ async function runJobs(jobNames: string[]): Promise<JobResult[]> {
       results.push({ job: name, ok: true, status: res.status, ms: Date.now() - started });
       log("info", "job.success", { job: name, status: res.status, ms: Date.now() - started });
     } catch (err) {
-      results.push({ job: name, ok: false, error: (err as Error).message, ms: Date.now() - started });
-      log("error", "job.failure", { job: name, error: (err as Error).message, ms: Date.now() - started });
+      results.push({
+        job: name,
+        ok: false,
+        error: (err as Error).message,
+        ms: Date.now() - started,
+      });
+      log("error", "job.failure", {
+        job: name,
+        error: (err as Error).message,
+        ms: Date.now() - started,
+      });
     }
   }
 
