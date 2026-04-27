@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
-      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
@@ -109,7 +109,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build all Lambda functions
         run: node scripts/build-lambdas.mjs
-      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
@@ -206,7 +206,7 @@ jobs:
         run: |
           npx svelte-kit sync && pnpm run build
           cp lambda-handler.js build-lambda/
-      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::457335975503:role/atlasit-github-actions-deploy
           aws-region: us-east-1
