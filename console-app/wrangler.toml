@@ -105,7 +105,8 @@ DEMO_TENANT_NAME = "Acme Dental Group"
 enabled = true
 
 [triggers]
-crons = ["0 3 * * *"]
+# Disabled — duties migrated to AWS EventBridge (PR #532+)
+crons = []
 
 # --- Resource bindings ---
 [[d1_databases]]

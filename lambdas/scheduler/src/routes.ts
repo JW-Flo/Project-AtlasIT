@@ -83,8 +83,25 @@ function buildJobs(): Record<string, () => Promise<Response>> {
       });
     },
     evidence_collection: async () => {
-      const url = `${consoleBase}/api/cron/evidence`;
-      return fetchWithRetry(url, {
+      return fetchWithRetry(`${consoleBase}/api/cron/evidence`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      });
+    },
+    scoring_promotion: async () => {
+      return fetchWithRetry(`${consoleBase}/api/cron/scoring`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      });
+    },
+    incident_sla: async () => {
+      return fetchWithRetry(`${consoleBase}/api/cron/incidents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
+      });
+    },
+    intelligence_scan: async () => {
+      return fetchWithRetry(`${consoleBase}/api/cron/intelligence`, {
         method: "POST",
         headers: { Authorization: `Bearer ${internalKey}`, "Content-Type": "application/json" },
       });

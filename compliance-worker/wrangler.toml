@@ -35,7 +35,8 @@ id = "3c5284c47e2e43dc8166fd53f2d35166"
 # GROQ_API_KEY — Groq API key for AI-powered policy generation
 
 [triggers]
-crons = ["*/5 * * * *"]
+# Disabled — duties migrated to AWS EventBridge (PR #532+)
+crons = []
 
 [observability.logs]
 enabled = true
@@ -80,7 +81,8 @@ binding = "API_TOKENS"
 id = "3c5284c47e2e43dc8166fd53f2d35166"
 
 [env.production.triggers]
-crons = ["*/5 * * * *"]
+# Disabled — duties migrated to AWS EventBridge (PR #532+)
+crons = []
 
 [env.production.observability.logs]
 enabled = true

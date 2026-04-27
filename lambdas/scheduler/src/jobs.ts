@@ -45,7 +45,21 @@ const RULE_TO_JOB: Record<string, string[]> = {
   "atlasit-quarter-hour": ["quarter_hour_monitor"],
   "atlasit-compliance-packs-daily-dev": ["compliance_packs_evaluate"],
   "atlasit-evidence-collection-dev": ["evidence_collection"],
+  "atlasit-cron-5min-dev": ["evidence_collection", "scoring_promotion", "incident_sla"],
+  "atlasit-cron-daily-dev": [
+    "evidence_collection",
+    "scoring_promotion",
+    "incident_sla",
+    "intelligence_scan",
+  ],
   default: ["quarter_hour_monitor"],
+};
+
+const CONSOLE_CRON_ENDPOINTS: Record<string, string> = {
+  evidence_collection: "/api/cron/evidence",
+  scoring_promotion: "/api/cron/scoring",
+  incident_sla: "/api/cron/incidents",
+  intelligence_scan: "/api/cron/intelligence",
 };
 
 /** Extract the EventBridge rule name from the event resource ARN. */
@@ -89,15 +103,16 @@ async function executeJob(name: string): Promise<{ ok: boolean; error?: string; 
     },
   };
 
-  // Evidence collection: call console-app's /api/cron/evidence endpoint
-  if (name === "evidence_collection") {
+  // Console-app cron endpoints: evidence, scoring, incidents, intelligence
+  const cronPath = CONSOLE_CRON_ENDPOINTS[name];
+  if (cronPath) {
     const started = Date.now();
     const consoleUrl = (process.env.CONSOLE_API_URL ?? "").replace(/\/$/, "");
     if (!consoleUrl) {
       return { ok: false, error: "CONSOLE_API_URL not configured", ms: 0 };
     }
     try {
-      const res = await fetch(`${consoleUrl}/api/cron/evidence`, {
+      const res = await fetch(`${consoleUrl}${cronPath}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -108,16 +123,12 @@ async function executeJob(name: string): Promise<{ ok: boolean; error?: string; 
         const body = await res.text().catch(() => "");
         return {
           ok: false,
-          error: `console-app returned ${res.status}: ${body.slice(0, 200)}`,
+          error: `${name} returned ${res.status}: ${body.slice(0, 200)}`,
           ms: Date.now() - started,
         };
       }
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      log("info", "evidence_collection.result", {
-        collected: data.collected,
-        tenants: data.tenants,
-        errors: (data.errors as unknown[])?.length ?? 0,
-      });
+      log("info", `${name}.result`, data);
       return { ok: true, ms: Date.now() - started };
     } catch (err) {
       return { ok: false, error: (err as Error).message, ms: Date.now() - started };
