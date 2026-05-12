@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "svelte-kit sync && vite build",
+    "build": "svelte-kit sync && vite build && printf '_worker.js\\n_routes.json\\n' > .svelte-kit/cloudflare/.assetsignore",
     "preview": "vite preview",
     "qa": "node scripts/qa-console.mjs",
     "qa:worker": "node scripts/qa-console-worker.mjs",
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@atlasit/shared": "workspace:*",
+    "@neondatabase/serverless": "^0.10.4",
     "@sveltejs/kit": "^2.57.1",
     "@types/diff": "^8.0.0",
     "diff": "^9.0.0",
