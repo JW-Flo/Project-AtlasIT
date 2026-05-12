@@ -15,234 +15,109 @@ concurrency:
 jobs:
   changes:
     name: Detect changed paths
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: ubuntu-latest
     outputs:
       migrations: ${{ steps.filter.outputs.migrations }}
-      aws-lambdas: ${{ steps.filter.outputs.aws-lambdas }}
-      aws-console: ${{ steps.filter.outputs.aws-console }}
+      console: ${{ steps.filter.outputs.console }}
+      workers: ${{ steps.filter.outputs.workers }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             migrations:
               - 'migrations/**'
-            aws-lambdas:
-              - 'lambdas/**'
-              - 'packages/shared/**'
-              - 'packages/connector-schema/**'
-              - 'scripts/build-lambdas.mjs'
-            aws-console:
+            console:
               - 'console-app/**'
               - 'packages/shared/**'
+            workers:
+              - 'core-api/**'
+              - 'ai-orchestrator/**'
+              - 'compliance-worker/**'
+              - 'onboarding/**'
+              - 'packages/shared/**'
 
-  migrate-shared-db:
+  run-migrations:
     needs: [changes]
     if: needs.changes.outputs.migrations == 'true' || github.event_name == 'workflow_dispatch'
-    name: Apply PG migrations (Aurora)
-    runs-on: [self-hosted, linux, arm64]
-    env:
-      AWS_REGION: us-east-1
-      AWS_DEFAULT_REGION: us-east-1
+    name: Run DB migrations (Neon)
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Apply new PG migrations via migration-runner Lambda
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply new migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           CHANGED=$(git diff --name-only --diff-filter=AM HEAD^ HEAD -- 'migrations/*.sql' | sort)
           if [ -z "$CHANGED" ]; then
-            echo "No migration files changed in this push -- skipping"
+            echo "No new migrations — skipping"
             exit 0
           fi
-          echo "New/changed migrations:"
-          echo "$CHANGED"
-          FAILED=0
+          npm install --save-dev @neondatabase/serverless 2>/dev/null
           for SQL_FILE in $CHANGED; do
             echo "=== Applying $SQL_FILE ==="
-            PAYLOAD=$(node -e "
+            node -e "
+              const { neon } = require('@neondatabase/serverless');
+              const sql = neon(process.env.DATABASE_URL);
               const fs = require('fs');
-              const sql = fs.readFileSync('$SQL_FILE', 'utf8');
-              const stmts = sql.split(';').map(s => s.trim())
-                .filter(s => s && !s.split('\n').every(l => l.trim().startsWith('--')));
-              console.log(JSON.stringify({ statements: stmts }));
-            ")
-            RESULT=$(aws lambda invoke \
-              --function-name atlasit-migration-runner \
-              --cli-binary-format raw-in-base64-out \
-              --payload "$PAYLOAD" \
-              /tmp/mig-result.json 2>&1)
-            echo "$RESULT"
-            if grep -q '"ok":false' /tmp/mig-result.json; then
-              echo "::error file=$SQL_FILE::migration failed"
-              cat /tmp/mig-result.json
-              FAILED=$((FAILED + 1))
-            else
-              echo "OK"
-            fi
+              const stmts = fs.readFileSync('$SQL_FILE','utf8')
+                .split(';').map(s=>s.trim()).filter(s=>s && !s.split('\\n').every(l=>l.trim().startsWith('--')));
+              Promise.all(stmts.map(s=>sql(s))).then(()=>console.log('OK')).catch(e=>{console.error(e);process.exit(1)});
+            "
           done
-          if [ $FAILED -gt 0 ]; then
-            echo "::error::$FAILED migration(s) failed"
-            exit 1
-          fi
 
-  deploy-aws-lambdas:
+  deploy-console:
     needs: [changes]
-    if: needs.changes.outputs.aws-lambdas == 'true' || github.event_name == 'workflow_dispatch'
-    name: Deploy AWS Lambdas
-    runs-on: [self-hosted, linux, arm64]
-    env:
-      AWS_REGION: us-east-1
-      AWS_DEFAULT_REGION: us-east-1
+    if: needs.changes.outputs.console == 'true' || github.event_name == 'workflow_dispatch'
+    name: Deploy Console Worker (CF)
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          fetch-depth: 2
-      - run: pnpm install --frozen-lockfile
-      - name: Build all Lambda functions
-        run: node scripts/build-lambdas.mjs
-      - name: Deploy changed Lambdas
-        run: |
-          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
-          for dir in lambdas/*/; do
-            FUNC=$(basename "$dir")
-            FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
-            echo "Packaging ${FUNC}..."
-            if [ -d "${dir}dist" ]; then
-              cd "${dir}dist"
-            else
-              cd "${dir}"
-            fi
-            if grep -q 'require.*"pg"' handler.js 2>/dev/null; then
-              mkdir -p /tmp/pg-deps && cd /tmp/pg-deps
-              echo '{"dependencies":{"pg":"^8"}}' > package.json
-              npm install --production --silent
-              cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
-              cd "${GITHUB_WORKSPACE}/${dir}dist"
-            fi
-            if grep -q 'require.*"bcryptjs"' handler.js 2>/dev/null; then
-              mkdir -p /tmp/bcrypt-deps && cd /tmp/bcrypt-deps
-              echo '{"dependencies":{"bcryptjs":"^2.4.3"}}' > package.json
-              npm install --production --silent
-              cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
-              cd "${GITHUB_WORKSPACE}/${dir}dist"
-            fi
-            if grep -q 'require.*"pdf-lib"' handler.js 2>/dev/null; then
-              mkdir -p /tmp/pdflib-deps && cd /tmp/pdflib-deps
-              echo '{"dependencies":{"pdf-lib":"^1.17.1"}}' > package.json
-              npm install --production --silent
-              cp -r node_modules "${GITHUB_WORKSPACE}/${dir}dist/"
-              cd "${GITHUB_WORKSPACE}/${dir}dist"
-            fi
-            zip -r "/tmp/${FUNC}.zip" .
-            cd "${GITHUB_WORKSPACE}"
-            echo "Deploying ${FUNCTION_NAME}..."
-            aws lambda update-function-code \
-              --function-name "$FUNCTION_NAME" \
-              --zip-file "fileb:///tmp/${FUNC}.zip" \
-              --publish || echo "::warning::Failed to deploy ${FUNC}"
-          done
-      - name: Prune old Lambda versions (keep last 5)
-        run: |
-          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
-          for dir in lambdas/*/; do
-            FUNC=$(basename "$dir")
-            FUNCTION_NAME="atlasit-${FUNC}-${ENV}"
-            aws lambda list-versions-by-function \
-              --function-name "$FUNCTION_NAME" \
-              --query 'Versions[?Version!=`$LATEST`].Version' \
-              --output text 2>/dev/null \
-              | tr '\t' '\n' \
-              | sort -rn \
-              | tail -n +6 \
-              | while read VER; do
-                  [ -z "$VER" ] && continue
-                  echo "Deleting ${FUNCTION_NAME}:${VER}"
-                  aws lambda delete-function \
-                    --function-name "$FUNCTION_NAME" \
-                    --qualifier "$VER" 2>/dev/null || true
-                done
-          done
-      - name: Health check
-        run: |
-          API_URL=$(aws ssm get-parameter --name "/atlasit/dev/api-gateway-url" --query 'Parameter.Value' --output text 2>/dev/null || echo "")
-          if [ -n "$API_URL" ]; then
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" --max-time 10 || echo "000")
-            echo "Health: $API_URL/health -> HTTP $STATUS"
-            if [ "$STATUS" != "200" ]; then
-              echo "::warning::Health check returned $STATUS"
-            fi
-          fi
-
-  deploy-aws-console:
-    needs: [changes]
-    if: needs.changes.outputs.aws-console == 'true' || github.event_name == 'workflow_dispatch'
-    name: Deploy Console Lambda (SSR)
-    runs-on: [self-hosted, linux, arm64]
-    env:
-      AWS_REGION: us-east-1
-      AWS_DEFAULT_REGION: us-east-1
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+          node-version: 20
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build shared package
         run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
-      - name: Build console (adapter-node for Lambda)
+      - name: Build console
         working-directory: console-app
-        run: |
-          npx svelte-kit sync && pnpm run build
-          cp lambda-handler.js build-lambda/
-      - name: Package and deploy console Lambda
-        run: |
-          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
-          DOMAIN="${{ vars.DEPLOY_DOMAIN || 'atlasit.pro' }}"
-          FUNCTION_NAME="atlasit-console-api-${ENV}"
-          BUCKET=$(aws ssm get-parameter --name "/atlasit/${ENV}/console-bucket" --query "Parameter.Value" --output text)
-          DISTRIBUTION_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?contains(Aliases.Items, 'www.${DOMAIN}')].Id | [0]" \
-            --output text)
+        run: npx svelte-kit sync && pnpm run build
+      - name: Deploy to Cloudflare Workers
+        working-directory: console-app
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
 
-          aws s3 sync console-app/build-lambda/client "s3://$BUCKET" \
-            --cache-control "public,max-age=31536000,immutable" \
-            --exclude "*" \
-            --include "_app/immutable/*"
-          aws s3 sync console-app/build-lambda/client "s3://$BUCKET" \
-            --cache-control "public,max-age=0,must-revalidate" \
-            --exclude "_app/immutable/*"
-
-          cd console-app/build-lambda
-
-          echo '{"type":"module","dependencies":{"@sveltejs/kit":"^2.57.1","marked":"^18.0.2","pg":"^8.12.0"}}' > package.json
-          npm install --production --silent
-
-          zip -r /tmp/console-api.zip .
-
-          aws lambda update-function-code \
-            --function-name "$FUNCTION_NAME" \
-            --zip-file "fileb:///tmp/console-api.zip" \
-            --publish
-
-          if [ -n "$DISTRIBUTION_ID" ] && [ "$DISTRIBUTION_ID" != "None" ]; then
-            INVALIDATION_ID=$(aws cloudfront create-invalidation \
-              --distribution-id "$DISTRIBUTION_ID" \
-              --paths "/_app/*" "/" "/login" "/console/login" \
-              --query "Invalidation.Id" \
-              --output text)
-            aws cloudfront wait invalidation-completed \
-              --distribution-id "$DISTRIBUTION_ID" \
-              --id "$INVALIDATION_ID"
-          fi
-
-          echo "Console Lambda deployed: $FUNCTION_NAME"
-      - name: Health check
-        run: |
-          ENV="${{ vars.DEPLOY_ENV || 'dev' }}"
-          FUNCTION_URL=$(aws lambda get-function-url-config --function-name "atlasit-console-api-${ENV}" --query 'FunctionUrl' --output text 2>/dev/null || echo "")
-          if [ -n "$FUNCTION_URL" ]; then
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FUNCTION_URL}api/health" --max-time 10 || echo "000")
-            echo "Health: ${FUNCTION_URL}api/health -> HTTP $STATUS"
-            if [ "$STATUS" != "200" ]; then
-              echo "::warning::Console health check returned $STATUS"
-            fi
-          fi
+  deploy-workers:
+    needs: [changes]
+    if: needs.changes.outputs.workers == 'true' || github.event_name == 'workflow_dispatch'
+    name: Deploy CF Workers
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker: [core-api, ai-orchestrator, compliance-worker, onboarding]
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build shared package
+        run: cd packages/shared && rm -rf dist tsconfig.tsbuildinfo && npx tsc -p tsconfig.json
+      - name: Deploy ${{ matrix.worker }}
+        run: cd ${{ matrix.worker }} && npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}

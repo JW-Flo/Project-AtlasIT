@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@atlasit/shared": "workspace:*",
+    "@neondatabase/serverless": "^0.10.4",
     "@sveltejs/kit": "^2.57.1",
     "@types/diff": "^8.0.0",
     "diff": "^9.0.0",
