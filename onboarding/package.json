@@ -19,7 +19,7 @@
     "@atlasit/shared": "workspace:*",
     "@cloudflare/workers-types": "^4.20241218.0",
     "@sveltejs/adapter-cloudflare": "^7.2.3",
-    "@sveltejs/kit": "^2.57.1",
+    "@sveltejs/kit": "^2.60.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -33,7 +33,7 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "vite": "^7.1.7",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.0",
     "wrangler": "^4.46.0"
   }
 }
